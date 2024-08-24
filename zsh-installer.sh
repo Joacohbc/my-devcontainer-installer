@@ -4,6 +4,7 @@
 sudo apt-get update
 sudo apt-get install git zsh curl fontconfig -y
 
+echo "> Luego de instalarse Oh My Zsh, debe salir (exit) para continuar..."
 # Instalar Oh My Zsh
 sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
 
@@ -30,4 +31,4 @@ git clone --depth=1 https://github.com/romkatv/powerlevel10k.git ${ZSH_CUSTOM:-$
 # Editar el archivo .zshrc para activar el tema Powerlevel10k
 sed -i 's/ZSH_THEME="[^"]*"/ZSH_THEME="powerlevel10k\/powerlevel10k"/' ~/.zshrc
 
-echo '> Ahora solo ejecuta cierra sesion en esta shell y entra nuevamente para configurar p10k (o ejecuta p10k configure) <'
+echo '> Ahora solo ejecuta cierra sesion en esta shell y entra nuevamente para configurar p10k (o ejecuta p10k configure)...'
