@@ -15,7 +15,7 @@ services:
     networks:
       default:  # Red interna por defecto de Docker Compose
       local-network:
-        ipv4_address: 192.168.0.252 
+        ipv4_address: <IP>
 
   mysql:
     image: mysql:8.0
@@ -57,5 +57,5 @@ networks:
       parent: eth0  # Reemplaza "eth0" con el nombre de la interfaz de red de tu Raspberry Pi
     ipam:
       config:
-        - subnet: 192.168.0.0/24  # Rango de IPs de tu red local
-          gateway: 192.168.0.1 # IP del router (puerta de enlace)
+        - subnet: 192.168.1.0/24  # Rango de IPs de tu red local
+          gateway: 192.168.1.1 # IP del router (puerta de enlace)
