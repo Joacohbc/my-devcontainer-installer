@@ -1,0 +1,61 @@
+services:
+  devcontainer-ssh:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: devcontainer-ssh
+    depends_on:
+      - mysql
+      - mongo
+      - redis
+      - postgres
+    command: sleep infinity # Esto mantiene el contenedor ejecutándose para el desarrollo interactivo
+    volumes:
+      - .:/workspace  # Monta el directorio de trabajo dentro del contenedor
+    networks:
+      default:  # Red interna por defecto de Docker Compose
+      local-network:
+        ipv4_address: 192.168.0.252 
+
+  mysql:
+    image: mysql:8.0
+    container_name: mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: devdb
+      MYSQL_DATABASE: devdb
+      MYSQL_USER: devuser
+      MYSQL_PASSWORD: devpass
+    ports:
+      - "3306:3306"
+
+  mongo:
+    image: mongo:6.0
+    container_name: mongo
+    ports:
+      - "27017:27017"
+
+  redis:
+    image: redis:7.0
+    container_name: redis
+    ports:
+      - "6379:6379"
+
+  postgres:
+    image: postgres:15
+    container_name: postgres
+    environment:
+      POSTGRES_USER: devuser
+      POSTGRES_PASSWORD: devpass
+      POSTGRES_DB: devdb
+    ports:
+      - "5432:5432"
+
+networks:
+  local-network:
+    driver: ipvlan
+    driver_opts:
+      parent: eth0  # Reemplaza "eth0" con el nombre de la interfaz de red de tu Raspberry Pi
+    ipam:
+      config:
+        - subnet: 192.168.0.0/24  # Rango de IPs de tu red local
+          gateway: 192.168.0.1 # IP del router (puerta de enlace)
