@@ -21,7 +21,7 @@ services:
     image: mysql:8.0
     container_name: mysql
     environment:
-      MYSQL_ROOT_PASSWORD: devdb
+      MYSQL_ROOT_PASSWORD: devpass
       MYSQL_DATABASE: devdb
       MYSQL_USER: devuser
       MYSQL_PASSWORD: devpass
