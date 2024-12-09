@@ -4,6 +4,7 @@ FROM ubuntu:22.04
 # Actualiza los paquetes e instala SSH y sudo
 RUN apt-get update && apt-get install -y \
     openssh-server \
+    nano \
     sudo \
     && apt-get clean
 
@@ -17,13 +18,11 @@ RUN sed -i 's/^#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh
 
 # Crea el usuario devuser con la contraseña devuser y le da permisos de sudo
 RUN useradd -m -s /bin/bash devuser \
-    && echo 'devuser:devuser' | chpasswd \
+    && echo 'devuser:devpass' | chpasswd \
     && usermod -aG sudo devuser
 
 # Establece una contraseña para el usuario root (opcional)
-RUN echo 'root:rootpassword' | chpasswd
-
-
+RUN echo 'root:rootpass' | chpasswd
 
 # Expone el puerto 22 para SSH
 EXPOSE 22
