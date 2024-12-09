@@ -32,3 +32,4 @@ git clone --depth=1 https://github.com/romkatv/powerlevel10k.git ${ZSH_CUSTOM:-$
 sed -i 's/ZSH_THEME="[^"]*"/ZSH_THEME="powerlevel10k\/powerlevel10k"/' ~/.zshrc
 
 echo '> Ahora solo ejecuta cierra sesion en esta shell y entra nuevamente para configurar p10k (o ejecuta p10k configure)...'
+chsh -s $(which zsh)
