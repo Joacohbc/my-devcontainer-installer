@@ -1,12 +1,12 @@
 #!/bin/bash
 
 # Actualizar el sistema e instalar las dependencias necesarias
-sudo apt-get update
-sudo apt-get install git zsh curl fontconfig -y
+apt-get update
+apt-get install git zsh curl fontconfig -y
 
 echo "> Luego de instalarse Oh My Zsh, debe salir (exit) para continuar..."
 # Instalar Oh My Zsh
-sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
+sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" -y --unattended &> /dev/null
 
 # Clonar los plugins de Zsh en el directorio de plugins de Oh My Zsh
 git clone https://github.com/zsh-users/zsh-syntax-highlighting.git ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-syntax-highlighting
