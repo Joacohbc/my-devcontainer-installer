@@ -31,6 +31,9 @@ services:
   mongo:
     image: mongo:6.0
     container_name: mongo
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: devuser
+      MONGO_INITDB_ROOT_PASSWORD: devpass
     ports:
       - "27017:27017"
 
