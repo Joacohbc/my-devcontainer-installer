@@ -9,13 +9,13 @@ services:
       - mongo
       - redis
       - postgres
-    command: sleep infinity # Esto mantiene el contenedor ejecutándose para el desarrollo interactivo
+    command: sleep infinity
     volumes:
-      - .:/workspace  # Monta el directorio de trabajo dentro del contenedor
+      - .:/workspace
     networks:
-      default:  # Red interna por defecto de Docker Compose
+      default:
       local-network:
-        ipv4_address: <IP>
+        ipv4_address: ${DEVCONTAINER_SSH_IP}
 
   mysql:
     image: mysql:8.0
@@ -27,6 +27,8 @@ services:
       MYSQL_PASSWORD: devpass
     ports:
       - "3306:3306"
+    volumes:
+      - ${MOUNT_VOLUMES}/mysql:/var/lib/mysql  # Volumen para MySQL
 
   mongo:
     image: mongo:6.0
@@ -36,12 +38,16 @@ services:
       MONGO_INITDB_ROOT_PASSWORD: devpass
     ports:
       - "27017:27017"
+    volumes:
+      - ${MOUNT_VOLUMES}/mongo:/data/db  # Volumen para MongoDB
 
   redis:
     image: redis:7.0
     container_name: redis
     ports:
       - "6379:6379"
+    volumes:
+      - ${MOUNT_VOLUMES}/redis:/data  # Volumen para Redis
 
   postgres:
     image: postgres:15
@@ -52,13 +58,15 @@ services:
       POSTGRES_DB: devdb
     ports:
       - "5432:5432"
+    volumes:
+      - ${MOUNT_VOLUMES}/postgres:/var/lib/postgresql/data  # Volumen para PostgreSQL
 
 networks:
   local-network:
     driver: ipvlan
     driver_opts:
-      parent: eth0  # Reemplaza "eth0" con el nombre de la interfaz de red de tu Raspberry Pi
+      parent: eth0  # Reemplaza "eth0" con la interfaz real de tu PI
     ipam:
       config:
-        - subnet: 192.168.1.0/24  # Rango de IPs de tu red local
-          gateway: 192.168.1.1 # IP del router (puerta de enlace)
+        - subnet: ${NETWORK_RANGE}
+          gateway: ${GATEWAY_IP}
