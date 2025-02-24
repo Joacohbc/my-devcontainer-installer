@@ -6,13 +6,13 @@ Este repositorio contiene la configuración para un entorno de desarrollo remoto
 
 - **Sistema Operativo:** Ubuntu 22.04.
 - **Acceso SSH:**  Conexión remota segura al contenedor mediante OpenSSH.
-- **Privilegios de Administrador:**  El usuario `devuser` tiene acceso `sudo`.
 - **Sincronización de Archivos:**  Monta el directorio del proyecto en `/workspace` dentro del contenedor, permitiendo la sincronización bidireccional de archivos.
-- **Bases de Datos Preconfiguradas:**
+- **Bases de Datos Preconfiguradas:** (se puede cambiar la version desde el `docker-compose.yml`)
   - MySQL 8.0
   - MongoDB 6.0
   - Redis 7.0
   - PostgreSQL 15
+- **Lenguajes de Programación:**  Instala Python (latest), Java/JDK Temurin (11 & 17), NVM (Node.js a necesidad), y Go (latest).
 - **Red Personalizada (ipvlan):** Permite asignar una IP estática al contenedor SSH desde tu red local, facilitando la conexión.
 - **ZSH con Powerlevel10k:**  Shell ZSH preconfigurada con un tema atractivo y plugins útiles (ver sección ZSH más abajo).
 - **Volúmenes Persistentes (Bind Mounts):** Los datos de las bases de datos se almacenan en un directorio *específico* de tu host, garantizando la persistencia incluso si los contenedores se eliminan.
@@ -53,7 +53,7 @@ Este repositorio contiene la configuración para un entorno de desarrollo remoto
    sudo chown -R $USER:$USER /home/user/docker_volumenes # Otorga permisos a tu usuario
    ```
 
-   Asegurate de reemplazar la ruta `/home/user/docker_volumenes` por la correcta.
+   Asegúrate de reemplazar la ruta `/home/user/docker_volumenes` por la correcta.
 
 3. **Modifica `docker-compose.yml` (si es necesario):**
 
@@ -70,10 +70,10 @@ Este repositorio contiene la configuración para un entorno de desarrollo remoto
 5. **Conéctate al contenedor por SSH:**
 
     ```bash
-    ssh devuser@<DEVCONTAINER_SSH_IP>
+    ssh root@<DEVCONTAINER_SSH_IP>
     ```
 
-    Reemplaza `<DEVCONTAINER_SSH_IP>` con la IP que configuraste en el archivo `.env`.  La contraseña del usuario `devuser` es `devuser`.
+    Reemplaza `<DEVCONTAINER_SSH_IP>` con la IP que configuraste en el archivo `.env`.  La contraseña del usuario `root` es `rootpass`.
 
 6. **Ejecutar scripts de inicio (opcional):**
 
