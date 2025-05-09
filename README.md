@@ -70,11 +70,38 @@ Este repositorio contiene la configuración para un entorno de desarrollo remoto
 
 5. **Conéctate al contenedor por SSH:**
 
+    Una vez que los contenedores estén en funcionamiento, puedes conectarte por SSH.
+    Reemplaza `<DEVCONTAINER_SSH_IP_OR_HOSTNAME>` en los comandos de ejemplo con:
+    - La IP estática que configuraste para `DEVCONTAINER_SSH_IP` en tu archivo `.env` (si estás utilizando el modo de red bridge/ipvlan).
+    - `localhost` si estás utilizando el modo de red local con reenvío de puertos (por ejemplo, si mapeaste el puerto 2222 del host al puerto 22 del contenedor, te conectarías a `localhost` en el puerto 2222).
+
+    Las contraseñas para los usuarios `root` y `devuser` se generan aleatoriamente la primera vez que se inicia el contenedor `devcontainer-ssh`. Estas contraseñas se imprimen en los logs del contenedor. Para obtenerlas, ejecuta el siguiente comando en tu terminal del host después de que los contenedores hayan iniciado:
+
     ```bash
-    ssh root@<DEVCONTAINER_SSH_IP>
+    docker logs devcontainer-ssh
     ```
 
-    Reemplaza `<DEVCONTAINER_SSH_IP>` con la IP que configuraste en el archivo `.env`.  La contraseña del usuario `root` es `rootpass`.
+    Busca en la salida las líneas que comienzan con `initial root password:` y `devuser password:`. Anota estas contraseñas, ya que las necesitarás para la conexión SSH.
+
+    **Ejemplos de conexión SSH:**
+
+    - Para conectar como `devuser` (recomendado para el desarrollo diario):
+
+        ```bash
+        ssh devuser@<DEVCONTAINER_SSH_IP_OR_HOSTNAME>
+        # Ejemplo si usas modo local con puerto 2222 forwardeado a 22 del contenedor:
+        # ssh -p 2222 devuser@localhost
+        ```
+
+    - Para conectar como `root`:
+
+        ```bash
+        ssh root@<DEVCONTAINER_SSH_IP_OR_HOSTNAME>
+        # Ejemplo si usas modo local con puerto 2222 forwardeado a 22 del contenedor:
+        # ssh -p 2222 root@localhost
+        ```
+
+    Se recomienda utilizar el usuario `devuser` para las tareas de desarrollo habituales.
 
 6. **Ejecutar scripts de inicio (opcional):**
 
@@ -99,6 +126,11 @@ Este repositorio contiene la configuración para un entorno de desarrollo remoto
 
 - **`Dockerfile`:**  Define la imagen base del contenedor de desarrollo (Ubuntu 22.04, SSH, herramientas básicas, Docker CLI).
 - **`docker-compose.yml`:**  Define los servicios (contenedor SSH, bases de datos), la red, y los volúmenes. Incluye el montaje del socket de Docker para DooD.
+  - **Modos de Red para `devcontainer-ssh`:**
+    - **Bridge (ipvlan):** Por defecto, el servicio `devcontainer-ssh` utiliza una red `ipvlan` (nombrada `local-network`) para obtener una IP directamente en tu red local. Esto se configura mediante la variable `DEVCONTAINER_SSH_IP` en el archivo `.env`.
+    - **Local (Host Port Forwarding):** Si prefieres no usar `ipvlan` o necesitas una configuración más simple, puedes cambiar al modo local. Para ello:
+      1. Comenta la sección `local-network` bajo el servicio `devcontainer-ssh` en `docker-compose.yml`.
+      2. Descomenta la sección `ports` bajo el servicio `devcontainer-ssh` y ajusta el mapeo de puertos según sea necesario (por ejemplo, `"2222:22"` para mapear el puerto 2222 del host al puerto 22 del contenedor).
 - **`entrypoint.sh`:**  Script que se ejecuta al iniciar el contenedor SSH; configura el servicio SSH y añade el usuario `devuser` al grupo `docker` para DooD.
 - **`.env`:**  Archivo de configuración para variables de entorno (IP, rutas, etc.).
 - **`zsh-installer.sh`:** (Opcional) Instala y configura ZSH, Oh My Zsh, Powerlevel10k y plugins.

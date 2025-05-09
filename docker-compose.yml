@@ -14,8 +14,15 @@ services:
       - .:/workspace
       # To disable Docker-outside-Docker, comment out the next line
       - /var/run/docker.sock:/var/run/docker.sock # Add Docker socket mount
+
+    # For local mode (not bridge), comment out the 'local-network' section below
+    # and uncomment the 'ports' section.
+    # ports:
+    #   - "2222:22" # Example: forward host port 2222 to container port 22 for SSH
     networks:
       default:
+      # local-network is used for bridge (ipvlan) mode.
+      # Comment this out if using local mode with forwardPorts (uncomment 'ports' above).
       local-network:
         ipv4_address: ${DEVCONTAINER_SSH_IP}
 
