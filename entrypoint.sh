@@ -20,16 +20,6 @@ else
     echo "devuser:$DEV_PASSWORD" | chpasswd
     usermod -aG sudo devuser
     
-    # To disable Docker-outside-Docker, comment out the next line
-    groupadd docker # Create the docker group if it doesn't exist
-
-    # Ensure the docker group has access to the Docker socket
-    chown root:docker /var/run/docker.sock
-    chmod g+w /var/run/docker.sock
-
-    # Add devuser to docker group
-    usermod -aG docker devuser
-    
     echo "$DEV_PASSWORD" > /home/devuser/initial_password.txt
     chown devuser:devuser /home/devuser/initial_password.txt # Ensure devuser owns the file
     chmod 600 /home/devuser/initial_password.txt # Set appropriate permissions
