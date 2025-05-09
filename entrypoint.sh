@@ -16,6 +16,11 @@ else
     usermod -aG sudo devuser
     
     # To disable Docker-outside-Docker, comment out the next line
+    groupadd docker # Create the docker group if it doesn't exist
+
+    # Ensure the docker group has access to the Docker socket
+    chgrp docker:docker /var/run/docker.sock
+    
     usermod -aG docker devuser # Add devuser to docker group
     echo "$DEV_PASSWORD" > /home/devuser/initial_password.txt
     chown devuser:devuser /home/devuser/initial_password.txt # Ensure devuser owns the file
