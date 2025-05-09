@@ -12,6 +12,8 @@ services:
     command: sleep infinity
     volumes:
       - .:/workspace
+      # To disable Docker-outside-Docker, comment out the next line
+      - /var/run/docker.sock:/var/run/docker.sock # Add Docker socket mount
     networks:
       default:
       local-network:
