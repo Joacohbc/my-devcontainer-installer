@@ -1,4 +1,7 @@
 #!/bin/bash
+# This script provides an interactive setup for installing common development tools:
+# Java (Temurin JDK 11 & 17), NVM (Node Version Manager), Python, and Go.
+# It prompts the user for each tool and installs it if confirmed.
 
 apt-get update
 apt-get install -y git curl wget apt-transport-https gnupg

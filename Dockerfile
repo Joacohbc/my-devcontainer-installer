@@ -1,7 +1,12 @@
-# Utiliza una imagen base de Ubuntu
+# This Dockerfile sets up a development environment based on Ubuntu 22.04.
+# It installs OpenSSH server, sudo, pwgen, and Docker CLI for Docker-outside-Docker (DooD).
+# SSH is configured to allow root login with passwords.
+# The entrypoint script handles user creation and SSH service startup.
+
+# Use an Ubuntu base image
 FROM ubuntu:22.04
 
-# Actualiza los paquetes e instala SSH, sudo, y otras utilidades
+# Update packages and install SSH, sudo, and other utilities
 RUN apt-get update && apt-get install -y \
     openssh-server \
     nano \
@@ -28,20 +33,20 @@ RUN echo \
 # Install Docker CLI
 RUN apt-get update && apt-get install -y docker-ce-cli && apt-get clean
 
-# Configura el servicio SSH
+# Configure the SSH service
 RUN mkdir /var/run/sshd && \
-    chmod 755 /var/run/sshd # Asegura permisos correctos
+    chmod 755 /var/run/sshd # Ensure correct permissions
 
-# Configura SSH para permitir el inicio de sesión de root y el uso de contraseñas
+# Configure SSH to allow root login and password authentication
 RUN sed -i 's/^#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config
 RUN sed -i 's/^#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config
 
-# Expone el puerto 22 para SSH
+# Expose port 22 for SSH
 EXPOSE 22
 
-# Copia el script de entrypoint
+# Copy the entrypoint script
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
-# Establece el script de entrada
+# Set the entrypoint script
 ENTRYPOINT ["/entrypoint.sh"]

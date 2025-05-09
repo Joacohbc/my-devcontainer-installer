@@ -1,6 +1,11 @@
 #!/bin/bash
+# This script provides utility functions for installing and updating Go (Golang).
+# It determines the system architecture, fetches the latest Go version (or a default),
+# downloads and installs it, and configures the PATH.
+# It also includes a function to update an existing Go installation by backing it up,
+# removing it, and then performing a fresh installation.
 
-# Arquitectura a descargar
+# Architecture to download
 ARCH="linux-arm64"
 
 apt-get install curl -y
@@ -8,86 +13,86 @@ apt-get install curl -y
 install_golang() {
     TEMP_DIR=$(mktemp -d)
     if [[ ! -d "$TEMP_DIR" ]]; then
-        echo "Error al crear el directorio temporal."
+        echo "Error creating temporary directory."
         return 1
     fi
     
-    echo "Directorio temporal: $TEMP_DIR"
+    echo "Temporary directory: $TEMP_DIR"
 
-    # Obtiene el HTML de la página de descargas
-    GO_RELEASE_PAGE=$(curl -sS https://go.dev/dl/ || { echo "Error al obtener la página de descargas."; exit 1; })
+    # Get the HTML of the downloads page
+    GO_RELEASE_PAGE=$(curl -sS https://go.dev/dl/ || { echo "Error fetching downloads page."; exit 1; })
 
-    # Extrae el nombre del archivo de la última versión
+    # Extract the filename of the latest version
     GO_LATEST_VERSION=$(echo "$GO_RELEASE_PAGE" | grep -oE "go[0-9.]+\.[a-z0-9-]+\.tar\.gz" | grep $ARCH | head -n 1)
 
-    # Verifica si se encontró un enlace
-    DEFAULT_GO_VERSION="go1.20.linux-arm64.tar.gz" #Versión por defecto
+    # Check if a link was found
+    DEFAULT_GO_VERSION="go1.20.linux-arm64.tar.gz" #Default version
     if [[ -z "$GO_LATEST_VERSION" ]]; then
-        echo "No se encontró el enlace de descarga para $ARCH. Se instalará la versión por defecto."
+        echo "Download link for $ARCH not found. Installing default version."
         GO_LATEST_VERSION=$DEFAULT_GO_VERSION
     fi
 
-    # Construye la URL completa
+    # Build the full URL
     GO_DOWNLOAD_URL="https://go.dev/dl/$GO_LATEST_VERSION"
-    echo "URL de descarga: $GO_DOWNLOAD_URL"
+    echo "Download URL: $GO_DOWNLOAD_URL"
 
-    # Descarga el archivo en la carpeta temporal
-    wget -qO "$TEMP_DIR/$GO_LATEST_VERSION" "$GO_DOWNLOAD_URL" #Descarga el archivo en el directorio temporal
+    # Download the file to the temporary folder
+    wget -qO "$TEMP_DIR/$GO_LATEST_VERSION" "$GO_DOWNLOAD_URL" #Download the file to the temporary directory
 
     if [[ $? -ne 0 ]]; then
-        echo "Error descargando Golang binaries. Exiting..."
-        rm -rf "$TEMP_DIR" #Elimina el directorio temporal en caso de error
+        echo "Error downloading Golang binaries. Exiting..."
+        rm -rf "$TEMP_DIR" #Delete the temporary directory in case of error
         return 1
     fi
 
-    # Extrae el archivo desde la carpeta temporal
-    tar -C /usr/local -xzf "$TEMP_DIR/$GO_LATEST_VERSION" #Extae el archivo desde el directorio temporal
+    # Extract the file from the temporary folder
+    tar -C /usr/local -xzf "$TEMP_DIR/$GO_LATEST_VERSION" #Extract the file from the temporary directory
 
-    # Actualiza la variable PATH
+    # Update the PATH variable
     touch /etc/profile
     echo "export PATH=\$PATH:/usr/local/go/bin" >> /etc/profile
 
-    # Si el usuario usa Zsh, también actualiza el archivo de configuración
+    # If the user uses Zsh, also update the configuration file
     mkdir -p /etc/zsh
     touch /etc/zsh/zprofile
     echo "export PATH=\$PATH:/usr/local/go/bin" >> /etc/zsh/zprofile
 
-    # Limpia la carpeta temporal
-    rm -rf "$TEMP_DIR" #Borra la carpeta y todo su contenido.
+    # Clean up the temporary folder
+    rm -rf "$TEMP_DIR" #Delete the folder and all its contents.
 
-    echo "Golang instalado correctamente."
+    echo "Golang installed successfully."
     return 0
 }
 
 update_golang() {
     # Check if Go is installed
     if [[ ! -d "/usr/local/go" ]]; then
-        echo "Go no está instalado. Ejecutando instalación limpia..."
+        echo "Go is not installed. Running clean installation..."
         install_golang
         return
     fi
 
     # Create backup
     BACKUP_DIR="/tmp/go_backup_$(date +%Y%m%d_%H%M%S)"
-    echo "Creando backup en: $BACKUP_DIR"
+    echo "Creating backup in: $BACKUP_DIR"
     if ! cp -r /usr/local/go "$BACKUP_DIR"; then
-        echo "Error al crear backup. Abortando actualización..."
+        echo "Error creating backup. Aborting update..."
         return 1
     fi
 
     # Remove current installation
-    echo "Removiendo instalación actual..."
+    echo "Removing current installation..."
     if ! rm -rf /usr/local/go; then
-        echo "Error al remover instalación actual. Restaurando backup..."
+        echo "Error removing current installation. Restoring backup..."
         cp -r "$BACKUP_DIR" /usr/local/go
         rm -rf "$BACKUP_DIR"
         return 1
     fi
 
     # Install new version
-    echo "Instalando nueva versión..."
+    echo "Installing new version..."
     if ! install_golang; then
-        echo "Error en la instalación. Restaurando backup..."
+        echo "Error during installation. Restoring backup..."
         cp -r "$BACKUP_DIR" /usr/local/go
         rm -rf "$BACKUP_DIR"
         return 1
@@ -95,16 +100,15 @@ update_golang() {
 
     # Validate installation
     if ! command -v /usr/local/go/bin/go >/dev/null; then
-        echo "Error: La nueva instalación no es válida. Restaurando backup..."
-        rm -rf /usr/local/go
+        echo "Go command not found after installation. Restoring backup..."
         cp -r "$BACKUP_DIR" /usr/local/go
         rm -rf "$BACKUP_DIR"
         return 1
     fi
 
     # Clean up backup on success
-    echo "Actualización exitosa. Eliminando backup..."
+    echo "Update successful. Deleting backup..."
     rm -rf "$BACKUP_DIR"
-    echo "Go actualizado correctamente a: $(/usr/local/go/bin/go version)"
+    echo "Go updated successfully to: $(/usr/local/go/bin/go version)"
     return 0
 }
