@@ -12,7 +12,7 @@ Este repositorio contiene la configuración para un entorno de desarrollo remoto
   - MongoDB 6.0
   - Redis 7.0
   - PostgreSQL 15
-- **Lenguajes de Programación:**  Instala Python (latest), Java/JDK Temurin (11 & 17), NVM (Node.js a necesidad), y Go (latest).
+- **Lenguajes de Programación:**  Instala Python (latest), Java/JDK Temurin (11 & 17), NVM (Node.js a necesidad), Go (latest), y SQLite.
 - **Red Personalizada (ipvlan):** Permite asignar una IP estática al contenedor SSH desde tu red local, facilitando la conexión.
 - **ZSH con Powerlevel10k:**  Shell ZSH preconfigurada con un tema atractivo y plugins útiles (ver sección ZSH más abajo).
 - **Volúmenes Persistentes (Bind Mounts):** Los datos de las bases de datos se almacenan en un directorio *específico* de tu host, garantizando la persistencia incluso si los contenedores se eliminan.
@@ -42,19 +42,12 @@ Este repositorio contiene la configuración para un entorno de desarrollo remoto
     DEVCONTAINER_SSH_IP=192.168.X.X  # IP estática para el contenedor SSH
     NETWORK_RANGE=192.168.X.X/24       # Rango de tu red local
     GATEWAY_IP=192.168.0.X            # IP de tu router
-    MOUNT_VOLUMES=/home/user/docker_volumenes # Ruta ABSOLUTA donde se guardarán los datos
     ```
 
     - **`DEVCONTAINER_SSH_IP`**: Elige una IP *libre* dentro de tu red local que no esté en uso por otro dispositivo.
     - **`NETWORK_RANGE` y `GATEWAY_IP`**:  Deben coincidir con la configuración de tu red local.
-    - **`MOUNT_VOLUMES`**:  *Debes* reemplazar `/home/user/docker_volumenes` con la ruta *absoluta* al directorio donde quieres que se almacenen los datos de las bases de datos.  *Antes* de ejecutar `docker-compose up`, crea esta estructura de directorios:
 
-   ```bash
-   mkdir -p /home/user/docker_volumenes/{mysql,mongo,redis,postgres}
-   sudo chown -R $USER:$USER /home/user/docker_volumenes # Otorga permisos a tu usuario
-   ```
-
-   Asegúrate de reemplazar la ruta `/home/user/docker_volumenes` por la correcta.
+    Nota: Las bases de datos servidor (MySQL, PostgreSQL, etc.) utilizan volúmenes de Docker para la persistencia de datos (ej: `mysql_data:/var/lib/mysql`). Estos volúmenes son gestionados por Docker y sus datos persisten aunque los contenedores se eliminen. Las bases de datos SQLite, al ser archivos, se guardarán y persistirán dentro de tu directorio de proyecto (`/workspace` en el contenedor) si las creas allí, ya que este directorio se sincroniza con tu máquina host.
 
 3. **Modifica `docker-compose.yml` (si es necesario):**
 
@@ -112,15 +105,13 @@ Este repositorio contiene la configuración para un entorno de desarrollo remoto
     ./setup.sh
     ```
 
-7. **Detener y eliminar los contenedores (y volúmenes):**
+7. **Detener y eliminar los contenedores:**
 
-    Cuando hayas terminado, para detener los contenedores *y eliminar los volúmenes nombrados* (pero no los datos en tu SSD, que están seguros gracias a los bind mounts), usa:
+    Cuando hayas terminado, para detener los contenedores *y eliminar los volúmenes nombrados*, usa:
 
     ```bash
-    docker-compose down -v
+    docker-compose down
     ```
-
-    El `-v` es importante para eliminar los volúmenes nombrados internos de Docker Compose, que *no* son los que contienen tus datos persistentes.
 
 ## Estructura de Archivos
 
@@ -134,7 +125,7 @@ Este repositorio contiene la configuración para un entorno de desarrollo remoto
 - **`entrypoint.sh`:**  Script que se ejecuta al iniciar el contenedor SSH; configura el servicio SSH y añade el usuario `devuser` al grupo `docker` para DooD.
 - **`.env`:**  Archivo de configuración para variables de entorno (IP, rutas, etc.).
 - **`zsh-installer.sh`:** (Opcional) Instala y configura ZSH, Oh My Zsh, Powerlevel10k y plugins.
-- **`setup.sh`:** (Opcional) Script para instalar herramientas de desarrollo adicionales.
+- **`setup.sh`:** (Opcional) Script para instalar herramientas de desarrollo adicionales como Java, NVM (Node.js), Python, SQLite y Go.
 
 ## Conexión a las Bases de Datos
 
@@ -144,6 +135,7 @@ Desde el contenedor SSH (y también desde tu host, gracias a la configuración d
 - **MongoDB:** `mongodb://devuser:devpass@mongo:27017`  (Nota: el usuario/contraseña se configuran en el archivo `.env` o en `docker-compose.yml`, si no usas un archivo .env).
 - **Redis:** `redis://redis:6379` (Redis por defecto no tiene autenticación; puedes configurarla si lo necesitas).
 - **PostgreSQL:** `postgresql://devuser:devpass@postgres:5432/devdb`
+- **SQLite:** Para SQLite, te conectarás directamente al archivo de la base de datos. Si el archivo está en tu proyecto (ej: `/workspace/mi_proyecto/datos.db`), usa `sqlite3 /workspace/mi_proyecto/datos.db`. Estos archivos se persisten como parte de tu proyecto sincronizado con el host.
 
 ## ZSH
 
@@ -179,7 +171,7 @@ Si no necesitas esta funcionalidad, puedes deshabilitarla comentando las siguien
 
 ## Notas Importantes
 
-- **Persistencia de Datos:** Los datos de las bases de datos se almacenan en el directorio que especificaste en `MOUNT_VOLUMES` en tu *host*.  Estos datos *no* se eliminan cuando usas `docker-compose down -v`.
+- **Persistencia de Datos:** Los datos de las bases de datos servidor (MySQL, PostgreSQL, MongoDB, Redis) se almacenan en volúmenes de Docker definidos en `docker-compose.yml`. Estos datos *no* se eliminan cuando usas `docker-compose down -v` (a menos que elimines los volúmenes explícitamente con otros comandos de Docker). Los archivos de SQLite se persisten como parte de tu proyecto en `/workspace`.
 - **Puertos:**  Los puertos de las bases de datos están expuestos en tu host, lo que te permite conectarte a ellas desde aplicaciones en tu máquina local.
 - **Red ipvlan:**  La red `ipvlan` permite que el contenedor SSH tenga una IP directamente accesible desde tu red local.  Esto facilita la conexión SSH y el acceso a las bases de datos.
 - **Usuario y contraseña**: Las contraseñas que se encuentran el el docker-compose.yml son solo a modo de ejemplo, se recomienda cambiarlas por cuestiones de seguridad.
