@@ -10,10 +10,14 @@ services:
       - redis
       - postgres
     command: sleep infinity
+    restart: unless-stopped
     volumes:
       - .:/workspace
       # To disable Docker-outside-Docker, comment out the next line
-      - /var/run/docker.sock:/var/run/docker.sock # Add Docker socket mount
+      - /var/run/docker.sock:/var/run/docker.sock
+      - devcontainer_etc:/etc
+      - devcontainer_root:/root
+      - devcontainer_home:/home
 
     # For local mode (not bridge), comment out the 'local-network' section below
     # and uncomment the 'ports' section.
@@ -37,7 +41,7 @@ services:
     ports:
       - "3306:3306"
     volumes:
-      - ${MOUNT_VOLUMES}/mysql:/var/lib/mysql  # Volumen para MySQL
+      - mysql_data:/var/lib/mysql  # Volumen para MySQL
 
   mongo:
     image: mongo:6.0
@@ -48,7 +52,7 @@ services:
     ports:
       - "27017:27017"
     volumes:
-      - ${MOUNT_VOLUMES}/mongo:/data/db  # Volumen para MongoDB
+      - mongo_data:/data/db  # Volumen para MongoDB
 
   redis:
     image: redis:7.0
@@ -56,7 +60,7 @@ services:
     ports:
       - "6379:6379"
     volumes:
-      - ${MOUNT_VOLUMES}/redis:/data  # Volumen para Redis
+      - redis_data:/data  # Volumen para Redis
 
   postgres:
     image: postgres:15
@@ -68,14 +72,24 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - ${MOUNT_VOLUMES}/postgres:/var/lib/postgresql/data  # Volumen para PostgreSQL
+      - postgres_data:/var/lib/postgresql/data  # Volumen para PostgreSQL
+
 
 networks:
   local-network:
     driver: ipvlan
     driver_opts:
-      parent: eth0  # Reemplaza "eth0" con la interfaz real de tu PI
+      parent: eth0  # Replace with your host network interface
     ipam:
       config:
         - subnet: ${NETWORK_RANGE}
           gateway: ${GATEWAY_IP}
+
+volumes:
+  mysql_data:
+  mongo_data:
+  redis_data:
+  postgres_data:
+  devcontainer_etc:
+  devcontainer_root:
+  devcontainer_home:
