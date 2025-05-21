@@ -39,6 +39,15 @@ else
     echo "Skipping Python installation."
 fi
 
+# SQLITE
+read -p "Do you want to install SQLite? (yes/no): " install_sqlite
+if [[ "$install_sqlite" == "yes" ]]; then
+    apt-get install -y sqlite3
+    echo "SQLite installation complete."
+else
+    echo "Skipping SQLite installation."
+fi
+
 # GOLANG
 read -p "Do you want to install Go? (yes/no): " install_golang
 if [[ "$install_golang" == "yes" ]]; then
