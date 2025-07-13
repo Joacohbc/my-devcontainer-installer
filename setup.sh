@@ -3,6 +3,13 @@
 # Java (Temurin JDK 11 & 17), NVM (Node Version Manager), Python, and Go.
 # It prompts the user for each tool and installs it if confirmed.
 
+# Check if running as root or with sudo
+if [[ $EUID -ne 0 ]]; then
+    echo "Error: This script must be run as root or with sudo privileges."
+    echo "Please run: sudo $0"
+    exit 1
+fi
+
 apt-get update
 apt-get install -y git curl wget apt-transport-https gnupg
 
@@ -17,16 +24,6 @@ if [[ "$install_java" == "yes" ]]; then
     echo "Java installation complete."
 else
     echo "Skipping Java installation."
-fi
-
-# NVM
-read -p "Do you want to install NVM (Node.js)? (yes/no): " install_nvm
-if [[ "$install_nvm" == "yes" ]]; then
-    NVM_LATEST_RELEASE=$(curl -s https://api.github.com/repos/nvm-sh/nvm/releases/latest | grep tag_name | cut -d '"' -f 4)
-    curl -L -o- https://raw.githubusercontent.com/nvm-sh/nvm/$NVM_LATEST_RELEASE/install.sh | bash
-    echo "NVM (Node.js) installation complete. Please source your .bashrc or .zshrc file, or open a new terminal."
-else
-    echo "Skipping NVM (Node.js) installation."
 fi
 
 # PYTHON

@@ -98,11 +98,13 @@ Este repositorio contiene la configuración para un entorno de desarrollo remoto
 
 6. **Ejecutar scripts de inicio (opcional):**
 
-    Si deseas configurar ZSH y las herramientas de desarrollo, ejecuta los scripts `zsh-installer.sh` y `setup.sh` *dentro del contenedor* (en ese orden):
+    Si deseas configurar ZSH y las herramientas de desarrollo, ejecuta los scripts `zsh-installer.sh`, `nvm-installer.sh` y `setup.sh` *dentro del contenedor* (en ese orden):
 
     ```bash
-    ./zsh-installer.sh
-    ./setup.sh
+    # No debe ser con sudo, ya que se instalan $HOME del usuario
+    ./zsh-installer.sh # Si deseas instalar ZSH, Oh My Zsh, Powerlevel10k y plugins
+    ./nvm-installer.sh  # Si deseas instalar NVM (Node.js)
+    sudo ./setup.sh # Si deseas instalar Java, Python, Go, etc.
     ```
 
 7. **Detener y eliminar los contenedores:**

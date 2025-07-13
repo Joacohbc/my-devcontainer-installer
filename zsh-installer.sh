@@ -3,8 +3,8 @@
 # and the Powerlevel10k theme. It also installs necessary fonts.
 
 # Update the system and install necessary dependencies
-apt-get update
-apt-get install git zsh curl fontconfig -y
+sudo apt-get update
+sudo apt-get install git zsh curl fontconfig -y
 
 echo "> After Oh My Zsh is installed, you must exit to continue..."
 # Install Oh My Zsh
