@@ -109,7 +109,7 @@ Este repositorio contiene la configuración para un entorno de desarrollo remoto
 
 7. **Detener y eliminar los contenedores:**
 
-    Cuando hayas terminado, para detener los contenedores *y eliminar los volúmenes nombrados*, usa:
+    Cuando hayas terminado, para detener los contenedores (*no elimina los volúmenes*), usa:
 
     ```bash
     docker-compose down
