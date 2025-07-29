@@ -103,7 +103,8 @@ Este repositorio contiene la configuración para un entorno de desarrollo remoto
     ```bash
     # No debe ser con sudo, ya que se instalan $HOME del usuario
     ./zsh-installer.sh # Si deseas instalar ZSH, Oh My Zsh, Powerlevel10k y plugins
-    ./nvm-installer.sh  # Si deseas instalar NVM (Node.js)
+    # (Cerrar sesión y volver a entrar para que ZSH sea el shell por defecto)
+    ./nvm-installer.sh  # Si deseas instalar NVM (Node.js) 
     sudo ./setup.sh # Si deseas instalar Java, Python, Go, etc.
     ```
 
