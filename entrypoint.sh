@@ -37,5 +37,11 @@ else
     echo "initial root password: $INITIAL_PASSWORD"
 fi
 
+# Fix Docker socket permissions at runtime
+if [ -S /var/run/docker.sock ]; then
+    setfacl -m "g:docker:rw" /var/run/docker.sock
+    echo "Docker socket permissions updated."
+fi
+
 # Start the SSH service
 /usr/sbin/sshd -D -o ListenAddress=0.0.0.0
