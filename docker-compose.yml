@@ -14,7 +14,7 @@ services:
     volumes:
       - .:/workspace
       # To disable Docker-outside-Docker, comment out the next line
-      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/run/docker.sock:/var/run/docker.sock:ro
       - devcontainer_etc:/etc
       - devcontainer_root:/root
       - devcontainer_home:/home
@@ -79,7 +79,7 @@ networks:
   local-network:
     driver: ipvlan
     driver_opts:
-      parent: eth0  # Replace with your host network interface
+      parent: ${HOST_INTERFACE}  # Replace with your host network interface
     ipam:
       config:
         - subnet: ${NETWORK_RANGE}
