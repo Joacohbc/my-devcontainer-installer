@@ -1,56 +1,42 @@
 #!/bin/bash
-# This script provides an interactive setup for installing common development tools:
-# Java (Temurin JDK 11 & 17), NVM (Node Version Manager), Python, and Go.
-# It prompts the user for each tool and installs it if confirmed.
 
-# Check if running as root or with sudo
-if [[ $EUID -ne 0 ]]; then
-    echo "Error: This script must be run as root or with sudo privileges."
-    echo "Please run: sudo $0"
-    exit 1
+# Ensure the SSH service is configured correctly
+if [ ! -d "/var/run/sshd" ]; then
+    mkdir /var/run/sshd
 fi
 
-apt-get update
-apt-get install -y git curl wget apt-transport-https gnupg
-
-# INSTALL JAVA
-read -p "Do you want to install Java? (yes/no): " install_java
-if [[ "$install_java" == "yes" ]]; then
-    JAVA_VERSIONS="temurin-17-jdk temurin-11-jdk"
-    wget -O - https://packages.adoptium.net/artifactory/api/gpg/key/public | apt-key add -
-    echo "deb https://packages.adoptium.net/artifactory/deb $(awk -F= '/^VERSION_CODENAME/{print$2}' /etc/os-release) main" | tee /etc/apt/sources.list.d/adoptium.list
-    apt-get update
-    apt-get install -y $JAVA_VERSIONS maven
-    echo "Java installation complete."
+# Check if the devuser already exists and set/update password
+if [ -f /home/devuser/initial_password.txt ]; then
+    echo "devuser password: $(cat /home/devuser/initial_password.txt)"
 else
-    echo "Skipping Java installation."
+    # Create the devuser with a random password and sudo privileges (fallback)
+    useradd -m -s /bin/bash devuser
+    DEV_PASSWORD=$(pwgen -s 12) # Generate a 12-character random password
+    echo "devuser:$DEV_PASSWORD" | chpasswd
+    usermod -aG sudo devuser
+    
+    echo "$DEV_PASSWORD" > /home/devuser/initial_password.txt
+    chown devuser:devuser /home/devuser/initial_password.txt
+    chmod 600 /home/devuser/initial_password.txt
+    echo "devuser password: $DEV_PASSWORD"
 fi
 
-# PYTHON
-read -p "Do you want to install Python? (yes/no): " install_python
-if [[ "$install_python" == "yes" ]]; then
-    apt-get install -y python3
-    apt-get install -y python3-pip
-    echo "Python installation complete."
+# Check if root already has a password file
+if [ -f /root/initial_password.txt ]; then
+    echo "initial root password: $(cat /root/initial_password.txt)"
 else
-    echo "Skipping Python installation."
+    # Set a password for the root user
+    INITIAL_PASSWORD=$(pwgen -s 12)
+    echo $INITIAL_PASSWORD > /root/initial_password.txt
+    echo "root:$INITIAL_PASSWORD" | chpasswd
+    echo "initial root password: $INITIAL_PASSWORD"
 fi
 
-# SQLITE
-read -p "Do you want to install SQLite? (yes/no): " install_sqlite
-if [[ "$install_sqlite" == "yes" ]]; then
-    apt-get install -y sqlite3
-    echo "SQLite installation complete."
-else
-    echo "Skipping SQLite installation."
+# Fix Docker socket permissions at runtime
+if [ -S /var/run/docker.sock ]; then
+    setfacl -m "g:docker:rw" /var/run/docker.sock
+    echo "Docker socket permissions updated."
 fi
 
-# GOLANG
-read -p "Do you want to install Go? (yes/no): " install_golang
-if [[ "$install_golang" == "yes" ]]; then
-    source /workspace/golang_utils.sh
-    install_golang
-    echo "Go installation complete."
-else
-    echo "Skipping Go installation."
-fi
+# Start the SSH service
+/usr/sbin/sshd -D -o ListenAddress=0.0.0.0
