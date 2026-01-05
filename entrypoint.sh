@@ -10,21 +10,23 @@ if [ ! -d "/var/run/sshd" ]; then
     mkdir /var/run/sshd
 fi
 
-# Check if the devuser already exists
-if [ $(id -u devuser 2>/dev/null || echo -1) -ge 0 ]; then
-    echo "devuser password: $(cat /home/devuser/initial_password.txt)"
-else
-    # Create the devuser with a random password and sudo privileges
-    useradd -m -s /bin/bash devuser
+# Check if the devuser exists (it should be created in the Dockerfile)
+if ! id "devuser" &>/dev/null; then
+    echo "Error: User 'devuser' does not exist. Please ensure it is created in the Dockerfile."
+    exit 1
+fi
+
+# Ensure devuser has a password
+if [ ! -f /home/devuser/initial_password.txt ]; then
     DEV_PASSWORD=$(pwgen -s 32) # Generate a 32-character random password
     echo "devuser:$DEV_PASSWORD" | chpasswd
-    usermod -aG sudo devuser
     
     echo "$DEV_PASSWORD" > /home/devuser/initial_password.txt
     chown devuser:devuser /home/devuser/initial_password.txt # Ensure devuser owns the file
     chmod 600 /home/devuser/initial_password.txt # Set appropriate permissions
-    echo "devuser password: $(cat /home/devuser/initial_password.txt)"
 fi
+
+echo "devuser password: $(cat /home/devuser/initial_password.txt)"
 
 # Check if root already has a password file
 if [ -f /root/initial_password.txt ]; then
