@@ -18,7 +18,12 @@ RUN apt-get update && apt-get install -y \
     ca-certificates \
     curl \
     gnupg \
-    lsb-release
+    lsb-release \
+    acl
+
+##
+## DOCKER-OUTSIDE-DOCKER SETUP
+## 
 
 # To disable Docker-outside-Docker, comment out the following lines for Docker GPG key and repository setup
 # Add Docker's official GPG key
