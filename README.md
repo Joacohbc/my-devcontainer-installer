@@ -12,7 +12,6 @@ El entorno ofrece un contenedor principal (`devcontainer-ssh`) accesible vía SS
   * El directorio del repositorio se monta en `/workspace` dentro del contenedor.
   * Los archivos de configuración y datos de usuario (`/home`, `/root`, `/etc`) se persisten en volúmenes Docker.
 * **Bases de Datos (Dockerizadas):**
-  * MySQL 8.4
   * MongoDB 8.0
   * Redis 7.4 (Alpine)
   * PostgreSQL 17 (Alpine)
@@ -119,12 +118,6 @@ El contenedor tiene acceso al socket de Docker del host. Esto te permite ejecuta
 
 Las bases de datos están expuestas en los puertos estándar y accesibles desde el contenedor SSH. Puedes conectarte directamente usando los siguientes comandos:
 
-### MySQL (Puerto 3306)
-
-```bash
-mysql -h mysql -u devuser -pdevpass devdb
-```
-
 ### MongoDB (Puerto 27017)
 
 ```bash
@@ -148,5 +141,5 @@ psql -h postgres -U devuser -d devdb
 **Credenciales:**
 * **Usuario:** `devuser`
 * **Contraseña:** `devpass`
-* **Base de datos:** `devdb` (MySQL y PostgreSQL)
-* **Root/Admin:** `rootpass` (MySQL) / `devuser:devpass` (MongoDB)
+* **Base de datos:** `devdb` (PostgreSQL)
+* **Root/Admin:** `devuser:devpass` (MongoDB)

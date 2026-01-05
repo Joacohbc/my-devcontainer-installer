@@ -87,7 +87,7 @@ COPY golang_utils.sh /tmp/golang_utils.sh
 RUN bash -c "source /tmp/golang_utils.sh && install_golang" && rm /tmp/golang_utils.sh
 
 ##
-## DATABASE CLIENT TOOLS (MySQL, Redis, Postgres, Mongo 8.0)
+## DATABASE CLIENT TOOLS (Redis, Postgres, Mongo 8.0)
 ##
 
 # 1. Setup MongoDB 8.0 Repository for 'mongosh'
@@ -97,7 +97,6 @@ RUN curl -fsSL https://www.mongodb.org/static/pgp/server-8.0.asc | gpg --dearmor
 # 2. Install all DB clients
 RUN apt-get update && apt-get install -y \
     postgresql-client \
-    default-mysql-client \
     redis-tools \
     mongodb-mongosh
 

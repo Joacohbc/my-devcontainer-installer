@@ -5,7 +5,6 @@ services:
       dockerfile: Dockerfile
     container_name: devcontainer-ssh
     depends_on:
-      - mysql
       - mongo
       - redis
       - postgres
@@ -29,19 +28,6 @@ services:
       # Comment this out if using local mode with forwardPorts (uncomment 'ports' above).
       local-network:
         ipv4_address: ${DEVCONTAINER_SSH_IP}
-
-  mysql:
-    image: mysql:8.4 # Última versión LTS. No existe versión oficial Alpine.
-    container_name: mysql
-    environment:
-      MYSQL_ROOT_PASSWORD: rootpass
-      MYSQL_DATABASE: devdb
-      MYSQL_USER: devuser
-      MYSQL_PASSWORD: devpass
-    ports:
-      - "3306:3306"
-    volumes:
-      - mysql_data:/var/lib/mysql
 
   mongo:
     image: mongo:8.0
@@ -86,7 +72,6 @@ networks:
           gateway: ${GATEWAY_IP}
 
 volumes:
-  mysql_data:
   mongo_data:
   redis_data:
   postgres_data:
