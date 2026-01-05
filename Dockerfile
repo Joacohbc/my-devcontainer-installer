@@ -81,6 +81,12 @@ RUN apt-get update && apt-get install -y sqlite3
 COPY golang_utils.sh /tmp/golang_utils.sh
 RUN bash -c "source /tmp/golang_utils.sh && install_golang" && rm /tmp/golang_utils.sh
 
+# Install NVM for devuser
+RUN su - devuser -c 'curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash'
+RUN su - devuser -c 'echo "export NVM_DIR="$([ -z "${XDG_CONFIG_HOME-}" ] && printf %s "${HOME}/.nvm" || printf %s "${XDG_CONFIG_HOME}/nvm")"\n[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"" >> /home/devuser/.zshrc'
+RUN su - devuser -c 'export NVM_DIR="$HOME/.nvm" && source "$NVM_DIR/nvm.sh" && nvm install --lts'
+RUN su - devuser -c 'echo "nvm use --lts >> /dev/null" >> /home/devuser/.zshrc'
+
 # Clean up
 RUN apt-get autoremove -y && \
     apt-get autoclean && \
