@@ -1,8 +1,3 @@
-# This Dockerfile sets up a development environment based on Ubuntu 22.04.
-# It installs OpenSSH server, sudo, pwgen, and Docker CLI for Docker-outside-Docker (DooD).
-# SSH is configured to allow root login with passwords.
-# The entrypoint script handles user creation and SSH service startup.
-
 # Use an Ubuntu base image
 FROM ubuntu:22.04
 
@@ -14,7 +9,6 @@ RUN apt-get update && apt-get install -y \
     pwgen \
     zsh \
     fontconfig \
-    # To disable Docker-outside-Docker, comment out ca-certificates, curl, gnupg, lsb-release if they are not needed by other packages
     ca-certificates \
     curl \
     gnupg \
@@ -48,6 +42,10 @@ RUN useradd -m -s /bin/zsh devuser && \
 RUN groupadd docker
 RUN usermod -aG docker devuser
 
+##
+## ZSH TOOLS SETUP
+## 
+
 # Install Zsh configuration and plugins
 COPY zsh-installer.sh /tmp/zsh-installer.sh
 RUN chmod +x /tmp/zsh-installer.sh
@@ -70,6 +68,10 @@ RUN mkdir -p -m 755 /etc/apt/keyrings && \
     apt-get install -y jq gh && \
     apt-get clean
 
+##
+## Java, Python, SQLite, Go, NVM SETUP
+##
+
 # Install Java (Temurin JDK 11 & 17) & Maven
 RUN wget -O - https://packages.adoptium.net/artifactory/api/gpg/key/public | apt-key add - && \
     echo "deb https://packages.adoptium.net/artifactory/deb $(awk -F= '/^VERSION_CODENAME/{print$2}' /etc/os-release) main" | tee /etc/apt/sources.list.d/adoptium.list && \
@@ -86,7 +88,7 @@ RUN apt-get update && apt-get install -y sqlite3
 COPY golang_utils.sh /tmp/golang_utils.sh
 RUN bash -c "source /tmp/golang_utils.sh && install_golang" && rm /tmp/golang_utils.sh
 
-# Install NVM for devuser
+# Install NVM (Node Version Manager) for devuser
 RUN NVM_VERSION=$(curl -s https://api.github.com/repos/nvm-sh/nvm/releases/latest | jq -r .tag_name) && \
     su - devuser -c "curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/${NVM_VERSION}/install.sh | bash"
 RUN su - devuser -c 'echo "export NVM_DIR="$([ -z "${XDG_CONFIG_HOME-}" ] && printf %s "${HOME}/.nvm" || printf %s "${XDG_CONFIG_HOME}/nvm")"\n[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"" >> /home/devuser/.profile'
@@ -102,11 +104,7 @@ RUN apt-get autoremove -y && \
 
 # Configure the SSH service
 RUN mkdir /var/run/sshd && \
-    chmod 755 /var/run/sshd # Ensure correct permissions
-
-# Configure SSH to allow root login and password authentication
-RUN sed -i 's/^#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config
-RUN sed -i 's/^#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config
+    chmod 755 /var/run/sshd
 
 # Expose port 22 for SSH
 EXPOSE 22
