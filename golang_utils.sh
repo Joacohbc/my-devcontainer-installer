@@ -6,7 +6,25 @@
 # removing it, and then performing a fresh installation.
 
 # Architecture to download
-ARCH="linux-arm64"
+OS_ARCH=$(uname -m)
+case $OS_ARCH in
+    x86_64)
+        ARCH="linux-amd64"
+        ;;
+    aarch64)
+        ARCH="linux-arm64"
+        ;;
+    armv6l|armv7l)
+        ARCH="linux-armv6l"
+        ;;
+    i386|i686)
+        ARCH="linux-386"
+        ;;
+    *)
+        echo "Unsupported architecture: $OS_ARCH"
+        exit 1
+        ;;
+esac
 
 apt-get install curl -y
 
@@ -26,7 +44,7 @@ install_golang() {
     GO_LATEST_VERSION=$(echo "$GO_RELEASE_PAGE" | grep -oE "go[0-9.]+\.[a-z0-9-]+\.tar\.gz" | grep $ARCH | head -n 1)
 
     # Check if a link was found
-    DEFAULT_GO_VERSION="go1.20.linux-arm64.tar.gz" #Default version
+    DEFAULT_GO_VERSION="go1.20.$ARCH.tar.gz" #Default version
     if [[ -z "$GO_LATEST_VERSION" ]]; then
         echo "Download link for $ARCH not found. Installing default version."
         GO_LATEST_VERSION=$DEFAULT_GO_VERSION
