@@ -36,23 +36,21 @@ El entorno ofrece un contenedor principal (`devcontainer-ssh`) accesible vía SS
 1. **Clonar el repositorio:**
 
     ```bash
-    git clone https://github.com/Joacohbc/my-devcontainer-installer.git
-    cd my-devcontainer-installer
+    git clone https://github.com/Joacohbc/my-devcontainer-installer.git .dev-env && cd .dev-env
     ```
 
 2. **Configurar variables de entorno (`.env`):**
 
     Crea un archivo `.env` basado en la configuración de tu red.
 
-    ```ini
-    # Configuración de Red (Modo ipvlan)
-    DEVCONTAINER_SSH_IP=192.168.1.150  # IP libre en tu red local
-    NETWORK_RANGE=192.168.1.0/24       # Rango de tu red (CIDR)
-    GATEWAY_IP=192.168.1.1             # IP de tu Router
-    HOST_INTERFACE=eth0                # Nombre de tu interfaz de red física (ej: eth0, wlan0)
+    ```bash
+    echo "DEVCONTAINER_SSH_IP=<IP_LIBRE>
+    NETWORK_RANGE=<RANGO_RED>
+    GATEWAY_IP=<IP_ROUTER>
+    HOST_INTERFACE=<INTERFAZ_RED>" > .env
     ```
 
-    > **Nota:** Para saber el nombre de tu interfaz, usa el comando `ip link` o `ifconfig`.
+    > **Nota:** Para saber el nombre de tu interfaz, usa el comando `ip a` o `ifconfig`.
 
 3. **Iniciar el entorno:**
 
