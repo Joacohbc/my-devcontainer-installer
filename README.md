@@ -117,9 +117,36 @@ El contenedor tiene acceso al socket de Docker del host. Esto te permite ejecuta
 
 ## Bases de Datos
 
-Las bases de datos están expuestas en los puertos estándar del contenedor SSH (si usas la IP dedicada) o mapeadas según configure el `docker-compose.yml`.
+Las bases de datos están expuestas en los puertos estándar y accesibles desde el contenedor SSH. Puedes conectarte directamente usando los siguientes comandos:
 
-* **MySQL:** Puerto 3306.
-* **MongoDB:** Puerto 27017.
-* **Redis:** Puerto 6379.
-* **PostgreSQL:** Puerto 5432.
+### MySQL (Puerto 3306)
+
+```bash
+mysql -h mysql -u devuser -pdevpass devdb
+```
+
+### MongoDB (Puerto 27017)
+
+```bash
+mongosh --host mongo -u devuser -p devpass --authenticationDatabase admin
+```
+
+### Redis (Puerto 6379)
+
+```bash
+redis-cli -h redis
+```
+
+### PostgreSQL (Puerto 5432)
+
+```bash
+psql -h postgres -U devuser -d devdb
+```
+
+> **Nota:** PostgreSQL solicitará la contraseña `devpass` interactivamente.
+
+**Credenciales:**
+* **Usuario:** `devuser`
+* **Contraseña:** `devpass`
+* **Base de datos:** `devdb` (MySQL y PostgreSQL)
+* **Root/Admin:** `rootpass` (MySQL) / `devuser:devpass` (MongoDB)

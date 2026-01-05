@@ -19,7 +19,6 @@ RUN apt-get update && apt-get install -y \
 ## DOCKER-OUTSIDE-DOCKER SETUP
 ## 
 
-# To disable Docker-outside-Docker, comment out the following lines for Docker GPG key and repository setup
 # Add Docker's official GPG key
 RUN mkdir -p /etc/apt/keyrings
 RUN curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
@@ -29,7 +28,6 @@ RUN echo \
     "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
     $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
 
-# To disable Docker-outside-Docker, comment out the next line
 # Install Docker CLI
 RUN apt-get update && apt-get install -y docker-ce-cli
 
@@ -69,7 +67,7 @@ RUN mkdir -p -m 755 /etc/apt/keyrings && \
     apt-get clean
 
 ##
-## Java, Python, SQLite, Go, NVM SETUP
+## Java, Python, SQLite, Go Setup
 ##
 
 # Install Java (Temurin JDK 11 & 17) & Maven
@@ -88,12 +86,35 @@ RUN apt-get update && apt-get install -y sqlite3
 COPY golang_utils.sh /tmp/golang_utils.sh
 RUN bash -c "source /tmp/golang_utils.sh && install_golang" && rm /tmp/golang_utils.sh
 
-# Install NVM (Node Version Manager) for devuser
+##
+## DATABASE CLIENT TOOLS (MySQL, Redis, Postgres, Mongo 8.0)
+##
+
+# 1. Setup MongoDB 8.0 Repository for 'mongosh'
+RUN curl -fsSL https://www.mongodb.org/static/pgp/server-8.0.asc | gpg --dearmor -o /etc/apt/keyrings/mongodb-server-8.0.gpg && \
+    echo "deb [ arch=amd64,arm64 signed-by=/etc/apt/keyrings/mongodb-server-8.0.gpg ] https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/8.0 multiverse" | tee /etc/apt/sources.list.d/mongodb-org-8.0.list
+
+# 2. Install all DB clients
+RUN apt-get update && apt-get install -y \
+    postgresql-client \
+    default-mysql-client \
+    redis-tools \
+    mongodb-mongosh
+
+##
+## NVM SETUP (Node Version Manager)
+##
+
+# Install NVM for devuser (last step to avoid issues with other installations)
 RUN NVM_VERSION=$(curl -s https://api.github.com/repos/nvm-sh/nvm/releases/latest | jq -r .tag_name) && \
     su - devuser -c "curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/${NVM_VERSION}/install.sh | bash"
 RUN su - devuser -c 'echo "export NVM_DIR="$([ -z "${XDG_CONFIG_HOME-}" ] && printf %s "${HOME}/.nvm" || printf %s "${XDG_CONFIG_HOME}/nvm")"\n[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"" >> /home/devuser/.profile'
 RUN su - devuser -c 'export NVM_DIR="$HOME/.nvm" && source "$NVM_DIR/nvm.sh" && nvm install --lts'
 RUN su - devuser -c 'echo "nvm use --lts >> /dev/null" >> /home/devuser/.profile'
+
+##
+## CLEANUP & ENTRYPOINT
+##
 
 # Clean up
 RUN apt-get autoremove -y && \
