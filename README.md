@@ -44,11 +44,13 @@ El entorno ofrece un contenedor principal (`devcontainer-ssh`) accesible vía SS
     Crea un archivo `.env` basado en la configuración de tu red.
 
     ```bash
-    echo "# Configuración de Red (Modo ipvlan)
+    cat <<EOF > .env
+# Configuración de Red (Modo ipvlan)
 DEVCONTAINER_SSH_IP=192.168.1.150  # IP libre en tu red local
 NETWORK_RANGE=192.168.1.0/24       # Rango de tu red (CIDR)
 GATEWAY_IP=192.168.1.1             # IP de tu Router
-HOST_INTERFACE=eth0                # Nombre de tu interfaz de red física (ej: eth0, wlan0)" > .env
+HOST_INTERFACE=eth0                # Nombre de tu interfaz de red física (ej: eth0, wlan0)
+EOF
     ```
 
     > **Nota:** Para saber el nombre de tu interfaz, usa el comando `ip a` o `ifconfig`.
