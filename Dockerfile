@@ -55,7 +55,11 @@ COPY golang_utils.sh /tmp/golang_utils.sh
 RUN bash -c "source /tmp/golang_utils.sh && install_golang" && rm /tmp/golang_utils.sh
 
 # Clean up
-RUN apt-get clean && rm -rf /var/lib/apt/lists/*
+RUN apt-get autoremove -y && \
+    apt-get autoclean && \
+    rm -rf /var/lib/apt/lists/* && \
+    rm -rf /tmp/* && \
+    rm -rf /var/tmp/*
 
 # Configure the SSH service
 RUN mkdir /var/run/sshd && \
