@@ -16,8 +16,7 @@ RUN apt-get update && apt-get install -y \
     ca-certificates \
     curl \
     gnupg \
-    lsb-release \
-    && apt-get clean
+    lsb-release
 
 # To disable Docker-outside-Docker, comment out the following lines for Docker GPG key and repository setup
 # Add Docker's official GPG key
@@ -31,7 +30,32 @@ RUN echo \
 
 # To disable Docker-outside-Docker, comment out the next line
 # Install Docker CLI
-RUN apt-get update && apt-get install -y docker-ce-cli && apt-get clean
+RUN apt-get update && apt-get install -y docker-ce-cli
+
+# Install prerequisites for development tools
+RUN apt-get update && apt-get install -y \
+    git \
+    wget \
+    apt-transport-https
+
+# Install Java (Temurin JDK 11 & 17) & Maven
+RUN wget -O - https://packages.adoptium.net/artifactory/api/gpg/key/public | apt-key add - && \
+    echo "deb https://packages.adoptium.net/artifactory/deb $(awk -F= '/^VERSION_CODENAME/{print$2}' /etc/os-release) main" | tee /etc/apt/sources.list.d/adoptium.list && \
+    apt-get update && \
+    apt-get install -y temurin-17-jdk temurin-11-jdk maven
+
+# Install Python
+RUN apt-get update && apt-get install -y python3 python3-pip
+
+# Install SQLite
+RUN apt-get update && apt-get install -y sqlite3
+
+# Install Go
+COPY golang_utils.sh /tmp/golang_utils.sh
+RUN bash -c "source /tmp/golang_utils.sh && install_golang" && rm /tmp/golang_utils.sh
+
+# Clean up
+RUN apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Configure the SSH service
 RUN mkdir /var/run/sshd && \
