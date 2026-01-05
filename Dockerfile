@@ -82,10 +82,11 @@ COPY golang_utils.sh /tmp/golang_utils.sh
 RUN bash -c "source /tmp/golang_utils.sh && install_golang" && rm /tmp/golang_utils.sh
 
 # Install NVM for devuser
-RUN su - devuser -c 'curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash'
-RUN su - devuser -c 'echo "export NVM_DIR="$([ -z "${XDG_CONFIG_HOME-}" ] && printf %s "${HOME}/.nvm" || printf %s "${XDG_CONFIG_HOME}/nvm")"\n[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"" >> /home/devuser/.zshrc'
+RUN NVM_VERSION=$(curl -s https://api.github.com/repos/nvm-sh/nvm/releases/latest | jq -r .tag_name) && \
+    su - devuser -c "curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/${NVM_VERSION}/install.sh | bash"
+RUN su - devuser -c 'echo "export NVM_DIR="$([ -z "${XDG_CONFIG_HOME-}" ] && printf %s "${HOME}/.nvm" || printf %s "${XDG_CONFIG_HOME}/nvm")"\n[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"" >> /home/devuser/.profile'
 RUN su - devuser -c 'export NVM_DIR="$HOME/.nvm" && source "$NVM_DIR/nvm.sh" && nvm install --lts'
-RUN su - devuser -c 'echo "nvm use --lts >> /dev/null" >> /home/devuser/.zshrc'
+RUN su - devuser -c 'echo "nvm use --lts >> /dev/null" >> /home/devuser/.profile'
 
 # Clean up
 RUN apt-get autoremove -y && \
