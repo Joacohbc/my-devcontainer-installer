@@ -92,13 +92,6 @@ Una vez dentro del contenedor, puedes realizar configuraciones adicionales.
     /workspace/login-github-cli.sh
     ```
 
-* **Configurar ZSH (si no se aplicó):**
-    Si deseas reinstalar o configurar ZSH manualmente:
-
-    ```bash
-    /workspace/zsh-installer.sh
-    ```
-
 * **Actualizar Go:**
     Para actualizar la versión de Go en el futuro:
 
