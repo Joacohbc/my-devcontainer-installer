@@ -31,7 +31,7 @@ services:
         ipv4_address: ${DEVCONTAINER_SSH_IP}
 
   mysql:
-    image: mysql:8.0
+    image: mysql:8.4 # Última versión LTS. No existe versión oficial Alpine.
     container_name: mysql
     environment:
       MYSQL_ROOT_PASSWORD: rootpass
@@ -41,10 +41,10 @@ services:
     ports:
       - "3306:3306"
     volumes:
-      - mysql_data:/var/lib/mysql  # Volumen para MySQL
+      - mysql_data:/var/lib/mysql
 
   mongo:
-    image: mongo:6.0
+    image: mongo:8.0
     container_name: mongo
     environment:
       MONGO_INITDB_ROOT_USERNAME: devuser
@@ -52,18 +52,18 @@ services:
     ports:
       - "27017:27017"
     volumes:
-      - mongo_data:/data/db  # Volumen para MongoDB
+      - mongo_data:/data/db
 
   redis:
-    image: redis:7.0
+    image: redis:7.4-alpine
     container_name: redis
     ports:
       - "6379:6379"
     volumes:
-      - redis_data:/data  # Volumen para Redis
+      - redis_data:/data
 
   postgres:
-    image: postgres:15
+    image: postgres:17-alpine
     container_name: postgres
     environment:
       POSTGRES_USER: devuser
@@ -72,7 +72,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data  # Volumen para PostgreSQL
+      - postgres_data:/var/lib/postgresql/data
 
 
 networks:
