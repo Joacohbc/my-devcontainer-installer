@@ -3,6 +3,8 @@ name: Docker Image CI
 on:
   push:
     branches: [ "main" ]
+    paths:
+      - 'Dockerfile'
 
 permissions:
   contents: read
@@ -22,9 +24,19 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Prepare Environment Variables
+        run: |
+          echo "REPO_OWNER=${OWNER,,}" >>${GITHUB_ENV}
+          echo "SHORT_SHA=$(echo $GITHUB_SHA | cut -c1-7)" >> $GITHUB_ENV
+        env:
+          OWNER: '${{ github.repository_owner }}'
+          GITHUB_SHA: '${{ github.sha }}'
+
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
           context: .
           push: true
-          tags: ghcr.io/${{ github.repository_owner }}/devcontainer-ssh:latest
+          tags: |
+            ghcr.io/${{ env.REPO_OWNER }}/devcontainer-ssh:latest
+            ghcr.io/${{ env.REPO_OWNER }}/devcontainer-ssh:${{ env.SHORT_SHA }}
