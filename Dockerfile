@@ -12,6 +12,8 @@ RUN apt-get update && apt-get install -y \
     nano \
     sudo \
     pwgen \
+    zsh \
+    fontconfig \
     # To disable Docker-outside-Docker, comment out ca-certificates, curl, gnupg, lsb-release if they are not needed by other packages
     ca-certificates \
     curl \
@@ -40,6 +42,12 @@ RUN useradd -m -s /bin/zsh devuser && \
 # Configure Docker socket permissions for devuser
 RUN groupadd docker
 RUN usermod -aG docker devuser
+
+# Install Zsh configuration and plugins
+COPY zsh-installer.sh /tmp/zsh-installer.sh
+RUN chmod +x /tmp/zsh-installer.sh
+RUN su - devuser -c "/tmp/zsh-installer.sh"
+RUN rm /tmp/zsh-installer.sh
 
 # Install prerequisites for development tools
 RUN apt-get update && apt-get install -y \
