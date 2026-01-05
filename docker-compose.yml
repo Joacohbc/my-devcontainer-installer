@@ -12,7 +12,6 @@ services:
     restart: unless-stopped
     volumes:
       - .:/workspace
-      # To disable Docker-outside-Docker, comment out the next line
       - /var/run/docker.sock:/var/run/docker.sock
       - devcontainer_etc:/etc
       - devcontainer_root:/root
