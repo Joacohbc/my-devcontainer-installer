@@ -32,6 +32,15 @@ RUN echo \
 # Install Docker CLI
 RUN apt-get update && apt-get install -y docker-ce-cli
 
+# Create devuser with sudo privileges
+RUN useradd -m -s /bin/zsh devuser && \
+    usermod -aG sudo devuser && \
+    echo "devuser ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+
+# Configure Docker socket permissions for devuser
+RUN groupadd docker
+RUN usermod -aG docker devuser
+
 # Install prerequisites for development tools
 RUN apt-get update && apt-get install -y \
     git \
