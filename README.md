@@ -70,7 +70,31 @@ docker compose logs devcontainer-ssh
 # Busca líneas como: "devuser password: <password>"
 ```
 
-### 2. Conexión SSH
+### 2. Conexión SSH (Automática)
+
+Se incluye un script en Python (`setup_ssh.py`) que facilita enormemente la conexión y configuración inicial. Este script se encarga de:
+
+1. Detectar la IP del contenedor.
+2. Extraer la contraseña de `devuser`.
+3. Generar claves SSH dedicadas (`~/.ssh/id_devcontainer`).
+4. Configurar tu alias SSH local (`~/.ssh/config`).
+5. Copiar la clave pública al contenedor.
+
+**Para usarlo, simplemente ejecuta:**
+
+```bash
+python3 setup_ssh.py
+```
+
+Sigue las instrucciones en pantalla (deberás copiar y pegar la contraseña cuando se te pida). Al finalizar, podrás conectarte usando el alias:
+
+```bash
+ssh devcontainer-ssh
+```
+
+### Conexión Manual (Alternativa)
+
+Si prefieres no usar el script automático:
 
 * **Usuario:** `devuser` (recomendado) o `root`.
 * **Host:** La IP configurada en `DEVCONTAINER_SSH_IP` (o `localhost` si modificaste `docker-compose.yml` para usar puertos).
@@ -78,22 +102,6 @@ docker compose logs devcontainer-ssh
 ```bash
 ssh devuser@<DEVCONTAINER_SSH_IP>
 ```
-
-### Configurar acceso sin contraseña (Recomendado)
-
-Para acceder rápidamente sin tener que introducir la contraseña en cada conexión, configura tu autenticación por clave pública:
-
-1.  **Genera un par de claves SSH** (si aún no tienes uno):
-
-    ```bash
-    ssh-keygen -t ed25519
-    ```
-
-2.  **Copia tu clave pública al contenedor:**
-
-    ```bash
-    ssh-copy-id devuser@<DEVCONTAINER_SSH_IP>
-    ```
 
 ### 3. Pasos Post-Instalación (Recomendados)
 
@@ -154,6 +162,7 @@ psql -h postgres -U devuser -d devdb
 > **Nota:** PostgreSQL solicitará la contraseña `devpass` interactivamente.
 
 **Credenciales:**
+
 * **Usuario:** `devuser`
 * **Contraseña:** `devpass`
 * **Base de datos:** `devdb` (PostgreSQL)

@@ -7,12 +7,6 @@ docker compose logs devcontainer-ssh
 # >>> devuser password: <password>
 ```
 
-## Conectarse
-
-```bash
-ssh devuser@localhost -p 2222
-```
-
 ## Cambiar la contraseña (Opcional)
 
 ```bash
