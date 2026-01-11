@@ -1,0 +1,73 @@
+services:
+  devcontainer-ssh:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: devcontainer-ssh
+    depends_on:
+      - mongo
+      - redis
+      - postgres
+    command: sleep infinity
+    restart: unless-stopped
+    volumes:
+      - .:/workspace
+      - /var/run/docker.sock:/var/run/docker.sock
+      - devcontainer_etc:/etc
+      - devcontainer_root:/root
+      - devcontainer_home:/home
+
+    # For local mode (not bridge), comment out the 'local-network' section below
+    # and uncomment the 'ports' section.
+    # ports:
+    #   - "2222:22" # Example: forward host port 2222 to container port 22 for SSH
+    networks:
+      default:
+      # local-network is used for bridge (ipvlan) mode.
+      # Comment this out if using local mode with forwardPorts (uncomment 'ports' above).
+      local-network:
+        ipv4_address: ${DEVCONTAINER_SSH_IP}
+
+  mongo:
+    image: mongo:8.0
+    container_name: mongo
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: devuser
+      MONGO_INITDB_ROOT_PASSWORD: devpass
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+
+  redis:
+    image: redis:7.4-alpine
+    container_name: redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  postgres:
+    image: postgres:17-alpine
+    container_name: postgres
+    environment:
+      POSTGRES_USER: devuser
+      POSTGRES_PASSWORD: devpass
+      POSTGRES_DB: devdb
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+
+networks:
+  local-network:
+    driver: bridge
+
+volumes:
+  mongo_data:
+  redis_data:
+  postgres_data:
+  devcontainer_etc:
+  devcontainer_root:
+  devcontainer_home:

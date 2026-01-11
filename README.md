@@ -33,13 +33,17 @@ El entorno ofrece un contenedor principal (`devcontainer-ssh`) accesible vía SS
 
 ## Instalación y Configuración
 
-1. **Clonar el repositorio:**
+### Opción 1: Red Avanzada (IP dedicada en tu LAN via `ipvlan`) - *Recomendado si quieres IP propia*
+
+Esta configuración asigna una IP real de tu red local al contenedor.
+
+1.  **Clonar el repositorio:**
 
     ```bash
     git clone https://github.com/Joacohbc/my-devcontainer-installer.git .dev-env && cd .dev-env
     ```
 
-2. **Configurar variables de entorno (`.env`):**
+2.  **Configurar variables de entorno (`.env`):**
 
     Crea un archivo `.env` basado en la configuración de tu red.
 
@@ -53,11 +57,29 @@ El entorno ofrece un contenedor principal (`devcontainer-ssh`) accesible vía SS
 
     > **Nota:** Para saber el nombre de tu interfaz, usa el comando `ip a` o `ifconfig`.
 
-3. **Iniciar el entorno:**
+3.  **Iniciar el entorno:**
 
     ```bash
     docker compose --env-file .env up -d --build
     ```
+
+### Opción 2: Red Local Simple (Bridge) - *Más fácil, sin IP dedicada*
+
+Usa esta opción si no quieres configurar IPs o tienes problemas con `ipvlan`. Usará una red interna de Docker.
+
+1.  **Clonar el repositorio:**
+
+    ```bash
+    git clone https://github.com/Joacohbc/my-devcontainer-installer.git .dev-env && cd .dev-env
+    ```
+
+2.  **Iniciar el entorno (usando `docker-compose.local.yml`):**
+
+    ```bash
+    docker compose -f docker-compose.local.yml up -d --build
+    ```
+
+    *Nota: En este modo, la IP será una interna de Docker (ej: `172.x.x.x`), accesible solo desde tu máquina host.*
 
 ## Acceso y Uso
 
