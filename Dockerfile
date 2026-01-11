@@ -111,6 +111,9 @@ RUN su - devuser -c 'echo "export NVM_DIR="$([ -z "${XDG_CONFIG_HOME-}" ] && pri
 RUN su - devuser -c 'export NVM_DIR="$HOME/.nvm" && source "$NVM_DIR/nvm.sh" && nvm install --lts'
 RUN su - devuser -c 'echo "nvm use --lts >> /dev/null" >> /home/devuser/.profile'
 
+# Install PNPM for devuser
+RUN su - devuser -c 'wget -qO- https://get.pnpm.io/install.sh | ENV="$HOME/.profile" SHELL="$(which zsh)" zsh -'
+
 ##
 ## CLEANUP & ENTRYPOINT
 ##
