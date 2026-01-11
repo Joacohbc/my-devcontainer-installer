@@ -29,7 +29,7 @@ chmod +x /workspace/login-github-cli.sh
 ## Instalar Firebase Tools (Opcional)
 
 ```bash
-npm install -g firebase-tools
+pnpm install -g firebase-tools
 ```
 
 ```bash
@@ -45,7 +45,7 @@ Gemini CLI te permite usar los modelos de IA de Google directamente desde tu ter
 Comando de instalación global:
 
 ```bash
-npm install -g @google/gemini-cli
+pnpm install -g @google/gemini-cli
 ```
 
 Cómo iniciar: Una vez instalado, simplemente ejecuta:
@@ -63,7 +63,7 @@ Jules es un "agente asíncrono" (sidekick) que trabaja en segundo plano (general
 Comando de instalación global:
 
 ```bash
-npm install -g @google/jules
+pnpm install -g @google/jules
 ```
 
 Cómo iniciar: Para autenticarte y vincularlo, usa:
