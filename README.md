@@ -79,6 +79,22 @@ docker compose logs devcontainer-ssh
 ssh devuser@<DEVCONTAINER_SSH_IP>
 ```
 
+### Configurar acceso sin contraseña (Recomendado)
+
+Para acceder rápidamente sin tener que introducir la contraseña en cada conexión, configura tu autenticación por clave pública:
+
+1.  **Genera un par de claves SSH** (si aún no tienes uno):
+
+    ```bash
+    ssh-keygen -t ed25519
+    ```
+
+2.  **Copia tu clave pública al contenedor:**
+
+    ```bash
+    ssh-copy-id devuser@<DEVCONTAINER_SSH_IP>
+    ```
+
 ### 3. Pasos Post-Instalación (Recomendados)
 
 Una vez dentro del contenedor, puedes realizar configuraciones adicionales.
