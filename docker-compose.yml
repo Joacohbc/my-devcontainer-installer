@@ -1,8 +1,6 @@
 services:
   devcontainer-ssh:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: ghcr.io/joacohbc/devcontainer-ssh
     container_name: devcontainer-ssh
     depends_on:
       - mongo
