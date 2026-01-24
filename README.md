@@ -79,7 +79,7 @@ Realiza estos pasos preliminares antes de configurar tu conexión específica.
     ssh-keygen -t ed25519 -f ~/.ssh/id_devcontainer -N "" -q
     ```
 
-    _**Nota:** Este paso debe realizarse en el **dispositivo desde el que te conectarás** (puede ser el host local o tu laptop)._
+    > _**Nota:** Este paso debe realizarse en el **dispositivo desde el que te conectarás** (puede ser el host local o tu laptop)._
 
 #### Tipos de Configuración
 
@@ -107,7 +107,9 @@ Este método se usa cuando Docker corre en la misma máquina desde la que trabaj
     ```
 
 **B. Acceso Remoto (Desde otra PC a través de la red)**
-Si el contenedor corre en un servidor (ej. una Raspberry Pi) y te conectas desde tu laptop.
+Si el contenedor corre en un servidor (ej. una Raspberry Pi, Mini PC, etc) y te conectas desde tu laptop.
+
+> **Importante:** En los siguientes comandos, sustituye `usuario@host` por la conexión real a tu servidor (puede ser `tu_usuario@ip` o un alias de SSH si ya lo tienes configurado).
 
 1. **Instalar Clave Remotamente (desde tu laptop):**
 
@@ -115,7 +117,7 @@ Si el contenedor corre en un servidor (ej. una Raspberry Pi) y te conectas desde
     cat ~/.ssh/id_devcontainer.pub | ssh usuario@host "docker exec -i -u devuser devcontainer-ssh sh -c 'mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 700 ~/.ssh && chmod 600 ~/.ssh/authorized_keys'"
     ```
 
-2. **ProxyCommand:** Agrega la configuración al archivo `~/.ssh/config` ejecutando (reemplaza `usuario@host`):
+2. **ProxyCommand:** Agrega la configuración al archivo `~/.ssh/config` ejecutando:
 
     ```bash
     cat <<'EOF' >> ~/.ssh/config
@@ -189,7 +191,7 @@ redis-cli -h redis
 psql -h postgres -U devuser -d devdb
 ```
 
-> **Nota:** PostgreSQL solicitará la contraseña `devpass` interactivamente.
+> _**Nota:** PostgreSQL solicitará la contraseña `devpass` interactivamente._
 
 **Credenciales:**
 
