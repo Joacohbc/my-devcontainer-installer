@@ -3,7 +3,7 @@
 ## Obtener la contraseña del DevUser
 
 ```bash
-docker compose logs devcontainer-ssh
+docker compose logs devcontainer-ssh | grep 'devuser password' | tail -1
 # >>> devuser password: <password>
 ```
 
