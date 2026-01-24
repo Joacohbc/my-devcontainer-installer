@@ -33,53 +33,17 @@ El entorno ofrece un contenedor principal (`devcontainer-ssh`) accesible vía SS
 
 ## Instalación y Configuración
 
-### Opción 1: Red Avanzada (IP dedicada en tu LAN via `ipvlan`) - *Recomendado si quieres IP propia*
-
-Esta configuración asigna una IP real de tu red local al contenedor.
-
-1.  **Clonar el repositorio:**
+1. **Clonar el repositorio:**
 
     ```bash
     git clone https://github.com/Joacohbc/my-devcontainer-installer.git .dev-env && cd .dev-env
     ```
 
-2.  **Configurar variables de entorno (`.env`):**
-
-    Crea un archivo `.env` basado en la configuración de tu red.
-
-    ```ini
-    # Configuración de Red (Modo ipvlan)
-    DEVCONTAINER_SSH_IP=192.168.1.150  # IP libre en tu red local
-    NETWORK_RANGE=192.168.1.0/24       # Rango de tu red (CIDR)
-    GATEWAY_IP=192.168.1.1             # IP de tu Router
-    HOST_INTERFACE=eth0                # Nombre de tu interfaz de red física (ej: eth0, wlan0)
-    ```
-
-    > **Nota:** Para saber el nombre de tu interfaz, usa el comando `ip a` o `ifconfig`.
-
-3.  **Iniciar el entorno:**
+2. **Iniciar el entorno:**
 
     ```bash
-    docker compose --env-file .env up -d --build
+    docker compose up -d --build
     ```
-
-### Opción 2: Red Local Simple (Bridge) - *Más fácil, sin IP dedicada*
-
-Usa esta opción si no quieres configurar IPs o tienes problemas con `ipvlan`. Usará una red interna de Docker.
-
-1.  **Clonar el repositorio:**
-
-    ```bash
-    git clone https://github.com/Joacohbc/my-devcontainer-installer.git .dev-env && cd .dev-env
-    ```
-
-2.  **Iniciar el entorno (usando `docker-compose.local.yml`):**
-
-    ```bash
-    docker compose -f docker-compose.local.yml up -d --build
-    ```
-
-    *Nota: En este modo, la IP será una interna de Docker (ej: `172.x.x.x`), accesible solo desde tu máquina host.*
 
 ## Acceso y Uso
 
@@ -88,42 +52,86 @@ Usa esta opción si no quieres configurar IPs o tienes problemas con `ipvlan`. U
 Al iniciar por primera vez, se generan contraseñas aleatorias para `root` y `devuser`. Consúltalas en los logs:
 
 ```bash
-docker compose logs devcontainer-ssh
+docker compose logs devcontainer-ssh | tail -n 3
 # Busca líneas como: "devuser password: <password>"
 ```
 
-### 2. Conexión SSH (Automática)
+### 2. Conexión SSH
 
-Se incluye un script en Python (`setup_ssh.py`) que facilita enormemente la conexión y configuración inicial. Este script se encarga de:
+Para facilitar la conexión cómoda (sin contraseña) y compatible con **VS Code Remote - SSH**, se recomienda configurar el acceso mediante claves SSH.
 
-1. Detectar la IP del contenedor.
-2. Extraer la contraseña de `devuser`.
-3. Generar claves SSH dedicadas (`~/.ssh/id_devcontainer`).
-4. Configurar tu alias SSH local (`~/.ssh/config`).
-5. Copiar la clave pública al contenedor.
+#### Pasos Comunes (Obligatorio)
 
-**Para usarlo, simplemente ejecuta:**
+Realiza estos pasos preliminares antes de configurar tu conexión específica.
 
-```bash
-python3 setup_ssh.py
-```
+1. **Verificar credenciales (para tener la contraseña a mano):**
 
-Sigue las instrucciones en pantalla (deberás copiar y pegar la contraseña cuando se te pida). Al finalizar, podrás conectarte usando el alias:
+    ```bash
+    docker logs devcontainer-ssh | tail -n 3
+    ```
 
-```bash
-ssh devcontainer-ssh
-```
+    Este paso siempre debe hacerse **en el dispositivo host** (donde corre Docker). Deberás usar la contraseña temporal para la primera conexión SSH (sea para el
+    acceso local o remoto).
 
-### Conexión Manual (Alternativa)
+2. **Generar claves SSH:**
 
-Si prefieres no usar el script automático:
+    ```bash
+    ssh-keygen -t ed25519 -f ~/.ssh/id_devcontainer -N "" -q
+    ```
 
-* **Usuario:** `devuser` (recomendado) o `root`.
-* **Host:** La IP configurada en `DEVCONTAINER_SSH_IP` (o `localhost` si modificaste `docker-compose.yml` para usar puertos).
+    _**Nota:** Este paso debe realizarse en el **dispositivo desde el que te conectarás** (puede ser el host local o tu laptop)._
 
-```bash
-ssh devuser@<DEVCONTAINER_SSH_IP>
-```
+#### Tipos de Configuración
+
+Existen dos escenarios de conexión principales. Elige el tuyo:
+
+**A. Acceso Local (Tu PC es el Host)**
+Este método se usa cuando Docker corre en la misma máquina desde la que trabajas.
+
+1. **Copiar Clave:**
+
+    ```bash
+    IP_SSH=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' devcontainer-ssh)
+    ssh-copy-id -i ~/.ssh/id_devcontainer.pub devuser@$IP_SSH
+    ```
+
+2. **Configurar Alias de Conexión:** Agrega la configuración al archivo `~/.ssh/config` ejecutando:
+
+    ```bash
+    cat <<EOF >> ~/.ssh/config
+    Host devcontainer-ssh
+        HostName $IP_SSH
+        IdentityFile ~/.ssh/id_devcontainer
+        User devuser
+    EOF
+    ```
+
+**B. Acceso Remoto (Desde otra PC a través de la red)**
+Si el contenedor corre en un servidor (ej. una Raspberry Pi) y te conectas desde tu laptop.
+
+1. **Instalar Clave Remotamente (desde tu laptop):**
+
+    ```bash
+    cat ~/.ssh/id_devcontainer.pub | ssh usuario@host "docker exec -i -u devuser devcontainer-ssh sh -c 'mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 700 ~/.ssh && chmod 600 ~/.ssh/authorized_keys'"
+    ```
+
+2. **ProxyCommand:** Agrega la configuración al archivo `~/.ssh/config` ejecutando (reemplaza `usuario@host`):
+
+    ```bash
+    cat <<'EOF' >> ~/.ssh/config
+    Host dev-rbpi
+        User devuser
+        IdentityFile ~/.ssh/id_devcontainer
+        ProxyCommand ssh usuario@host "nc -q0 \$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' devcontainer-ssh) 22"
+    EOF
+    ```
+
+#### ¿Cómo funciona? (Detalle Técnico)
+
+1. **Aislamiento de Claves:** Se utiliza una clave específica (`id_devcontainer`) en lugar de tu clave personal predeterminada para mayor seguridad y segmentación.
+2. **Resolución de IP:** Los contenedores tienen IPs dinámicas o privadas.
+    * En **local**, se busca la IP con `docker inspect` y se configura estáticamente (o se actualiza).
+    * En **remoto**, la IP del contenedor no es alcanzable directamente desde tu laptop. El `ProxyCommand` establece una conexión SSH al servidor físico, y desde allí abre un túnel directo al puerto 22 del contenedor usando su IP interna. Esto permite conectar VS Code o tu terminal como si el contenedor estuviera en tu red local.
 
 ### 3. Pasos Post-Instalación (Recomendados)
 
