@@ -41,6 +41,8 @@ El entorno ofrece un contenedor principal (`devcontainer-ssh`) accesible vía SS
 
 2. **Iniciar el entorno:**
 
+    > **Nota para Cloudflare Tunnel:** Si deseas habilitar el acceso remoto seguro, crea el archivo `.env` siguiendo las instrucciones de [CLOUDFLARE_TUNNEL.md](CLOUDFLARE_TUNNEL.md) **antes** de ejecutar el siguiente comando. Y ejecutar: `docker compose --env-file .env up -d --build`
+
     ```bash
     docker compose up -d --build
     ```
