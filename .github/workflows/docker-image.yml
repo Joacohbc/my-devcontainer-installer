@@ -5,6 +5,12 @@ on:
     branches: [ "main" ]
     paths:
       - 'Dockerfile'
+      - 'entrypoint.sh'
+  pull_request:
+    branches: [ "main" ]
+    paths:
+      - 'Dockerfile'
+      - 'entrypoint.sh'
 
 permissions:
   contents: read
