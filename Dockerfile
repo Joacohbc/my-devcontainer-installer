@@ -2,7 +2,8 @@
 FROM ubuntu:22.04
 
 # Update packages and install SSH, sudo, and other utilities
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
+    && apt-get -y install --no-install-recommends \
     openssh-server \
     nano \
     sudo \
