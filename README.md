@@ -41,6 +41,8 @@ El entorno ofrece un contenedor principal (`devcontainer-ssh`) accesible vía SS
 
 2. **Iniciar el entorno:**
 
+    > **Nota para Cloudflare Tunnel:** Si deseas habilitar el acceso remoto seguro, crea el archivo `.env` siguiendo las instrucciones de [CLOUDFLARE_TUNNEL.md](CLOUDFLARE_TUNNEL.md) **antes** de ejecutar el siguiente comando. Y ejecutar: `docker compose --env-file .env up -d --build`
+
     ```bash
     docker compose up -d --build
     ```
@@ -152,6 +154,8 @@ Una vez dentro del contenedor, puedes realizar configuraciones adicionales.
     ```bash
     /workspace/update_golang.sh
     ```
+
+Para configurar el acceso remoto seguro mediante Cloudflare Tunnel (Red Privada), consulta la guía: [CLOUDFLARE_TUNNEL.md](CLOUDFLARE_TUNNEL.md).
 
 Para más detalles sobre pasos posteriores (Firebase, Gemini CLI, etc.), consulta el archivo [POST_INSTALL_STEPS.md](POST_INSTALL_STEPS.md).
 
