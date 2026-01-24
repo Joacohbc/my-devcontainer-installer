@@ -1,9 +1,4 @@
 #!/bin/bash
-# This script serves as the entrypoint for the Docker container.
-# It ensures the SSH service is configured, creates a 'devuser' with a random password
-# if it doesn't exist, sets a random password for the 'root' user if not already set,
-# and then starts the SSH daemon.
-# It also handles Docker-outside-Docker (DooD) setup by adding 'devuser' to the 'docker' group.
 
 # Ensure the SSH service is configured correctly
 if [ ! -d "/var/run/sshd" ]; then

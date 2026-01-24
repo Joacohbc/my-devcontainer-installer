@@ -1,8 +1,6 @@
 services:
   devcontainer-ssh:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: ghcr.io/joacohbc/devcontainer-ssh
     container_name: devcontainer-ssh
     depends_on:
       - mongo
@@ -17,16 +15,8 @@ services:
       - devcontainer_root:/root
       - devcontainer_home:/home
 
-    # For local mode (not bridge), comment out the 'local-network' section below
-    # and uncomment the 'ports' section.
-    # ports:
-    #   - "2222:22" # Example: forward host port 2222 to container port 22 for SSH
     networks:
-      default:
-      # local-network is used for bridge (ipvlan) mode.
-      # Comment this out if using local mode with forwardPorts (uncomment 'ports' above).
-      local-network:
-        ipv4_address: ${DEVCONTAINER_SSH_IP}
+      - local-network
 
   mongo:
     image: mongo:8.0
@@ -38,6 +28,8 @@ services:
       - "27017:27017"
     volumes:
       - mongo_data:/data/db
+    networks:
+      - local-network
 
   redis:
     image: redis:7.4-alpine
@@ -46,6 +38,8 @@ services:
       - "6379:6379"
     volumes:
       - redis_data:/data
+    networks:
+      - local-network
 
   postgres:
     image: postgres:17-alpine
@@ -58,17 +52,12 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    networks:
+      - local-network
 
 
 networks:
   local-network:
-    driver: ipvlan
-    driver_opts:
-      parent: ${HOST_INTERFACE}  # Replace with your host network interface
-    ipam:
-      config:
-        - subnet: ${NETWORK_RANGE}
-          gateway: ${GATEWAY_IP}
 
 volumes:
   mongo_data:
