@@ -153,6 +153,8 @@ Una vez dentro del contenedor, puedes realizar configuraciones adicionales.
     /workspace/update_golang.sh
     ```
 
+Para configurar el acceso remoto seguro mediante Cloudflare Tunnel (Red Privada), consulta la guía: [CLOUDFLARE_TUNNEL.md](CLOUDFLARE_TUNNEL.md).
+
 Para más detalles sobre pasos posteriores (Firebase, Gemini CLI, etc.), consulta el archivo [POST_INSTALL_STEPS.md](POST_INSTALL_STEPS.md).
 
 ## Estructura del Proyecto
