@@ -22,7 +22,6 @@ El entorno ofrece un contenedor principal (`devcontainer-ssh`) accesible vía SS
   * **Go:** Última versión (instalada vía script utilitario).
   * **SQLite:** sqlite3.
   * **Herramientas CLI:** `git`, `gh` (GitHub CLI), `docker-ce-cli` (Docker outside Docker), `nano`, `wget`, `jq`.
-* **Red Avanzada (IP dedicada):** Opción de configurar una IP estática dentro de tu red local (modo `ipvlan`), permitiendo tratar al contenedor como un dispositivo físico más en tu red.
 * **Terminal Mejorada:** ZSH preconfigurado con frameworks y plugins útiles.
 
 ## Requisitos Previos
