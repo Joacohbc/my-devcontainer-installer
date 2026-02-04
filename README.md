@@ -228,39 +228,44 @@ ssh devcontainer-remote
 
 Una vez dentro, puedes ejecutar los scripts de configuración incluidos para terminar de preparar tu entorno:
 
-*   **GitHub CLI:** `/workspace/login-github-cli.sh`
-*   **Actualizar Go:** `/workspace/update_golang.sh`
+* **GitHub CLI:** `/workspace/login-github-cli.sh` - Te ayuda a iniciar sesión y configurar tus credenciales de GitHub.
+* **Actualizar Go:** `/workspace/update_golang.sh` - Actualiza la instalación de Go a la última versión estable disponible.
+* **Actualizar Sistema:** Es relevante mantener el entorno al día (incluyendo e.g. el cliente de Docker) ejecutando `sudo apt update && sudo apt upgrade -y`.
 
 Consulta [POST_INSTALL_STEPS.md](POST_INSTALL_STEPS.md) para más detalles sobre backups y herramientas adicionales.
 
 ## Solución de Problemas (Troubleshooting)
 
 ### Error: "Permission denied (publickey)"
-*   Asegúrate de haber copiado tu clave pública (`.pub`) al contenedor correctamente.
-*   Verifica los permisos en el contenedor: la carpeta `~/.ssh` debe tener `700` y `authorized_keys` debe tener `600`.
+
+* Asegúrate de haber copiado tu clave pública (`.pub`) al contenedor correctamente.
+* Verifica los permisos en el contenedor: la carpeta `~/.ssh` debe tener `700` y `authorized_keys` debe tener `600`.
 
 ### Error: "Connection refused"
-*   Verifica que el contenedor esté corriendo: `docker compose ps`.
-*   Si usas IP dinámica (Local), asegúrate de que la IP no haya cambiado. Si reiniciaste el contenedor, es posible que necesites actualizar la IP en tu `~/.ssh/config`.
+
+* Verifica que el contenedor esté corriendo: `docker compose ps`.
+* Si usas IP dinámica (Local), asegúrate de que la IP no haya cambiado. Si reiniciaste el contenedor, es posible que necesites actualizar la IP en tu `~/.ssh/config`.
 
 ### Problemas con Docker dentro del contenedor
-*   Si comandos como `docker ps` fallan dentro del contenedor, verifica que el socket esté montado correctamente en `docker-compose.yml`:
+
+* Si comandos como `docker ps` fallan dentro del contenedor, verifica que el socket esté montado correctamente en `docker-compose.yml`:
     `- /var/run/docker.sock:/var/run/docker.sock`
-*   Asegúrate de que el usuario `devuser` pertenezca al grupo `docker` (esto se hace automáticamente en el Dockerfile).
+* Asegúrate de que el usuario `devuser` pertenezca al grupo `docker` (esto se hace automáticamente en el Dockerfile).
 
 ### Conflicto de Puertos
-*   Si Docker falla al iniciar porque un puerto (ej. 27017, 5432) ya está en uso, detén el servicio local que lo ocupa en tu máquina host o modifica el mapeo de puertos en `docker-compose.yml`.
+
+* Si Docker falla al iniciar porque un puerto (ej. 27017, 5432) ya está en uso, detén el servicio local que lo ocupa en tu máquina host o modifica el mapeo de puertos en `docker-compose.yml`.
 
 ## Estructura del Proyecto
 
-*   `Dockerfile`: Configuración de la imagen base.
-*   `docker-compose.yml`: Orquestación de servicios.
-*   `zsh-installer.sh`, `golang_utils.sh`, `login-github-cli.sh`: Scripts de utilidad.
+* `Dockerfile`: Configuración de la imagen base.
+* `docker-compose.yml`: Orquestación de servicios.
+* `zsh-installer.sh`, `golang_utils.sh`, `login-github-cli.sh`: Scripts de utilidad.
 
 ## Bases de Datos
 
 Credenciales por defecto: **Usuario:** `devuser` / **Password:** `devpass`.
 
-*   **PostgreSQL:** `psql -h postgres -U devuser -d devdb`
-*   **MongoDB:** `mongosh --host mongo -u devuser -p devpass --authenticationDatabase admin`
-*   **Redis:** `redis-cli -h redis`
+* **PostgreSQL:** `psql -h postgres -U devuser -d devdb`
+* **MongoDB:** `mongosh --host mongo -u devuser -p devpass --authenticationDatabase admin`
+* **Redis:** `redis-cli -h redis`
