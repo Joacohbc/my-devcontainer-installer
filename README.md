@@ -19,10 +19,10 @@ graph TD
         
         subgraph Services["Red Privada (172.25.0.0/24)"]
             direction TB
-            DevContainer["🖥️ Devcontainer-SSH\n(Ubuntu, Go, Node, Python)"]
-            Postgres[("🐘 PostgreSQL 17")]
-            Mongo[("🍃 MongoDB 8.0")]
-            Redis[("🔴 Redis 7.4")]
+            DevContainer["🖥️ Devcontainer-SSH (Ubuntu, Go, Node, Python)"]
+            Postgres[("🐘 PostgreSQL")]
+            Mongo[("🍃 MongoDB")]
+            Redis[("🔴 Redis")]
         end
 
         DockerSock["/var/run/docker.sock"]
