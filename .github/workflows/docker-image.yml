@@ -55,5 +55,4 @@ jobs:
           platforms: linux/amd64,linux/arm64
           tags: |
             ghcr.io/${{ env.REPO_OWNER }}/devcontainer-ssh:latest
-            ghcr.io/${{ env.REPO_OWNER }}/devcontainer-ssh:${{ env.SHORT_SHA }}
-            ghcr.io/${{ env.REPO_OWNER }}/devcontainer-ssh:${{ env.TIMESTAMP }}
+            ghcr.io/${{ env.REPO_OWNER }}/devcontainer-ssh:${{ env.SHORT_SHA }}-${{ env.TIMESTAMP }}
