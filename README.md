@@ -156,13 +156,13 @@ Si estás utilizando **Windows**, se recomienda encarecidamente usar **Git Bash*
 
     **Linux/Mac:**
     ```bash
-    docker compose up -d --build
+    docker compose up -d
     ```
 
     **Windows (Git Bash):**
     Para exponer el puerto SSH localmente en Windows, usamos un archivo de configuración adicional:
     ```bash
-    docker compose -f docker-compose.yml -f docker-compose.windows.yml up -d --build
+    docker compose -f docker-compose.yml -f docker-compose.windows.yml up -d
     ```
 
 ## Acceso y Uso
