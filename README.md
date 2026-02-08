@@ -162,13 +162,13 @@ Si estás utilizando **Windows** (WSL o PowerShell), ten en cuenta lo siguiente:
 
     **Linux/Mac:**
     ```bash
-    docker compose up -d
+    docker compose up -d --build
     ```
 
     **Windows (PowerShell/WSL):**
     Para exponer el puerto SSH localmente en Windows, usamos un archivo de configuración adicional:
     ```powershell
-    docker compose -f docker-compose.yml -f docker-compose.windows.yml up -d
+    docker compose -f docker-compose.yml -f docker-compose.windows.yml up -d --build
     ```
 
 ## Acceso y Uso
@@ -179,8 +179,14 @@ La forma recomendada y más segura de acceder es mediante **Claves SSH**. El uso
 
 Primero, obtén la contraseña temporal generada durante la instalación. La necesitarás **solo una vez** para instalar tu clave SSH.
 
+**Linux/Mac:**
 ```bash
 docker compose logs devcontainer-ssh | grep "devuser password" | tail -n 1
+```
+
+**Windows (PowerShell):**
+```powershell
+docker compose logs devcontainer-ssh | Select-String "devuser password" | Select-Object -Last 1
 ```
 
 ### 2. Configurar Acceso SSH (Recomendado)
