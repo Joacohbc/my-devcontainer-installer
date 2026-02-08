@@ -137,23 +137,17 @@ graph LR
 
 ### Nota Importante para Windows
 
-Si estás utilizando **Windows** (WSL o PowerShell), ten en cuenta lo siguiente:
+Si estás utilizando **Windows**, se recomienda encarecidamente usar **Git Bash** como terminal. Esto garantiza la compatibilidad con los comandos de Linux (`grep`, `tail`, `ssh-copy-id`, etc.) y facilita la configuración.
 
-1.  **Formato de Archivos (LF vs CRLF):** Los scripts y archivos de configuración deben tener terminaciones de línea estilo UNIX (`LF`). Se ha incluido un archivo `.gitattributes` para manejar esto automáticamente, pero asegúrate de que tu editor no los convierta a `CRLF`.
+1.  **Formato de Archivos (LF vs CRLF):** Los scripts y archivos de configuración deben tener terminaciones de línea estilo UNIX (`LF`). Se ha incluido un archivo `.gitattributes` para manejar esto automáticamente.
 2.  **Firewall:** Para conectarte al contenedor, es necesario que el firewall de Windows permita las conexiones al puerto expuesto (por defecto `2222`).
 
 ## Instalación y Configuración
 
 1. **Clonar el repositorio:**
 
-    **Linux/Mac:**
     ```bash
     git clone https://github.com/Joacohbc/my-devcontainer-installer.git .dev-env && cd .dev-env
-    ```
-
-    **Windows (PowerShell):**
-    ```powershell
-    git clone https://github.com/Joacohbc/my-devcontainer-installer.git .dev-env; cd .dev-env
     ```
 
 2. **Iniciar el entorno:**
@@ -165,9 +159,9 @@ Si estás utilizando **Windows** (WSL o PowerShell), ten en cuenta lo siguiente:
     docker compose up -d --build
     ```
 
-    **Windows (PowerShell/WSL):**
+    **Windows (Git Bash):**
     Para exponer el puerto SSH localmente en Windows, usamos un archivo de configuración adicional:
-    ```powershell
+    ```bash
     docker compose -f docker-compose.yml -f docker-compose.windows.yml up -d --build
     ```
 
@@ -179,14 +173,8 @@ La forma recomendada y más segura de acceder es mediante **Claves SSH**. El uso
 
 Primero, obtén la contraseña temporal generada durante la instalación. La necesitarás **solo una vez** para instalar tu clave SSH.
 
-**Linux/Mac:**
 ```bash
 docker compose logs devcontainer-ssh | grep "devuser password" | tail -n 1
-```
-
-**Windows (PowerShell):**
-```powershell
-docker compose logs devcontainer-ssh | Select-String "devuser password" | Select-Object -Last 1
 ```
 
 ### 2. Configurar Acceso SSH (Recomendado)
@@ -197,14 +185,8 @@ Sigue estos pasos desde tu máquina local (tu PC o Laptop) para autorizar tu acc
 
 Se recomienda usar una clave específica para este entorno:
 
-**Linux/Mac:**
 ```bash
 ssh-keygen -t ed25519 -f ~/.ssh/id_devcontainer -N "" -q
-```
-
-**Windows (PowerShell):**
-```powershell
-ssh-keygen -t ed25519 -f $env:USERPROFILE\.ssh\id_devcontainer -N "" -q
 ```
 
 #### B. Instalar la clave en el contenedor
@@ -228,21 +210,25 @@ Host devcontainer
 EOF
 ```
 
-**Opción 2: Entorno Local (Windows)**
+**Opción 2: Entorno Local (Windows con Git Bash)**
 (Usando el puerto expuesto 2222)
 
-```powershell
+```bash
 # 1. Copiar clave pública al contenedor (te pedirá la contraseña)
-type $env:USERPROFILE\.ssh\id_devcontainer.pub | ssh -p 2222 devuser@localhost "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 700 ~/.ssh && chmod 600 ~/.ssh/authorized_keys"
+# Nota: Git Bash suele incluir ssh-copy-id, si no, usa el comando manual:
+ssh-copy-id -p 2222 -i ~/.ssh/id_devcontainer.pub devuser@localhost
 
-# 2. Añadir a config (Edita tu archivo C:\Users\TuUsuario\.ssh\config manualmente o ejecuta esto)
-Add-Content -Path $env:USERPROFILE\.ssh\config -Value "
+# Alternativa manual si ssh-copy-id no está disponible:
+# cat ~/.ssh/id_devcontainer.pub | ssh -p 2222 devuser@localhost "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 700 ~/.ssh && chmod 600 ~/.ssh/authorized_keys"
+
+# 2. Añadir a config (Ejecuta esto en Git Bash)
+cat <<EOF >> ~/.ssh/config
 Host devcontainer
     HostName localhost
     Port 2222
     User devuser
     IdentityFile ~/.ssh/id_devcontainer
-"
+EOF
 ```
 
 **Opción 3: Entorno Remoto**
