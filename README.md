@@ -13,6 +13,7 @@ graph TD
     subgraph Host["Tu Computadora (Host)"]
         VSCode["VS Code / Terminal"]
         SSHKey["Clave SSH Privada"]
+        DockerSock["/var/run/docker.sock"]
     end
 
     subgraph DockerEnv["Entorno Docker"]
@@ -25,7 +26,6 @@ graph TD
             Redis[("🔴 Redis")]
         end
 
-        DockerSock["/var/run/docker.sock"]
     end
 
     %% Conexiones
@@ -36,18 +36,19 @@ graph TD
     DevContainer -- "Acceso Interno" --> Mongo
     DevContainer -- "Acceso Interno" --> Redis
     
-    DevContainer -- "Docker-outside-Docker" --> DockerSock
+    DockerSock -. "Montado (Bind Mount)" .-> DevContainer
 ```
 
 ### 1. Acceso Local (Tu PC es el Host)
 
-Ideal cuando trabajas directamente en la máquina que ejecuta Docker.
+**Recomendado para**: Trabajar directamente en la máquina donde corre Docker.
+
+Se establece una conexión SSH directa desde tu terminal o VS Code hacia la IP privada del contenedor, aprovechando que ambos están en el mismo equipo. Sin exponer puertos.
 
 ```mermaid
 graph LR
     subgraph Host["Tu Computadora (Host)"]
         VSCode["VS Code / Terminal"]
-        SSHKey["Clave SSH"]
         
         subgraph DockerEnv["Entorno Docker"]
             DevContainer["🖥️ Devcontainer-SSH"]
@@ -61,7 +62,9 @@ graph LR
 
 ### 2. Acceso Remoto LAN (Laptop -> Servidor)
 
-Conéctate desde tu laptop a un servidor (ej. Raspberry Pi, Mini PC) en tu misma red.
+**Recomendado para**: Conectar tu laptop a un servidor doméstico (ej. Raspberry Pi, Mini PC) dentro de tu red.
+
+Utiliza el servicio SSH del servidor anfitrión como puente seguro. El tráfico se redirige internamente hacia el contenedor (usando netcat), lo que evita tener que exponer puertos del contenedor a toda la red local.
 
 ```mermaid
 graph LR
@@ -78,12 +81,14 @@ graph LR
     end
     
     VSCode -- "SSH (ProxyCommand)" --> SSHD
-    SSHD -- "netcat (nc)" --> DevContainer
+    SSHD -- "netcat (nc): Reenvía tráfico TCP" --> DevContainer
 ```
 
 ### 3. Acceso Remoto Seguro (Cloudflare Tunnel)
 
-Accede desde cualquier lugar del mundo sin abrir puertos, usando Cloudflare Zero Trust.
+**Recomendado para**: Acceder desde cualquier lugar (cafeterías, viajes) sin abrir puertos en el router.
+
+Mediante Cloudflare Zero Trust, se crea un túnel cifrado de salida. Esto permite que tu dispositivo remoto (autenticado con WARP) acceda a la red privada del contenedor de forma segura, como si estuvieras conectado localmente.
 
 ```mermaid
 graph LR
