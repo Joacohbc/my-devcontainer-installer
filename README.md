@@ -275,6 +275,24 @@ Una vez dentro, puedes ejecutar los scripts de configuración incluidos para ter
 
 Consulta [POST_INSTALL_STEPS.md](POST_INSTALL_STEPS.md) para más detalles sobre backups y herramientas adicionales.
 
+## Agregar Servicios Extra (Docker Run)
+
+Para levantar un contenedor nuevo (por ejemplo, una base de datos extra o un servicio temporal) asegurando que el DevContainer pueda verlo y conectarse a él, es necesario que ambos compartan la misma red Docker.
+
+Puedes usar el siguiente comando "universal", que detecta automáticamente el nombre completo de la red del proyecto y conecta el nuevo servicio:
+
+```bash
+docker run -d \
+  --name <nombre-del-servicio> \
+  --network $(docker network ls -q -f name=local-network) \
+  <imagen>
+```
+
+**Explicación de las banderas:**
+
+*   `--network $(...)`: Busca dinámicamente el ID de la red que contiene 'local-network' (útil porque Docker Compose suele agregar prefijos al nombre de la red).
+*   `--name`: Asigna el hostname. Esto permite que, desde dentro del DevContainer, puedas hacer ping o conectarte usando este nombre (ej: `ping <nombre-del-servicio>`).
+
 ## Solución de Problemas (Troubleshooting)
 
 ### Error: "Permission denied (publickey)"
