@@ -124,6 +124,7 @@ graph LR
   * **Java:** JDK Temurin 11 y 17 + Maven.
   * **Python:** Python 3 + pip.
   * **Node.js:** NVM (Node Version Manager) preinstalado para gestionar versiones.
+  * **Bun.js:** Runtime moderno para JavaScript y TypeScript (instalado oficialmente).
   * **Go:** Última versión (instalada vía script utilitario).
   * **SQLite:** sqlite3.
   * **Herramientas CLI:** `git`, `gh` (GitHub CLI), `docker-ce-cli` (Docker outside Docker), `nano`, `wget`, `jq`.
