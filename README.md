@@ -29,7 +29,7 @@ graph TD
     end
 
     %% Conexiones
-    VSCode -- "SSH (Puerto 2222 -> 22)" --> DevContainer
+    VSCode -- "SSH" --> DevContainer
     SSHKey -. "Autenticación" .-> DevContainer
     
     DevContainer -- "Acceso Interno" --> Postgres
