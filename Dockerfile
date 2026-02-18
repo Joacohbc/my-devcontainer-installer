@@ -55,6 +55,7 @@ RUN rm /tmp/zsh-installer.sh
 RUN apt-get update && apt-get install -y \
     git \
     wget \
+    unzip \
     apt-transport-https
 
 # Install GitHub CLI
@@ -114,6 +115,15 @@ RUN su - devuser -c 'echo "nvm use --lts >> /dev/null" >> /home/devuser/.profile
 
 # Install PNPM for devuser
 RUN su - devuser -c 'wget -qO- https://get.pnpm.io/install.sh | ENV="$HOME/.profile" SHELL="$(which zsh)" zsh -'
+
+##
+## BUN SETUP
+##
+
+# Install Bun for devuser
+RUN su - devuser -c "curl -fsSL https://bun.sh/install | bash" && \
+    su - devuser -c 'echo "export BUN_INSTALL=\"\$HOME/.bun\"" >> /home/devuser/.profile' && \
+    su - devuser -c 'echo "export PATH=\"\$BUN_INSTALL/bin:\$PATH\"" >> /home/devuser/.profile'
 
 ##
 ## CLEANUP & ENTRYPOINT
