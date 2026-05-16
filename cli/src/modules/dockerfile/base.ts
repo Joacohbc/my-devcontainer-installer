@@ -12,14 +12,14 @@ export const baseModule: DockerfileModule = {
       label: 'Ubuntu version',
       type: 'select',
       choices: [
-        { value: '22.04', label: '22.04 (Jammy)' },
         { value: '24.04', label: '24.04 (Noble)' },
+        { value: '22.04', label: '22.04 (Jammy)' },
       ],
-      default: '22.04',
+      default: '24.04',
     },
   ],
   render(opts) {
-    const ubuntu = (opts.ubuntu as string) || '22.04';
+    const ubuntu = (opts.ubuntu as string) || '24.04';
     return `# Use an Ubuntu base image
 FROM ubuntu:${ubuntu}
 

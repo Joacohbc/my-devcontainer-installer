@@ -2,7 +2,7 @@ import type { DockerfileModule } from '../../types.js';
 
 export const goModule: DockerfileModule = {
   id: 'go',
-  label: 'Go',
+  label: 'Go / Golang (Latest version)',
   category: 'lang',
   copyFiles: ['golang_utils.sh'],
   render() {

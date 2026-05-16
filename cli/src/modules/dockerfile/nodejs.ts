@@ -8,7 +8,7 @@ export const nodejsModule: DockerfileModule = {
   options: [
     {
       id: 'manager',
-      label: 'Version manager',
+      label: 'Node.js Version manager',
       type: 'select',
       choices: [
         { value: 'nvm', label: 'nvm (Node Version Manager)' },
