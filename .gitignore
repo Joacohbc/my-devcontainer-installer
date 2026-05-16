@@ -1,6 +1,10 @@
 .env
 Projects/*
 .dev-enviroment/*
+
 node_modules/
 cli/node_modules/
+cli/src/Dockerfile.*
+cli/src/docker-compose.*
+cli/src/devcontainer.config.*
 cli/dist/
