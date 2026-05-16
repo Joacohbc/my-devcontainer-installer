@@ -22,8 +22,8 @@ export const nodejsModule: DockerfileModule = {
       type: 'select',
       choices: [
         { value: 'lts', label: 'LTS (auto)' },
-        { value: '20', label: 'Node 20' },
-        { value: '22', label: 'Node 22' },
+        { value: '22', label: 'Node 22 (Maintenance LTS)' },
+        { value: '24', label: 'Node 24 (Active LTS)' },
       ],
       default: 'lts',
     },

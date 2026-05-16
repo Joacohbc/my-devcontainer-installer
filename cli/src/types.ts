@@ -31,6 +31,7 @@ export interface ComposeService {
   id: string;
   label: string;
   always?: boolean;
+  options?: ModuleOption[];
   requiresEnv?: { name: string; prompt: string; default?: string }[];
   volumes?: string[];
   render(opts: ComposeRenderContext): Record<string, unknown>;
@@ -53,10 +54,16 @@ export interface DevcontainerConfig {
     modules: SelectedModule[];
   };
   compose: {
-    services: string[];
+    services: (string | SelectedModule)[];
     subnet?: string;
   };
   env: Record<string, string>;
+}
+
+export function normalizeServices(
+  services: (string | SelectedModule)[],
+): SelectedModule[] {
+  return services.map((s) => (typeof s === 'string' ? { id: s, options: {} } : s));
 }
 
 export const CONFIG_FILE = 'devcontainer.config.json';

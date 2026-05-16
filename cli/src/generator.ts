@@ -5,6 +5,7 @@ import { resolveDockerfileModules } from './resolver.js';
 import {
   GENERATED_HEADER,
   GENERATED_HEADER_YAML,
+  normalizeServices,
   type DevcontainerConfig,
 } from './types.js';
 
@@ -16,7 +17,13 @@ export function generateDockerfile(config: DevcontainerConfig): string {
 }
 
 export function generateCompose(config: DevcontainerConfig): string {
-  const enabled = new Set<string>(config.compose.services);
+  const selected = normalizeServices(config.compose.services);
+  const optionsById = new Map<string, Record<string, unknown>>();
+  const enabled = new Set<string>();
+  for (const s of selected) {
+    enabled.add(s.id);
+    optionsById.set(s.id, s.options ?? {});
+  }
   for (const svc of composeServices) {
     if (svc.always) enabled.add(svc.id);
   }
@@ -32,7 +39,7 @@ export function generateCompose(config: DevcontainerConfig): string {
     const rendered = svc.render({
       imageName: config.image,
       enabledServiceIds: enabledIds,
-      options: {},
+      options: optionsById.get(id) ?? {},
     }) as Record<string, unknown>;
     rendered.labels = { ...labels };
     services[svc.id === 'devcontainer' ? 'devcontainer-ssh' : svc.id] = rendered;
@@ -82,10 +89,10 @@ export function collectRequiredCopyFiles(config: DevcontainerConfig): string[] {
 export function collectRequiredEnvVars(
   config: DevcontainerConfig,
 ): { name: string; prompt: string; default?: string }[] {
-  const enabled = new Set<string>(config.compose.services);
+  const selected = normalizeServices(config.compose.services);
   const out: { name: string; prompt: string; default?: string }[] = [];
-  for (const id of enabled) {
-    const svc = getComposeService(id);
+  for (const s of selected) {
+    const svc = getComposeService(s.id);
     for (const e of svc?.requiresEnv ?? []) out.push(e);
   }
   return out;

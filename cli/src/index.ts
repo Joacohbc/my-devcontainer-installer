@@ -40,12 +40,32 @@ async function buildConfigFromPrompts(base: DevcontainerConfig): Promise<Devcont
   }
 
   const selectableServices = composeServices.filter((s) => !s.always);
-  const services = await multiselect(
+  const baseServiceIds = base.compose.services.map((s) =>
+    typeof s === 'string' ? s : s.id,
+  );
+  const serviceIds = await multiselect(
     'services',
     'Select compose services:',
     selectableServices.map((s) => ({ name: s.id, message: s.label })),
-    base.compose.services,
+    baseServiceIds,
   );
+
+  const services: SelectedModule[] = [];
+  for (const id of serviceIds) {
+    const svc = composeServices.find((s) => s.id === id)!;
+    const opts: Record<string, unknown> = {};
+    const prev = base.compose.services.find(
+      (s) => (typeof s === 'string' ? s : s.id) === id,
+    );
+    const prevOpts = typeof prev === 'object' && prev ? prev.options ?? {} : {};
+    for (const o of svc.options ?? []) {
+      opts[o.id] = await promptOption({
+        ...o,
+        default: prevOpts[o.id] ?? o.default,
+      });
+    }
+    services.push({ id, options: opts });
+  }
 
   const image = await input(
     'image',
@@ -106,7 +126,15 @@ function applyFlags(config: DevcontainerConfig, flags: CliFlags): DevcontainerCo
       return existing ?? { id, options: {} };
     });
   }
-  if (flags.services) config.compose.services = flags.services;
+  if (flags.services) {
+    config.compose.services = flags.services.map((id) => {
+      const existing = config.compose.services.find(
+        (s) => (typeof s === 'string' ? s : s.id) === id,
+      );
+      if (existing && typeof existing === 'object') return existing;
+      return { id, options: {} };
+    });
+  }
   return config;
 }
 
