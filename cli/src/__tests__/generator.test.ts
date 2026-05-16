@@ -16,7 +16,7 @@ function makeConfig(overrides: Partial<DevcontainerConfig> = {}): DevcontainerCo
 
 test('minimal Dockerfile has base + cleanup', () => {
   const df = generateDockerfile(makeConfig());
-  assert.match(df, /FROM ubuntu:22\.04/);
+  assert.match(df, /FROM ubuntu:24\.04/);
   assert.match(df, /ENTRYPOINT \["\/entrypoint\.sh"\]/);
   assert.match(df, /AUTO-GENERATED/);
 });
