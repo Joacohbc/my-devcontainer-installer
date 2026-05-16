@@ -1,0 +1,41 @@
+{
+  "image": "devcontainer-ssh:local",
+  "dockerfile": {
+    "modules": [
+      {
+        "id": "github-cli",
+        "options": {}
+      },
+      {
+        "id": "python",
+        "options": {
+          "uv": true
+        }
+      },
+      {
+        "id": "sqlite",
+        "options": {}
+      },
+      {
+        "id": "nodejs",
+        "options": {
+          "manager": "fnm",
+          "version": "lts"
+        }
+      },
+      {
+        "id": "pnpm",
+        "options": {}
+      }
+    ]
+  },
+  "compose": {
+    "services": [
+      "tunnel"
+    ],
+    "subnet": "172.25.0.0/24"
+  },
+  "env": {
+    "TUNNEL_TOKEN": ""
+  }
+}

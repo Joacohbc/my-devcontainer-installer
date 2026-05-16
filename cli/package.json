@@ -2,22 +2,28 @@
   "name": "cli",
   "version": "1.0.0",
   "description": "",
-  "main": "src/index.js",
+  "main": "dist/index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node src/index.js"
+    "test": "node --test --import tsx 'src/__tests__/*.test.ts'",
+    "build": "node build.mjs",
+    "start": "node dist/index.js",
+    "dev": "node build.mjs && node dist/index.js",
+    "typecheck": "tsc --noEmit"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "packageManager": "pnpm@10.30.3",
   "dependencies": {
-    "enquirer": "^2.4.1"
+    "chalk": "^4.1.2",
+    "enquirer": "^2.4.1",
+    "yaml": "^2.5.0"
   },
   "devDependencies": {
     "@types/node": "^25.5.0",
-    "chalk": "^4.1.2",
+    "esbuild": "^0.25.0",
     "ts-node": "^10.9.2",
+    "tsx": "^4.19.0",
     "typescript": "^6.0.2"
   },
   "type": "module"
