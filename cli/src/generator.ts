@@ -1,4 +1,5 @@
 import { stringify } from 'yaml';
+import { composeLabels, dockerfileLabelBlock } from './labels.js';
 import { composeServices, getComposeService } from './registry.js';
 import { resolveDockerfileModules } from './resolver.js';
 import {
@@ -10,6 +11,7 @@ import {
 export function generateDockerfile(config: DevcontainerConfig): string {
   const resolved = resolveDockerfileModules(config.dockerfile.modules);
   const fragments = resolved.map((r) => r.module.render(r.options).trim());
+  fragments.push(dockerfileLabelBlock(config));
   return `${GENERATED_HEADER}\n\n${fragments.join('\n\n')}\n`;
 }
 
@@ -20,22 +22,25 @@ export function generateCompose(config: DevcontainerConfig): string {
   }
   const enabledIds = [...enabled];
 
+  const labels = composeLabels(config);
   const services: Record<string, unknown> = {};
-  const volumes: Record<string, null> = {};
+  const volumes: Record<string, unknown> = {};
 
   for (const id of enabledIds) {
     const svc = getComposeService(id);
     if (!svc) throw new Error(`Unknown compose service: ${id}`);
-    services[svc.id === 'devcontainer' ? 'devcontainer-ssh' : svc.id] = svc.render({
+    const rendered = svc.render({
       imageName: config.image,
       enabledServiceIds: enabledIds,
       options: {},
-    });
-    for (const v of svc.volumes ?? []) volumes[v] = null;
+    }) as Record<string, unknown>;
+    rendered.labels = { ...labels };
+    services[svc.id === 'devcontainer' ? 'devcontainer-ssh' : svc.id] = rendered;
+    for (const v of svc.volumes ?? []) volumes[v] = { labels: { ...labels } };
   }
 
   for (const v of ['devcontainer_etc', 'devcontainer_root', 'devcontainer_home']) {
-    volumes[v] = null;
+    volumes[v] = { labels: { ...labels } };
   }
 
   const subnet = config.compose.subnet ?? '172.25.0.0/24';
@@ -45,6 +50,7 @@ export function generateCompose(config: DevcontainerConfig): string {
       'local-network': {
         driver: 'bridge',
         ipam: { config: [{ subnet: `\${DOCKER_SUBNET:-${subnet}}` }] },
+        labels: { ...labels },
       },
     },
     volumes,
