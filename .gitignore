@@ -5,6 +5,7 @@ Projects/*
 node_modules/
 
 cli/node_modules/
+cli/Dockerfile
 cli/Dockerfile.*
 cli/docker-compose.*
 cli/devcontainer.config.*
