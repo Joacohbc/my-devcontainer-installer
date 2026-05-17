@@ -118,6 +118,37 @@ test('compose with no DB services has no depends_on', () => {
   assert.equal(parsed.services['devcontainer-ssh'].depends_on, undefined);
 });
 
+test('ai-clis module copies per-tool install scripts by default', () => {
+  const df = generateDockerfile(
+    makeConfig({ dockerfile: { modules: [{ id: 'ai-clis' }] } }),
+  );
+  assert.match(df, /COPY install-claude-code\.sh install-gemini\.sh install-opencode\.sh install-autoskills\.sh \/home\/devuser\//);
+  assert.match(df, /chmod \+x .*\/home\/devuser\/install-claude-code\.sh/);
+  assert.doesNotMatch(df, /ai-login/);
+});
+
+test('ai-clis module respects tools subset', () => {
+  const df = generateDockerfile(
+    makeConfig({
+      dockerfile: {
+        modules: [{ id: 'ai-clis', options: { tools: ['claude-code'] } }],
+      },
+    }),
+  );
+  assert.match(df, /install-claude-code\.sh/);
+  assert.doesNotMatch(df, /install-gemini\.sh/);
+  assert.doesNotMatch(df, /install-opencode\.sh/);
+  assert.doesNotMatch(df, /install-autoskills\.sh/);
+});
+
+test('ai-clis pulls pnpm + github-cli via requires', () => {
+  const df = generateDockerfile(
+    makeConfig({ dockerfile: { modules: [{ id: 'ai-clis' }] } }),
+  );
+  assert.match(df, /get\.pnpm\.io\/install\.sh/);
+  assert.match(df, /cli\.github\.com\/packages/);
+});
+
 test('env file includes selected env vars', () => {
   const env = generateEnv(
     makeConfig({ env: { TUNNEL_TOKEN: 'abc' }, compose: { services: [], subnet: '10.0.0.0/8' } }),

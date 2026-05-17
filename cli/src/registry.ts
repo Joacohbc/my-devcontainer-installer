@@ -13,6 +13,7 @@ import { nodejsModule } from './modules/dockerfile/nodejs.js';
 import { pnpmModule } from './modules/dockerfile/pnpm.js';
 import { bunModule } from './modules/dockerfile/bun.js';
 import { cleanupModule } from './modules/dockerfile/cleanup.js';
+import { aiClisModule } from './modules/dockerfile/ai-clis.js';
 
 import { devcontainerService } from './modules/compose/devcontainer.js';
 import { mongoService } from './modules/compose/mongo.js';
@@ -33,6 +34,7 @@ export const dockerfileModules: DockerfileModule[] = [
   nodejsModule,
   pnpmModule,
   bunModule,
+  aiClisModule,
   cleanupModule,
 ];
 
