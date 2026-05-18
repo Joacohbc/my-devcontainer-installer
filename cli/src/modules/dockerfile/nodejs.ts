@@ -1,5 +1,8 @@
 import type { DockerfileModule } from '../../types.js';
 
+const INIT_FILE = '/home/devuser/.nodejs_init.sh';
+const RC_FILES = ['.zshrc', '.bashrc', '.profile'];
+
 export const nodejsModule: DockerfileModule = {
   id: 'nodejs',
   label: 'Node.js (nvm or fnm, for devuser)',
@@ -35,38 +38,60 @@ export const nodejsModule: DockerfileModule = {
   },
 };
 
+// Writes `lines` verbatim (no expansion of $ or ") to ~/.nodejs_init.sh and
+// sources it from .zshrc, .bashrc and .profile. The default shell is zsh,
+// which does not read .profile — that's why nvm/fnm weren't loading.
+function emitInitSetup(lines: string[]): string {
+  for (const l of lines) {
+    if (l.includes("'")) {
+      throw new Error(`nodejs init line cannot contain single quotes: ${l}`);
+    }
+  }
+  // Each line goes inside single quotes (literal) inside Docker's outer "...".
+  // Escape " and $ once for Docker's outer double-quoted shell.
+  const args = lines
+    .map((l) => "'" + l.replace(/"/g, '\\"').replace(/\$/g, '\\$') + "'")
+    .join(' ');
+  const sourceLine = '. \\$HOME/.nodejs_init.sh';
+  return `RUN su - devuser -c "printf '%s\\n' ${args} > ${INIT_FILE}"
+RUN su - devuser -c "for f in ${RC_FILES.join(' ')}; do touch /home/devuser/\\$f && echo '${sourceLine}' >> /home/devuser/\\$f; done"`;
+}
+
 function renderNvm(version: string): string {
+  const useLine =
+    version === 'lts' ? 'nvm use --lts > /dev/null' : `nvm use ${version} > /dev/null`;
   const installNode =
     version === 'lts' ? 'nvm install --lts' : `nvm install ${version}`;
-  const defaultLine =
-    version === 'lts'
-      ? 'echo "nvm use --lts >> /dev/null" >> /home/devuser/.profile'
-      : `echo "nvm use ${version} >> /dev/null" >> /home/devuser/.profile`;
+  const initLines = [
+    'export NVM_DIR="$([ -z "${XDG_CONFIG_HOME-}" ] && printf %s "${HOME}/.nvm" || printf %s "${XDG_CONFIG_HOME}/nvm")"',
+    '[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"',
+    useLine,
+  ];
   return `##
 ## NVM + NODE (devuser)
 ##
 RUN NVM_VERSION=$(curl -s https://api.github.com/repos/nvm-sh/nvm/releases/latest | jq -r .tag_name) && \\
     su - devuser -c "curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/\${NVM_VERSION}/install.sh | bash"
-RUN su - devuser -c 'echo "export NVM_DIR=\\"\\$([ -z \\"\\\${XDG_CONFIG_HOME-}\\" ] && printf %s \\"\\\${HOME}/.nvm\\" || printf %s \\"\\\${XDG_CONFIG_HOME}/nvm\\")\\"\\n[ -s \\"\\$NVM_DIR/nvm.sh\\" ] && \\. \\"\\$NVM_DIR/nvm.sh\\"" >> /home/devuser/.profile'
-RUN su - devuser -c 'export NVM_DIR="$HOME/.nvm" && source "$NVM_DIR/nvm.sh" && ${installNode}'
-RUN su - devuser -c '${defaultLine}'
+RUN su - devuser -c 'export NVM_DIR="$HOME/.nvm" && . "$NVM_DIR/nvm.sh" && ${installNode}'
+${emitInitSetup(initLines)}
 `;
 }
 
 function renderFnm(version: string): string {
+  const useLine =
+    version === 'lts' ? 'fnm use lts-latest > /dev/null' : `fnm use ${version} > /dev/null`;
   const installNode =
     version === 'lts' ? 'fnm install --lts' : `fnm install ${version}`;
-  const defaultLine =
-    version === 'lts'
-      ? 'echo "fnm use lts-latest >> /dev/null" >> /home/devuser/.profile'
-      : `echo "fnm use ${version} >> /dev/null" >> /home/devuser/.profile`;
+  const initLines = [
+    'export PATH="$HOME/.fnm:$PATH"',
+    'eval "$(fnm env --use-on-cd)"',
+    useLine,
+  ];
   return `##
 ## FNM + NODE (devuser)
 ##
 RUN su - devuser -c 'curl -fsSL https://fnm.vercel.app/install | bash -s -- --install-dir "$HOME/.fnm" --skip-shell'
-RUN su - devuser -c 'echo "export PATH=\\"\\$HOME/.fnm:\\$PATH\\"" >> /home/devuser/.profile' && \\
-    su - devuser -c 'echo "eval \\"\\$(fnm env --use-on-cd)\\"" >> /home/devuser/.profile'
 RUN su - devuser -c 'export PATH="$HOME/.fnm:$PATH" && eval "$(fnm env)" && ${installNode}'
-RUN su - devuser -c '${defaultLine}'
+${emitInitSetup(initLines)}
 `;
 }
