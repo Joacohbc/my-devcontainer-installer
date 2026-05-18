@@ -2,11 +2,21 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+function currentDir(): string {
+  try {
+    const metaUrl = (import.meta as { url?: string }).url;
+    if (metaUrl) return path.dirname(fileURLToPath(metaUrl));
+  } catch {
+    // ignore
+  }
+  return path.dirname(process.execPath);
+}
+const __dirname = currentDir();
 
 function assetsDir(): string {
+  const execDir = path.dirname(process.execPath);
   const candidates = [
+    path.resolve(execDir, 'assets'),
     path.resolve(__dirname, '../assets'),
     path.resolve(__dirname, '../../assets'),
     path.resolve(__dirname, '../../cli/assets'),

@@ -1,0 +1,137 @@
+name: CLI Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: linux-x64
+            binary: devcontainer-cli
+            archive: tar.gz
+          - os: ubuntu-24.04-arm
+            target: linux-arm64
+            binary: devcontainer-cli
+            archive: tar.gz
+          - os: macos-latest
+            target: darwin-x64
+            binary: devcontainer-cli
+            archive: tar.gz
+          - os: windows-latest
+            target: windows-x64
+            binary: devcontainer-cli.exe
+            archive: zip
+    defaults:
+      run:
+        working-directory: cli
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'pnpm'
+          cache-dependency-path: cli/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm run typecheck
+
+      - name: Build SEA bundle
+        run: pnpm run build:sea
+
+      - name: Generate SEA blob
+        run: pnpm run sea:blob
+
+      - name: Copy node binary (unix)
+        if: runner.os != 'Windows'
+        run: cp "$(command -v node)" "dist/${{ matrix.binary }}"
+
+      - name: Copy node binary (windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Copy-Item (Get-Command node).Source "dist/${{ matrix.binary }}"
+
+      - name: Remove signature (macOS)
+        if: runner.os == 'macOS'
+        run: codesign --remove-signature "dist/${{ matrix.binary }}"
+
+      - name: Inject blob (unix)
+        if: runner.os != 'Windows'
+        run: |
+          npx -y postject "dist/${{ matrix.binary }}" NODE_SEA_BLOB dist/sea-prep.blob \
+            --sentinel-fuse NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2 \
+            ${{ runner.os == 'macOS' && '--macho-segment-name NODE_SEA' || '' }}
+
+      - name: Inject blob (windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: npx -y postject "dist/${{ matrix.binary }}" NODE_SEA_BLOB dist/sea-prep.blob --sentinel-fuse NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2
+
+      - name: Re-sign (macOS)
+        if: runner.os == 'macOS'
+        run: codesign --sign - "dist/${{ matrix.binary }}"
+
+      - name: Stage release dir
+        shell: bash
+        run: |
+          mkdir -p "release/devcontainer-cli-${{ matrix.target }}"
+          cp "dist/${{ matrix.binary }}" "release/devcontainer-cli-${{ matrix.target }}/"
+          cp -r assets "release/devcontainer-cli-${{ matrix.target }}/"
+
+      - name: Package tar.gz
+        if: matrix.archive == 'tar.gz'
+        shell: bash
+        run: |
+          cd release
+          tar -czf "devcontainer-cli-${{ matrix.target }}.tar.gz" "devcontainer-cli-${{ matrix.target }}"
+
+      - name: Package zip
+        if: matrix.archive == 'zip'
+        shell: pwsh
+        run: |
+          cd release
+          Compress-Archive -Path "devcontainer-cli-${{ matrix.target }}" -DestinationPath "devcontainer-cli-${{ matrix.target }}.zip"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: devcontainer-cli-${{ matrix.target }}
+          path: cli/release/devcontainer-cli-${{ matrix.target }}.${{ matrix.archive }}
+          if-no-files-found: error
+
+  release:
+    name: Publish release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*
+          generate_release_notes: true
+          fail_on_unmatched_files: true
