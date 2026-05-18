@@ -65,7 +65,8 @@ export function helpText(): string {
 
 Usage:
   cli [flags]
-  cli setup-ssh [flags]   Run automated SSH setup (see: cli setup-ssh --help)
+  cli setup-ssh [flags]     Run automated SSH setup (see: cli setup-ssh --help)
+  cli cleanup-tips [flags]  Show docker cleanup commands for this project
 
 Flags:
   --with <ids>          Comma-separated dockerfile modules (e.g. nodejs,java,dod)

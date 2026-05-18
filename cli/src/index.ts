@@ -226,6 +226,12 @@ async function main() {
     await runSetupSsh(argv.slice(1));
     return;
   }
+  if (argv[0] === 'cleanup-tips') {
+    const config = loadConfig(process.cwd()) ?? defaultConfig();
+    if (!config.workspace) config.workspace = sanitizeDockerName(path.basename(process.cwd()));
+    printCleanupInstructions(config);
+    return;
+  }
 
   const flags = parseFlags(argv);
   if (flags.help) {
