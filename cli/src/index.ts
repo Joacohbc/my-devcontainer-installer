@@ -173,7 +173,28 @@ function executeBuild(cwd: string): Promise<boolean> {
   });
 }
 
+function installSignalHandlers(): void {
+  const cancel = () => {
+    if (process.stdin.isTTY && process.stdin.setRawMode) {
+      try { process.stdin.setRawMode(false); } catch { /* noop */ }
+    }
+    console.log(chalk.yellow('\nCancelled.'));
+    process.exit(130);
+  };
+  process.once('SIGINT', cancel);
+  process.once('SIGTERM', cancel);
+  process.on('unhandledRejection', (e: unknown) => {
+    const err = e as { code?: string; message?: string } | undefined;
+    if (!err) return;
+    if (err.code === 'ERR_USE_AFTER_CLOSE') return;
+    if (err.message === '' || err.message === 'canceled') return;
+    console.error(chalk.red(`\n❌ ${err.message ?? String(e)}\n`));
+    process.exit(1);
+  });
+}
+
 async function main() {
+  installSignalHandlers();
   const argv = process.argv.slice(2);
   if (argv[0] === 'setup-ssh') {
     await runSetupSsh(argv.slice(1));

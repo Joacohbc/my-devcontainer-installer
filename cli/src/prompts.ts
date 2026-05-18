@@ -6,13 +6,19 @@ export class PromptCancelledError extends Error {
   }
 }
 
+function isCancellation(e: unknown): boolean {
+  if (e === undefined || e === null || e === '') return true;
+  const err = e as { message?: string; code?: string };
+  if (err.message === '' || err.message === 'canceled') return true;
+  if (err.code === 'ERR_USE_AFTER_CLOSE') return true;
+  return false;
+}
+
 async function safePrompt<T>(opts: object): Promise<T> {
   try {
     return await enquirer.prompt<T>(opts as never);
   } catch (e) {
-    if (e === undefined || e === '' || (e as Error)?.message === '') {
-      throw new PromptCancelledError();
-    }
+    if (isCancellation(e)) throw new PromptCancelledError();
     throw e;
   }
 }
