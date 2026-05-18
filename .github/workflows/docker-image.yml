@@ -22,12 +22,32 @@ permissions:
   packages: write
 
 jobs:
-  # ── Job 1: Build the base Dockerfile (devcontainer-ssh) ──
+  # ── Job 1: Build the full devcontainer-ssh image (all modules) ──
   build-base:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'pnpm'
+          cache-dependency-path: cli/pnpm-lock.yaml
+
+      - name: Install dependencies
+        working-directory: cli
+        run: pnpm install --frozen-lockfile
+
+      - name: Build CLI
+        working-directory: cli
+        run: pnpm run build
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -51,6 +71,13 @@ jobs:
           OWNER: '${{ github.repository_owner }}'
           GITHUB_SHA: '${{ github.sha }}'
 
+      - name: Generate full Dockerfile
+        run: |
+          node cli/dist/index.js --no-interactive --force \
+            --with dod,java-temurin,python,go,sqlite,dbclients,bun,ai-clis,pnpm,nodejs,github-cli \
+            --image ghcr.io/${{ env.REPO_OWNER }}/devcontainer-ssh:latest \
+            --no-build
+
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
@@ -60,6 +87,9 @@ jobs:
           tags: |
             ghcr.io/${{ env.REPO_OWNER }}/devcontainer-ssh:latest
             ghcr.io/${{ env.REPO_OWNER }}/devcontainer-ssh:${{ env.SHORT_SHA }}-${{ env.TIMESTAMP }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.description=Full devcontainer with all available modules
 
   # ── Job 2: Build CLI-generated devcontainer variants ──
   build-variants:
