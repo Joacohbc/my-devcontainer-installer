@@ -6,20 +6,24 @@ on:
     paths:
       - 'Dockerfile'
       - 'entrypoint.sh'
+      - 'cli/**'
   pull_request:
     branches: [ "main" ]
     paths:
       - 'Dockerfile'
       - 'entrypoint.sh'
+      - 'cli/**'
   schedule:
     - cron: '0 0 */15 * *'
+  workflow_dispatch:
 
 permissions:
   contents: read
   packages: write
 
 jobs:
-  build-and-push:
+  # ── Job 1: Build the base Dockerfile (devcontainer-ssh) ──
+  build-base:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -38,7 +42,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Prepare Environment Variables
+      - name: Prepare environment variables
         run: |
           echo "REPO_OWNER=${OWNER,,}" >>${GITHUB_ENV}
           echo "SHORT_SHA=$(echo $GITHUB_SHA | cut -c1-7)" >> $GITHUB_ENV
@@ -56,3 +60,91 @@ jobs:
           tags: |
             ghcr.io/${{ env.REPO_OWNER }}/devcontainer-ssh:latest
             ghcr.io/${{ env.REPO_OWNER }}/devcontainer-ssh:${{ env.SHORT_SHA }}-${{ env.TIMESTAMP }}
+
+  # ── Job 2: Build CLI-generated devcontainer variants ──
+  build-variants:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: node-bun-java
+            modules: nodejs,bun,java-temurin
+            description: "Node + Bun + Java"
+          - name: node-bun-python
+            modules: nodejs,bun,python
+            description: "Node + Bun + Python"
+          - name: node-bun-go
+            modules: nodejs,bun,go
+            description: "Node + Bun + Go"
+          - name: go-only
+            modules: go
+            description: "Go only"
+          - name: python-only
+            modules: python
+            description: "Python only"
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'pnpm'
+          cache-dependency-path: cli/pnpm-lock.yaml
+
+      - name: Install dependencies
+        working-directory: cli
+        run: pnpm install --frozen-lockfile
+
+      - name: Build CLI
+        working-directory: cli
+        run: pnpm run build
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Prepare environment variables
+        run: |
+          echo "REPO_OWNER=${OWNER,,}" >>${GITHUB_ENV}
+          echo "SHORT_SHA=$(echo $GITHUB_SHA | cut -c1-7)" >> $GITHUB_ENV
+          echo "TIMESTAMP=$(date +%Y%m%d-%H%M%S)" >> $GITHUB_ENV
+        env:
+          OWNER: '${{ github.repository_owner }}'
+          GITHUB_SHA: '${{ github.sha }}'
+
+      - name: Generate Dockerfile
+        working-directory: cli
+        run: |
+          node dist/index.js --no-interactive \
+            --with ${{ matrix.modules }} \
+            --image ghcr.io/${{ env.REPO_OWNER }}/devcontainer-${{ matrix.name }}:latest \
+            --no-build
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: |
+            ghcr.io/${{ env.REPO_OWNER }}/devcontainer-${{ matrix.name }}:latest
+            ghcr.io/${{ env.REPO_OWNER }}/devcontainer-${{ matrix.name }}:${{ env.SHORT_SHA }}-${{ env.TIMESTAMP }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.description=Devcontainer with ${{ matrix.description }}
