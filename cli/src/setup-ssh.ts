@@ -455,14 +455,14 @@ async function updateSshConfig(
     }
     fs.copyFileSync(configPath, `${configPath}.bak`);
     ok(`Backup saved: ${configPath}.bak`);
-    let stripped = stripAliasBlock(current, f.alias);
-    if (stripped.length > 0 && !stripped.endsWith('\n')) stripped += '\n';
+    let stripped = stripAliasBlock(current, f.alias).trimEnd();
+    if (stripped.length > 0) stripped += '\n\n';
     fs.writeFileSync(configPath, `${stripped}${newBlock}\n`);
     fs.chmodSync(configPath, 0o600);
     ok(`Replaced Host '${f.alias}' in ${configPath}`);
   } else {
-    let body = current;
-    if (body.length > 0 && !body.endsWith('\n')) body += '\n';
+    let body = current.trimEnd();
+    if (body.length > 0) body += '\n\n';
     fs.writeFileSync(configPath, `${body}${newBlock}\n`);
     fs.chmodSync(configPath, 0o600);
     ok(`Appended Host '${f.alias}' to ${configPath}`);

@@ -18,7 +18,7 @@ function linuxBlock(): string {
     chalk.bold('4) Install key + register host (Linux / Mac, direct container IP):'),
     prompt + ipCmd,
     prompt + `ssh-copy-id -i ${KEY}.pub ${SSH_DEFAULTS.user}@$${ipVar}`,
-    prompt + `cat <<EOF >> ~/.ssh/config\n${block}\nEOF`,
+    prompt + `cat <<EOF >> ~/.ssh/config\n\n${block}\nEOF`,
   ].join('\n');
 }
 
@@ -35,7 +35,7 @@ function windowsBlock(): string {
   return [
     chalk.bold(`4) Install key + register host (Windows / Git Bash, port ${SSH_DEFAULTS.windowsPort}):`),
     prompt + `ssh-copy-id -p ${SSH_DEFAULTS.windowsPort} -i ${KEY}.pub ${SSH_DEFAULTS.user}@localhost`,
-    prompt + `cat <<EOF >> ~/.ssh/config\n${block}\nEOF`,
+    prompt + `cat <<EOF >> ~/.ssh/config\n\n${block}\nEOF`,
   ].join('\n');
 }
 
