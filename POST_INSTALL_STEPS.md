@@ -15,10 +15,21 @@ sudo passwd
 
 ## Loguearse con Github
 
+El script lo genera la CLI en tu directorio de trabajo (queda montado en `/workspace/` dentro del contenedor):
+
 ```bash
-chmod +x /workspace/login-github-cli.sh
 /workspace/login-github-cli.sh
 ```
+
+## Actualizar Go (si elegiste el módulo `go`)
+
+Si generaste el entorno con `--with go`, también tendrás disponible:
+
+```bash
+/workspace/update_golang.sh
+```
+
+Actualiza la instalación de Go a la última versión estable.
 
 ## Instalar Firebase Tools (Opcional)
 
@@ -30,39 +41,25 @@ pnpm install -g firebase-tools
 firebase login
 ```
 
-## Instalar Gemini CLI y Jules CLI (Opcional)
+## Instalar CLIs de IA (Opcional)
 
-### 1. Instalar Gemini CLI
+Si generaste el entorno con `--with ai-clis`, los instaladores ya quedaron embebidos en la imagen (Claude Code, Gemini CLI, OpenCode, Autoskills). De lo contrario, podés instalarlas manualmente:
 
-Gemini CLI te permite usar los modelos de IA de Google directamente desde tu terminal para tareas de codificación, refactorización y chat.
+### Gemini CLI
 
-Comando de instalación global:
+Te permite usar los modelos de IA de Google directamente desde tu terminal para tareas de codificación, refactorización y chat.
 
 ```bash
 pnpm install -g @google/gemini-cli
+gemini   # primera vez te pedirá autenticarte con tu cuenta de Google
 ```
 
-Cómo iniciar: Una vez instalado, simplemente ejecuta:
+### Jules CLI
 
-```bash
-gemini
-```
-
-(La primera vez te pedirá autenticarte con tu cuenta de Google).
-
-### 2. Instalar Jules CLI
-
-Jules es un "agente asíncrono" (sidekick) que trabaja en segundo plano (generalmente gestionando Pull Requests o tareas largas) y se integra con Gemini CLI.
-
-Comando de instalación global:
+"Agente asíncrono" que trabaja en segundo plano (PRs o tareas largas) y se integra con Gemini CLI.
 
 ```bash
 pnpm install -g @google/jules
-```
-
-Cómo iniciar: Para autenticarte y vincularlo, usa:
-
-```bash
 jules login
 ```
 

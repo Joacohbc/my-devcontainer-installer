@@ -367,9 +367,12 @@ docker run -d \
 
 ## Estructura del Proyecto
 
+Todo se genera mediante la CLI. Tras ejecutar `devcontainer-cli` en tu directorio de trabajo obtendrás:
+
 * `Dockerfile`: Configuración de la imagen base.
-* `docker-compose.yml`: Orquestación de servicios.
-* `zsh-installer.sh`, `golang_utils.sh`, `login-github-cli.sh`: Scripts de utilidad.
+* `docker-compose.yml` (+ `docker-compose.windows.yml` en Windows): Orquestación de servicios.
+* `entrypoint.sh`, `zsh-installer.sh`, `golang_utils.sh`: Scripts de build/runtime.
+* `login-github-cli.sh`, `update_golang.sh`: Scripts post-instalación (accesibles dentro del contenedor en `/workspace/`).
 
 ## Bases de Datos
 

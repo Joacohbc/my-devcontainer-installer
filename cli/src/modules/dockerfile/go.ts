@@ -4,7 +4,7 @@ export const goModule: DockerfileModule = {
   id: 'go',
   label: 'Go / Golang (Latest version)',
   category: 'lang',
-  copyFiles: ['golang_utils.sh'],
+  copyFiles: ['golang_utils.sh', 'update_golang.sh'],
   render() {
     return `##
 ## GO
