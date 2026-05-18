@@ -18,7 +18,7 @@ graph TD
 
     subgraph DockerEnv["Entorno Docker"]
         
-        subgraph Services["Red Privada (172.25.0.0/24)"]
+        subgraph Services["Red Privada (172.25.0.0/28 por defecto)"]
             direction TB
             DevContainer["🖥️ Devcontainer-SSH (Ubuntu, Go, Node, Python)"]
             Postgres[("🐘 PostgreSQL")]
@@ -116,23 +116,25 @@ graph LR
 
 ## Características Principales
 
-* **Sistema Base:** Ubuntu 22.04 LTS.
+* **Sistema Base:** Ubuntu 24.04 LTS (Noble) por defecto. 22.04 (Jammy) seleccionable.
 * **Conexión SSH:** Acceso seguro mediante OpenSSH Server. Ideal para usar con VS Code Remote - SSH o tu terminal favorita.
 * **Persistencia y Sincronización:**
   * El directorio del repositorio se monta en `/workspace` dentro del contenedor.
   * Los archivos de configuración y datos de usuario (`/home`, `/root`, `/etc`) se persisten en volúmenes Docker.
-* **Bases de Datos (Dockerizadas):**
-  * MongoDB 8.0
-  * Redis 7.4 (Alpine)
-  * PostgreSQL 17 (Alpine)
-* **Lenguajes y Herramientas Preinstalados:**
-  * **Java:** JDK Temurin 11 y 17 + Maven.
-  * **Python:** Python 3 + pip.
-  * **Node.js:** NVM (Node Version Manager) preinstalado para gestionar versiones.
-  * **Bun.js:** Runtime moderno para JavaScript y TypeScript (instalado oficialmente).
-  * **Go:** Última versión (instalada vía script utilitario).
-  * **SQLite:** sqlite3.
-  * **Herramientas CLI:** `git`, `gh` (GitHub CLI), `docker-ce-cli` (Docker outside Docker), `nano`, `wget`, `jq`.
+* **Bases de Datos (Dockerizadas, versión configurable por la CLI):**
+  * MongoDB — default `8.0` (opciones: `7.0`, `8.0`, `8.3`).
+  * Redis — default `7.4-alpine` (opciones: `7.4-alpine`, `8.0-alpine`, `8.6-alpine`).
+  * PostgreSQL — default `17-alpine` (opciones: `16-alpine`, `17-alpine`, `18-alpine`).
+* **Lenguajes y Herramientas Preinstalados (módulos opcionales):**
+  * **Java:** Temurin (default 11+17) u OpenJDK (default 17), Maven opcional. Versiones 11/17/21 disponibles.
+  * **Python:** Python 3 + pip, con `uv` (Astral) opcional.
+  * **Node.js:** `nvm` (default) o `fnm`. Versión: LTS, 22 o 24.
+  * **pnpm / Bun:** instaladores oficiales como módulos opcionales.
+  * **Go:** Última versión (instalada vía script utilitario, módulo `go`).
+  * **SQLite:** sqlite3 (módulo `sqlite`).
+  * **Clientes de DB en el devcontainer:** `psql`, `redis-cli`, `mongosh` (módulo `dbclients`).
+  * **Herramientas CLI:** `git`, `gh` (GitHub CLI), `docker-ce-cli` (Docker outside Docker, módulo `dod`), `nano`, `wget`, `jq`.
+  * **AI CLIs (opcional, módulo `ai-clis`):** scripts de instalación embebidos para Claude Code, Gemini CLI, OpenCode y Autoskills.
 * **Terminal Mejorada:** ZSH preconfigurado con frameworks y plugins útiles.
 
 ## Requisitos Previos
@@ -205,6 +207,14 @@ Ayuda completa: `devcontainer-cli --help`.
 
 La CLI genera `Dockerfile` + `docker-compose.yml` + scripts auxiliares en el directorio actual.
 
+**Subcomandos disponibles:**
+
+| Subcomando                  | Qué hace                                                                                                   |
+|-----------------------------|------------------------------------------------------------------------------------------------------------|
+| `devcontainer-cli`          | Genera/actualiza `Dockerfile`, `docker-compose.yml`, `.env` y scripts auxiliares (flujo interactivo o no). |
+| `devcontainer-cli setup-ssh`| Configura el acceso SSH (clave, `authorized_keys` en el contenedor y bloque `~/.ssh/config`) de forma automatizada. Ver [Acceso y Uso](#acceso-y-uso). |
+| `devcontainer-cli cleanup-tips` | Imprime los comandos `docker` para borrar los contenedores, redes y volúmenes generados para este proyecto. |
+
 ### 3. Iniciar el entorno
 
 **Linux/Mac:**
@@ -234,9 +244,38 @@ docker compose logs devcontainer-ssh | grep "devuser password" | tail -n 1
 
 ### 2. Configurar Acceso SSH (Recomendado)
 
+Tienes dos caminos: el modo **automático** con `devcontainer-cli setup-ssh` (recomendado) o el manual paso a paso.
+
+#### Opción A: Modo automático (`setup-ssh`)
+
+La CLI puede generar la clave, copiarla al contenedor y dejar listo el bloque `~/.ssh/config` por ti. Detecta automáticamente el `container_name` desde `docker-compose.yml` (incluyendo el prefijo del workspace) y elige el modo (`local`, `windows` o `remote`) según el contexto.
+
+Desde la carpeta del proyecto (donde está el `docker-compose.yml`):
+
+```bash
+# Local / Windows (autodetecta): genera clave si falta, copia al contenedor, escribe ~/.ssh/config
+devcontainer-cli setup-ssh
+
+# Forzar un modo concreto
+devcontainer-cli setup-ssh --mode local
+devcontainer-cli setup-ssh --mode windows --port 2222
+
+# Acceso remoto vía servidor con ProxyCommand
+devcontainer-cli setup-ssh --remote usuario@servidor
+
+# No interactivo (CI o scripts)
+devcontainer-cli setup-ssh --yes --alias devcontainer --key ~/.ssh/id_devcontainer
+```
+
+Ayuda completa: `devcontainer-cli setup-ssh --help`.
+
+Tras esto puedes conectar directamente con `ssh devcontainer` (o el alias que hayas pasado).
+
+#### Opción B: Manual
+
 Sigue estos pasos desde tu máquina local (tu PC o Laptop) para autorizar tu acceso sin contraseña.
 
-#### A. Generar par de claves (Si no tienes una)
+##### A. Generar par de claves (Si no tienes una)
 
 Se recomienda usar una clave específica para este entorno:
 
@@ -244,14 +283,16 @@ Se recomienda usar una clave específica para este entorno:
 ssh-keygen -t ed25519 -f ~/.ssh/id_devcontainer -N "" -q
 ```
 
-#### B. Instalar la clave en el contenedor
+##### B. Instalar la clave en el contenedor
 
 **Opción 1: Entorno Local (Linux/Mac)**
 (Si Docker corre en la misma máquina que estás usando)
 
+> El `container_name` real se prefija con el `workspace` configurado (ej: `mi-proyecto-devcontainer-ssh`). Reemplaza `<workspace>` por el nombre que elegiste en la CLI (o consulta `docker ps`).
+
 ```bash
 # 1. Obtener IP del contenedor
-IP_SSH=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' devcontainer-ssh)
+IP_SSH=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' <workspace>-devcontainer-ssh)
 
 # 2. Copiar clave (te pedirá la contraseña obtenida en el paso 1)
 ssh-copy-id -i ~/.ssh/id_devcontainer.pub devuser@$IP_SSH
@@ -292,7 +333,7 @@ EOF
 Sustituye `usuario@servidor` por los datos de conexión a tu servidor físico.
 
 ```bash
-cat ~/.ssh/id_devcontainer.pub | ssh usuario@servidor "docker exec -i -u devuser devcontainer-ssh sh -c 'mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 700 ~/.ssh && chmod 600 ~/.ssh/authorized_keys'"
+cat ~/.ssh/id_devcontainer.pub | ssh usuario@servidor "docker exec -i -u devuser <workspace>-devcontainer-ssh sh -c 'mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 700 ~/.ssh && chmod 600 ~/.ssh/authorized_keys'"
 ```
 
 Para conectar fácilmente, añade esto a tu `~/.ssh/config`:
@@ -301,7 +342,7 @@ Para conectar fácilmente, añade esto a tu `~/.ssh/config`:
 Host devcontainer-remote
     User devuser
     IdentityFile ~/.ssh/id_devcontainer
-    ProxyCommand ssh usuario@servidor "nc -q0 \$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' devcontainer-ssh) 22"
+    ProxyCommand ssh usuario@servidor "nc -q0 \$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' <workspace>-devcontainer-ssh) 22"
 ```
 
 ### 3. Conectarse
@@ -328,18 +369,18 @@ Consulta [POST_INSTALL_STEPS.md](POST_INSTALL_STEPS.md) para más detalles sobre
 
 Para levantar un contenedor nuevo (por ejemplo, una base de datos extra o un servicio temporal) asegurando que el DevContainer pueda verlo y conectarse a él, es necesario que ambos compartan la misma red Docker.
 
-Puedes usar el siguiente comando "universal", que detecta automáticamente el nombre completo de la red del proyecto y conecta el nuevo servicio:
+La red Docker generada se llama `<workspace>-network` (donde `<workspace>` es el nombre que configuraste en la CLI). Puedes usar el siguiente comando, que detecta automáticamente el nombre de la red del proyecto y conecta el nuevo servicio:
 
 ```bash
 docker run -d \
   --name <nombre-del-servicio> \
-  --network $(docker network ls -q -f name=local-network) \
+  --network $(docker network ls -q -f name=<workspace>-network) \
   <imagen>
 ```
 
 **Explicación de las banderas:**
 
-*   `--network $(...)`: Busca dinámicamente el ID de la red que contiene 'local-network' (útil porque Docker Compose suele agregar prefijos al nombre de la red).
+*   `--network $(...)`: Busca dinámicamente el ID de la red `<workspace>-network` del proyecto.
 *   `--name`: Asigna el hostname. Esto permite que, desde dentro del DevContainer, puedas hacer ping o conectarte usando este nombre (ej: `ping <nombre-del-servicio>`).
 
 ## Solución de Problemas (Troubleshooting)
@@ -371,13 +412,21 @@ Todo se genera mediante la CLI. Tras ejecutar `devcontainer-cli` en tu directori
 
 * `Dockerfile`: Configuración de la imagen base.
 * `docker-compose.yml` (+ `docker-compose.windows.yml` en Windows): Orquestación de servicios.
-* `entrypoint.sh`, `zsh-installer.sh`, `golang_utils.sh`: Scripts de build/runtime.
-* `login-github-cli.sh`, `update_golang.sh`: Scripts post-instalación (accesibles dentro del contenedor en `/workspace/`).
+* `devcontainer.config.json`: Configuración persistida por la CLI (módulos, servicios, subnet, etc.).
+* `.env`: Variables de entorno generadas (`DOCKER_SUBNET`, `DEVCONTAINER_IP`, `TUNNEL_TOKEN` si aplica).
+* `entrypoint.sh`, `zsh-installer.sh`: Scripts de build/runtime siempre incluidos.
+* `golang_utils.sh`, `update_golang.sh`: Solo si seleccionaste el módulo `go`.
+* `login-github-cli.sh`: Script post-instalación copiado a tu cwd (montado en `/workspace/` dentro del contenedor).
+* `install-claude-code.sh`, `install-gemini.sh`, `install-opencode.sh`, `install-autoskills.sh`: Solo si seleccionaste el módulo `ai-clis`; quedan en `/home/devuser/` dentro del contenedor.
 
 ## Bases de Datos
 
 Credenciales por defecto: **Usuario:** `devuser` / **Password:** `devpass`.
 
+Desde dentro del devcontainer (los hostnames son los nombres de servicio en `docker-compose.yml`, sin el prefijo del workspace):
+
 * **PostgreSQL:** `psql -h postgres -U devuser -d devdb`
 * **MongoDB:** `mongosh --host mongo -u devuser -p devpass --authenticationDatabase admin`
 * **Redis:** `redis-cli -h redis`
+
+> Los clientes (`psql`, `mongosh`, `redis-cli`) solo están preinstalados si seleccionaste el módulo `dbclients` al generar el entorno.

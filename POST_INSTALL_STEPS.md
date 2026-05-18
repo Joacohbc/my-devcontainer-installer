@@ -43,7 +43,23 @@ firebase login
 
 ## Instalar CLIs de IA (Opcional)
 
-Si generaste el entorno con `--with ai-clis`, los instaladores ya quedaron embebidos en la imagen (Claude Code, Gemini CLI, OpenCode, Autoskills). De lo contrario, podés instalarlas manualmente:
+Si generaste el entorno con `--with ai-clis`, los scripts de instalación quedan disponibles en `/home/devuser/` dentro del contenedor. Ejecutá el que necesites:
+
+```bash
+~/install-claude-code.sh   # Claude Code (@anthropic-ai/claude-code)
+~/install-gemini.sh        # Gemini CLI (@google/gemini-cli)
+~/install-opencode.sh      # OpenCode (opencode.ai)
+~/install-autoskills.sh    # Autoskills (usa npx, no requiere instalación global)
+```
+
+Si no incluiste el módulo `ai-clis`, podés instalarlas manualmente. Ejemplos:
+
+### Claude Code
+
+```bash
+pnpm install -g @anthropic-ai/claude-code
+claude   # primera vez te pedirá autenticarte
+```
 
 ### Gemini CLI
 
@@ -54,13 +70,10 @@ pnpm install -g @google/gemini-cli
 gemini   # primera vez te pedirá autenticarte con tu cuenta de Google
 ```
 
-### Jules CLI
-
-"Agente asíncrono" que trabaja en segundo plano (PRs o tareas largas) y se integra con Gemini CLI.
+### OpenCode
 
 ```bash
-pnpm install -g @google/jules
-jules login
+curl -fsSL https://opencode.ai/install | bash
 ```
 
 ## Resetear la base de datos (Opcional)
