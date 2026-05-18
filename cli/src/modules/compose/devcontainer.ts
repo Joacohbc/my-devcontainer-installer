@@ -1,8 +1,9 @@
 import type { ComposeService } from '../../types.js';
+import { SSH_DEFAULTS } from '../../ssh-defaults.js';
 
 export const devcontainerService: ComposeService = {
   id: 'devcontainer',
-  label: 'devcontainer-ssh (main)',
+  label: `${SSH_DEFAULTS.serviceName} (main)`,
   always: true,
   render({ imageName, enabledServiceIds }) {
     const depends = enabledServiceIds.filter((s) =>
@@ -11,7 +12,7 @@ export const devcontainerService: ComposeService = {
     const svc: Record<string, unknown> = {
       image: imageName,
       build: '.',
-      container_name: 'devcontainer-ssh',
+      container_name: SSH_DEFAULTS.serviceName,
       command: 'sleep infinity',
       restart: 'unless-stopped',
       volumes: [

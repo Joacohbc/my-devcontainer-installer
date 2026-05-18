@@ -7,6 +7,13 @@ import { parse as parseYaml } from 'yaml';
 import { confirm, select, PromptCancelledError } from './prompts.js';
 import { loadConfig } from './config.js';
 import { sanitizeDockerName } from './validators.js';
+import {
+  SSH_DEFAULTS,
+  authorizedKeysInstallScript,
+  buildSshConfigBlock,
+  defaultKeyPath,
+  type SshConfigMode,
+} from './ssh-defaults.js';
 
 export interface SetupSshFlags {
   remote: string;
@@ -26,17 +33,17 @@ export interface SetupSshFlags {
 
 const DEFAULTS: SetupSshFlags = {
   remote: '',
-  alias: 'devcontainer',
-  key: path.join(os.homedir(), '.ssh', 'id_devcontainer'),
-  port: '2222',
+  alias: SSH_DEFAULTS.alias,
+  key: defaultKeyPath(),
+  port: String(SSH_DEFAULTS.windowsPort),
   mode: '',
   assumeYes: false,
-  container: 'devcontainer-ssh',
+  container: SSH_DEFAULTS.serviceName,
   containerExplicit: false,
-  service: 'devcontainer-ssh',
+  service: SSH_DEFAULTS.serviceName,
   serviceExplicit: false,
   composeFile: 'docker-compose.yml',
-  user: 'devuser',
+  user: SSH_DEFAULTS.user,
   help: false,
 };
 
@@ -163,7 +170,7 @@ function pickDevcontainerService(
     typeof svc.container_name === 'string' ? (svc.container_name as string) : key;
 
   for (const [key, svc] of services) {
-    if (key === 'devcontainer-ssh' || containerOf(svc, key) === 'devcontainer-ssh') {
+    if (key === SSH_DEFAULTS.serviceName || containerOf(svc, key) === SSH_DEFAULTS.serviceName) {
       return { service: key, container: containerOf(svc, key) };
     }
   }
@@ -300,12 +307,7 @@ function genKey(keyPath: string): void {
 }
 
 function containerIp(container: string): string {
-  const r = run('docker', [
-    'inspect',
-    '-f',
-    '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}',
-    container,
-  ]);
+  const r = run('docker', ['inspect', '-f', SSH_DEFAULTS.dockerIpFormat, container]);
   if (r.status !== 0) throw new Error('Could not resolve container IP.');
   return r.stdout.trim();
 }
@@ -315,61 +317,35 @@ interface InstallResult {
   port: string;
 }
 
-function installKeyLocal(f: SetupSshFlags): InstallResult {
-  const ip = containerIp(f.container);
-  if (!ip) throw new Error('Could not resolve container IP.');
-  log(`Installing public key into ${f.container} (${ip}) via docker exec...`);
+function installKey(f: SetupSshFlags, mode: Mode): InstallResult {
   const pub = fs.readFileSync(`${f.key}.pub`);
-  const r = spawnSync(
-    'docker',
-    [
-      'exec',
-      '-i',
-      '-u',
-      f.user,
-      f.container,
-      'sh',
-      '-c',
-      'mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && sort -u ~/.ssh/authorized_keys -o ~/.ssh/authorized_keys && chmod 700 ~/.ssh && chmod 600 ~/.ssh/authorized_keys',
-    ],
-    { input: pub, stdio: ['pipe', 'inherit', 'inherit'] },
-  );
-  if (r.status !== 0) throw new Error('docker exec key install failed.');
-  return { hostname: ip, port: '' };
-}
+  const dockerExecArgs = ['exec', '-i', '-u', f.user, f.container, 'sh', '-c', authorizedKeysInstallScript()];
 
-function installKeyWindows(f: SetupSshFlags): InstallResult {
+  if (mode === 'remote') {
+    if (!f.remote) throw new Error('--remote USER@HOST required for remote mode.');
+    log(`Installing public key into ${f.container} via ${f.remote}...`);
+    const remoteCmd = `docker exec -i -u ${f.user} ${f.container} sh -c '${authorizedKeysInstallScript()}'`;
+    const r = spawnSync('ssh', [f.remote, remoteCmd], {
+      input: pub,
+      stdio: ['pipe', 'inherit', 'inherit'],
+    });
+    if (r.status !== 0) throw new Error('Remote key install failed.');
+    return { hostname: '', port: '' };
+  }
+
+  if (mode === 'local') {
+    const ip = containerIp(f.container);
+    if (!ip) throw new Error('Could not resolve container IP.');
+    log(`Installing public key into ${f.container} (${ip}) via docker exec...`);
+    const r = spawnSync('docker', dockerExecArgs, { input: pub, stdio: ['pipe', 'inherit', 'inherit'] });
+    if (r.status !== 0) throw new Error('docker exec key install failed.');
+    return { hostname: ip, port: '' };
+  }
+
   log(`Installing public key into ${f.container} via docker exec...`);
-  const pub = fs.readFileSync(`${f.key}.pub`);
-  const r = spawnSync(
-    'docker',
-    [
-      'exec',
-      '-i',
-      '-u',
-      f.user,
-      f.container,
-      'sh',
-      '-c',
-      'mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && sort -u ~/.ssh/authorized_keys -o ~/.ssh/authorized_keys && chmod 700 ~/.ssh && chmod 600 ~/.ssh/authorized_keys',
-    ],
-    { input: pub, stdio: ['pipe', 'inherit', 'inherit'] },
-  );
+  const r = spawnSync('docker', dockerExecArgs, { input: pub, stdio: ['pipe', 'inherit', 'inherit'] });
   if (r.status !== 0) throw new Error('docker exec key install failed.');
   return { hostname: 'localhost', port: f.port };
-}
-
-function installKeyRemote(f: SetupSshFlags): InstallResult {
-  if (!f.remote) throw new Error('--remote USER@HOST required for remote mode.');
-  log(`Installing public key into ${f.container} via ${f.remote}...`);
-  const pub = fs.readFileSync(`${f.key}.pub`);
-  const remoteCmd = `docker exec -i -u ${f.user} ${f.container} sh -c 'mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 700 ~/.ssh && chmod 600 ~/.ssh/authorized_keys'`;
-  const r = spawnSync('ssh', [f.remote, remoteCmd], {
-    input: pub,
-    stdio: ['pipe', 'inherit', 'inherit'],
-  });
-  if (r.status !== 0) throw new Error('Remote key install failed.');
-  return { hostname: '', port: '' };
 }
 
 export function buildConfigBlock(
@@ -377,32 +353,16 @@ export function buildConfigBlock(
   f: SetupSshFlags,
   inst: InstallResult,
 ): string {
-  switch (mode) {
-    case 'local':
-      return [
-        `Host ${f.alias}`,
-        `    HostName ${inst.hostname}`,
-        `    User ${f.user}`,
-        `    IdentityFile ${f.key}`,
-      ].join('\n');
-    case 'windows':
-      return [
-        `Host ${f.alias}`,
-        `    HostName ${inst.hostname}`,
-        `    Port ${inst.port}`,
-        `    User ${f.user}`,
-        `    IdentityFile ${f.key}`,
-      ].join('\n');
-    case 'remote': {
-      const ipExpr = `$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' ${f.container})`;
-      return [
-        `Host ${f.alias}`,
-        `    User ${f.user}`,
-        `    IdentityFile ${f.key}`,
-        `    ProxyCommand ssh ${f.remote} "nc -q0 ${ipExpr} 22"`,
-      ].join('\n');
-    }
-  }
+  return buildSshConfigBlock({
+    mode: mode as SshConfigMode,
+    alias: f.alias,
+    user: f.user,
+    key: f.key,
+    hostname: inst.hostname || undefined,
+    port: inst.port || undefined,
+    remote: f.remote || undefined,
+    container: f.container,
+  });
 }
 
 function aliasOfHostLine(line: string): string[] {
@@ -549,7 +509,7 @@ function deriveWorkspace(containerName: string | null): string {
     /* ignore — config optional */
   }
   if (containerName) {
-    const m = containerName.match(/^(.+)-devcontainer-ssh$/);
+    const m = containerName.match(new RegExp(`^(.+)-${SSH_DEFAULTS.serviceName}$`));
     if (m) return m[1];
   }
   return sanitizeDockerName(path.basename(process.cwd()));
@@ -562,7 +522,7 @@ function applyWorkspaceDefaults(f: SetupSshFlags, workspace: string): void {
     f.key = path.join(os.homedir(), '.ssh', `id_${workspace}`);
   }
   if (!f.containerExplicit && f.container === DEFAULTS.container) {
-    f.container = `${workspace}-devcontainer-ssh`;
+    f.container = `${workspace}-${SSH_DEFAULTS.serviceName}`;
   }
 }
 
@@ -595,12 +555,7 @@ export async function runSetupSsh(argv: string[]): Promise<void> {
   fetchPassword(f, mode);
   genKey(f.key);
 
-  const installers: Record<Mode, (f: SetupSshFlags) => InstallResult> = {
-    local: installKeyLocal,
-    windows: installKeyWindows,
-    remote: installKeyRemote,
-  };
-  const inst = installers[mode](f);
+  const inst = installKey(f, mode);
 
   await updateSshConfig(f, mode, inst);
   testConnection(f.alias);

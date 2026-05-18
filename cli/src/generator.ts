@@ -2,6 +2,7 @@ import { stringify } from 'yaml';
 import { composeLabels, dockerfileLabelBlock } from './labels.js';
 import { composeServices, getComposeService } from './registry.js';
 import { resolveDockerfileModules } from './resolver.js';
+import { SSH_DEFAULTS } from './ssh-defaults.js';
 import { nthHost } from './subnet.js';
 import {
   GENERATED_HEADER,
@@ -105,7 +106,7 @@ export function generateCompose(config: DevcontainerConfig): string {
       }
     }
     rendered.labels = { ...labels };
-    services[svc.id === 'devcontainer' ? 'devcontainer-ssh' : svc.id] = rendered;
+    services[svc.id === 'devcontainer' ? SSH_DEFAULTS.serviceName : svc.id] = rendered;
   }
 
   for (const v of declaredVolumes) {

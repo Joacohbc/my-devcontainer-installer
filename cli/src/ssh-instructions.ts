@@ -1,37 +1,41 @@
 import chalk from 'chalk';
+import { SSH_DEFAULTS, buildSshConfigBlock } from './ssh-defaults.js';
 
-const USER = 'devuser';
-const KEY = '~/.ssh/id_devcontainer';
-const HOST_ALIAS = 'devcontainer';
+const KEY = `~/.ssh/${SSH_DEFAULTS.keyName}`;
 
 function linuxBlock(): string {
   const prompt = chalk.gray('   $ ');
-  const ip = `IP_SSH=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' ${HOST_ALIAS}-ssh)`;
+  const ipVar = 'IP_SSH';
+  const ipCmd = `${ipVar}=$(docker inspect -f '${SSH_DEFAULTS.dockerIpFormat}' ${SSH_DEFAULTS.serviceName})`;
+  const block = buildSshConfigBlock({
+    mode: 'local',
+    alias: SSH_DEFAULTS.alias,
+    user: SSH_DEFAULTS.user,
+    key: KEY,
+    hostname: `$${ipVar}`,
+  });
   return [
     chalk.bold('4) Install key + register host (Linux / Mac, direct container IP):'),
-    prompt + ip,
-    prompt + `ssh-copy-id -i ${KEY}.pub ${USER}@$IP_SSH`,
-    prompt + `cat <<EOF >> ~/.ssh/config
-Host ${HOST_ALIAS}
-    HostName $IP_SSH
-    IdentityFile ${KEY}
-    User ${USER}
-EOF`,
+    prompt + ipCmd,
+    prompt + `ssh-copy-id -i ${KEY}.pub ${SSH_DEFAULTS.user}@$${ipVar}`,
+    prompt + `cat <<EOF >> ~/.ssh/config\n${block}\nEOF`,
   ].join('\n');
 }
 
 function windowsBlock(): string {
   const prompt = chalk.gray('   $ ');
+  const block = buildSshConfigBlock({
+    mode: 'windows',
+    alias: SSH_DEFAULTS.alias,
+    user: SSH_DEFAULTS.user,
+    key: KEY,
+    hostname: 'localhost',
+    port: SSH_DEFAULTS.windowsPort,
+  });
   return [
-    chalk.bold('4) Install key + register host (Windows / Git Bash, port 2222):'),
-    prompt + `ssh-copy-id -p 2222 -i ${KEY}.pub ${USER}@localhost`,
-    prompt + `cat <<EOF >> ~/.ssh/config
-Host ${HOST_ALIAS}
-    HostName localhost
-    Port 2222
-    User ${USER}
-    IdentityFile ${KEY}
-EOF`,
+    chalk.bold(`4) Install key + register host (Windows / Git Bash, port ${SSH_DEFAULTS.windowsPort}):`),
+    prompt + `ssh-copy-id -p ${SSH_DEFAULTS.windowsPort} -i ${KEY}.pub ${SSH_DEFAULTS.user}@localhost`,
+    prompt + `cat <<EOF >> ~/.ssh/config\n${block}\nEOF`,
   ].join('\n');
 }
 
@@ -51,7 +55,7 @@ export function printSshInstructions(): void {
     prompt + startCmd,
     '',
     chalk.bold('2) Get temporary password (one-time, to install your key):'),
-    prompt + `docker compose logs ${HOST_ALIAS}-ssh | grep "${USER} password" | tail -n 1`,
+    prompt + `docker compose logs ${SSH_DEFAULTS.serviceName} | grep "${SSH_DEFAULTS.user} password" | tail -n 1`,
     '',
     chalk.bold(`3) Generate SSH key (skip if you already have ${KEY}):`),
     prompt + `ssh-keygen -t ed25519 -f ${KEY} -N "" -q`,
@@ -59,7 +63,7 @@ export function printSshInstructions(): void {
     isWindows ? windowsBlock() : linuxBlock(),
     '',
     chalk.bold('5) Connect:'),
-    prompt + `ssh ${HOST_ALIAS}`,
+    prompt + `ssh ${SSH_DEFAULTS.alias}`,
     '',
     chalk.gray('For remote-server access (ProxyCommand) see README.md → "Acceso y Uso".'),
     bar,

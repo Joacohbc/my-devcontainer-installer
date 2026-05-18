@@ -343,17 +343,16 @@ async function main() {
   if (build === null && flags.interactive) {
     build = await confirm('build', "Run 'docker compose build' now?", true);
   }
+  
   if (build) {
     console.log(chalk.yellow('\n⏳ Building...\n'));
     const ok = await executeBuild(cwd);
     if (ok) {
       printSshInstructions();
-      printCleanupInstructions(config);
     }
   } else {
     console.log(chalk.green.bold('\n✨ Done.\n'));
     printSshInstructions();
-    printCleanupInstructions(config);
   }
 }
 
