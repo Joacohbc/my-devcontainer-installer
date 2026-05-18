@@ -150,6 +150,73 @@ Si estás utilizando **Windows**, se recomienda encarecidamente usar **Git Bash*
 
 ## Instalación y Configuración
 
+### Opción A: CLI binario (Recomendado)
+
+La CLI genera el `Dockerfile`, `docker-compose.yml`, `.env` y archivos auxiliares según los módulos que selecciones (Node, Java, Mongo, Postgres, Redis, Cloudflare Tunnel, etc.) — sin clonar el repo.
+
+#### 1. Instalar la CLI (one-liner)
+
+**Linux / macOS:**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Joacohbc/my-devcontainer-installer/main/cli/install.sh | sh
+```
+
+Detecta OS/arch automáticamente. Instala binario en `~/.local/bin/devcontainer-cli` y assets en `~/.local/share/devcontainer-cli/assets`.
+
+**Windows (PowerShell):**
+
+```powershell
+irm https://raw.githubusercontent.com/Joacohbc/my-devcontainer-installer/main/cli/install.ps1 | iex
+```
+
+Instala en `%LOCALAPPDATA%\devcontainer-cli` y agrega al PATH del usuario.
+
+**Variables opcionales:**
+
+| Var          | Default                                  | Descripción                       |
+|--------------|------------------------------------------|-----------------------------------|
+| `VERSION`    | `latest`                                 | Tag específico (ej. `v1.0.0`)     |
+| `INSTALL_DIR`| `~/.local/share/devcontainer-cli` (unix) | Carpeta binario + assets          |
+| `BIN_DIR`    | `~/.local/bin` (unix)                    | Symlink al binario                |
+
+Ejemplo versión fija:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Joacohbc/my-devcontainer-installer/main/cli/install.sh | VERSION=v1.0.0 sh
+```
+
+**Descarga manual** (alternativa): https://github.com/Joacohbc/my-devcontainer-installer/releases/latest — assets disponibles: `linux-x64`, `linux-arm64`, `darwin-x64` (tar.gz) y `windows-x64` (zip).
+
+> El binario lee `assets/` junto al ejecutable. No separes ambos.
+
+#### 2. Generar el entorno
+
+```bash
+mkdir mi-proyecto && cd mi-proyecto
+devcontainer-cli
+```
+
+Modo no-interactivo:
+
+```bash
+devcontainer-cli --with nodejs,java --service mongo,postgres --image mi-dev:local --no-build
+```
+
+Ayuda completa: `devcontainer-cli --help`.
+
+La CLI genera `Dockerfile` + `docker-compose.yml` + scripts auxiliares en el directorio actual.
+
+#### 3. Iniciar el entorno
+
+```bash
+docker compose up -d
+```
+
+---
+
+### Opción B: Clonar el repositorio (Manual)
+
 1. **Clonar el repositorio:**
 
     ```bash

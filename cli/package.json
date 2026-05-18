@@ -1,0 +1,33 @@
+{
+  "name": "cli",
+  "version": "1.0.0",
+  "description": "",
+  "main": "dist/index.js",
+  "scripts": {
+    "test": "node --test --import tsx 'src/__tests__/*.test.ts'",
+    "build": "node build.mjs",
+    "build:sea": "node build-sea.mjs",
+    "sea:blob": "node --experimental-sea-config sea-config.json",
+    "build:binary": "node build-binary.mjs",
+    "start": "node dist/index.js",
+    "dev": "node build.mjs && node dist/index.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "packageManager": "pnpm@10.30.3",
+  "dependencies": {
+    "chalk": "^4.1.2",
+    "enquirer": "^2.4.1",
+    "yaml": "^2.9.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.8.0",
+    "esbuild": "^0.25.12",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.22.0",
+    "typescript": "^6.0.3"
+  },
+  "type": "module"
+}

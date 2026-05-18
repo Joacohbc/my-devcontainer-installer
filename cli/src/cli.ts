@@ -1,0 +1,81 @@
+export interface CliFlags {
+  interactive: boolean;
+  forcePrompt: boolean;
+  build: boolean | null;
+  image?: string;
+  withModules?: string[];
+  services?: string[];
+  config?: string;
+  help: boolean;
+}
+
+export function parseFlags(argv: string[]): CliFlags {
+  const flags: CliFlags = {
+    interactive: true,
+    forcePrompt: false,
+    build: null,
+    help: false,
+  };
+
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    const next = () => argv[++i];
+    switch (a) {
+      case '-h':
+      case '--help':
+        flags.help = true;
+        break;
+      case '--no-interactive':
+      case '--non-interactive':
+        flags.interactive = false;
+        break;
+      case '--force-prompt':
+        flags.forcePrompt = true;
+        break;
+      case '--build':
+        flags.build = true;
+        break;
+      case '--no-build':
+        flags.build = false;
+        break;
+      case '--image':
+        flags.image = next();
+        break;
+      case '--with':
+        flags.withModules = next().split(',').map((s) => s.trim()).filter(Boolean);
+        break;
+      case '--service':
+      case '--services':
+        flags.services = next().split(',').map((s) => s.trim()).filter(Boolean);
+        break;
+      case '--config':
+        flags.config = next();
+        break;
+      default:
+        if (a.startsWith('--')) {
+          throw new Error(`Unknown flag: ${a}`);
+        }
+    }
+  }
+  return flags;
+}
+
+export function helpText(): string {
+  return `devcontainer CLI — generate Dockerfile + docker-compose.yml
+
+Usage:
+  cli [flags]
+  cli setup-ssh [flags]     Run automated SSH setup (see: cli setup-ssh --help)
+  cli cleanup-tips [flags]  Show docker cleanup commands for this project
+
+Flags:
+  --with <ids>          Comma-separated dockerfile modules (e.g. nodejs,java,dod)
+  --service <ids>       Comma-separated compose services (e.g. mongo,postgres,tunnel)
+  --image <name>        Image name (default: devcontainer-ssh:local)
+  --config <path>       Path to devcontainer.config.json
+  --no-interactive      Fail if any value is missing instead of prompting
+  --force-prompt        Prompt even if config file exists
+  --build / --no-build  Run 'docker compose build' after generating (default: ask)
+  -h, --help            Show this help
+`;
+}
