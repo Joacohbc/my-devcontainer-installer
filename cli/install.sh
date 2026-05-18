@@ -36,7 +36,7 @@ case "$uname_m" in
 esac
 
 target="${os}-${arch}"
-asset="devcontainer-cli-${target}.tar.gz"
+asset="devcontainer-cli-${target}"
 
 if [ "$VERSION" = "latest" ]; then
   url="https://github.com/${REPO}/releases/latest/download/${asset}"
@@ -45,31 +45,25 @@ else
 fi
 
 command -v curl >/dev/null 2>&1 || err "curl required"
-command -v tar >/dev/null 2>&1 || err "tar required"
-
-tmp=$(mktemp -d)
-trap 'rm -rf "$tmp"' EXIT
-
-info "Downloading $asset ($VERSION)"
-curl -fSL --progress-bar -o "$tmp/$asset" "$url" || err "download failed: $url"
-
-info "Extracting"
-tar -xzf "$tmp/$asset" -C "$tmp"
 
 mkdir -p "$INSTALL_DIR" "$BIN_DIR"
-rm -rf "$INSTALL_DIR"/assets "$INSTALL_DIR"/devcontainer-cli
-cp -R "$tmp/devcontainer-cli-${target}/." "$INSTALL_DIR/"
-chmod +x "$INSTALL_DIR/devcontainer-cli"
+binary_path="$INSTALL_DIR/devcontainer-cli"
+tmp_path="${binary_path}.download"
+
+info "Downloading $asset ($VERSION)"
+curl -fSL --progress-bar -o "$tmp_path" "$url" || err "download failed: $url"
+
+mv -f "$tmp_path" "$binary_path"
+chmod +x "$binary_path"
 
 if [ "$os" = darwin ]; then
-  xattr -d com.apple.quarantine "$INSTALL_DIR/devcontainer-cli" >/dev/null 2>&1 || true
+  xattr -d com.apple.quarantine "$binary_path" >/dev/null 2>&1 || true
 fi
 
-ln -sf "$INSTALL_DIR/devcontainer-cli" "$BIN_DIR/devcontainer-cli"
+ln -sf "$binary_path" "$BIN_DIR/devcontainer-cli"
 
 info "Installed:"
 printf '  binary : %s\n' "$BIN_DIR/devcontainer-cli"
-printf '  assets : %s/assets\n' "$INSTALL_DIR"
 
 case ":$PATH:" in
   *":$BIN_DIR:"*) ;;
@@ -77,3 +71,4 @@ case ":$PATH:" in
 esac
 
 info "Verify: devcontainer-cli --help"
+info "Self-update: devcontainer-cli update"

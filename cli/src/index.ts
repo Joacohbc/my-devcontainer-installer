@@ -20,6 +20,7 @@ import { printSshInstructions } from './ssh-instructions.js';
 import { confirm, input, multiselect, PromptCancelledError, select } from './prompts.js';
 import { composeServices, dockerfileModules, getDockerfileModule } from './registry.js';
 import { runSetupSsh } from './setup-ssh.js';
+import { cleanupStaleUpdate, getCurrentVersion, runSelfUpdate } from './self-update.js';
 import type { DevcontainerConfig, ModuleOption, SelectedModule } from './types.js';
 import { isValidCidr, isValidDockerName, isValidImageName, sanitizeDockerName } from './validators.js';
 
@@ -222,6 +223,7 @@ function installSignalHandlers(): void {
 
 async function main() {
   installSignalHandlers();
+  cleanupStaleUpdate();
   const argv = process.argv.slice(2);
   if (argv[0] === 'setup-ssh') {
     await runSetupSsh(argv.slice(1));
@@ -233,10 +235,18 @@ async function main() {
     printCleanupInstructions(config);
     return;
   }
+  if (argv[0] === 'update') {
+    await runSelfUpdate(argv.slice(1));
+    return;
+  }
 
   const flags = parseFlags(argv);
   if (flags.help) {
     console.log(helpText());
+    return;
+  }
+  if (flags.version) {
+    console.log(getCurrentVersion());
     return;
   }
 
@@ -311,7 +321,7 @@ async function main() {
   }
   if (pre.missing.length > 0) {
     throw new Error(
-      `Missing required files (not in cwd or cli/assets): ${pre.missing.join(', ')}`,
+      `Missing required scripts (not embedded in binary or available in cwd): ${pre.missing.join(', ')}`,
     );
   }
 

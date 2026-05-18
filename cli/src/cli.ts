@@ -8,6 +8,7 @@ export interface CliFlags {
   config?: string;
   force: boolean;
   help: boolean;
+  version: boolean;
 }
 
 export function parseFlags(argv: string[]): CliFlags {
@@ -17,6 +18,7 @@ export function parseFlags(argv: string[]): CliFlags {
     force: false,
     build: null,
     help: false,
+    version: false,
   };
 
   for (let i = 0; i < argv.length; i++) {
@@ -26,6 +28,10 @@ export function parseFlags(argv: string[]): CliFlags {
       case '-h':
       case '--help':
         flags.help = true;
+        break;
+      case '-v':
+      case '--version':
+        flags.version = true;
         break;
       case '--no-interactive':
       case '--non-interactive':
@@ -72,6 +78,7 @@ Usage:
   cli [flags]
   cli setup-ssh [flags]     Run automated SSH setup (see: cli setup-ssh --help)
   cli cleanup-tips [flags]  Show docker cleanup commands for this project
+  cli update [flags]        Replace this binary with the latest GitHub release
 
 Flags:
   --with <ids>          Comma-separated dockerfile modules (e.g. nodejs,java,dod)
@@ -82,6 +89,7 @@ Flags:
   --force-prompt        Prompt even if config file exists
   --force               Overwrite existing files without prompting
   --build / --no-build  Run 'docker compose build' after generating (default: ask)
+  -v, --version         Print the CLI version
   -h, --help            Show this help
 `;
 }

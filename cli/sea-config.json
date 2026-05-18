@@ -3,5 +3,16 @@
   "output": "dist/sea-prep.blob",
   "disableExperimentalSEAWarning": true,
   "useSnapshot": false,
-  "useCodeCache": true
+  "useCodeCache": true,
+  "assets": {
+    "entrypoint.sh": "assets/entrypoint.sh",
+    "golang_utils.sh": "assets/golang_utils.sh",
+    "install-autoskills.sh": "assets/install-autoskills.sh",
+    "install-claude-code.sh": "assets/install-claude-code.sh",
+    "install-gemini.sh": "assets/install-gemini.sh",
+    "install-opencode.sh": "assets/install-opencode.sh",
+    "login-github-cli.sh": "assets/login-github-cli.sh",
+    "update_golang.sh": "assets/update_golang.sh",
+    "zsh-installer.sh": "assets/zsh-installer.sh"
+  }
 }

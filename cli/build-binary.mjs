@@ -1,4 +1,4 @@
-import { execSync, spawnSync } from 'child_process';
+import { spawnSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -55,5 +55,5 @@ if (isMac) {
 
 const target = `${isMac ? 'darwin' : isWin ? 'windows' : 'linux'}-${os.arch() === 'arm64' ? 'arm64' : 'x64'}`;
 console.log(`\n✔ Built ${binaryPath} (target: ${target})`);
-console.log(`  Assets dir must sit next to binary: ${path.resolve('assets')}`);
+console.log(`  Binary is self-contained (assets embedded via node:sea).`);
 console.log(`  Test: ${isWin ? binaryPath : './' + path.relative('.', binaryPath)} --help`);
