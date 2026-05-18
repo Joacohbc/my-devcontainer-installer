@@ -6,6 +6,7 @@ export interface CliFlags {
   withModules?: string[];
   services?: string[];
   config?: string;
+  force: boolean;
   help: boolean;
 }
 
@@ -13,6 +14,7 @@ export function parseFlags(argv: string[]): CliFlags {
   const flags: CliFlags = {
     interactive: true,
     forcePrompt: false,
+    force: false,
     build: null,
     help: false,
   };
@@ -51,6 +53,9 @@ export function parseFlags(argv: string[]): CliFlags {
       case '--config':
         flags.config = next();
         break;
+      case '--force':
+        flags.force = true;
+        break;
       default:
         if (a.startsWith('--')) {
           throw new Error(`Unknown flag: ${a}`);
@@ -75,6 +80,7 @@ Flags:
   --config <path>       Path to devcontainer.config.json
   --no-interactive      Fail if any value is missing instead of prompting
   --force-prompt        Prompt even if config file exists
+  --force               Overwrite existing files without prompting
   --build / --no-build  Run 'docker compose build' after generating (default: ask)
   -h, --help            Show this help
 `;

@@ -132,7 +132,7 @@ jobs:
 
       - name: Generate Dockerfile
         run: |
-          node cli/dist/index.js --no-interactive \
+          node cli/dist/index.js --no-interactive --force \
             --with ${{ matrix.modules }} \
             --image ghcr.io/${{ env.REPO_OWNER }}/devcontainer-${{ matrix.name }}:latest \
             --no-build

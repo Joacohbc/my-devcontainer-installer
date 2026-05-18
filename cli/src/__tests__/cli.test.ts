@@ -26,3 +26,8 @@ test('--build / --no-build', () => {
   assert.equal(parseFlags(['--no-build']).build, false);
   assert.equal(parseFlags([]).build, null);
 });
+
+test('--force flips flag', () => {
+  const f = parseFlags(['--force']);
+  assert.equal(f.force, true);
+});
