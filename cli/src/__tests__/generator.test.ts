@@ -173,3 +173,22 @@ test('env file includes selected env vars', () => {
   assert.match(env, /TUNNEL_TOKEN=abc/);
   assert.match(env, /DOCKER_SUBNET=10\.0\.0\.0\/8/);
 });
+
+test('env file derives DEVCONTAINER_IP from DOCKER_SUBNET override', () => {
+  const env = generateEnv(
+    makeConfig({
+      env: { DOCKER_SUBNET: '172.26.0.0/24' },
+      compose: { services: [], subnet: '172.25.0.0/28' },
+    }),
+  );
+  assert.match(env, /DOCKER_SUBNET=172\.26\.0\.0\/24/);
+  assert.match(env, /DEVCONTAINER_IP=172\.26\.0\.2/);
+});
+
+test('env file writes both DOCKER_SUBNET and DEVCONTAINER_IP from compose subnet', () => {
+  const env = generateEnv(
+    makeConfig({ compose: { services: [], subnet: '172.25.0.0/28' } }),
+  );
+  assert.match(env, /DOCKER_SUBNET=172\.25\.0\.0\/28/);
+  assert.match(env, /DEVCONTAINER_IP=172\.25\.0\.2/);
+});
