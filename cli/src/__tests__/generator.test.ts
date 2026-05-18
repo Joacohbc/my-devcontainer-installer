@@ -130,7 +130,7 @@ test('compose assigns a static IP to devcontainer based on subnet', () => {
   const networkName = Object.keys(parsed.services['devcontainer-ssh'].networks)[0];
   assert.equal(
     parsed.services['devcontainer-ssh'].networks[networkName].ipv4_address,
-    '${DEVCONTAINER_IP:-172.25.0.2}',
+    '${DEVCONTAINER_IP:-172.25.0.14}',
   );
   assert.match(parsed.networks[networkName].ipam.config[0].subnet, /172\.25\.0\.0\/28/);
 });
@@ -182,7 +182,7 @@ test('env file derives DEVCONTAINER_IP from DOCKER_SUBNET override', () => {
     }),
   );
   assert.match(env, /DOCKER_SUBNET=172\.26\.0\.0\/24/);
-  assert.match(env, /DEVCONTAINER_IP=172\.26\.0\.2/);
+  assert.match(env, /DEVCONTAINER_IP=172\.26\.0\.254/);
 });
 
 test('env file writes both DOCKER_SUBNET and DEVCONTAINER_IP from compose subnet', () => {
@@ -190,5 +190,5 @@ test('env file writes both DOCKER_SUBNET and DEVCONTAINER_IP from compose subnet
     makeConfig({ compose: { services: [], subnet: '172.25.0.0/28' } }),
   );
   assert.match(env, /DOCKER_SUBNET=172\.25\.0\.0\/28/);
-  assert.match(env, /DEVCONTAINER_IP=172\.25\.0\.2/);
+  assert.match(env, /DEVCONTAINER_IP=172\.25\.0\.14/);
 });

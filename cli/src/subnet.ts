@@ -103,3 +103,11 @@ export function nthHost(cidr: string, n: number): string | null {
   if (ip <= r.start || ip >= r.end) return null;
   return toIp(ip);
 }
+
+export function lastHost(cidr: string): string | null {
+  const r = parseCidr(cidr);
+  if (!r) return null;
+  const ip = (r.end - 1) >>> 0;
+  if (ip <= r.start || ip >= r.end) return null;
+  return toIp(ip);
+}
