@@ -1,0 +1,86 @@
+name: Build and Push Docker Images
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME_PREFIX: devcontainer
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: node-bun-java
+            modules: nodejs,bun,java-temurin
+            description: "Node + Bun + Java"
+          - name: node-bun-python
+            modules: nodejs,bun,python
+            description: "Node + Bun + Python"
+          - name: node-bun-go
+            modules: nodejs,bun,go
+            description: "Node + Bun + Go"
+          - name: go-only
+            modules: go
+            description: "Go only"
+          - name: python-only
+            modules: python
+            description: "Python only"
+          - name: all
+            modules: nodejs,bun,python,go,java-temurin,github-cli,dod,dbclients,ai-clis,sqlite,pnpm
+            description: "ALL"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'pnpm'
+          cache-dependency-path: cli/pnpm-lock.yaml
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: latest
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build CLI
+        run: pnpm run build
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate Dockerfile
+        run: |
+          node dist/index.js --no-interactive \
+            --with ${{ matrix.modules }} \
+            --image ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME_PREFIX }}-${{ matrix.name }}:latest \
+            --no-build
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME_PREFIX }}-${{ matrix.name }}:latest
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.description=Devcontainer with ${{ matrix.description }}
