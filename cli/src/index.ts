@@ -17,6 +17,7 @@ import { isGeneratedFile, preflight } from './preflight.js';
 import { printSshInstructions } from './ssh-instructions.js';
 import { confirm, input, multiselect, PromptCancelledError, select } from './prompts.js';
 import { composeServices, dockerfileModules, getDockerfileModule } from './registry.js';
+import { runSetupSsh } from './setup-ssh.js';
 import type { DevcontainerConfig, ModuleOption, SelectedModule } from './types.js';
 import { isValidCidr, isValidImageName } from './validators.js';
 
@@ -173,7 +174,13 @@ function executeBuild(cwd: string): Promise<boolean> {
 }
 
 async function main() {
-  const flags = parseFlags(process.argv.slice(2));
+  const argv = process.argv.slice(2);
+  if (argv[0] === 'setup-ssh') {
+    await runSetupSsh(argv.slice(1));
+    return;
+  }
+
+  const flags = parseFlags(argv);
   if (flags.help) {
     console.log(helpText());
     return;
