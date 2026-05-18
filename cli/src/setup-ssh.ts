@@ -3,7 +3,8 @@ import * as os from 'os';
 import * as path from 'path';
 import { spawnSync, type SpawnSyncOptions } from 'child_process';
 import chalk from 'chalk';
-import { confirm, PromptCancelledError } from './prompts.js';
+import { parse as parseYaml } from 'yaml';
+import { confirm, select, PromptCancelledError } from './prompts.js';
 
 export interface SetupSshFlags {
   remote: string;
@@ -13,6 +14,10 @@ export interface SetupSshFlags {
   mode: '' | 'local' | 'windows' | 'remote';
   assumeYes: boolean;
   container: string;
+  containerExplicit: boolean;
+  service: string;
+  serviceExplicit: boolean;
+  composeFile: string;
   user: string;
   help: boolean;
 }
@@ -25,6 +30,10 @@ const DEFAULTS: SetupSshFlags = {
   mode: '',
   assumeYes: false,
   container: 'devcontainer-ssh',
+  containerExplicit: false,
+  service: 'devcontainer-ssh',
+  serviceExplicit: false,
+  composeFile: 'docker-compose.yml',
   user: 'devuser',
   help: false,
 };
@@ -62,6 +71,15 @@ export function parseSetupSshFlags(argv: string[]): SetupSshFlags {
       }
       case '--container':
         f.container = next();
+        f.containerExplicit = true;
+        break;
+      case '--service':
+        f.service = next();
+        f.serviceExplicit = true;
+        break;
+      case '--compose-file':
+      case '-f':
+        f.composeFile = next();
         break;
       case '--user':
         f.user = next();
@@ -89,7 +107,9 @@ Flags:
   --key PATH           Private key path (default: ${DEFAULTS.key}).
   --port PORT          Port for Windows mode (default: ${DEFAULTS.port}).
   --mode MODE          Force mode: local | windows | remote.
-  --container NAME     Container name (default: ${DEFAULTS.container}).
+  --container NAME     Container name (auto-detected from compose if omitted).
+  --service NAME       Compose service name (auto-detected if omitted).
+  -f, --compose-file F Compose file path (default: ${DEFAULTS.composeFile}).
   --user NAME          SSH user inside container (default: ${DEFAULTS.user}).
   -y, --yes            Assume "yes" to all prompts.
   -h, --help           Show this help.
@@ -116,6 +136,87 @@ function which(bin: string): boolean {
 }
 
 type Mode = 'local' | 'windows' | 'remote';
+
+interface ComposeServiceInfo {
+  service: string;
+  container: string;
+}
+
+function readComposeServices(composeFile: string): Map<string, Record<string, unknown>> | null {
+  if (!fs.existsSync(composeFile)) return null;
+  try {
+    const raw = fs.readFileSync(composeFile, 'utf8');
+    const doc = parseYaml(raw) as { services?: Record<string, Record<string, unknown>> } | null;
+    if (!doc?.services) return null;
+    return new Map(Object.entries(doc.services));
+  } catch {
+    return null;
+  }
+}
+
+function pickDevcontainerService(
+  services: Map<string, Record<string, unknown>>,
+): ComposeServiceInfo | null {
+  const containerOf = (svc: Record<string, unknown>, key: string) =>
+    typeof svc.container_name === 'string' ? (svc.container_name as string) : key;
+
+  for (const [key, svc] of services) {
+    if (key === 'devcontainer-ssh' || containerOf(svc, key) === 'devcontainer-ssh') {
+      return { service: key, container: containerOf(svc, key) };
+    }
+  }
+  const candidates: ComposeServiceInfo[] = [];
+  for (const [key, svc] of services) {
+    const c = containerOf(svc, key);
+    if (key.includes('devcontainer') || c.includes('devcontainer')) {
+      candidates.push({ service: key, container: c });
+    }
+  }
+  if (candidates.length === 1) return candidates[0];
+  return null;
+}
+
+async function resolveTargetService(f: SetupSshFlags): Promise<ComposeServiceInfo> {
+  if (f.containerExplicit && f.serviceExplicit) {
+    return { service: f.service, container: f.container };
+  }
+  const composePath = path.resolve(process.cwd(), f.composeFile);
+  const services = readComposeServices(composePath);
+  if (!services) {
+    if (f.containerExplicit) return { service: f.service, container: f.container };
+    warn(`No compose file at ${composePath} — using defaults.`);
+    return { service: f.service, container: f.container };
+  }
+
+  const picked = pickDevcontainerService(services);
+  if (picked) {
+    if (f.containerExplicit) picked.container = f.container;
+    if (f.serviceExplicit) picked.service = f.service;
+    return picked;
+  }
+
+  const choices = [...services.entries()].map(([key, svc]) => ({
+    name: key,
+    message: typeof svc.container_name === 'string'
+      ? `${key} (container: ${svc.container_name})`
+      : key,
+  }));
+  if (choices.length === 0) throw new Error(`No services found in ${composePath}`);
+  if (f.assumeYes) {
+    const first = choices[0];
+    const svc = services.get(first.name)!;
+    return {
+      service: first.name,
+      container: typeof svc.container_name === 'string' ? (svc.container_name as string) : first.name,
+    };
+  }
+  const chosen = await select('sshService', 'Select SSH service:', choices, choices[0].name);
+  const svc = services.get(chosen)!;
+  return {
+    service: chosen,
+    container: typeof svc.container_name === 'string' ? (svc.container_name as string) : chosen,
+  };
+}
 
 function detectMode(f: SetupSshFlags): Mode {
   if (f.mode) return f.mode;
@@ -152,8 +253,8 @@ async function ensureStack(f: SetupSshFlags, mode: Mode): Promise<void> {
 
   const composeArgs =
     mode === 'windows'
-      ? ['compose', '-f', 'docker-compose.yml', '-f', 'docker-compose.windows.yml', 'up', '-d']
-      : ['compose', 'up', '-d'];
+      ? ['compose', '-f', f.composeFile, '-f', 'docker-compose.windows.yml', 'up', '-d']
+      : ['compose', '-f', f.composeFile, 'up', '-d'];
   const r = runInherit('docker', composeArgs);
   if (r.status !== 0) throw new Error('docker compose up failed.');
 
@@ -168,7 +269,7 @@ async function ensureStack(f: SetupSshFlags, mode: Mode): Promise<void> {
 function fetchPassword(f: SetupSshFlags, mode: Mode): void {
   if (mode === 'remote') return;
   log('Fetching temporary password from logs...');
-  const r = run('docker', ['compose', 'logs', f.container]);
+  const r = run('docker', ['compose', '-f', f.composeFile, 'logs', f.service]);
   if (r.status !== 0) {
     warn('Could not read compose logs.');
     return;
@@ -436,6 +537,14 @@ export async function runSetupSsh(argv: string[]): Promise<void> {
   const mode = detectMode(f);
   log(`Mode: ${mode}   Alias: ${f.alias}   Key: ${f.key}`);
   checkPrereqs(mode);
+
+  if (mode !== 'remote') {
+    const target = await resolveTargetService(f);
+    f.service = target.service;
+    f.container = target.container;
+    log(`Service: ${f.service}   Container: ${f.container}   Compose: ${f.composeFile}`);
+  }
+
   await ensureStack(f, mode);
   fetchPassword(f, mode);
   genKey(f.key);
