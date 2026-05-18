@@ -150,11 +150,9 @@ Si estás utilizando **Windows**, se recomienda encarecidamente usar **Git Bash*
 
 ## Instalación y Configuración
 
-### Opción A: CLI binario (Recomendado)
-
 La CLI genera el `Dockerfile`, `docker-compose.yml`, `.env` y archivos auxiliares según los módulos que selecciones (Node, Java, Mongo, Postgres, Redis, Cloudflare Tunnel, etc.) — sin clonar el repo.
 
-#### 1. Instalar la CLI (one-liner)
+### 1. Instalar la CLI (one-liner)
 
 **Linux / macOS:**
 
@@ -190,7 +188,7 @@ curl -fsSL https://raw.githubusercontent.com/Joacohbc/my-devcontainer-installer/
 
 > El binario lee `assets/` junto al ejecutable. No separes ambos.
 
-#### 2. Generar el entorno
+### 2. Generar el entorno
 
 ```bash
 mkdir mi-proyecto && cd mi-proyecto
@@ -207,36 +205,20 @@ Ayuda completa: `devcontainer-cli --help`.
 
 La CLI genera `Dockerfile` + `docker-compose.yml` + scripts auxiliares en el directorio actual.
 
-#### 3. Iniciar el entorno
+### 3. Iniciar el entorno
 
+**Linux/Mac:**
 ```bash
 docker compose up -d
 ```
 
----
+**Windows (Git Bash):**
+Para exponer el puerto SSH localmente en Windows, se genera además `docker-compose.windows.yml`:
+```bash
+docker compose -f docker-compose.yml -f docker-compose.windows.yml up -d
+```
 
-### Opción B: Clonar el repositorio (Manual)
-
-1. **Clonar el repositorio:**
-
-    ```bash
-    git clone https://github.com/Joacohbc/my-devcontainer-installer.git .dev-env && cd .dev-env
-    ```
-
-2. **Iniciar el entorno:**
-
-    Si deseas personalizar la configuración de red (opcional), crea un archivo `.env` antes de iniciar (ver [CLOUDFLARE_TUNNEL.md](CLOUDFLARE_TUNNEL.md)). De lo contrario, simplemente ejecuta:
-
-    **Linux/Mac:**
-    ```bash
-    docker compose up -d
-    ```
-
-    **Windows (Git Bash):**
-    Para exponer el puerto SSH localmente en Windows, usamos un archivo de configuración adicional:
-    ```bash
-    docker compose -f docker-compose.yml -f docker-compose.windows.yml up -d
-    ```
+Si deseas personalizar la configuración de red (opcional), edita el `.env` generado antes de iniciar (ver [CLOUDFLARE_TUNNEL.md](CLOUDFLARE_TUNNEL.md)).
 
 ## Acceso y Uso
 

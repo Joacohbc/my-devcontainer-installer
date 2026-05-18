@@ -1,4 +1,0 @@
-services:
-  devcontainer-ssh:
-    ports:
-      - "2222:22"
