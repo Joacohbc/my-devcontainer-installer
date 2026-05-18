@@ -68,19 +68,19 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: node-bun-java
-            modules: nodejs,bun,java-temurin
-            description: "Node + Bun + Java"
-          - name: node-bun-python
-            modules: nodejs,bun,python
-            description: "Node + Bun + Python"
-          - name: node-bun-go
-            modules: nodejs,bun,go
-            description: "Node + Bun + Go"
-          - name: go-only
-            modules: go
-            description: "Go only"
-          - name: python-only
+          - name: node-java
+            modules: nodejs,java-temurin
+            description: "Node.js + Java Temurin"
+          - name: node-bun
+            modules: nodejs,bun
+            description: "Node.js + Bun.js"
+          - name: node-go
+            modules: nodejs,go
+            description: "Node.js + Go"
+          - name: java-temurin
+            modules: java-temurin
+            description: "Java Temurin only"
+          - name: python
             modules: python
             description: "Python only"
 
@@ -131,9 +131,8 @@ jobs:
           GITHUB_SHA: '${{ github.sha }}'
 
       - name: Generate Dockerfile
-        working-directory: cli
         run: |
-          node dist/index.js --no-interactive \
+          node cli/dist/index.js --no-interactive \
             --with ${{ matrix.modules }} \
             --image ghcr.io/${{ env.REPO_OWNER }}/devcontainer-${{ matrix.name }}:latest \
             --no-build
