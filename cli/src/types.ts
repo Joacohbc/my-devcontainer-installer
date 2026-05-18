@@ -50,6 +50,7 @@ export interface SelectedModule {
 
 export interface DevcontainerConfig {
   image: string;
+  workspace: string;
   dockerfile: {
     modules: SelectedModule[];
   };

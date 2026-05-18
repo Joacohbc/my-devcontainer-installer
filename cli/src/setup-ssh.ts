@@ -5,6 +5,8 @@ import { spawnSync, type SpawnSyncOptions } from 'child_process';
 import chalk from 'chalk';
 import { parse as parseYaml } from 'yaml';
 import { confirm, select, PromptCancelledError } from './prompts.js';
+import { loadConfig } from './config.js';
+import { sanitizeDockerName } from './validators.js';
 
 export interface SetupSshFlags {
   remote: string;
@@ -316,48 +318,44 @@ interface InstallResult {
 function installKeyLocal(f: SetupSshFlags): InstallResult {
   const ip = containerIp(f.container);
   if (!ip) throw new Error('Could not resolve container IP.');
-  log(`Installing public key into ${f.container} (${ip})...`);
-  const r = runInherit('ssh-copy-id', [
-    '-o',
-    'StrictHostKeyChecking=accept-new',
-    '-i',
-    `${f.key}.pub`,
-    `${f.user}@${ip}`,
-  ]);
-  if (r.status !== 0) throw new Error('ssh-copy-id failed.');
+  log(`Installing public key into ${f.container} (${ip}) via docker exec...`);
+  const pub = fs.readFileSync(`${f.key}.pub`);
+  const r = spawnSync(
+    'docker',
+    [
+      'exec',
+      '-i',
+      '-u',
+      f.user,
+      f.container,
+      'sh',
+      '-c',
+      'mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && sort -u ~/.ssh/authorized_keys -o ~/.ssh/authorized_keys && chmod 700 ~/.ssh && chmod 600 ~/.ssh/authorized_keys',
+    ],
+    { input: pub, stdio: ['pipe', 'inherit', 'inherit'] },
+  );
+  if (r.status !== 0) throw new Error('docker exec key install failed.');
   return { hostname: ip, port: '' };
 }
 
 function installKeyWindows(f: SetupSshFlags): InstallResult {
-  log(`Installing public key via localhost:${f.port}...`);
-  if (which('ssh-copy-id')) {
-    const r = runInherit('ssh-copy-id', [
-      '-o',
-      'StrictHostKeyChecking=accept-new',
-      '-p',
-      f.port,
+  log(`Installing public key into ${f.container} via docker exec...`);
+  const pub = fs.readFileSync(`${f.key}.pub`);
+  const r = spawnSync(
+    'docker',
+    [
+      'exec',
       '-i',
-      `${f.key}.pub`,
-      `${f.user}@localhost`,
-    ]);
-    if (r.status !== 0) throw new Error('ssh-copy-id failed.');
-  } else {
-    warn('ssh-copy-id missing — using manual fallback.');
-    const pub = fs.readFileSync(`${f.key}.pub`);
-    const r = spawnSync(
-      'ssh',
-      [
-        '-o',
-        'StrictHostKeyChecking=accept-new',
-        '-p',
-        f.port,
-        `${f.user}@localhost`,
-        'mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 700 ~/.ssh && chmod 600 ~/.ssh/authorized_keys',
-      ],
-      { input: pub, stdio: ['pipe', 'inherit', 'inherit'] },
-    );
-    if (r.status !== 0) throw new Error('ssh key install failed.');
-  }
+      '-u',
+      f.user,
+      f.container,
+      'sh',
+      '-c',
+      'mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && sort -u ~/.ssh/authorized_keys -o ~/.ssh/authorized_keys && chmod 700 ~/.ssh && chmod 600 ~/.ssh/authorized_keys',
+    ],
+    { input: pub, stdio: ['pipe', 'inherit', 'inherit'] },
+  );
+  if (r.status !== 0) throw new Error('docker exec key install failed.');
   return { hostname: 'localhost', port: f.port };
 }
 
@@ -513,18 +511,58 @@ async function updateSshConfig(
 
 function testConnection(alias: string): void {
   log(`Testing ssh ${alias} ...`);
-  const r = run('ssh', [
-    '-o',
-    'BatchMode=yes',
-    '-o',
-    'StrictHostKeyChecking=accept-new',
-    alias,
-    'echo OK',
-  ]);
-  if (r.status === 0 && r.stdout.split('\n').some((l) => l.trim() === 'OK')) {
+  const r = spawnSync(
+    'ssh',
+    [
+      '-o',
+      'BatchMode=yes',
+      '-o',
+      'StrictHostKeyChecking=accept-new',
+      '-o',
+      'ConnectTimeout=5',
+      '-o',
+      'ServerAliveInterval=2',
+      '-o',
+      'ServerAliveCountMax=2',
+      alias,
+      'echo OK',
+    ],
+    { encoding: 'utf8', timeout: 15000, killSignal: 'SIGKILL' },
+  );
+  const stdout = String(r.stdout ?? '');
+  if (r.status === 0 && stdout.split('\n').some((l) => l.trim() === 'OK')) {
     ok(`SSH alias '${alias}' works.`);
+    return;
+  }
+  if ((r as { signal?: string }).signal) {
+    warn(`SSH test timed out after 15s. Try manually:  ssh ${alias}`);
   } else {
-    warn(`SSH test inconclusive. Try manually:  ssh ${alias}`);
+    warn(`SSH test inconclusive (exit ${r.status ?? '?'}). Try manually:  ssh ${alias}`);
+  }
+}
+
+function deriveWorkspace(containerName: string | null): string {
+  try {
+    const cfg = loadConfig(process.cwd());
+    if (cfg?.workspace) return cfg.workspace;
+  } catch {
+    /* ignore — config optional */
+  }
+  if (containerName) {
+    const m = containerName.match(/^(.+)-devcontainer-ssh$/);
+    if (m) return m[1];
+  }
+  return sanitizeDockerName(path.basename(process.cwd()));
+}
+
+function applyWorkspaceDefaults(f: SetupSshFlags, workspace: string): void {
+  if (!workspace) return;
+  if (f.alias === DEFAULTS.alias) f.alias = workspace;
+  if (f.key === DEFAULTS.key) {
+    f.key = path.join(os.homedir(), '.ssh', `id_${workspace}`);
+  }
+  if (!f.containerExplicit && f.container === DEFAULTS.container) {
+    f.container = `${workspace}-devcontainer-ssh`;
   }
 }
 
@@ -535,13 +573,21 @@ export async function runSetupSsh(argv: string[]): Promise<void> {
     return;
   }
   const mode = detectMode(f);
-  log(`Mode: ${mode}   Alias: ${f.alias}   Key: ${f.key}`);
   checkPrereqs(mode);
 
+  let resolvedContainer: string | null = null;
   if (mode !== 'remote') {
     const target = await resolveTargetService(f);
     f.service = target.service;
     f.container = target.container;
+    resolvedContainer = target.container;
+  }
+
+  const workspace = deriveWorkspace(resolvedContainer);
+  applyWorkspaceDefaults(f, workspace);
+
+  log(`Mode: ${mode}   Workspace: ${workspace}   Alias: ${f.alias}   Key: ${f.key}`);
+  if (mode !== 'remote') {
     log(`Service: ${f.service}   Container: ${f.container}   Compose: ${f.composeFile}`);
   }
 

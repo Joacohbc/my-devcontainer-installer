@@ -7,6 +7,7 @@ import type { DevcontainerConfig } from '../types.js';
 function makeConfig(overrides: Partial<DevcontainerConfig> = {}): DevcontainerConfig {
   return {
     image: 'devcontainer-ssh:local',
+    workspace: 'devcontainer',
     dockerfile: { modules: [] },
     compose: { services: [], subnet: '172.25.0.0/24' },
     env: {},

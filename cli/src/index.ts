@@ -13,15 +13,25 @@ import {
   collectRequiredEnvVars,
 } from './generator.js';
 import { printCleanupInstructions } from './cleanup-instructions.js';
+import { findConflicts } from './docker-conflicts.js';
 import { isGeneratedFile, preflight } from './preflight.js';
+import { findFreeSubnet, formatCidr, listUsedSubnets, subnetConflict } from './subnet.js';
 import { printSshInstructions } from './ssh-instructions.js';
 import { confirm, input, multiselect, PromptCancelledError, select } from './prompts.js';
 import { composeServices, dockerfileModules, getDockerfileModule } from './registry.js';
 import { runSetupSsh } from './setup-ssh.js';
 import type { DevcontainerConfig, ModuleOption, SelectedModule } from './types.js';
-import { isValidCidr, isValidImageName } from './validators.js';
+import { isValidCidr, isValidDockerName, isValidImageName, sanitizeDockerName } from './validators.js';
 
 async function buildConfigFromPrompts(base: DevcontainerConfig): Promise<DevcontainerConfig> {
+  const workspace = await input(
+    'workspace',
+    'Workspace name (used as prefix for containers, network, volumes):',
+    base.workspace || sanitizeDockerName(path.basename(process.cwd())),
+    (v) => (isValidDockerName(v) ? true : 'Invalid Docker name (allowed: a-z A-Z 0-9 _ . -, ≤63 chars, start alphanumeric)'),
+  );
+  base.workspace = workspace;
+
   const selectableModules = dockerfileModules.filter((m) => !m.always);
   const selectedIds = await multiselect(
     'modules',
@@ -75,16 +85,32 @@ async function buildConfigFromPrompts(base: DevcontainerConfig): Promise<Devcont
     (v) => (isValidImageName(v) ? true : 'Invalid Docker image name'),
   );
 
+  const usedSubnets = listUsedSubnets();
+  const preferredSubnet = base.compose.subnet ?? '172.25.0.0/24';
+  const suggestedSubnet = findFreeSubnet(preferredSubnet, usedSubnets);
+  if (suggestedSubnet !== preferredSubnet) {
+    console.log(
+      chalk.yellow(
+        `⚠  Subnet ${preferredSubnet} overlaps with existing Docker network. Suggesting ${suggestedSubnet}.`,
+      ),
+    );
+  }
   const subnet = await input(
     'subnet',
     'Docker network subnet (CIDR):',
-    base.compose.subnet ?? '172.25.0.0/24',
-    (v) => (isValidCidr(v) ? true : 'Invalid CIDR'),
+    suggestedSubnet,
+    (v) => {
+      if (!isValidCidr(v)) return 'Invalid CIDR';
+      const clash = subnetConflict(v, usedSubnets);
+      if (clash) return `Overlaps with existing network ${formatCidr(clash)}`;
+      return true;
+    },
   );
 
   const env: Record<string, string> = { ...base.env };
   const cfgDraft: DevcontainerConfig = {
     image,
+    workspace,
     dockerfile: { modules },
     compose: { services, subnet },
     env,
@@ -222,12 +248,52 @@ async function main() {
 
   config = applyFlags(config, flags);
 
+  if (!config.workspace) {
+    config.workspace = sanitizeDockerName(path.basename(cwd));
+  }
+  if (!isValidDockerName(config.workspace)) {
+    throw new Error(`Invalid workspace name: ${config.workspace}`);
+  }
+
   if (!flags.interactive) {
     if (!isValidImageName(config.image)) {
       throw new Error(`Invalid image name: ${config.image}`);
     }
     if (config.compose.subnet && !isValidCidr(config.compose.subnet)) {
       throw new Error(`Invalid CIDR: ${config.compose.subnet}`);
+    }
+  }
+
+  if (config.compose.subnet) {
+    const clash = subnetConflict(config.compose.subnet);
+    if (clash) {
+      const free = findFreeSubnet(config.compose.subnet);
+      if (flags.interactive) {
+        console.log(
+          chalk.yellow(
+            `⚠  Subnet ${config.compose.subnet} overlaps with existing Docker network ${formatCidr(clash)}. Using ${free}.`,
+          ),
+        );
+        config.compose.subnet = free;
+      } else {
+        throw new Error(
+          `Subnet ${config.compose.subnet} overlaps with existing Docker network ${formatCidr(clash)}. Set subnet to ${free} in devcontainer.config.json or remove the conflicting network.`,
+        );
+      }
+    }
+  }
+
+  const conflicts = findConflicts(config);
+  if (conflicts.length > 0) {
+    console.log(chalk.yellow('\n⚠  Docker name conflicts detected:'));
+    for (const c of conflicts) {
+      console.log(chalk.yellow(`   - ${c.kind} '${c.name}' already exists (project: ${c.owner})`));
+    }
+    if (flags.interactive) {
+      const ok = await confirm('proceedConflict', 'Continue anyway?', false);
+      if (!ok) throw new Error('Aborted due to name conflicts. Change workspace name or remove existing resources.');
+    } else {
+      throw new Error('Docker name conflicts. Change workspace name or remove existing resources.');
     }
   }
 
