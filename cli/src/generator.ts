@@ -2,12 +2,16 @@ import { stringify } from 'yaml';
 import { composeLabels, dockerfileLabelBlock } from './labels.js';
 import { composeServices, getComposeService } from './registry.js';
 import { resolveDockerfileModules } from './resolver.js';
+import { nthHost } from './subnet.js';
 import {
   GENERATED_HEADER,
   GENERATED_HEADER_YAML,
   normalizeServices,
   type DevcontainerConfig,
 } from './types.js';
+
+const DEFAULT_SUBNET = '172.25.0.0/28';
+const DEVCONTAINER_HOST_OFFSET = 2;
 
 export function generateDockerfile(config: DevcontainerConfig): string {
   const resolved = resolveDockerfileModules(config.dockerfile.modules);
@@ -54,6 +58,8 @@ export function generateCompose(config: DevcontainerConfig): string {
   const labels = composeLabels(config);
   const services: Record<string, unknown> = {};
   const volumes: Record<string, unknown> = {};
+  const subnet = config.compose.subnet ?? DEFAULT_SUBNET;
+  const devcontainerIp = nthHost(subnet, DEVCONTAINER_HOST_OFFSET);
 
   const declaredVolumes = new Set<string>(BASE_VOLUMES);
   for (const id of enabledIds) {
@@ -83,9 +89,20 @@ export function generateCompose(config: DevcontainerConfig): string {
       );
     }
     if (Array.isArray(rendered.networks)) {
-      rendered.networks = (rendered.networks as string[]).map((n) =>
+      const mapped = (rendered.networks as string[]).map((n) =>
         n === 'local-network' ? networkName : n,
       );
+      if (svc.id === 'devcontainer' && devcontainerIp) {
+        const netObj: Record<string, unknown> = {};
+        for (const n of mapped) {
+          netObj[n] = n === networkName
+            ? { ipv4_address: `\${DEVCONTAINER_IP:-${devcontainerIp}}` }
+            : null;
+        }
+        rendered.networks = netObj;
+      } else {
+        rendered.networks = mapped;
+      }
     }
     rendered.labels = { ...labels };
     services[svc.id === 'devcontainer' ? 'devcontainer-ssh' : svc.id] = rendered;
@@ -95,7 +112,6 @@ export function generateCompose(config: DevcontainerConfig): string {
     volumes[prefixVolume(workspace, v)] = { labels: { ...labels } };
   }
 
-  const subnet = config.compose.subnet ?? '172.25.0.0/24';
   const doc: Record<string, unknown> = {
     services,
     networks: {
@@ -160,6 +176,10 @@ export function generateEnv(config: DevcontainerConfig): string {
   }
   if (!('DOCKER_SUBNET' in config.env) && config.compose.subnet) {
     lines.push(`DOCKER_SUBNET=${config.compose.subnet}`);
+  }
+  if (!('DEVCONTAINER_IP' in config.env)) {
+    const ip = nthHost(config.compose.subnet ?? DEFAULT_SUBNET, DEVCONTAINER_HOST_OFFSET);
+    if (ip) lines.push(`DEVCONTAINER_IP=${ip}`);
   }
   return lines.join('\n') + '\n';
 }

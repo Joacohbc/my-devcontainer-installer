@@ -62,11 +62,11 @@ export function listUsedSubnets(): CidrRange[] {
 }
 
 function* candidates(): IterableIterator<string> {
-  for (let b = 25; b <= 254; b++) yield `172.${b}.0.0/24`;
-  for (let b = 0; b <= 254; b++) yield `10.${b}.0.0/24`;
-  for (let b = 100; b <= 254; b++) yield `192.168.${b}.0/24`;
-  for (let b = 16; b <= 31; b++) yield `172.${b}.0.0/20`;
-  for (let b = 0; b <= 254; b++) yield `10.${b}.0.0/16`;
+  for (let c = 0; c <= 255; c++) {
+    for (let d = 0; d <= 240; d += 16) yield `172.25.${c}.${d}/28`;
+  }
+  for (let b = 26; b <= 254; b++) yield `172.${b}.0.0/28`;
+  for (let b = 0; b <= 254; b++) yield `10.${b}.0.0/28`;
 }
 
 export function findFreeSubnet(preferred: string, used?: CidrRange[]): string {
@@ -94,4 +94,12 @@ export function subnetConflict(cidr: string, used?: CidrRange[]): CidrRange | nu
 
 export function formatCidr(r: CidrRange): string {
   return toCidr(r.start, r.mask);
+}
+
+export function nthHost(cidr: string, n: number): string | null {
+  const r = parseCidr(cidr);
+  if (!r) return null;
+  const ip = (r.start + n) >>> 0;
+  if (ip <= r.start || ip >= r.end) return null;
+  return toIp(ip);
 }

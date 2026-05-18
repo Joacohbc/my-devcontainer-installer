@@ -86,7 +86,7 @@ async function buildConfigFromPrompts(base: DevcontainerConfig): Promise<Devcont
   );
 
   const usedSubnets = listUsedSubnets();
-  const preferredSubnet = base.compose.subnet ?? '172.25.0.0/24';
+  const preferredSubnet = base.compose.subnet ?? '172.25.0.0/28';
   const suggestedSubnet = findFreeSubnet(preferredSubnet, usedSubnets);
   if (suggestedSubnet !== preferredSubnet) {
     console.log(

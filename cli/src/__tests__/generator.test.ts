@@ -119,6 +119,22 @@ test('compose with no DB services has no depends_on', () => {
   assert.equal(parsed.services['devcontainer-ssh'].depends_on, undefined);
 });
 
+test('compose assigns a static IP to devcontainer based on subnet', () => {
+  const yml = generateCompose(
+    makeConfig({ compose: { services: [], subnet: '172.25.0.0/28' } }),
+  );
+  const parsed = parse(yml) as {
+    services: { 'devcontainer-ssh': { networks: Record<string, { ipv4_address: string }> } };
+    networks: Record<string, { ipam: { config: { subnet: string }[] } }>;
+  };
+  const networkName = Object.keys(parsed.services['devcontainer-ssh'].networks)[0];
+  assert.equal(
+    parsed.services['devcontainer-ssh'].networks[networkName].ipv4_address,
+    '${DEVCONTAINER_IP:-172.25.0.2}',
+  );
+  assert.match(parsed.networks[networkName].ipam.config[0].subnet, /172\.25\.0\.0\/28/);
+});
+
 test('ai-clis module copies per-tool install scripts by default', () => {
   const df = generateDockerfile(
     makeConfig({ dockerfile: { modules: [{ id: 'ai-clis' }] } }),

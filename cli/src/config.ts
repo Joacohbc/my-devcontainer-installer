@@ -32,7 +32,7 @@ export function defaultConfig(cwd: string = process.cwd()): DevcontainerConfig {
     image: `${workspace}:local`,
     workspace,
     dockerfile: { modules: [] },
-    compose: { services: [], subnet: '172.25.0.0/24' },
+    compose: { services: [], subnet: '172.25.0.0/28' },
     env: {},
   };
 }
