@@ -12,6 +12,8 @@ permissions:
 jobs:
   build:
     name: Build ${{ matrix.target }}
+    # Only run for tags reachable from main, or manual dispatch.
+    if: github.event_name == 'workflow_dispatch' || github.event.base_ref == 'refs/heads/main'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
