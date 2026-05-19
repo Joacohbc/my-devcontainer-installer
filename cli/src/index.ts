@@ -11,6 +11,7 @@ import {
   generateEnv,
   collectRequiredCopyFiles,
   collectRequiredEnvVars,
+  collectRequiredPostScriptFiles,
 } from './generator.js';
 import { printCleanupInstructions } from './cleanup-instructions.js';
 import { findConflicts } from './docker-conflicts.js';
@@ -148,6 +149,7 @@ async function promptOption(o: ModuleOption): Promise<unknown> {
 
 function applyFlags(config: DevcontainerConfig, flags: CliFlags): DevcontainerConfig {
   if (flags.image) config.image = flags.image;
+  if (flags.workspace) config.workspace = flags.workspace;
   if (flags.withModules) {
     config.dockerfile.modules = flags.withModules.map((id) => {
       const existing = config.dockerfile.modules.find((m) => m.id === id);
@@ -314,10 +316,15 @@ async function main() {
     }
   }
 
+  const projectDir = path.join(cwd, `.dc_${config.workspace}`);
+  const buildDir = path.join(projectDir, 'build');
+  const postScriptDir = path.join(projectDir, 'post-script');
+  fs.mkdirSync(buildDir, { recursive: true });
+
   const copyFiles = collectRequiredCopyFiles(config);
-  const pre = preflight(copyFiles, cwd);
+  const pre = preflight(copyFiles, buildDir);
   if (pre.copied.length > 0) {
-    console.log(chalk.gray(`Copied helper files: ${pre.copied.join(', ')}`));
+    console.log(chalk.gray(`Copied build helpers → .dc_${config.workspace}/build/: ${pre.copied.join(', ')}`));
   }
   if (pre.missing.length > 0) {
     throw new Error(
@@ -325,9 +332,23 @@ async function main() {
     );
   }
 
-  const dockerfilePath = path.join(cwd, 'Dockerfile');
-  const composePath = path.join(cwd, 'docker-compose.yml');
-  const envPath = path.join(cwd, '.env');
+  const postScriptFiles = collectRequiredPostScriptFiles(config);
+  if (postScriptFiles.length > 0) {
+    fs.mkdirSync(postScriptDir, { recursive: true });
+    const postPre = preflight(postScriptFiles, postScriptDir);
+    if (postPre.copied.length > 0) {
+      console.log(chalk.gray(`Copied post-install scripts → .dc_${config.workspace}/post-script/: ${postPre.copied.join(', ')}`));
+    }
+    if (postPre.missing.length > 0) {
+      throw new Error(
+        `Missing required post-install scripts: ${postPre.missing.join(', ')}`,
+      );
+    }
+  }
+
+  const dockerfilePath = path.join(buildDir, 'Dockerfile');
+  const composePath = path.join(buildDir, 'docker-compose.yml');
+  const envPath = path.join(buildDir, '.env');
 
   if (!(await maybeOverwrite(dockerfilePath, 'Dockerfile', flags.interactive, flags.force))) {
     console.log(chalk.yellow('Skipped Dockerfile.'));
@@ -356,21 +377,38 @@ async function main() {
   saveConfig(config, cwd);
   console.log(chalk.green(`✅ Saved devcontainer.config.json`));
 
+  printLayoutMessage(config.workspace, postScriptFiles.length > 0);
+
   let build = flags.build;
   if (build === null && flags.interactive) {
     build = await confirm('build', "Run 'docker compose build' now?", true);
   }
-  
+
   if (build) {
     console.log(chalk.yellow('\n⏳ Building...\n'));
-    const ok = await executeBuild(cwd);
+    const ok = await executeBuild(buildDir);
     if (ok) {
-      printSshInstructions();
+      printSshInstructions(config.workspace);
     }
   } else {
     console.log(chalk.green.bold('\n✨ Done.\n'));
-    printSshInstructions();
+    printSshInstructions(config.workspace);
   }
+}
+
+function printLayoutMessage(workspace: string, hasPostScripts: boolean): void {
+  const bar = chalk.gray('─'.repeat(64));
+  const root = `.dc_${workspace}`;
+  console.log('\n' + bar);
+  console.log(chalk.cyan.bold(`📁 Generated layout under ${root}/`));
+  console.log(bar);
+  console.log(`  ${chalk.bold('build/')}        Dockerfile, docker-compose.yml, .env, helper .sh`);
+  console.log(`               ${chalk.gray('→ docker compose -f ' + root + '/build/docker-compose.yml up -d')}`);
+  if (hasPostScripts) {
+    console.log(`  ${chalk.bold('post-script/')} Scripts to run inside the container`);
+    console.log(`               ${chalk.gray('→ /workspace/' + root + '/post-script/<script>.sh')}`);
+  }
+  console.log(bar + '\n');
 }
 
 main().catch((e) => {

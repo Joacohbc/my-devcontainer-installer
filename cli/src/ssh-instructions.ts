@@ -39,13 +39,12 @@ function windowsBlock(): string {
   ].join('\n');
 }
 
-export function printSshInstructions(): void {
+export function printSshInstructions(workspace: string): void {
   const isWindows = process.platform === 'win32';
   const bar = chalk.gray('─'.repeat(64));
   const prompt = chalk.gray('   $ ');
-  const startCmd = isWindows
-    ? 'docker compose -f docker-compose.yml -f docker-compose.windows.yml up -d'
-    : 'docker compose up -d';
+  const composeRel = `.dc_${workspace}/build/docker-compose.yml`;
+  const startCmd = `docker compose -f ${composeRel} up -d`;
 
   const out = [
     chalk.cyan.bold('🔑 Next steps — SSH access'),

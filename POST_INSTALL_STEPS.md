@@ -15,18 +15,18 @@ sudo passwd
 
 ## Loguearse con Github
 
-El script lo genera la CLI en tu directorio de trabajo (queda montado en `/workspace/` dentro del contenedor):
+La CLI deja el script en `.dc_<workspace>/post-script/`, accesible dentro del contenedor como:
 
 ```bash
-/workspace/login-github-cli.sh
+/workspace/.dc_<workspace>/post-script/login-github-cli.sh
 ```
 
 ## Actualizar Go (si elegiste el módulo `go`)
 
-Si generaste el entorno con `--with go`, también tendrás disponible:
+Si generaste el entorno con `--with go`:
 
 ```bash
-/workspace/update_golang.sh
+/workspace/.dc_<workspace>/post-script/update_golang.sh
 ```
 
 Actualiza la instalación de Go a la última versión estable.

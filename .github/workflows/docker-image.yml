@@ -74,6 +74,7 @@ jobs:
       - name: Generate full Dockerfile
         run: |
           node cli/dist/index.js --no-interactive --force \
+            --workspace devcontainer \
             --with dod,java-temurin,python,go,sqlite,dbclients,bun,ai-clis,pnpm,nodejs,github-cli \
             --image ghcr.io/${{ env.REPO_OWNER }}/devcontainer-ssh:latest \
             --no-build
@@ -81,7 +82,7 @@ jobs:
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
-          context: .
+          context: .dc_devcontainer/build
           push: true
           platforms: linux/amd64,linux/arm64
           tags: |
@@ -163,6 +164,7 @@ jobs:
       - name: Generate Dockerfile
         run: |
           node cli/dist/index.js --no-interactive --force \
+            --workspace devcontainer \
             --with ${{ matrix.modules }} \
             --image ghcr.io/${{ env.REPO_OWNER }}/devcontainer-${{ matrix.name }}:latest \
             --no-build
@@ -170,7 +172,7 @@ jobs:
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
-          context: .
+          context: .dc_devcontainer/build
           push: true
           platforms: linux/amd64,linux/arm64
           tags: |

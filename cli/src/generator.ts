@@ -197,6 +197,15 @@ export function collectRequiredCopyFiles(config: DevcontainerConfig): string[] {
   return [...files];
 }
 
+export function collectRequiredPostScriptFiles(config: DevcontainerConfig): string[] {
+  const resolved = resolveDockerfileModules(config.dockerfile.modules);
+  const files = new Set<string>();
+  for (const r of resolved) {
+    for (const f of r.module.postScriptFiles ?? []) files.add(f);
+  }
+  return [...files];
+}
+
 export function collectRequiredEnvVars(
   config: DevcontainerConfig,
 ): { name: string; prompt: string; default?: string }[] {

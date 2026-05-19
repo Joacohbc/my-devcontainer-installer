@@ -3,6 +3,7 @@ export interface CliFlags {
   forcePrompt: boolean;
   build: boolean | null;
   image?: string;
+  workspace?: string;
   withModules?: string[];
   services?: string[];
   config?: string;
@@ -49,6 +50,9 @@ export function parseFlags(argv: string[]): CliFlags {
       case '--image':
         flags.image = next();
         break;
+      case '--workspace':
+        flags.workspace = next();
+        break;
       case '--with':
         flags.withModules = next().split(',').map((s) => s.trim()).filter(Boolean);
         break;
@@ -84,6 +88,7 @@ Flags:
   --with <ids>          Comma-separated dockerfile modules (e.g. nodejs,java,dod)
   --service <ids>       Comma-separated compose services (e.g. mongo,postgres,tunnel)
   --image <name>        Image name (default: devcontainer-ssh:local)
+  --workspace <name>    Workspace name (default: current dir name, used for .dc_<name>/)
   --config <path>       Path to devcontainer.config.json
   --no-interactive      Fail if any value is missing instead of prompting
   --force-prompt        Prompt even if config file exists

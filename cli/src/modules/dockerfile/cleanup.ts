@@ -5,7 +5,8 @@ export const cleanupModule: DockerfileModule = {
   label: 'Cleanup + entrypoint + EXPOSE 22',
   category: 'cleanup',
   always: true,
-  copyFiles: ['entrypoint.sh', 'login-github-cli.sh'],
+  copyFiles: ['entrypoint.sh'],
+  postScriptFiles: ['login-github-cli.sh'],
   render() {
     return `##
 ## CLEANUP & ENTRYPOINT
