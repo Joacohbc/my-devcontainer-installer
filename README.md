@@ -162,7 +162,7 @@ La CLI genera el `Dockerfile`, `docker-compose.yml`, `.env` y archivos auxiliare
 curl -fsSL https://raw.githubusercontent.com/Joacohbc/my-devcontainer-installer/main/cli/install.sh | sh
 ```
 
-Detecta OS/arch automáticamente. Instala binario en `~/.local/bin/devcontainer-cli` y assets en `~/.local/share/devcontainer-cli/assets`.
+Detecta OS/arch automáticamente. Descarga el binario (single executable con assets embebidos) en `~/.local/share/devcontainer-cli/` y lo enlaza en `~/.local/bin/devcontainer-cli`.
 
 **Windows (PowerShell):**
 
@@ -177,7 +177,7 @@ Instala en `%LOCALAPPDATA%\devcontainer-cli` y agrega al PATH del usuario.
 | Var          | Default                                  | Descripción                       |
 |--------------|------------------------------------------|-----------------------------------|
 | `VERSION`    | `latest`                                 | Tag específico (ej. `v1.0.0`)     |
-| `INSTALL_DIR`| `~/.local/share/devcontainer-cli` (unix) | Carpeta binario + assets          |
+| `INSTALL_DIR`| `~/.local/share/devcontainer-cli` (unix) | Carpeta del binario               |
 | `BIN_DIR`    | `~/.local/bin` (unix)                    | Symlink al binario                |
 
 Ejemplo versión fija:
@@ -186,9 +186,7 @@ Ejemplo versión fija:
 curl -fsSL https://raw.githubusercontent.com/Joacohbc/my-devcontainer-installer/main/cli/install.sh | VERSION=v1.0.0 sh
 ```
 
-**Descarga manual** (alternativa): https://github.com/Joacohbc/my-devcontainer-installer/releases/latest — assets disponibles: `linux-x64`, `linux-arm64`, `darwin-x64` (tar.gz) y `windows-x64` (zip).
-
-> El binario lee `assets/` junto al ejecutable. No separes ambos.
+**Descarga manual** (alternativa): https://github.com/Joacohbc/my-devcontainer-installer/releases/latest — binarios disponibles: `devcontainer-cli-linux-x64`, `-linux-arm64`, `-darwin-x64` y `-windows-x64.exe`. Son ejecutables únicos (assets embebidos via Node.js SEA); descargás, `chmod +x` y listo.
 
 ### 2. Generar el entorno
 
