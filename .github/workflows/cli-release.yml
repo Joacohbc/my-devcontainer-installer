@@ -102,11 +102,25 @@ jobs:
         shell: bash
         run: mv "dist/${{ matrix.binary }}" "dist/devcontainer-cli-${{ matrix.target }}${{ matrix.ext }}"
 
+      - name: Generate SHA256 checksum
+        shell: bash
+        working-directory: cli/dist
+        run: |
+          asset="devcontainer-cli-${{ matrix.target }}${{ matrix.ext }}"
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum "$asset" | awk '{print $1}' > "$asset.sha256"
+          else
+            shasum -a 256 "$asset" | awk '{print $1}' > "$asset.sha256"
+          fi
+          cat "$asset.sha256"
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: devcontainer-cli-${{ matrix.target }}
-          path: cli/dist/devcontainer-cli-${{ matrix.target }}${{ matrix.ext }}
+          path: |
+            cli/dist/devcontainer-cli-${{ matrix.target }}${{ matrix.ext }}
+            cli/dist/devcontainer-cli-${{ matrix.target }}${{ matrix.ext }}.sha256
           if-no-files-found: error
 
   release:

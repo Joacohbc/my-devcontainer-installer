@@ -2,11 +2,24 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import * as https from 'https';
+import * as crypto from 'crypto';
 import { URL } from 'url';
 import chalk from 'chalk';
 
 const REPO = 'Joacohbc/my-devcontainer-installer';
 const USER_AGENT = 'devcontainer-cli';
+const PRIMARY_API_HOST = 'api.github.com';
+const MAX_DOWNLOAD_BYTES = 200 * 1024 * 1024;
+const MAX_CHECKSUM_BYTES = 1024;
+
+const ALLOWED_HOST_SUFFIXES = [
+  '.github.com',
+  '.githubusercontent.com',
+];
+const ALLOWED_HOSTS_EXACT = new Set([
+  'github.com',
+  'api.github.com',
+]);
 
 interface ReleaseAsset {
   name: string;
@@ -16,6 +29,11 @@ interface ReleaseAsset {
 interface Release {
   tag_name: string;
   assets: ReleaseAsset[];
+}
+
+interface AssetUrls {
+  binary: string;
+  checksum: string;
 }
 
 export function getCurrentVersion(): string {
@@ -38,7 +56,6 @@ export function getTargetTriplet(): { triplet: string; ext: string } {
   else throw new Error(`unsupported platform: ${platform}`);
 
   if (arch === 'arm64') {
-    // Apple Silicon: match install.sh and use darwin-x64 (via Rosetta).
     archName = osName === 'darwin' ? 'x64' : 'arm64';
   } else if (arch === 'x64') {
     archName = 'x64';
@@ -52,57 +69,135 @@ export function getTargetTriplet(): { triplet: string; ext: string } {
   };
 }
 
+function splitVersion(s: string): { main: string[]; pre: string | null } {
+  const noV = s.replace(/^v/, '');
+  const dashIdx = noV.indexOf('-');
+  if (dashIdx === -1) return { main: noV.split('.'), pre: null };
+  return { main: noV.slice(0, dashIdx).split('.'), pre: noV.slice(dashIdx + 1) };
+}
+
 export function compareVersions(a: string, b: string): number {
-  const normalize = (s: string) => s.replace(/^v/, '').split(/[.\-+]/);
-  const pa = normalize(a);
-  const pb = normalize(b);
-  const len = Math.max(pa.length, pb.length);
+  const va = splitVersion(a);
+  const vb = splitVersion(b);
+  const len = Math.max(va.main.length, vb.main.length);
   for (let i = 0; i < len; i++) {
-    const ai = pa[i] ?? '0';
-    const bi = pb[i] ?? '0';
+    const ai = va.main[i] ?? '0';
+    const bi = vb.main[i] ?? '0';
     const an = Number(ai);
     const bn = Number(bi);
     const bothNumeric = !Number.isNaN(an) && !Number.isNaN(bn);
     if (bothNumeric) {
       if (an !== bn) return an < bn ? -1 : 1;
-    } else {
-      if (ai !== bi) return ai < bi ? -1 : 1;
+    } else if (ai !== bi) {
+      return ai < bi ? -1 : 1;
     }
   }
-  return 0;
+  if (va.pre === null && vb.pre === null) return 0;
+  if (va.pre === null) return 1;
+  if (vb.pre === null) return -1;
+  if (va.pre === vb.pre) return 0;
+  return va.pre < vb.pre ? -1 : 1;
 }
 
-export function resolveAssetUrl(release: Release, triplet: string, ext: string): string {
+export function resolveAssetUrl(release: Release, triplet: string, ext: string): AssetUrls {
   const name = `devcontainer-cli-${triplet}${ext}`;
   const asset = release.assets.find((a) => a.name === name);
   if (!asset) {
     const available = release.assets.map((a) => a.name).join(', ');
     throw new Error(`asset ${name} not found in release ${release.tag_name}. Available: ${available || '(none)'}`);
   }
-  return asset.browser_download_url;
+  const checksumName = `${name}.sha256`;
+  const checksumAsset = release.assets.find((a) => a.name === checksumName);
+  if (!checksumAsset) {
+    throw new Error(`checksum ${checksumName} not found in release ${release.tag_name}. Refusing to update without integrity verification.`);
+  }
+  return { binary: asset.browser_download_url, checksum: checksumAsset.browser_download_url };
 }
 
-function httpGetJson(url: string, redirectsLeft = 5): Promise<{ status: number; body: string }> {
+function isAllowedHost(host: string): boolean {
+  if (ALLOWED_HOSTS_EXACT.has(host)) return true;
+  return ALLOWED_HOST_SUFFIXES.some((s) => host.endsWith(s));
+}
+
+function assertHttps(u: URL): void {
+  if (u.protocol !== 'https:') {
+    throw new Error(`refusing non-https URL: ${u.toString()}`);
+  }
+}
+
+interface HttpOpts {
+  withAuth: boolean;
+  redirectsLeft?: number;
+  maxBytes: number;
+}
+
+function httpGetBuffer(url: string, opts: HttpOpts): Promise<{ status: number; body: Buffer }> {
+  const redirectsLeft = opts.redirectsLeft ?? 5;
   return new Promise((resolve, reject) => {
+    let parsed: URL;
+    try {
+      parsed = new URL(url);
+    } catch (e) {
+      reject(e);
+      return;
+    }
+    try {
+      assertHttps(parsed);
+      if (!isAllowedHost(parsed.host)) {
+        throw new Error(`host not in allowlist: ${parsed.host}`);
+      }
+    } catch (e) {
+      reject(e);
+      return;
+    }
+
     const headers: Record<string, string> = {
       'User-Agent': USER_AGENT,
       Accept: 'application/vnd.github+json',
     };
-    if (process.env.GITHUB_TOKEN) {
+    if (opts.withAuth && process.env.GITHUB_TOKEN) {
       headers.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
     }
+
     https
       .get(url, { headers }, (res) => {
         const status = res.statusCode ?? 0;
         if (status >= 300 && status < 400 && res.headers.location && redirectsLeft > 0) {
           res.resume();
-          const next = new URL(res.headers.location, url).toString();
-          httpGetJson(next, redirectsLeft - 1).then(resolve, reject);
+          let next: URL;
+          try {
+            next = new URL(res.headers.location, url);
+            assertHttps(next);
+            if (!isAllowedHost(next.host)) {
+              reject(new Error(`redirect to disallowed host: ${next.host}`));
+              return;
+            }
+          } catch (e) {
+            reject(e as Error);
+            return;
+          }
+          const sameHost = next.host === parsed.host;
+          httpGetBuffer(next.toString(), {
+            withAuth: opts.withAuth && sameHost && parsed.host === PRIMARY_API_HOST,
+            redirectsLeft: redirectsLeft - 1,
+            maxBytes: opts.maxBytes,
+          }).then(resolve, reject);
           return;
         }
         const chunks: Buffer[] = [];
-        res.on('data', (c: Buffer) => chunks.push(c));
-        res.on('end', () => resolve({ status, body: Buffer.concat(chunks).toString('utf8') }));
+        let total = 0;
+        res.on('data', (c: Buffer) => {
+          total += c.length;
+          if (total > opts.maxBytes) {
+            res.destroy(new Error(`response exceeded ${opts.maxBytes} bytes`));
+            return;
+          }
+          chunks.push(c);
+        });
+        res.on('end', () => {
+          if (total > opts.maxBytes) return;
+          resolve({ status, body: Buffer.concat(chunks) });
+        });
         res.on('error', reject);
       })
       .on('error', reject);
@@ -111,28 +206,57 @@ function httpGetJson(url: string, redirectsLeft = 5): Promise<{ status: number; 
 
 export async function fetchLatestRelease(repo: string = REPO): Promise<Release> {
   const url = `https://api.github.com/repos/${repo}/releases/latest`;
-  const { status, body } = await httpGetJson(url);
+  const { status, body } = await httpGetBuffer(url, { withAuth: true, maxBytes: 5 * 1024 * 1024 });
+  const text = body.toString('utf8');
   if (status === 403) {
     throw new Error('GitHub API rate-limited (403). Set GITHUB_TOKEN to authenticate.');
   }
   if (status !== 200) {
-    throw new Error(`GitHub API ${status}: ${body.slice(0, 200)}`);
+    throw new Error(`GitHub API ${status}: ${text.slice(0, 200)}`);
   }
-  const parsed = JSON.parse(body) as Release;
+  let parsed: Release;
+  try {
+    parsed = JSON.parse(text) as Release;
+  } catch (e) {
+    throw new Error(`failed to parse GitHub release JSON: ${(e as Error).message}`);
+  }
   if (!parsed.tag_name || !Array.isArray(parsed.assets)) {
     throw new Error('unexpected GitHub release payload');
   }
   return parsed;
 }
 
-function downloadBinary(url: string, destTmp: string, redirectsLeft = 5): Promise<void> {
+function downloadToFile(url: string, destTmp: string, redirectsLeft = 5): Promise<void> {
   return new Promise((resolve, reject) => {
+    let parsed: URL;
+    try {
+      parsed = new URL(url);
+      assertHttps(parsed);
+      if (!isAllowedHost(parsed.host)) {
+        throw new Error(`host not in allowlist: ${parsed.host}`);
+      }
+    } catch (e) {
+      reject(e as Error);
+      return;
+    }
+
     const req = https.get(url, { headers: { 'User-Agent': USER_AGENT } }, (res) => {
       const status = res.statusCode ?? 0;
       if (status >= 300 && status < 400 && res.headers.location && redirectsLeft > 0) {
         res.resume();
-        const next = new URL(res.headers.location, url).toString();
-        downloadBinary(next, destTmp, redirectsLeft - 1).then(resolve, reject);
+        let next: URL;
+        try {
+          next = new URL(res.headers.location, url);
+          assertHttps(next);
+          if (!isAllowedHost(next.host)) {
+            reject(new Error(`redirect to disallowed host: ${next.host}`));
+            return;
+          }
+        } catch (e) {
+          reject(e as Error);
+          return;
+        }
+        downloadToFile(next.toString(), destTmp, redirectsLeft - 1).then(resolve, reject);
         return;
       }
       if (status !== 200) {
@@ -140,14 +264,63 @@ function downloadBinary(url: string, destTmp: string, redirectsLeft = 5): Promis
         reject(new Error(`download failed: HTTP ${status} ${url}`));
         return;
       }
-      const out = fs.createWriteStream(destTmp);
+      const out = fs.createWriteStream(destTmp, { flags: 'wx', mode: 0o600 });
+      let bytes = 0;
+      let aborted = false;
+      const abort = (err: Error) => {
+        if (aborted) return;
+        aborted = true;
+        res.destroy();
+        out.destroy();
+        reject(err);
+      };
+      res.on('data', (chunk: Buffer) => {
+        bytes += chunk.length;
+        if (bytes > MAX_DOWNLOAD_BYTES) {
+          abort(new Error(`download exceeded ${MAX_DOWNLOAD_BYTES} bytes`));
+        }
+      });
       res.pipe(out);
-      out.on('finish', () => out.close(() => resolve()));
-      out.on('error', reject);
-      res.on('error', reject);
+      out.on('finish', () => {
+        if (aborted) return;
+        out.close(() => resolve());
+      });
+      out.on('error', abort);
+      res.on('error', abort);
     });
     req.on('error', reject);
   });
+}
+
+function sha256File(p: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const hash = crypto.createHash('sha256');
+    const stream = fs.createReadStream(p);
+    stream.on('data', (d) => hash.update(d as Buffer));
+    stream.on('end', () => resolve(hash.digest('hex')));
+    stream.on('error', reject);
+  });
+}
+
+function parseChecksum(body: Buffer): string {
+  const text = body.toString('utf8').trim();
+  const first = text.split(/\s+/)[0] ?? '';
+  if (!/^[a-fA-F0-9]{64}$/.test(first)) {
+    throw new Error(`invalid sha256 checksum content: ${text.slice(0, 80)}`);
+  }
+  return first.toLowerCase();
+}
+
+export async function verifyChecksum(filePath: string, checksumUrl: string): Promise<void> {
+  const { status, body } = await httpGetBuffer(checksumUrl, { withAuth: false, maxBytes: MAX_CHECKSUM_BYTES });
+  if (status !== 200) {
+    throw new Error(`failed to fetch checksum: HTTP ${status} ${checksumUrl}`);
+  }
+  const expected = parseChecksum(body);
+  const actual = (await sha256File(filePath)).toLowerCase();
+  if (!crypto.timingSafeEqual(Buffer.from(expected, 'hex'), Buffer.from(actual, 'hex'))) {
+    throw new Error(`checksum mismatch: expected ${expected}, got ${actual}`);
+  }
 }
 
 function replaceBinary(tmpPath: string): void {
@@ -163,7 +336,6 @@ function replaceBinary(tmpPath: string): void {
     fs.renameSync(tmpPath, execPath);
   } else {
     fs.chmodSync(tmpPath, 0o755);
-    // rename is atomic and works on POSIX even when execPath is currently executing.
     fs.renameSync(tmpPath, execPath);
   }
 }
@@ -243,18 +415,23 @@ export async function runSelfUpdate(argv: string[]): Promise<void> {
   }
 
   const { triplet, ext } = getTargetTriplet();
-  const url = resolveAssetUrl(release, triplet, ext);
-  console.log(chalk.gray(`Downloading ${url}`));
+  const { binary: binaryUrl, checksum: checksumUrl } = resolveAssetUrl(release, triplet, ext);
+  console.log(chalk.gray(`Downloading ${binaryUrl}`));
 
-  const tmpPath = path.join(path.dirname(process.execPath), `.devcontainer-cli.${process.pid}.download`);
+  const tmpDir = fs.mkdtempSync(path.join(path.dirname(process.execPath), '.devcontainer-cli-'));
+  const tmpPath = path.join(tmpDir, 'binary');
   try {
-    await downloadBinary(url, tmpPath);
+    await downloadToFile(binaryUrl, tmpPath);
     const stat = fs.statSync(tmpPath);
     if (stat.size === 0) throw new Error('downloaded file is empty');
+    console.log(chalk.gray('Verifying checksum...'));
+    await verifyChecksum(tmpPath, checksumUrl);
     replaceBinary(tmpPath);
   } catch (e) {
     try { fs.unlinkSync(tmpPath); } catch { /* noop */ }
     throw e;
+  } finally {
+    try { fs.rmdirSync(tmpDir); } catch { /* noop */ }
   }
 
   console.log(chalk.green(`✅ Updated to ${latest}. Restart any running session to use the new binary.`));
