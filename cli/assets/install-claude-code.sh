@@ -1,13 +1,6 @@
 #!/bin/bash
-# Install Claude Code globally for devuser.
+# Install Claude Code globally for devuser using native installer.
 set -e
 
-if [ -d "$HOME/.local/share/pnpm" ]; then
-  export PNPM_HOME="$HOME/.local/share/pnpm"
-  export PATH="$PNPM_HOME:$PATH"
-fi
-command -v pnpm >/dev/null 2>&1 || { echo "pnpm not found"; exit 1; }
-
-echo "==> Installing @anthropic-ai/claude-code"
-pnpm install -g @anthropic-ai/claude-code
-claude --version || true
+echo "==> Installing Claude Code (native installer)"
+curl -fsSL https://claude.ai/install.sh | bash

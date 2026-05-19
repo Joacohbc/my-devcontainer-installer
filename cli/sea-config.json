@@ -7,9 +7,10 @@
   "assets": {
     "entrypoint.sh": "assets/entrypoint.sh",
     "golang_utils.sh": "assets/golang_utils.sh",
+    "install-antigravity.sh": "assets/install-antigravity.sh",
     "install-autoskills.sh": "assets/install-autoskills.sh",
     "install-claude-code.sh": "assets/install-claude-code.sh",
-    "install-gemini.sh": "assets/install-gemini.sh",
+    "install-copilot.sh": "assets/install-copilot.sh",
     "install-opencode.sh": "assets/install-opencode.sh",
     "login-github-cli.sh": "assets/login-github-cli.sh",
     "update_golang.sh": "assets/update_golang.sh",
