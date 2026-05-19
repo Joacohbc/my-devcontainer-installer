@@ -13,7 +13,22 @@ function currentDir(): string {
 }
 const __dirname = currentDir();
 
-function assetsDir(): string {
+interface SeaModule {
+  isSea(): boolean;
+  getAsset(key: string, encoding: 'utf8'): string;
+}
+
+function loadSea(): SeaModule | null {
+  try {
+    // node:sea is built-in on Node ≥ 20.12. In dev runs isSea() will be false even if the module loads.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    return require('node:sea') as SeaModule;
+  } catch {
+    return null;
+  }
+}
+
+function assetsDirOnDisk(): string {
   const execDir = path.dirname(process.execPath);
   const candidates = [
     path.resolve(execDir, 'assets'),
@@ -33,23 +48,44 @@ export interface PreflightResult {
   missing: string[];
 }
 
+function chmodSafe(target: string): void {
+  try {
+    fs.chmodSync(target, 0o755);
+  } catch {
+    // ignore chmod errors on non-POSIX FS
+  }
+}
+
 export function preflight(requiredFiles: string[], cwd: string = process.cwd()): PreflightResult {
   const out: PreflightResult = { copied: [], alreadyPresent: [], missing: [] };
-  const assets = assetsDir();
+  const sea = loadSea();
+  const useSea = !!sea && sea.isSea();
+  const diskAssets = useSea ? null : assetsDirOnDisk();
+
   for (const f of requiredFiles) {
     const target = path.join(cwd, f);
     if (fs.existsSync(target)) {
       out.alreadyPresent.push(f);
       continue;
     }
-    const src = path.join(assets, f);
+
+    if (useSea && sea) {
+      try {
+        const content = sea.getAsset(f, 'utf8');
+        fs.writeFileSync(target, content);
+        chmodSafe(target);
+        out.copied.push(f);
+        continue;
+      } catch {
+        out.missing.push(f);
+        continue;
+      }
+    }
+
+    const src = path.join(diskAssets!, f);
     if (fs.existsSync(src)) {
       fs.copyFileSync(src, target);
-      try {
-        fs.chmodSync(target, 0o755);
-      } catch {
-        // ignore chmod errors on non-POSIX FS
-      }
+      chmodSafe(target);
       out.copied.push(f);
     } else {
       out.missing.push(f);

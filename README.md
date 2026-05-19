@@ -162,7 +162,7 @@ La CLI genera el `Dockerfile`, `docker-compose.yml`, `.env` y archivos auxiliare
 curl -fsSL https://raw.githubusercontent.com/Joacohbc/my-devcontainer-installer/main/cli/install.sh | sh
 ```
 
-Detecta OS/arch automáticamente. Instala binario en `~/.local/bin/devcontainer-cli` y assets en `~/.local/share/devcontainer-cli/assets`.
+Detecta OS/arch automáticamente. Descarga el binario (single executable con assets embebidos) en `~/.local/share/devcontainer-cli/` y lo enlaza en `~/.local/bin/devcontainer-cli`.
 
 **Windows (PowerShell):**
 
@@ -177,7 +177,7 @@ Instala en `%LOCALAPPDATA%\devcontainer-cli` y agrega al PATH del usuario.
 | Var          | Default                                  | Descripción                       |
 |--------------|------------------------------------------|-----------------------------------|
 | `VERSION`    | `latest`                                 | Tag específico (ej. `v1.0.0`)     |
-| `INSTALL_DIR`| `~/.local/share/devcontainer-cli` (unix) | Carpeta binario + assets          |
+| `INSTALL_DIR`| `~/.local/share/devcontainer-cli` (unix) | Carpeta del binario               |
 | `BIN_DIR`    | `~/.local/bin` (unix)                    | Symlink al binario                |
 
 Ejemplo versión fija:
@@ -186,9 +186,7 @@ Ejemplo versión fija:
 curl -fsSL https://raw.githubusercontent.com/Joacohbc/my-devcontainer-installer/main/cli/install.sh | VERSION=v1.0.0 sh
 ```
 
-**Descarga manual** (alternativa): https://github.com/Joacohbc/my-devcontainer-installer/releases/latest — assets disponibles: `linux-x64`, `linux-arm64`, `darwin-x64` (tar.gz) y `windows-x64` (zip).
-
-> El binario lee `assets/` junto al ejecutable. No separes ambos.
+**Descarga manual** (alternativa): https://github.com/Joacohbc/my-devcontainer-installer/releases/latest — binarios disponibles: `devcontainer-cli-linux-x64`, `-linux-arm64`, `-darwin-x64` y `-windows-x64.exe`. Son ejecutables únicos (assets embebidos via Node.js SEA); descargás, `chmod +x` y listo.
 
 ### 2. Generar el entorno
 
@@ -205,7 +203,13 @@ devcontainer-cli --with nodejs,java --service mongo,postgres --image mi-dev:loca
 
 Ayuda completa: `devcontainer-cli --help`.
 
-La CLI genera `Dockerfile` + `docker-compose.yml` + scripts auxiliares en el directorio actual.
+La CLI genera todo dentro de `.dc_<workspace>/` (donde `<workspace>` es el nombre del directorio actual, o el valor de `--workspace`):
+
+```
+.dc_<workspace>/
+├── build/          # Dockerfile, docker-compose.yml, .env, helper .sh
+└── post-script/    # Scripts post-instalación, ejecutables dentro del container
+```
 
 **Subcomandos disponibles:**
 
@@ -217,18 +221,11 @@ La CLI genera `Dockerfile` + `docker-compose.yml` + scripts auxiliares en el dir
 
 ### 3. Iniciar el entorno
 
-**Linux/Mac:**
 ```bash
-docker compose up -d
+docker compose -f .dc_<workspace>/build/docker-compose.yml up -d
 ```
 
-**Windows (Git Bash):**
-Para exponer el puerto SSH localmente en Windows, se genera además `docker-compose.windows.yml`:
-```bash
-docker compose -f docker-compose.yml -f docker-compose.windows.yml up -d
-```
-
-Si deseas personalizar la configuración de red (opcional), edita el `.env` generado antes de iniciar (ver [CLOUDFLARE_TUNNEL.md](CLOUDFLARE_TUNNEL.md)).
+Si deseas personalizar la configuración de red (opcional), edita `.dc_<workspace>/build/.env` antes de iniciar (ver [CLOUDFLARE_TUNNEL.md](CLOUDFLARE_TUNNEL.md)).
 
 ## Acceso y Uso
 
@@ -359,8 +356,8 @@ ssh devcontainer-remote
 
 Una vez dentro, puedes ejecutar los scripts de configuración incluidos para terminar de preparar tu entorno:
 
-* **GitHub CLI:** `/workspace/login-github-cli.sh` - Te ayuda a iniciar sesión y configurar tus credenciales de GitHub.
-* **Actualizar Go:** `/workspace/update_golang.sh` - Actualiza la instalación de Go a la última versión estable disponible.
+* **GitHub CLI:** `/workspace/.dc_<workspace>/post-script/login-github-cli.sh` - Te ayuda a iniciar sesión y configurar tus credenciales de GitHub.
+* **Actualizar Go:** `/workspace/.dc_<workspace>/post-script/update_golang.sh` - Actualiza la instalación de Go a la última versión estable disponible (solo si elegiste el módulo `go`).
 * **Actualizar Sistema:** Es relevante mantener el entorno al día (incluyendo e.g. el cliente de Docker) ejecutando `sudo apt update && sudo apt upgrade -y`.
 
 Consulta [POST_INSTALL_STEPS.md](POST_INSTALL_STEPS.md) para más detalles sobre backups y herramientas adicionales.
@@ -404,20 +401,30 @@ docker run -d \
 
 ### Conflicto de Puertos
 
-* Si Docker falla al iniciar porque un puerto (ej. 27017, 5432, 2222) ya está en uso, detén el servicio local que lo ocupa en tu máquina host o modifica el mapeo de puertos en `docker-compose.yml` o `docker-compose.windows.yml`.
+* Si Docker falla al iniciar porque un puerto (ej. 27017, 5432, 2222) ya está en uso, detén el servicio local que lo ocupa en tu máquina host o modifica el mapeo de puertos en `.dc_<workspace>/build/docker-compose.yml`.
 
 ## Estructura del Proyecto
 
-Todo se genera mediante la CLI. Tras ejecutar `devcontainer-cli` en tu directorio de trabajo obtendrás:
+Tras ejecutar `devcontainer-cli` en tu directorio de trabajo obtendrás:
 
-* `Dockerfile`: Configuración de la imagen base.
-* `docker-compose.yml` (+ `docker-compose.windows.yml` en Windows): Orquestación de servicios.
-* `devcontainer.config.json`: Configuración persistida por la CLI (módulos, servicios, subnet, etc.).
-* `.env`: Variables de entorno generadas (`DOCKER_SUBNET`, `DEVCONTAINER_IP`, `TUNNEL_TOKEN` si aplica).
-* `entrypoint.sh`, `zsh-installer.sh`: Scripts de build/runtime siempre incluidos.
-* `golang_utils.sh`, `update_golang.sh`: Solo si seleccionaste el módulo `go`.
-* `login-github-cli.sh`: Script post-instalación copiado a tu cwd (montado en `/workspace/` dentro del contenedor).
-* `install-claude-code.sh`, `install-gemini.sh`, `install-opencode.sh`, `install-autoskills.sh`: Solo si seleccionaste el módulo `ai-clis`; quedan en `/home/devuser/` dentro del contenedor.
+```
+<tu-proyecto>/
+├── devcontainer.config.json          # Estado persistido (módulos, servicios, subnet)
+└── .dc_<workspace>/
+    ├── build/                        # Todo lo que necesita `docker build`
+    │   ├── Dockerfile
+    │   ├── docker-compose.yml
+    │   ├── .env                      # DOCKER_SUBNET, DEVCONTAINER_IP, TUNNEL_TOKEN…
+    │   ├── entrypoint.sh
+    │   ├── zsh-installer.sh
+    │   ├── golang_utils.sh           # solo con módulo `go`
+    │   └── install-*.sh              # solo con módulo `ai-clis`
+    └── post-script/                  # Scripts ejecutables dentro del contenedor
+        ├── login-github-cli.sh
+        └── update_golang.sh          # solo con módulo `go`
+```
+
+Tu código vive en `<tu-proyecto>/` (la raíz), que se monta como `/workspace` dentro del contenedor.
 
 ## Bases de Datos
 

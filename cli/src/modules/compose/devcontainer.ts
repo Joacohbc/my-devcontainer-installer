@@ -16,7 +16,7 @@ export const devcontainerService: ComposeService = {
       command: 'sleep infinity',
       restart: 'unless-stopped',
       volumes: [
-        '.:/workspace',
+        '../..:/workspace',
         '/var/run/docker.sock:/var/run/docker.sock',
         'devcontainer_etc:/etc',
         'devcontainer_root:/root',

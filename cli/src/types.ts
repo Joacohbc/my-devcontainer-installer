@@ -24,6 +24,7 @@ export interface DockerfileModule {
   conflicts?: string[];
   options?: ModuleOption[];
   copyFiles?: string[];
+  postScriptFiles?: string[];
   render(opts: Record<string, unknown>): string;
 }
 

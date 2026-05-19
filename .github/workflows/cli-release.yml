@@ -20,22 +20,24 @@ jobs:
           - os: ubuntu-latest
             target: linux-x64
             binary: devcontainer-cli
-            archive: tar.gz
+            ext: ''
           - os: ubuntu-24.04-arm
             target: linux-arm64
             binary: devcontainer-cli
-            archive: tar.gz
+            ext: ''
           - os: macos-latest
             target: darwin-x64
             binary: devcontainer-cli
-            archive: tar.gz
+            ext: ''
           - os: windows-latest
             target: windows-x64
             binary: devcontainer-cli.exe
-            archive: zip
+            ext: '.exe'
     defaults:
       run:
         working-directory: cli
+    env:
+      VERSION: ${{ github.ref_name }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -96,32 +98,15 @@ jobs:
         if: runner.os == 'macOS'
         run: codesign --sign - "dist/${{ matrix.binary }}"
 
-      - name: Stage release dir
+      - name: Rename binary for release
         shell: bash
-        run: |
-          mkdir -p "release/devcontainer-cli-${{ matrix.target }}"
-          cp "dist/${{ matrix.binary }}" "release/devcontainer-cli-${{ matrix.target }}/"
-          cp -r assets "release/devcontainer-cli-${{ matrix.target }}/"
-
-      - name: Package tar.gz
-        if: matrix.archive == 'tar.gz'
-        shell: bash
-        run: |
-          cd release
-          tar -czf "devcontainer-cli-${{ matrix.target }}.tar.gz" "devcontainer-cli-${{ matrix.target }}"
-
-      - name: Package zip
-        if: matrix.archive == 'zip'
-        shell: pwsh
-        run: |
-          cd release
-          Compress-Archive -Path "devcontainer-cli-${{ matrix.target }}" -DestinationPath "devcontainer-cli-${{ matrix.target }}.zip"
+        run: mv "dist/${{ matrix.binary }}" "dist/devcontainer-cli-${{ matrix.target }}${{ matrix.ext }}"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: devcontainer-cli-${{ matrix.target }}
-          path: cli/release/devcontainer-cli-${{ matrix.target }}.${{ matrix.archive }}
+          path: cli/dist/devcontainer-cli-${{ matrix.target }}${{ matrix.ext }}
           if-no-files-found: error
 
   release:

@@ -31,6 +31,12 @@ export interface SetupSshFlags {
   help: boolean;
 }
 
+function defaultComposeFile(): string {
+  const cfg = loadConfig(process.cwd());
+  const ws = cfg?.workspace ?? sanitizeDockerName(path.basename(process.cwd()));
+  return `.dc_${ws}/build/docker-compose.yml`;
+}
+
 const DEFAULTS: SetupSshFlags = {
   remote: '',
   alias: SSH_DEFAULTS.alias,
@@ -42,7 +48,7 @@ const DEFAULTS: SetupSshFlags = {
   containerExplicit: false,
   service: SSH_DEFAULTS.serviceName,
   serviceExplicit: false,
-  composeFile: 'docker-compose.yml',
+  composeFile: defaultComposeFile(),
   user: SSH_DEFAULTS.user,
   help: false,
 };
@@ -260,10 +266,7 @@ async function ensureStack(f: SetupSshFlags, mode: Mode): Promise<void> {
     : await confirm('startStack', 'Start it now with docker compose up -d?', true);
   if (!proceed) throw new Error('Aborting — stack must be running.');
 
-  const composeArgs =
-    mode === 'windows'
-      ? ['compose', '-f', f.composeFile, '-f', 'docker-compose.windows.yml', 'up', '-d']
-      : ['compose', '-f', f.composeFile, 'up', '-d'];
+  const composeArgs = ['compose', '-f', f.composeFile, 'up', '-d'];
   const r = runInherit('docker', composeArgs);
   if (r.status !== 0) throw new Error('docker compose up failed.');
 
