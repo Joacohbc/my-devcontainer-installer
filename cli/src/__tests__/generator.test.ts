@@ -166,6 +166,92 @@ test('ai-clis pulls pnpm + github-cli via requires', () => {
   assert.match(df, /cli\.github\.com\/packages/);
 });
 
+test('compose default does not mount the docker socket into devcontainer', () => {
+  const yml = generateCompose(makeConfig());
+  const parsed = parse(yml) as {
+    services: { 'devcontainer-ssh': { volumes: string[]; environment?: string[] } };
+  };
+  const vols = parsed.services['devcontainer-ssh'].volumes;
+  assert.ok(!vols.some((v) => v.includes('docker.sock')), 'socket must not be mounted by default');
+  assert.equal(parsed.services['devcontainer-ssh'].environment, undefined);
+});
+
+test('compose dockerSocket=ro mounts socket read-only', () => {
+  const yml = generateCompose(
+    makeConfig({
+      compose: {
+        services: [{ id: 'devcontainer', options: { dockerSocket: 'ro' } }],
+        subnet: '172.25.0.0/24',
+      },
+    }),
+  );
+  const parsed = parse(yml) as {
+    services: { 'devcontainer-ssh': { volumes: string[] } };
+  };
+  assert.ok(
+    parsed.services['devcontainer-ssh'].volumes.includes(
+      '/var/run/docker.sock:/var/run/docker.sock:ro',
+    ),
+  );
+});
+
+test('compose dockerSocket=proxy wires DOCKER_HOST and depends_on proxy', () => {
+  const yml = generateCompose(
+    makeConfig({
+      compose: {
+        services: [
+          { id: 'devcontainer', options: { dockerSocket: 'proxy' } },
+          { id: 'docker-socket-proxy', options: {} },
+        ],
+        subnet: '172.25.0.0/24',
+      },
+    }),
+  );
+  const parsed = parse(yml) as {
+    services: {
+      'devcontainer-ssh': {
+        volumes: string[];
+        environment: string[];
+        depends_on: string[];
+      };
+      'docker-socket-proxy': {
+        image: string;
+        environment: string[];
+        volumes: string[];
+      };
+    };
+  };
+  const dev = parsed.services['devcontainer-ssh'];
+  assert.ok(!dev.volumes.some((v) => v.includes('docker.sock')));
+  assert.ok(dev.environment.includes('DOCKER_HOST=tcp://docker-socket-proxy:2375'));
+  assert.ok(dev.depends_on.includes('docker-socket-proxy'));
+  const proxy = parsed.services['docker-socket-proxy'];
+  assert.match(proxy.image, /tecnativa\/docker-socket-proxy/);
+  assert.ok(proxy.volumes.includes('/var/run/docker.sock:/var/run/docker.sock:ro'));
+  assert.ok(proxy.environment.includes('POST=1'));
+  assert.ok(proxy.environment.includes('EXEC=0'));
+});
+
+test('compose dockerSocket=proxy without proxy service falls back to ro mount', () => {
+  const yml = generateCompose(
+    makeConfig({
+      compose: {
+        services: [{ id: 'devcontainer', options: { dockerSocket: 'proxy' } }],
+        subnet: '172.25.0.0/24',
+      },
+    }),
+  );
+  const parsed = parse(yml) as {
+    services: { 'devcontainer-ssh': { volumes: string[]; environment?: string[] } };
+  };
+  assert.ok(
+    parsed.services['devcontainer-ssh'].volumes.includes(
+      '/var/run/docker.sock:/var/run/docker.sock:ro',
+    ),
+  );
+  assert.equal(parsed.services['devcontainer-ssh'].environment, undefined);
+});
+
 test('env file includes selected env vars', () => {
   const env = generateEnv(
     makeConfig({ env: { TUNNEL_TOKEN: 'abc' }, compose: { services: [], subnet: '10.0.0.0/8' } }),

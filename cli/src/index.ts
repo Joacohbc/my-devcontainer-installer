@@ -64,6 +64,21 @@ async function buildConfigFromPrompts(base: DevcontainerConfig): Promise<Devcont
   );
 
   const services: SelectedModule[] = [];
+  for (const svc of composeServices.filter((s) => s.always)) {
+    if (!svc.options?.length) continue;
+    const opts: Record<string, unknown> = {};
+    const prev = base.compose.services.find(
+      (s) => (typeof s === 'string' ? s : s.id) === svc.id,
+    );
+    const prevOpts = typeof prev === 'object' && prev ? prev.options ?? {} : {};
+    for (const o of svc.options) {
+      opts[o.id] = await promptOption({
+        ...o,
+        default: prevOpts[o.id] ?? o.default,
+      });
+    }
+    services.push({ id: svc.id, options: opts });
+  }
   for (const id of serviceIds) {
     const svc = composeServices.find((s) => s.id === id)!;
     const opts: Record<string, unknown> = {};

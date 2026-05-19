@@ -16,6 +16,7 @@ import { cleanupModule } from './modules/dockerfile/cleanup.js';
 import { aiClisModule } from './modules/dockerfile/ai-clis.js';
 
 import { devcontainerService } from './modules/compose/devcontainer.js';
+import { dockerSocketProxyService } from './modules/compose/docker-socket-proxy.js';
 import { mongoService } from './modules/compose/mongo.js';
 import { redisService } from './modules/compose/redis.js';
 import { postgresService } from './modules/compose/postgres.js';
@@ -40,6 +41,7 @@ export const dockerfileModules: DockerfileModule[] = [
 
 export const composeServices: ComposeService[] = [
   devcontainerService,
+  dockerSocketProxyService,
   mongoService,
   redisService,
   postgresService,
