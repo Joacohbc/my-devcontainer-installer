@@ -139,7 +139,7 @@ test('ai-clis module copies per-tool install scripts by default', () => {
   const df = generateDockerfile(
     makeConfig({ dockerfile: { modules: [{ id: 'ai-clis' }] } }),
   );
-  assert.match(df, /COPY install-claude-code\.sh install-gemini\.sh install-opencode\.sh install-autoskills\.sh \/home\/devuser\//);
+  assert.match(df, /COPY install-claude-code\.sh install-opencode\.sh install-autoskills\.sh install-antigravity\.sh install-copilot\.sh \/home\/devuser\//);
   assert.match(df, /chmod \+x .*\/home\/devuser\/install-claude-code\.sh/);
   assert.doesNotMatch(df, /ai-login/);
 });
@@ -153,9 +153,10 @@ test('ai-clis module respects tools subset', () => {
     }),
   );
   assert.match(df, /install-claude-code\.sh/);
-  assert.doesNotMatch(df, /install-gemini\.sh/);
   assert.doesNotMatch(df, /install-opencode\.sh/);
   assert.doesNotMatch(df, /install-autoskills\.sh/);
+  assert.doesNotMatch(df, /install-antigravity\.sh/);
+  assert.doesNotMatch(df, /install-copilot\.sh/);
 });
 
 test('ai-clis pulls pnpm + github-cli via requires', () => {
