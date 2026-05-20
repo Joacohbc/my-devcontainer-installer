@@ -29,6 +29,19 @@ Before merging, confirm tests cover:
 2. Run local: `cd cli && pnpm test && pnpm run typecheck`.
 3. CI (`.github/workflows/cli-tests.yml`) runs on every push/PR touching `cli/**`. Must pass before merge.
 
+## Devcontainer-ssh full image `--with` list
+
+`.github/workflows/docker-image.yml` job `build-base` builds `ghcr.io/<owner>/devcontainer-ssh:latest` with **every dockerfile module**. When a new module is added under `cli/src/modules/dockerfile/`, it **must** be appended to the `--with` flag on that job (line ~70).
+
+Exclusions:
+
+- `base`, `cleanup` — applied automatically, never passed in `--with`.
+- `java-openjdk` — mutually exclusive with `java-temurin`. The full image uses `java-temurin`; do not add `java-openjdk` alongside it.
+
+Compose-only modules (`postgres`, `redis`, `mongo`, `tunnel`) do not belong in `--with` — they are services, not image layers.
+
+When adding a module: update the `--with` list in `build-base`, and consider whether it also fits any matrix entry in `build-variants`.
+
 ## Version updates (Node, Java, Go, etc.)
 
 When the version installed by a module changes (e.g. Node 22 → 24, Java 17 → 21, Ubuntu 22.04 → 24.04):
