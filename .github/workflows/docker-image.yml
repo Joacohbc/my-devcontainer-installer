@@ -92,19 +92,19 @@ jobs:
       matrix:
         include:
           - name: node-java
-            modules: nodejs,java-temurin
+            modules: nodejs,java-temurin,github-cli
             description: "Node.js + Java Temurin"
           - name: node-bun
-            modules: nodejs,bun
+            modules: nodejs,bun,github-cli
             description: "Node.js + Bun.js"
           - name: node-go
-            modules: nodejs,go
+            modules: nodejs,go,github-cli
             description: "Node.js + Go"
           - name: java-temurin
-            modules: java-temurin
+            modules: java-temurin,github-cli
             description: "Java Temurin only"
           - name: python
-            modules: python
+            modules: python,github-cli
             description: "Python only"
 
     steps:
