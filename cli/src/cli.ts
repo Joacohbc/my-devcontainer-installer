@@ -80,6 +80,7 @@ export function helpText(): string {
 
 Usage:
   cli [flags]
+  cli standalone [flags]    Generate Dockerfile + docker build/run (no Compose)
   cli setup-ssh [flags]     Run automated SSH setup (see: cli setup-ssh --help)
   cli cleanup-tips [flags]  Show docker cleanup commands for this project
   cli update [flags]        Replace this binary with the latest GitHub release

@@ -21,6 +21,7 @@ import { printSshInstructions } from './ssh-instructions.js';
 import { confirm, input, multiselect, PromptCancelledError, select } from './prompts.js';
 import { composeServices, dockerfileModules, getDockerfileModule } from './registry.js';
 import { runSetupSsh } from './setup-ssh.js';
+import { runStandalone } from './standalone.js';
 import { cleanupStaleUpdate, getCurrentVersion, runSelfUpdate } from './self-update.js';
 import type { DevcontainerConfig, ModuleOption, SelectedModule } from './types.js';
 import { isValidCidr, isValidDockerName, isValidImageName, sanitizeDockerName } from './validators.js';
@@ -229,6 +230,10 @@ async function main() {
   const argv = process.argv.slice(2);
   if (argv[0] === 'setup-ssh') {
     await runSetupSsh(argv.slice(1));
+    return;
+  }
+  if (argv[0] === 'standalone') {
+    await runStandalone(argv.slice(1));
     return;
   }
   if (argv[0] === 'cleanup-tips') {

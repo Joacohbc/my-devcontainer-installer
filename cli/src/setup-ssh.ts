@@ -261,14 +261,26 @@ async function ensureStack(f: SetupSshFlags, mode: Mode): Promise<void> {
     return;
   }
   warn(`Container '${f.container}' not running.`);
+
+  const hasCompose = fs.existsSync(f.composeFile);
+  const startMsg = hasCompose
+    ? 'Start it now with docker compose up -d?'
+    : `Start it now with docker start ${f.container}?`;
+
   const proceed = f.assumeYes
     ? true
-    : await confirm('startStack', 'Start it now with docker compose up -d?', true);
+    : await confirm('startStack', startMsg, true);
   if (!proceed) throw new Error('Aborting — stack must be running.');
 
-  const composeArgs = ['compose', '-f', f.composeFile, 'up', '-d'];
-  const r = runInherit('docker', composeArgs);
-  if (r.status !== 0) throw new Error('docker compose up failed.');
+  if (hasCompose) {
+    const composeArgs = ['compose', '-f', f.composeFile, 'up', '-d'];
+    const r = runInherit('docker', composeArgs);
+    if (r.status !== 0) throw new Error('docker compose up failed.');
+  } else {
+    log(`Running docker start ${f.container}...`);
+    const r = runInherit('docker', ['start', f.container]);
+    if (r.status !== 0) throw new Error(`Failed to start container '${f.container}'. Make sure it has been created.`);
+  }
 
   let tries = 20;
   while (tries > 0 && !stackRunning(f.container)) {
@@ -281,9 +293,14 @@ async function ensureStack(f: SetupSshFlags, mode: Mode): Promise<void> {
 function fetchPassword(f: SetupSshFlags, mode: Mode): void {
   if (mode === 'remote') return;
   log('Fetching temporary password from logs...');
-  const r = run('docker', ['compose', '-f', f.composeFile, 'logs', f.service]);
+
+  const hasCompose = fs.existsSync(f.composeFile);
+  const r = hasCompose
+    ? run('docker', ['compose', '-f', f.composeFile, 'logs', f.service])
+    : run('docker', ['logs', f.container]);
+
   if (r.status !== 0) {
-    warn('Could not read compose logs.');
+    warn(hasCompose ? 'Could not read compose logs.' : 'Could not read container logs.');
     return;
   }
   const lines = r.stdout

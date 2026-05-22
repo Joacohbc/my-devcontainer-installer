@@ -52,12 +52,17 @@ export interface SelectedModule {
 export interface DevcontainerConfig {
   image: string;
   workspace: string;
+  mode?: 'compose' | 'standalone';
   dockerfile: {
     modules: SelectedModule[];
   };
   compose: {
     services: (string | SelectedModule)[];
     subnet?: string;
+  };
+  standalone?: {
+    subnet?: string;
+    mount?: string;
   };
   env: Record<string, string>;
 }
