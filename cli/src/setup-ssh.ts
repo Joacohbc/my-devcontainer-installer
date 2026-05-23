@@ -4,7 +4,7 @@ import * as path from 'path';
 import { spawnSync, type SpawnSyncOptions } from 'child_process';
 import chalk from 'chalk';
 import { parse as parseYaml } from 'yaml';
-import { confirm, select, PromptCancelledError } from './prompts.js';
+import { confirm, input, select, PromptCancelledError } from './prompts.js';
 import { loadConfig } from './config.js';
 import { sanitizeDockerName } from './validators.js';
 import {
@@ -18,6 +18,7 @@ import {
 export interface SetupSshFlags {
   remote: string;
   alias: string;
+  aliasExplicit: boolean;
   key: string;
   port: string;
   mode: '' | 'local' | 'windows' | 'remote';
@@ -41,6 +42,7 @@ function defaultComposeFile(): string {
 const DEFAULTS: SetupSshFlags = {
   remote: '',
   alias: SSH_DEFAULTS.alias,
+  aliasExplicit: false,
   key: defaultKeyPath(),
   port: String(SSH_DEFAULTS.windowsPort),
   mode: '',
@@ -71,6 +73,7 @@ export function parseSetupSshFlags(argv: string[]): SetupSshFlags {
         break;
       case '--alias':
         f.alias = next();
+        f.aliasExplicit = true;
         break;
       case '--key':
         f.key = next();
@@ -552,6 +555,12 @@ export async function runSetupSsh(argv: string[]): Promise<void> {
 
   const workspace = deriveWorkspace(resolvedContainer);
   applyWorkspaceDefaults(f, workspace);
+
+  if (!f.aliasExplicit && !f.assumeYes) {
+    f.alias = await input('alias', 'SSH connection name (alias):', f.alias, (v) =>
+      v.trim().length > 0 ? true : 'Name cannot be empty',
+    );
+  }
 
   log(`Mode: ${mode}   Workspace: ${workspace}   Alias: ${f.alias}   Key: ${f.key}`);
   if (mode !== 'remote') {
