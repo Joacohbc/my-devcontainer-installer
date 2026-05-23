@@ -4,6 +4,7 @@ import * as path from 'path';
 import { spawn } from 'child_process';
 import chalk from 'chalk';
 import { input, select } from './prompts.js';
+import { pickManagedContainer, containerWorkspace } from './container-picker.js';
 
 export interface PortForwardConfig {
   portMapping?: string;
@@ -211,28 +212,39 @@ export async function runPortForward(argv: string[]): Promise<void> {
 
   let alias = flags.alias;
   if (!alias) {
+    const container = await pickManagedContainer('Select devcontainer to forward into:', {
+      interactive: flags.interactive,
+    });
+    const ws = containerWorkspace(container.name);
+    const candidate = ws ?? container.name;
     const aliases = getSshAliases();
-    if (aliases.length === 1) {
-      console.log(chalk.cyan(`Detected a single SSH alias in config: '${aliases[0]}'. Using it.`));
-      alias = aliases[0];
-    } else if (aliases.length > 1) {
+    if (aliases.includes(candidate)) {
+      alias = candidate;
+    } else if (aliases.length === 0) {
       if (!flags.interactive) {
-        throw new Error('Multiple SSH aliases found in config. Specify --alias or run interactively.');
-      }
-      alias = await select(
-        'alias',
-        'Select SSH alias to use:',
-        aliases.map((a) => ({ name: a, message: a }))
-      );
-    } else {
-      if (!flags.interactive) {
-        throw new Error('No SSH aliases found in config. Specify --alias or run interactively.');
+        throw new Error(
+          `No SSH aliases found in config. Run 'setup-ssh' first or specify --alias.`,
+        );
       }
       alias = await input(
         'alias',
-        'No SSH aliases auto-discovered. Enter SSH alias manually (e.g. devcontainer):',
-        undefined,
-        (v) => (v.trim() ? true : 'SSH alias cannot be empty.')
+        `No SSH alias found for '${container.name}'. Enter alias manually:`,
+        candidate,
+        (v) => (v.trim() ? true : 'SSH alias cannot be empty.'),
+      );
+    } else if (aliases.length === 1) {
+      alias = aliases[0];
+      console.log(chalk.cyan(`Using SSH alias '${alias}'.`));
+    } else {
+      if (!flags.interactive) {
+        throw new Error(
+          `SSH alias '${candidate}' not found in ~/.ssh/config. Specify --alias or run interactively.`,
+        );
+      }
+      alias = await select(
+        'alias',
+        `Select SSH alias for container '${container.name}':`,
+        aliases.map((a) => ({ name: a, message: a })),
       );
     }
   }
