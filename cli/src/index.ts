@@ -3,8 +3,8 @@ import * as path from 'path';
 import { exec } from 'child_process';
 import chalk from 'chalk';
 
-import { parseFlags, helpText, type CliFlags } from './cli.js';
-import { defaultConfig, loadConfig, saveConfig } from './config.js';
+import { parseFlags, helpText, type CliFlags } from '@/cli.js';
+import { defaultConfig, loadConfig, saveConfig } from '@/config.js';
 import {
   generateDockerfile,
   generateCompose,
@@ -14,30 +14,30 @@ import {
   collectRequiredPostScriptFiles,
   resolveDevcontainerImageName,
   resolveRemoteImage,
-} from './generator.js';
-import { printCleanupInstructions } from './cleanup-instructions.js';
-import { findConflicts } from './docker-conflicts.js';
-import { isGeneratedFile, preflight } from './preflight.js';
-import { findFreeSubnet, formatCidr, listUsedSubnets, subnetConflict } from './subnet.js';
-import { printSshInstructions } from './ssh-instructions.js';
-import { confirm, input, multiselect, PromptCancelledError, select } from './prompts.js';
-import { composeServices, dockerfileModules, getDockerfileModule } from './registry.js';
-import { runSetupSsh } from './setup-ssh.js';
-import { cleanupStaleUpdate, getCurrentVersion, runSelfUpdate } from './self-update.js';
-import { runUpdateImages } from './update-images.js';
-import { runConfigCmd } from './config-cmd.js';
-import { runQuickRun } from './quick-run.js';
-import { runPrune } from './prune.js';
-import { runPortForward } from './port-forward.js';
-import { runDown } from './down.js';
-import { runDestroy } from './destroy.js';
-import { runLifecycle } from './lifecycle.js';
+} from '@/generator.js';
+import { printCleanupInstructions } from '@/cleanup-instructions.js';
+import { findConflicts } from '@/docker-conflicts.js';
+import { isGeneratedFile, preflight } from '@/preflight.js';
+import { findFreeSubnet, formatCidr, listUsedSubnets, subnetConflict } from '@/subnet.js';
+import { printSshInstructions } from '@/ssh-instructions.js';
+import { confirm, input, multiselect, PromptCancelledError, select } from '@/prompts.js';
+import { composeServices, dockerfileModules, getDockerfileModule } from '@/registry.js';
+import { runSetupSsh } from '@/setup-ssh.js';
+import { cleanupStaleUpdate, getCurrentVersion, runSelfUpdate } from '@/self-update.js';
+import { runUpdateImages } from '@/update-images.js';
+import { runConfigCmd } from '@/config-cmd.js';
+import { runQuickRun } from '@/quick-run.js';
+import { runPrune } from '@/prune.js';
+import { runPortForward } from '@/port-forward.js';
+import { runDown } from '@/down.js';
+import { runDestroy } from '@/destroy.js';
+import { runLifecycle } from '@/lifecycle.js';
 import {
   computeFingerprint,
   fingerprintTag,
   localImageExists,
   recordEntry,
-} from './image-registry.js';
+} from '@/image-registry.js';
 import {
   BUILD_MODES,
   REMOTE_VARIANTS,
@@ -46,8 +46,8 @@ import {
   type ModuleOption,
   type RemoteVariant,
   type SelectedModule,
-} from './types.js';
-import { isValidCidr, isValidDockerName, isValidImageName, sanitizeDockerName } from './validators.js';
+} from '@/types.js';
+import { isValidCidr, isValidDockerName, isValidImageName, sanitizeDockerName } from '@/validators.js';
 
 const MODE_LABELS: Record<BuildMode, string> = {
   'local-cached': 'local-cached — generate Dockerfile + compose, reuse cached image when unchanged',
@@ -163,7 +163,7 @@ async function buildConfigFromPrompts(base: DevcontainerConfig): Promise<Devcont
     if (suggestedSubnet !== preferredSubnet) {
       console.log(
         chalk.yellow(
-          `⚠  Subnet ${preferredSubnet} overlaps with existing Docker network. Suggesting ${suggestedSubnet}.`,
+          `Subnet ${preferredSubnet} overlaps with existing Docker network. Suggesting ${suggestedSubnet}.`,
         ),
       );
     }
@@ -284,10 +284,10 @@ function executeDockerCommand(cwd: string, command: string, label: string): Prom
     child.stderr?.pipe(process.stderr);
     child.on('close', (code) => {
       if (code !== 0) {
-        console.error(chalk.red(`\n❌ ${label} failed (exit ${code})\n`));
+        console.error(chalk.red(`\n${label} failed (exit ${code})\n`));
         resolve(false);
       } else {
-        console.log(chalk.green.bold(`\n✅ ${label} completed!\n`));
+        console.log(chalk.green.bold(`\n${label} completed!\n`));
         resolve(true);
       }
     });
@@ -317,7 +317,7 @@ function installSignalHandlers(): void {
     if (!err) return;
     if (err.code === 'ERR_USE_AFTER_CLOSE') return;
     if (err.message === '' || err.message === 'canceled') return;
-    console.error(chalk.red(`\n❌ ${err.message ?? String(e)}\n`));
+    console.error(chalk.red(`\n${err.message ?? String(e)}\n`));
     process.exit(1);
   });
 }
@@ -374,7 +374,7 @@ async function main() {
   }
 
   if (argv[0] !== undefined && !argv[0].startsWith('-')) {
-    console.error(chalk.red(`\n❌ Unknown command: ${argv[0]}\n`));
+    console.error(chalk.red(`\nUnknown command: ${argv[0]}\n`));
     console.log(helpText());
     process.exit(1);
   }
@@ -389,7 +389,7 @@ async function main() {
     return;
   }
 
-  console.log(chalk.green.bold('\n🚀 DevContainer Dockerfile Builder\n'));
+  console.log(chalk.green.bold('\nDevContainer Dockerfile Builder\n'));
 
   const cwd = process.cwd();
   const existing = loadConfig(cwd);
@@ -452,7 +452,7 @@ async function main() {
       if (flags.interactive) {
         console.log(
           chalk.yellow(
-            `⚠  Subnet ${config.compose.subnet} overlaps with existing Docker network ${formatCidr(clash)}. Using ${free}.`,
+            `Subnet ${config.compose.subnet} overlaps with existing Docker network ${formatCidr(clash)}. Using ${free}.`,
           ),
         );
         config.compose.subnet = free;
@@ -466,7 +466,7 @@ async function main() {
 
   const conflicts = findConflicts(config);
   if (conflicts.length > 0) {
-    console.log(chalk.yellow('\n⚠  Docker name conflicts detected:'));
+    console.log(chalk.yellow('\nDocker name conflicts detected:'));
     for (const c of conflicts) {
       console.log(chalk.yellow(`   - ${c.kind} '${c.name}' already exists (project: ${c.owner})`));
     }
@@ -545,7 +545,7 @@ async function main() {
     console.log(chalk.yellow('Skipped Dockerfile.'));
   } else {
     writeOutput(dockerfilePath, dockerfileContent, true);
-    console.log(chalk.green('✅ Dockerfile generated.'));
+    console.log(chalk.green('Dockerfile generated.'));
   }
 
   const composeContent = generateCompose(config);
@@ -555,7 +555,7 @@ async function main() {
     console.log(chalk.yellow('Skipped docker-compose.yml.'));
   } else {
     writeOutput(composePath, composeContent, true);
-    console.log(chalk.green('✅ docker-compose.yml generated.'));
+    console.log(chalk.green('docker-compose.yml generated.'));
   }
 
   if (Object.keys(config.env).length > 0 || config.compose.subnet) {
@@ -565,11 +565,11 @@ async function main() {
     } else {
       fs.writeFileSync(envPath, generateEnv(config));
     }
-    console.log(chalk.green('✅ .env written.'));
+    console.log(chalk.green('.env written.'));
   }
 
   saveConfig(config, cwd);
-  console.log(chalk.green(`✅ Saved devcontainer.config.json`));
+  console.log(chalk.green(`Saved devcontainer.config.json`));
 
   printLayoutMessage(config.workspace, postScriptFiles.length > 0);
 
@@ -589,7 +589,7 @@ async function main() {
 
   if (build) {
     const action = isRemote ? executePull : executeBuild;
-    const banner = isRemote ? '\n⏳ Pulling image...\n' : '\n⏳ Building...\n';
+    const banner = isRemote ? '\nPulling image...\n' : '\nBuilding...\n';
     console.log(chalk.yellow(banner));
     const buildOk = await action(buildDir);
     if (buildOk) {
@@ -598,7 +598,7 @@ async function main() {
     }
   } else {
     recordProjectEntry(cwd, config);
-    console.log(chalk.green.bold('\n✨ Done.\n'));
+    console.log(chalk.green.bold('\nDone.\n'));
     printSshInstructions(config.workspace, config.mode);
   }
 }
@@ -625,7 +625,7 @@ function printLayoutMessage(workspace: string, hasPostScripts: boolean): void {
   const bar = chalk.gray('─'.repeat(64));
   const root = `.dc_${workspace}`;
   console.log('\n' + bar);
-  console.log(chalk.cyan.bold(`📁 Generated layout under ${root}/`));
+  console.log(chalk.cyan.bold(`Generated layout under ${root}/`));
   console.log(bar);
   console.log(`  ${chalk.bold('build/')}        Dockerfile, docker-compose.yml, .env, helper .sh`);
   console.log(`               ${chalk.gray('→ docker compose -f ' + root + '/build/docker-compose.yml up -d')}`);
@@ -641,6 +641,6 @@ main().catch((e) => {
     console.log(chalk.yellow('\nCancelled.'));
     process.exit(130);
   }
-  console.error(chalk.red(`\n❌ ${e.message ?? e}\n`));
+  console.error(chalk.red(`\n${e.message ?? e}\n`));
   process.exit(1);
 });

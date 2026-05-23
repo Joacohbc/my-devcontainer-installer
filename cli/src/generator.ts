@@ -1,10 +1,10 @@
 import { stringify } from 'yaml';
-import { composeLabels, dockerfileLabelBlock } from './labels.js';
-import { composeServices, getComposeService } from './registry.js';
-import { resolveDockerfileModules } from './resolver.js';
-import { SSH_DEFAULTS } from './ssh-defaults.js';
-import { lastHost } from './subnet.js';
-import { resolveRegistry } from './global-config.js';
+import { composeLabels, dockerfileLabelBlock } from '@/labels.js';
+import { composeServices, getComposeService } from '@/registry.js';
+import { resolveDockerfileModules } from '@/resolver.js';
+import { SSH_DEFAULTS } from '@/ssh-defaults.js';
+import { lastHost } from '@/subnet.js';
+import { resolveRegistry } from '@/global-config.js';
 import {
   GENERATED_HEADER,
   GENERATED_HEADER_YAML,
@@ -12,7 +12,7 @@ import {
   normalizeServices,
   type DevcontainerConfig,
   type RemoteVariant,
-} from './types.js';
+} from '@/types.js';
 
 const DEFAULT_SUBNET = '172.25.0.0/28';
 

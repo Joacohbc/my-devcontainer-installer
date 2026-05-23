@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseFlags, helpText } from '../cli.js';
+import { parseFlags, helpText } from '@/cli.js';
 
 test('parses --with as comma list', () => {
   const f = parseFlags(['--with', 'nodejs,java,dod']);

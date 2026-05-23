@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { CONFIG_FILE, type DevcontainerConfig } from './types.js';
-import { sanitizeDockerName } from './validators.js';
+import { CONFIG_FILE, type DevcontainerConfig } from '@/types.js';
+import { sanitizeDockerName } from '@/validators.js';
 
 export function configPath(cwd: string = process.cwd()): string {
   return path.join(cwd, CONFIG_FILE);

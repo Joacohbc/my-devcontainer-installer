@@ -4,7 +4,7 @@ import {
   saveGlobalConfig,
   globalConfigPath,
   REGISTRY_DEFAULT,
-} from './global-config.js';
+} from '@/global-config.js';
 
 export function configCmdHelp(): string {
   return `devcontainer-cli config — read/write global CLI config

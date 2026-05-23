@@ -12,7 +12,7 @@ import {
   findByFingerprint,
   saveRegistry,
   imageRegistryPath,
-} from '../image-registry.js';
+} from '@/image-registry.js';
 
 function withTempHome<T>(fn: () => T): T {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'dc-cli-imgreg-'));

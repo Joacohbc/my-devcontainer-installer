@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { containerWorkspace, listManagedContainers } from '../container-picker.js';
+import { containerWorkspace, listManagedContainers } from '@/container-picker.js';
 
 test('containerWorkspace: strips devcontainer-ssh suffix', () => {
   assert.equal(containerWorkspace('joaco-devcontainer-ssh'), 'joaco');

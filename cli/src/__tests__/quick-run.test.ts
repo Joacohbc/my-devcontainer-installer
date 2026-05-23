@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseQuickRunFlags, quickRunHelp } from '../quick-run.js';
+import { parseQuickRunFlags, quickRunHelp } from '@/quick-run.js';
 
 test('parseQuickRunFlags: --variant', () => {
   assert.equal(parseQuickRunFlags(['--variant', 'python']).variant, 'python');

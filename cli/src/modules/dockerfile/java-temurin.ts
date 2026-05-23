@@ -1,4 +1,4 @@
-import type { DockerfileModule } from '../../types.js';
+import type { DockerfileModule } from '@/types.js';
 
 export const javaTemurinModule: DockerfileModule = {
   id: 'java-temurin',

@@ -1,8 +1,8 @@
 import * as fs from 'fs';
 import { spawnSync } from 'child_process';
 import chalk from 'chalk';
-import { listEntries } from './image-registry.js';
-import { confirm } from './prompts.js';
+import { listEntries } from '@/image-registry.js';
+import { confirm } from '@/prompts.js';
 
 export interface PruneFlags {
   all: boolean;
@@ -131,5 +131,5 @@ export async function runPrune(argv: string[]): Promise<void> {
     }
   }
 
-  console.log(chalk.green.bold(`\n✅ Removed ${ok} image(s).`) + (fail ? chalk.red(` ${fail} failed.`) : ''));
+  console.log(chalk.green.bold(`\nRemoved ${ok} image(s).`) + (fail ? chalk.red(` ${fail} failed.`) : ''));
 }

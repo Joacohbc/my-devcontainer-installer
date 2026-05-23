@@ -1,5 +1,5 @@
 import { spawnSync } from 'child_process';
-import { isValidCidr } from './validators.js';
+import { isValidCidr } from '@/validators.js';
 
 export interface CidrRange {
   start: number;

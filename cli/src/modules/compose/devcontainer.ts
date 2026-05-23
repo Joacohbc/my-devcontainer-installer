@@ -1,5 +1,5 @@
-import type { ComposeService } from '../../types.js';
-import { SSH_DEFAULTS } from '../../ssh-defaults.js';
+import type { ComposeService } from '@/types.js';
+import { SSH_DEFAULTS } from '@/ssh-defaults.js';
 
 export const devcontainerService: ComposeService = {
   id: 'devcontainer',

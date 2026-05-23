@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseDestroyFlags, destroyHelp } from '../destroy.js';
+import { parseDestroyFlags, destroyHelp } from '@/destroy.js';
 
 test('parseDestroyFlags: defaults', () => {
   const f = parseDestroyFlags([]);

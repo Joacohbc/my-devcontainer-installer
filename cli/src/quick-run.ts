@@ -1,8 +1,8 @@
 import { spawnSync } from 'child_process';
 import chalk from 'chalk';
-import { select, confirm, PromptCancelledError } from './prompts.js';
-import { resolveRemoteImage } from './generator.js';
-import { REMOTE_VARIANTS, type RemoteVariant } from './types.js';
+import { select, confirm, PromptCancelledError } from '@/prompts.js';
+import { resolveRemoteImage } from '@/generator.js';
+import { REMOTE_VARIANTS, type RemoteVariant } from '@/types.js';
 
 const VARIANT_LABELS: Record<RemoteVariant, string> = {
   ssh: 'ssh — full image (all modules)',
@@ -112,7 +112,7 @@ export async function runQuickRun(argv: string[]): Promise<void> {
   const containerName = flags.name ?? `dc-${variant}`;
   const volumeName = flags.volume;
 
-  console.log(chalk.cyan.bold(`\n🐳 Quick run: ${image}\n`));
+  console.log(chalk.cyan.bold(`\nQuick run: ${image}\n`));
   console.log(chalk.gray(`  Container : ${containerName}`));
   if (volumeName) console.log(chalk.gray(`  Volume    : ${volumeName} → /workspace`));
   if (flags.port)  console.log(chalk.gray(`  Port      : ${flags.port}:22`));
@@ -153,7 +153,7 @@ export async function runQuickRun(argv: string[]): Promise<void> {
   if (flags.port) args.push('-p', `${flags.port}:22`);
   args.push(image, 'sleep', 'infinity');
 
-  console.log(chalk.yellow('⏳ Pulling and starting container...\n'));
+  console.log(chalk.yellow('Pulling and starting container...\n'));
   const code = runInherit('docker', args);
   if (code !== 0) throw new Error('docker run failed.');
 
@@ -164,7 +164,7 @@ export async function runQuickRun(argv: string[]): Promise<void> {
 function printNextSteps(containerName: string): void {
   const bar = chalk.gray('─'.repeat(64));
   console.log(bar);
-  console.log(chalk.green.bold('✅ Container running.'));
+  console.log(chalk.green.bold('Container running.'));
   console.log('');
   console.log(chalk.bold('Next: set up SSH access'));
   console.log(chalk.gray(`   $ devcontainer-cli setup-ssh --container ${containerName}`));

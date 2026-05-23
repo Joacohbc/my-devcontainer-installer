@@ -1,4 +1,4 @@
-import type { DockerfileModule } from '../../types.js';
+import type { DockerfileModule } from '@/types.js';
 
 export const dodModule: DockerfileModule = {
   id: 'dod',

@@ -1,8 +1,8 @@
 import { spawnSync } from 'child_process';
-import { LABEL_PROJECT } from './labels.js';
-import { plannedComposeNames } from './generator.js';
-import { projectId } from './labels.js';
-import type { DevcontainerConfig } from './types.js';
+import { LABEL_PROJECT } from '@/labels.js';
+import { plannedComposeNames } from '@/generator.js';
+import { projectId } from '@/labels.js';
+import type { DevcontainerConfig } from '@/types.js';
 
 export interface Conflict {
   kind: 'container' | 'network';

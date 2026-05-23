@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { compareVersions, resolveAssetUrl } from '../self-update.js';
+import { compareVersions, resolveAssetUrl } from '@/self-update.js';
 
 test('compareVersions basic ordering', () => {
   assert.equal(compareVersions('1.2.3', '1.2.4'), -1);

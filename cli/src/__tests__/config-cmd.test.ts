@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { runConfigCmd } from '../config-cmd.js';
-import { loadGlobalConfig } from '../global-config.js';
+import { runConfigCmd } from '@/config-cmd.js';
+import { loadGlobalConfig } from '@/global-config.js';
 
 function withTempHome<T>(fn: () => Promise<T>): Promise<T> {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'dc-cli-configcmd-'));
