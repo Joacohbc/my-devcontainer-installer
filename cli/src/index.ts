@@ -30,6 +30,8 @@ import { runQuickRun } from './quick-run.js';
 import { runPrune } from './prune.js';
 import { runPortForward } from './port-forward.js';
 import { runDown } from './down.js';
+import { runDestroy } from './destroy.js';
+import { runLifecycle } from './lifecycle.js';
 import {
   computeFingerprint,
   fingerprintTag,
@@ -358,6 +360,14 @@ async function main() {
     await runDown(argv.slice(1));
     return;
   }
+  if (argv[0] === 'destroy') {
+    await runDestroy(argv.slice(1));
+    return;
+  }
+  if (argv[0] === 'start' || argv[0] === 'stop' || argv[0] === 'restart') {
+    await runLifecycle(argv[0], argv.slice(1));
+    return;
+  }
   if (argv[0] === 'prune') {
     await runPrune(argv.slice(1));
     return;
@@ -464,7 +474,6 @@ async function main() {
 
   const projectDir = path.join(cwd, `.dc_${config.workspace}`);
   const buildDir = path.join(projectDir, 'build');
-  const postScriptDir = path.join(projectDir, 'post-script');
   fs.mkdirSync(buildDir, { recursive: true });
 
   const skipBuildArtifacts = config.mode === 'remote';
@@ -481,12 +490,13 @@ async function main() {
     }
   }
 
+  // Post-install scripts go into the build context so the generated Dockerfile can
+  // COPY them into the image (POST_SCRIPT_DIR). They are baked, not run.
   const postScriptFiles = skipBuildArtifacts ? [] : collectRequiredPostScriptFiles(config);
   if (postScriptFiles.length > 0) {
-    fs.mkdirSync(postScriptDir, { recursive: true });
-    const postPre = preflight(postScriptFiles, postScriptDir);
+    const postPre = preflight(postScriptFiles, buildDir);
     if (postPre.copied.length > 0) {
-      console.log(chalk.gray(`Copied post-install scripts → .dc_${config.workspace}/post-script/: ${postPre.copied.join(', ')}`));
+      console.log(chalk.gray(`Copied post-install scripts → .dc_${config.workspace}/build/: ${postPre.copied.join(', ')}`));
     }
     if (postPre.missing.length > 0) {
       throw new Error(
@@ -507,7 +517,7 @@ async function main() {
   let cachedImageHit = false;
   if (config.mode === 'local-cached' && dockerfileContent !== null) {
     const copyContents: Record<string, string> = {};
-    for (const f of copyFiles) {
+    for (const f of [...copyFiles, ...postScriptFiles]) {
       const onDisk = path.join(buildDir, f);
       if (fs.existsSync(onDisk)) {
         copyContents[f] = fs.readFileSync(onDisk, 'utf8');
@@ -614,8 +624,8 @@ function printLayoutMessage(workspace: string, hasPostScripts: boolean): void {
   console.log(`  ${chalk.bold('build/')}        Dockerfile, docker-compose.yml, .env, helper .sh`);
   console.log(`               ${chalk.gray('→ docker compose -f ' + root + '/build/docker-compose.yml up -d')}`);
   if (hasPostScripts) {
-    console.log(`  ${chalk.bold('post-script/')} Scripts to run inside the container`);
-    console.log(`               ${chalk.gray('→ /workspace/' + root + '/post-script/<script>.sh')}`);
+    console.log(`  ${chalk.bold('post-script')}  Baked into the image, run them inside the container`);
+    console.log(`               ${chalk.gray('→ ~/post-script/<script>.sh')}`);
   }
   console.log(bar + '\n');
 }

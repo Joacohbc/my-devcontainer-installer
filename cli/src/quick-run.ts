@@ -168,5 +168,9 @@ function printNextSteps(containerName: string): void {
   console.log('');
   console.log(chalk.bold('Next: set up SSH access'));
   console.log(chalk.gray(`   $ devcontainer-cli setup-ssh --container ${containerName}`));
+  console.log('');
+  console.log(chalk.bold('Post-install scripts (baked into the image, run on demand):'));
+  console.log(chalk.gray(`   $ docker exec -it ${containerName} ls ~/post-script`));
+  console.log(chalk.gray(`   $ docker exec -it -u devuser ${containerName} bash ~/post-script/login-github-cli.sh`));
   console.log(bar + '\n');
 }

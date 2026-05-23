@@ -1,5 +1,9 @@
 export type ModuleOptionType = 'select' | 'multiselect' | 'input' | 'confirm';
 
+// Directory inside the image where post-install scripts are baked, so they are
+// available in any container (including remote-image `run`, which mounts no host files).
+export const POST_SCRIPT_DIR = '/home/devuser/post-script';
+
 export interface ModuleOptionChoice {
   value: string;
   label: string;
@@ -24,7 +28,7 @@ export interface DockerfileModule {
   conflicts?: string[];
   options?: ModuleOption[];
   copyFiles?: string[];
-  postScriptFiles?: string[];
+  postScriptFiles?: string[] | ((opts: Record<string, unknown>) => string[]);
   render(opts: Record<string, unknown>): string;
 }
 

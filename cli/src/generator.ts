@@ -8,6 +8,7 @@ import { resolveRegistry } from './global-config.js';
 import {
   GENERATED_HEADER,
   GENERATED_HEADER_YAML,
+  POST_SCRIPT_DIR,
   normalizeServices,
   type DevcontainerConfig,
   type RemoteVariant,
@@ -19,8 +20,23 @@ export function generateDockerfile(config: DevcontainerConfig): string | null {
   if (config.mode === 'remote') return null;
   const resolved = resolveDockerfileModules(config.dockerfile.modules);
   const fragments = resolved.map((r) => r.module.render(r.options).trim());
+  const postScripts = postScriptsDockerfileBlock(config);
+  if (postScripts) fragments.push(postScripts);
   fragments.push(dockerfileLabelBlock(config));
   return `${GENERATED_HEADER}\n\n${fragments.join('\n\n')}\n`;
+}
+
+// Bakes every declared post-install script into POST_SCRIPT_DIR. Driven entirely by
+// each module's `postScriptFiles` declaration — adding a new script needs no change
+// here: declare it on a module and drop the file in assets/.
+function postScriptsDockerfileBlock(config: DevcontainerConfig): string {
+  const files = collectRequiredPostScriptFiles(config);
+  if (files.length === 0) return '';
+  return `##
+## POST-INSTALL SCRIPTS (available inside the container, not auto-run)
+##
+COPY ${files.join(' ')} ${POST_SCRIPT_DIR}/
+RUN chown -R devuser:devuser ${POST_SCRIPT_DIR} && chmod +x ${POST_SCRIPT_DIR}/*.sh`;
 }
 
 export function resolveRemoteImage(
@@ -231,7 +247,9 @@ export function collectRequiredPostScriptFiles(config: DevcontainerConfig): stri
   const resolved = resolveDockerfileModules(config.dockerfile.modules);
   const files = new Set<string>();
   for (const r of resolved) {
-    for (const f of r.module.postScriptFiles ?? []) files.add(f);
+    const ps = r.module.postScriptFiles;
+    const list = typeof ps === 'function' ? ps(r.options) : (ps ?? []);
+    for (const f of list) files.add(f);
   }
   return [...files];
 }
