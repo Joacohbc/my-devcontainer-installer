@@ -48,7 +48,7 @@ Si generaste el entorno con `--with ai-clis`, los scripts de instalación quedan
 ```bash
 ~/post-script/install-claude-code.sh   # Claude Code (@anthropic-ai/claude-code)
 ~/post-script/install-opencode.sh      # OpenCode (opencode.ai)
-~/post-script/install-autoskills.sh    # Autoskills (usa npx, no requiere instalación global)
+~/post-script/install-codex-cli.sh     # Codex CLI (usa npx, no requiere instalación global)
 ~/post-script/install-antigravity.sh   # Antigravity CLI
 ~/post-script/install-copilot.sh       # GitHub Copilot CLI
 ```

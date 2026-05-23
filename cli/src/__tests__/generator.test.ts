@@ -53,6 +53,7 @@ test('full Dockerfile contains all selected modules', () => {
           { id: 'dbclients' },
           { id: 'nodejs' },
           { id: 'bun' },
+          { id: 'tmux' },
         ],
       },
     }),
@@ -65,6 +66,14 @@ test('full Dockerfile contains all selected modules', () => {
   assert.match(df, /mongodb-mongosh/);
   assert.match(df, /nvm install --lts/);
   assert.match(df, /bun\.sh\/install/);
+  assert.match(df, /tmux/);
+});
+
+test('tmux module renders successfully', () => {
+  const df = generateDockerfile(
+    makeConfig({ dockerfile: { modules: [{ id: 'tmux' }] } }),
+  );
+  assert.match(df, /RUN apt-get update && apt-get install -y tmux/);
 });
 
 test('python module includes uv by default', () => {
@@ -157,7 +166,7 @@ test('ai-clis module ships per-tool install scripts as post-scripts by default',
   const df = generateDockerfile(
     makeConfig({ dockerfile: { modules: [{ id: 'ai-clis' }] } }),
   );
-  assert.match(df, /COPY .*install-claude-code\.sh.*install-opencode\.sh.*install-autoskills\.sh.*install-antigravity\.sh.*install-copilot\.sh.*\/home\/devuser\/post-script\//);
+  assert.match(df, /COPY .*install-claude-code\.sh.*install-opencode\.sh.*install-codex-cli\.sh.*install-antigravity\.sh.*install-copilot\.sh.*\/home\/devuser\/post-script\//);
   assert.match(df, /chmod \+x \/home\/devuser\/post-script\/\*\.sh/);
   assert.doesNotMatch(df, /ai-login/);
 });
@@ -172,7 +181,7 @@ test('ai-clis module respects tools subset', () => {
   );
   assert.match(df, /install-claude-code\.sh/);
   assert.doesNotMatch(df, /install-opencode\.sh/);
-  assert.doesNotMatch(df, /install-autoskills\.sh/);
+  assert.doesNotMatch(df, /install-codex-cli\.sh/);
   assert.doesNotMatch(df, /install-antigravity\.sh/);
   assert.doesNotMatch(df, /install-copilot\.sh/);
 });

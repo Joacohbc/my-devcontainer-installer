@@ -8,7 +8,7 @@
     "entrypoint.sh": "assets/entrypoint.sh",
     "golang_utils.sh": "assets/golang_utils.sh",
     "install-antigravity.sh": "assets/install-antigravity.sh",
-    "install-autoskills.sh": "assets/install-autoskills.sh",
+    "install-codex-cli.sh": "assets/install-codex-cli.sh",
     "install-claude-code.sh": "assets/install-claude-code.sh",
     "install-copilot.sh": "assets/install-copilot.sh",
     "install-opencode.sh": "assets/install-opencode.sh",
