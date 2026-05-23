@@ -3,14 +3,14 @@ import { POST_SCRIPT_DIR, type DockerfileModule } from '../../types.js';
 type CliId =
   | 'claude-code'
   | 'opencode'
-  | 'autoskills'
+  | 'codex-cli'
   | 'antigravity-cli'
   | 'copilot-cli';
 
 const ALL: CliId[] = [
   'claude-code',
   'opencode',
-  'autoskills',
+  'codex-cli',
   'antigravity-cli',
   'copilot-cli',
 ];
@@ -18,14 +18,14 @@ const ALL: CliId[] = [
 const SCRIPT_BY_TOOL: Record<CliId, string> = {
   'claude-code': 'install-claude-code.sh',
   opencode: 'install-opencode.sh',
-  autoskills: 'install-autoskills.sh',
+  'codex-cli': 'install-codex-cli.sh',
   'antigravity-cli': 'install-antigravity.sh',
   'copilot-cli': 'install-copilot.sh',
 };
 
 export const aiClisModule: DockerfileModule = {
   id: 'ai-clis',
-  label: 'AI CLIs install scripts (Claude Code, OpenCode, Autoskills, Antigravity, Copilot CLI)',
+  label: 'AI CLIs install scripts (Claude Code, OpenCode, Codex CLI, Antigravity, Copilot CLI)',
   category: 'infra',
   requires: ['pnpm', 'github-cli'],
   // Shipped as post-install scripts: baked into POST_SCRIPT_DIR by the generator,
@@ -39,7 +39,7 @@ export const aiClisModule: DockerfileModule = {
       choices: [
         { value: 'claude-code', label: 'Claude Code (native standalone installer)' },
         { value: 'opencode', label: 'OpenCode (opencode.ai installer)' },
-        { value: 'autoskills', label: 'Autoskills (npx, no global install)' },
+        { value: 'codex-cli', label: 'Codex CLI (npx, no global install)' },
         { value: 'antigravity-cli', label: 'Antigravity CLI (native standalone installer)' },
         { value: 'copilot-cli', label: 'GitHub Copilot CLI (standalone binary)' },
       ],
