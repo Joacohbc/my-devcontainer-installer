@@ -6,7 +6,7 @@ on:
     paths:
       - 'cli/**'
   schedule:
-    - cron: '0 0 */15 * *'
+    - cron: '0 0 */7 * *'
   workflow_dispatch:
 
 permissions:
@@ -19,15 +19,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: latest
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 24
           cache: 'pnpm'
@@ -42,13 +42,13 @@ jobs:
         run: pnpm run build
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -72,7 +72,7 @@ jobs:
             --no-build
 
       - name: Build and push Docker image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .dc_devcontainer/build
           push: true
@@ -92,50 +92,50 @@ jobs:
       matrix:
         include:
           - name: nodejs
-            modules: nodejs,pnpm,github-cli,ai-clis
             description: "Node.js only"
+            modules: nodejs,pnpm,github-cli,ai-clis
           - name: bun
-            modules: bun,nodejs,pnpm,github-cli,ai-clis
             description: "Bun only"
+            modules: bun,pnpm,github-cli,ai-clis
           - name: java-temurin
-            modules: java-temurin,nodejs,pnpm,github-cli,ai-clis
             description: "Java Temurin only"
+            modules: java-temurin,github-cli,ai-clis
           - name: python
-            modules: python,nodejs,pnpm,github-cli,ai-clis
             description: "Python only"
+            modules: python,github-cli,ai-clis
           - name: go
-            modules: go,nodejs,pnpm,github-cli,ai-clis
             description: "Go only"
+            modules: go,github-cli,ai-clis
           - name: node-go
-            modules: nodejs,pnpm,go,github-cli,ai-clis
             description: "Node.js + Go"
+            modules: nodejs,pnpm,go,github-cli,ai-clis
           - name: node-python
-            modules: nodejs,pnpm,python,github-cli,ai-clis
             description: "Node.js + Python"
+            modules: nodejs,pnpm,python,github-cli,ai-clis
           - name: node-java-temurin
             modules: nodejs,pnpm,java-temurin,github-cli,ai-clis
             description: "Node.js + Java Temurin"
           - name: bun-go
-            modules: bun,nodejs,pnpm,go,github-cli,ai-clis
             description: "Bun + Go"
+            modules: bun,pnpm,go,github-cli,ai-clis
           - name: bun-python
-            modules: bun,nodejs,pnpm,python,github-cli,ai-clis
             description: "Bun + Python"
+            modules: bun,pnpm,python,github-cli,ai-clis
           - name: bun-java-temurin
-            modules: bun,nodejs,pnpm,java-temurin,github-cli,ai-clis
             description: "Bun + Java Temurin"
+            modules: bun,pnpm,java-temurin,github-cli,ai-clis
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: latest
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 24
           cache: 'pnpm'
@@ -150,13 +150,13 @@ jobs:
         run: pnpm run build
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -180,7 +180,7 @@ jobs:
             --no-build
 
       - name: Build and push Docker image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .dc_devcontainer/build
           push: true
