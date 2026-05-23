@@ -14,6 +14,7 @@ import {
   defaultKeyPath,
   type SshConfigMode,
 } from './ssh-defaults.js';
+import { pickManagedContainer } from './container-picker.js';
 
 export interface SetupSshFlags {
   remote: string;
@@ -205,8 +206,11 @@ async function resolveTargetService(f: SetupSshFlags): Promise<ComposeServiceInf
   const services = readComposeServices(composePath);
   if (!services) {
     if (f.containerExplicit) return { service: f.service, container: f.container };
-    warn(`No compose file at ${composePath} — using defaults.`);
-    return { service: f.service, container: f.container };
+    const picked = await pickManagedContainer('Select devcontainer to set up SSH for:', {
+      interactive: !f.assumeYes,
+      assumeYes: f.assumeYes,
+    });
+    return { service: SSH_DEFAULTS.serviceName, container: picked.name };
   }
 
   const picked = pickDevcontainerService(services);
@@ -267,6 +271,12 @@ async function ensureStack(f: SetupSshFlags, mode: Mode): Promise<void> {
     return;
   }
   warn(`Container '${f.container}' not running.`);
+  const composePath = path.resolve(process.cwd(), f.composeFile);
+  if (!fs.existsSync(composePath)) {
+    throw new Error(
+      `Compose file not found: ${composePath}\nRun 'devcontainer-cli' first to generate it, or pass -f <path> to specify a different compose file.`,
+    );
+  }
   const proceed = f.assumeYes
     ? true
     : await confirm('startStack', 'Start it now with docker compose up -d?', true);
@@ -533,6 +543,9 @@ function applyWorkspaceDefaults(f: SetupSshFlags, workspace: string): void {
   }
   if (!f.containerExplicit && f.container === DEFAULTS.container) {
     f.container = `${workspace}-${SSH_DEFAULTS.serviceName}`;
+  }
+  if (!f.composeFileExplicit) {
+    f.composeFile = `.dc_${workspace}/build/docker-compose.yml`;
   }
 }
 

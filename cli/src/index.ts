@@ -373,6 +373,12 @@ async function main() {
     return;
   }
 
+  if (argv[0] !== undefined && !argv[0].startsWith('-')) {
+    console.error(chalk.red(`\n❌ Unknown command: ${argv[0]}\n`));
+    console.log(helpText());
+    process.exit(1);
+  }
+
   const flags = parseFlags(argv);
   if (flags.help) {
     console.log(helpText());
