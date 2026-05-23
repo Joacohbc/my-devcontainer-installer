@@ -2,8 +2,8 @@ import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import { spawnSync } from 'child_process';
-import { globalConfigDir } from './global-config.js';
-import type { BuildMode, RemoteVariant } from './types.js';
+import { globalConfigDir } from '@/global-config.js';
+import type { BuildMode, RemoteVariant } from '@/types.js';
 
 export interface ImageEntry {
   projectDir: string;

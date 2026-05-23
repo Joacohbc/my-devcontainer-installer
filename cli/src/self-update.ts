@@ -440,5 +440,5 @@ export async function runSelfUpdate(argv: string[]): Promise<void> {
     try { fs.rmdirSync(tmpDir); } catch { /* noop */ }
   }
 
-  console.log(chalk.green(`✅ Updated to ${latest}. Restart any running session to use the new binary.`));
+  console.log(chalk.green(`Updated to ${latest}. Restart any running session to use the new binary.`));
 }

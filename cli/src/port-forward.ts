@@ -3,8 +3,8 @@ import * as os from 'os';
 import * as path from 'path';
 import { spawn } from 'child_process';
 import chalk from 'chalk';
-import { input, select } from './prompts.js';
-import { pickManagedContainer, containerWorkspace } from './container-picker.js';
+import { input, select } from '@/prompts.js';
+import { pickManagedContainer, containerWorkspace } from '@/container-picker.js';
 
 export interface PortForwardConfig {
   portMapping?: string;
@@ -251,7 +251,7 @@ export async function runPortForward(argv: string[]): Promise<void> {
 
   const { localPort, targetHost, containerPort } = mapping;
 
-  console.log(chalk.cyan(`\n🔑 Establishing SSH Tunnel mapping local port ${localPort} to ${targetHost}:${containerPort} on alias '${alias}'...`));
+  console.log(chalk.cyan(`\nEstablishing SSH Tunnel mapping local port ${localPort} to ${targetHost}:${containerPort} on alias '${alias}'...`));
   console.log(chalk.yellow(`Command: ssh -N -L ${localPort}:${targetHost}:${containerPort} ${alias}`));
   console.log(chalk.green(`Press Ctrl+C to terminate the port forwarding session.\n`));
 
@@ -268,7 +268,7 @@ export async function runPortForward(argv: string[]): Promise<void> {
       if (code !== 0 && code !== null) {
         reject(new Error(`SSH tunnel closed with exit code ${code}`));
       } else {
-        console.log(chalk.green(`\n✅ SSH tunnel closed.\n`));
+        console.log(chalk.green(`\nSSH tunnel closed.\n`));
         resolve();
       }
     });

@@ -1,4 +1,4 @@
-import type { ComposeService } from '../../types.js';
+import type { ComposeService } from '@/types.js';
 
 export const redisService: ComposeService = {
   id: 'redis',

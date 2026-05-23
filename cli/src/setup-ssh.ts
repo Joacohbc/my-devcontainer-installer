@@ -4,17 +4,17 @@ import * as path from 'path';
 import { spawnSync, type SpawnSyncOptions } from 'child_process';
 import chalk from 'chalk';
 import { parse as parseYaml } from 'yaml';
-import { confirm, input, select, PromptCancelledError } from './prompts.js';
-import { loadConfig } from './config.js';
-import { sanitizeDockerName } from './validators.js';
+import { confirm, input, select, PromptCancelledError } from '@/prompts.js';
+import { loadConfig } from '@/config.js';
+import { sanitizeDockerName } from '@/validators.js';
 import {
   SSH_DEFAULTS,
   authorizedKeysInstallScript,
   buildSshConfigBlock,
   defaultKeyPath,
   type SshConfigMode,
-} from './ssh-defaults.js';
-import { pickManagedContainer } from './container-picker.js';
+} from '@/ssh-defaults.js';
+import { pickManagedContainer } from '@/container-picker.js';
 
 export interface SetupSshFlags {
   remote: string;

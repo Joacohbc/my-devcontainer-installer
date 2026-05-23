@@ -2,10 +2,10 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { spawnSync } from 'child_process';
 import chalk from 'chalk';
-import { loadConfig, configPath } from './config.js';
-import { confirm } from './prompts.js';
-import { removeEntry } from './image-registry.js';
-import { sanitizeDockerName } from './validators.js';
+import { loadConfig, configPath } from '@/config.js';
+import { confirm } from '@/prompts.js';
+import { removeEntry } from '@/image-registry.js';
+import { sanitizeDockerName } from '@/validators.js';
 
 export interface DestroyFlags {
   yes: boolean;
@@ -75,7 +75,7 @@ export async function runDestroy(argv: string[]): Promise<void> {
   }
 
   if (fs.existsSync(composeFile)) {
-    console.log(chalk.yellow(`\n⏳ Bringing down '${workspace}' (with volumes)...\n`));
+    console.log(chalk.yellow(`\nBringing down '${workspace}' (with volumes)...\n`));
     const r = spawnSync('docker', ['compose', '-f', composeFile, 'down', '-v'], { stdio: 'inherit' });
     if ((r.status ?? -1) !== 0) throw new Error('docker compose down failed.');
   } else {
@@ -92,5 +92,5 @@ export async function runDestroy(argv: string[]): Promise<void> {
   }
   removeEntry(cwd);
 
-  console.log(chalk.green.bold('\n✅ Destroyed.\n'));
+  console.log(chalk.green.bold('\nDestroyed.\n'));
 }

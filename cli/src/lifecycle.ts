@@ -2,8 +2,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { spawnSync } from 'child_process';
 import chalk from 'chalk';
-import { loadConfig } from './config.js';
-import { sanitizeDockerName } from './validators.js';
+import { loadConfig } from '@/config.js';
+import { sanitizeDockerName } from '@/validators.js';
 
 export type LifecycleVerb = 'start' | 'stop' | 'restart';
 
@@ -56,8 +56,8 @@ export async function runLifecycle(verb: LifecycleVerb, argv: string[]): Promise
 
   const composeFile = resolveProjectComposeFile(process.cwd());
 
-  console.log(chalk.yellow(`\n⏳ Running 'docker compose ${verb}'...\n`));
+  console.log(chalk.yellow(`\nRunning 'docker compose ${verb}'...\n`));
   const r = spawnSync('docker', ['compose', '-f', composeFile, verb], { stdio: 'inherit' });
   if ((r.status ?? -1) !== 0) throw new Error(`docker compose ${verb} failed.`);
-  console.log(chalk.green.bold('\n✅ Done.\n'));
+  console.log(chalk.green.bold('\nDone.\n'));
 }

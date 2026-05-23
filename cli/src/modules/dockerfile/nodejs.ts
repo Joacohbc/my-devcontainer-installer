@@ -1,4 +1,4 @@
-import type { DockerfileModule } from '../../types.js';
+import type { DockerfileModule } from '@/types.js';
 
 const INIT_FILE = '/home/devuser/.nodejs_init.sh';
 const RC_FILES = ['.zshrc', '.bashrc', '.profile'];

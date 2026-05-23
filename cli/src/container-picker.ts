@@ -1,8 +1,8 @@
 import { spawnSync } from 'child_process';
 import chalk from 'chalk';
-import { select } from './prompts.js';
-import { LABEL_MANAGED } from './labels.js';
-import { SSH_DEFAULTS } from './ssh-defaults.js';
+import { select } from '@/prompts.js';
+import { LABEL_MANAGED } from '@/labels.js';
+import { SSH_DEFAULTS } from '@/ssh-defaults.js';
 
 export interface ManagedContainer {
   name: string;

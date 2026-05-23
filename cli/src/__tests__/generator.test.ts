@@ -6,8 +6,8 @@ import {
   generateDockerfile as generateDockerfileRaw,
   generateEnv,
   resolveRemoteImage,
-} from '../generator.js';
-import type { DevcontainerConfig } from '../types.js';
+} from '@/generator.js';
+import type { DevcontainerConfig } from '@/types.js';
 
 function generateDockerfile(config: DevcontainerConfig): string {
   const out = generateDockerfileRaw(config);

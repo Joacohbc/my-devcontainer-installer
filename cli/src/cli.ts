@@ -1,4 +1,4 @@
-import { BUILD_MODES, REMOTE_VARIANTS, type BuildMode, type RemoteVariant } from './types.js';
+import { BUILD_MODES, REMOTE_VARIANTS, type BuildMode, type RemoteVariant } from '@/types.js';
 
 export interface CliFlags {
   interactive: boolean;

@@ -10,7 +10,7 @@ import {
   globalConfigPath,
   globalConfigDir,
   REGISTRY_DEFAULT,
-} from '../global-config.js';
+} from '@/global-config.js';
 
 function withTempHome<T>(fn: () => T): T {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'dc-cli-globalcfg-'));

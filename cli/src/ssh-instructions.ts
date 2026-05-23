@@ -1,6 +1,6 @@
 import chalk from 'chalk';
-import { SSH_DEFAULTS, buildSshConfigBlock } from './ssh-defaults.js';
-import type { BuildMode } from './types.js';
+import { SSH_DEFAULTS, buildSshConfigBlock } from '@/ssh-defaults.js';
+import type { BuildMode } from '@/types.js';
 
 const KEY = `~/.ssh/${SSH_DEFAULTS.keyName}`;
 
@@ -49,7 +49,7 @@ export function printSshInstructions(workspace: string, _mode: BuildMode = 'loca
   const passwordCmd = `docker compose -f ${composeRel} logs ${SSH_DEFAULTS.serviceName} | grep "${SSH_DEFAULTS.user} password" | tail -n 1`;
 
   const out = [
-    chalk.cyan.bold('🔑 Next steps — SSH access'),
+    chalk.cyan.bold('Next steps — SSH access'),
     bar,
     '',
     chalk.bold('1) Start the stack (if not running):'),

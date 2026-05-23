@@ -9,7 +9,7 @@ import {
   parseSshConfigContent,
   getSshAliases,
   portForwardHelp,
-} from '../port-forward.js';
+} from '@/port-forward.js';
 
 test('parsePortForwardFlags: defaults', () => {
   const f = parsePortForwardFlags([]);

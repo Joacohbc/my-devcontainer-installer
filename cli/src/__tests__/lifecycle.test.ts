@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseLifecycleFlags, lifecycleHelp } from '../lifecycle.js';
+import { parseLifecycleFlags, lifecycleHelp } from '@/lifecycle.js';
 
 test('parseLifecycleFlags: defaults', () => {
   assert.equal(parseLifecycleFlags('start', []).help, false);

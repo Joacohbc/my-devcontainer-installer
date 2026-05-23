@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseDownFlags, downHelp } from '../down.js';
+import { parseDownFlags, downHelp } from '@/down.js';
 
 test('parseDownFlags: defaults', () => {
   const f = parseDownFlags([]);

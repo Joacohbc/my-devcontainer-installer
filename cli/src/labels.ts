@@ -1,4 +1,4 @@
-import type { DevcontainerConfig } from './types.js';
+import type { DevcontainerConfig } from '@/types.js';
 
 export const LABEL_NAMESPACE = 'dev.devcontainer-installer';
 export const LABEL_MANAGED = `${LABEL_NAMESPACE}.managed`;

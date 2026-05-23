@@ -2,10 +2,10 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { spawnSync } from 'child_process';
 import chalk from 'chalk';
-import { loadConfig } from './config.js';
-import { listEntries, recordEntry, removeEntry } from './image-registry.js';
-import { resolveRemoteImage } from './generator.js';
-import type { DevcontainerConfig } from './types.js';
+import { loadConfig } from '@/config.js';
+import { listEntries, recordEntry, removeEntry } from '@/image-registry.js';
+import { resolveRemoteImage } from '@/generator.js';
+import type { DevcontainerConfig } from '@/types.js';
 
 export interface UpdateImagesFlags {
   all: boolean;
