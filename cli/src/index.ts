@@ -29,6 +29,7 @@ import { runConfigCmd } from './config-cmd.js';
 import { runQuickRun } from './quick-run.js';
 import { runDown } from './down.js';
 import { runPrune } from './prune.js';
+import { runPortForward } from './port-forward.js';
 import {
   computeFingerprint,
   fingerprintTag,
@@ -355,6 +356,10 @@ async function main() {
   }
   if (argv[0] === 'prune') {
     await runPrune(argv.slice(1));
+    return;
+  }
+  if (argv[0] === 'port-forward') {
+    await runPortForward(argv.slice(1));
     return;
   }
 
