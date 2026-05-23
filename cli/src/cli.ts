@@ -105,6 +105,7 @@ export function helpText(): string {
 Usage:
   cli [flags]
   cli setup-ssh [flags]     Run automated SSH setup (see: cli setup-ssh --help)
+  cli port-forward [flags]  Forward host port to a container port using SSH
   cli run [flags]           Spin up a remote image container without project files
   cli start [flags]         docker compose start for the current project
   cli stop [flags]          docker compose stop for the current project
