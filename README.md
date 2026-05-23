@@ -327,9 +327,10 @@ La CLI genera todo dentro de `.dc_<workspace>/` (donde `<workspace>` es el nombr
 
 ```
 .dc_<workspace>/
-├── build/          # Dockerfile, docker-compose.yml, .env, helper .sh
-└── post-script/    # Scripts post-instalación, ejecutables dentro del container
+└── build/          # Dockerfile, docker-compose.yml, .env, helper .sh y post-scripts
 ```
+
+Los scripts post-instalación se hornean dentro de la imagen en `~/post-script/` (`/home/devuser/post-script/`), disponibles en cualquier contenedor sin montar archivos del host.
 
 **Subcomandos disponibles:**
 
@@ -338,7 +339,11 @@ La CLI genera todo dentro de `.dc_<workspace>/` (donde `<workspace>` es el nombr
 | `devcontainer-cli`               | Genera/actualiza `Dockerfile`, `docker-compose.yml`, `.env` y scripts auxiliares (flujo interactivo o no). |
 | `devcontainer-cli setup-ssh`     | Configura el acceso SSH autodetectando el compose del proyecto. Ver [Acceso y Uso](#acceso-y-uso).          |
 | `devcontainer-cli run`           | Levanta un container desde una imagen remota sin crear archivos de proyecto. Ver [Contenedor rápido](#contenedor-rápido-run). |
-| `devcontainer-cli down`          | `docker compose down -v` para el proyecto en el directorio actual.                                         |
+| `devcontainer-cli start`         | `docker compose start` para el proyecto en el directorio actual.                                           |
+| `devcontainer-cli stop`          | `docker compose stop` para el proyecto en el directorio actual.                                            |
+| `devcontainer-cli restart`       | `docker compose restart` para el proyecto en el directorio actual.                                         |
+| `devcontainer-cli down`          | `docker compose down` para el proyecto. Agrega `-v`/`--volumes` para borrar también los volúmenes.         |
+| `devcontainer-cli destroy`       | `down -v` + borra `.dc_<workspace>/` y `devcontainer.config.json`. Irreversible.                           |
 | `devcontainer-cli prune`         | Elimina imágenes `devcontainer-cli/*` huérfanas (proyecto borrado). `--all` elimina todas.                 |
 | `devcontainer-cli update`        | Actualiza la imagen del proyecto actual (pull o rebuild según el modo). `--all` recorre todos los proyectos.|
 | `devcontainer-cli upgrade-cli`   | Reemplaza el binario de la CLI con la última release de GitHub.                                             |
@@ -482,8 +487,11 @@ ssh devcontainer-remote
 
 Una vez dentro, puedes ejecutar los scripts de configuración incluidos para terminar de preparar tu entorno:
 
-* **GitHub CLI:** `/workspace/.dc_<workspace>/post-script/login-github-cli.sh` - Te ayuda a iniciar sesión y configurar tus credenciales de GitHub.
-* **Actualizar Go:** `/workspace/.dc_<workspace>/post-script/update_golang.sh` - Actualiza la instalación de Go a la última versión estable disponible (solo si elegiste el módulo `go`).
+Los scripts viven dentro del contenedor en `~/post-script/` (horneados en la imagen):
+
+* **GitHub CLI:** `~/post-script/login-github-cli.sh` - Te ayuda a iniciar sesión y configurar tus credenciales de GitHub.
+* **Actualizar Go:** `~/post-script/update_golang.sh` - Actualiza la instalación de Go a la última versión estable disponible (solo si elegiste el módulo `go`).
+* **CLIs de IA:** `~/post-script/install-*.sh` - Instaladores de las CLIs de IA (solo si elegiste el módulo `ai-clis`).
 * **Actualizar Sistema:** Es relevante mantener el entorno al día (incluyendo e.g. el cliente de Docker) ejecutando `sudo apt update && sudo apt upgrade -y`.
 
 Consulta [POST_INSTALL_STEPS.md](POST_INSTALL_STEPS.md) para más detalles sobre backups y herramientas adicionales.
@@ -537,18 +545,19 @@ Tras ejecutar `devcontainer-cli` en tu directorio de trabajo obtendrás:
 <tu-proyecto>/
 ├── devcontainer.config.json          # Estado persistido (módulos, servicios, subnet)
 └── .dc_<workspace>/
-    ├── build/                        # Todo lo que necesita `docker build`
-    │   ├── Dockerfile
-    │   ├── docker-compose.yml
-    │   ├── .env                      # DOCKER_SUBNET, DEVCONTAINER_IP, TUNNEL_TOKEN…
-    │   ├── entrypoint.sh
-    │   ├── zsh-installer.sh
-    │   ├── golang_utils.sh           # solo con módulo `go`
-    │   └── install-*.sh              # solo con módulo `ai-clis`
-    └── post-script/                  # Scripts ejecutables dentro del contenedor
+    └── build/                        # Contexto de `docker build`
+        ├── Dockerfile
+        ├── docker-compose.yml
+        ├── .env                      # DOCKER_SUBNET, DEVCONTAINER_IP, TUNNEL_TOKEN…
+        ├── entrypoint.sh
+        ├── zsh-installer.sh
+        ├── golang_utils.sh           # solo con módulo `go`
+        ├── install-*.sh              # solo con módulo `ai-clis`
         ├── login-github-cli.sh
         └── update_golang.sh          # solo con módulo `go`
 ```
+
+Los scripts post-instalación del contexto de build se hornean dentro de la imagen en `~/post-script/` (`/home/devuser/post-script/`), listos para ejecutar dentro del contenedor.
 
 Tu código vive en `<tu-proyecto>/` (la raíz), que se monta como `/workspace` dentro del contenedor.
 

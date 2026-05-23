@@ -106,7 +106,11 @@ Usage:
   cli [flags]
   cli setup-ssh [flags]     Run automated SSH setup (see: cli setup-ssh --help)
   cli run [flags]           Spin up a remote image container without project files
-  cli down [flags]          docker compose down -v for the current project
+  cli start [flags]         docker compose start for the current project
+  cli stop [flags]          docker compose stop for the current project
+  cli restart [flags]       docker compose restart for the current project
+  cli down [flags]          docker compose down for the current project (-v to drop volumes)
+  cli destroy [flags]       down -v + delete .dc_<workspace>/ and config (irreversible)
   cli prune [flags]         Remove orphan devcontainer-cli/* images
   cli cleanup-tips [flags]  Show docker cleanup commands for this project
   cli update [flags]        Update container images for this project / all projects

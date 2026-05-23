@@ -153,12 +153,12 @@ test('compose assigns a static IP to devcontainer based on subnet', () => {
   assert.match(parsed.networks[networkName].ipam.config[0].subnet, /172\.25\.0\.0\/28/);
 });
 
-test('ai-clis module copies per-tool install scripts by default', () => {
+test('ai-clis module ships per-tool install scripts as post-scripts by default', () => {
   const df = generateDockerfile(
     makeConfig({ dockerfile: { modules: [{ id: 'ai-clis' }] } }),
   );
-  assert.match(df, /COPY install-claude-code\.sh install-opencode\.sh install-autoskills\.sh install-antigravity\.sh install-copilot\.sh \/home\/devuser\//);
-  assert.match(df, /chmod \+x .*\/home\/devuser\/install-claude-code\.sh/);
+  assert.match(df, /COPY .*install-claude-code\.sh.*install-opencode\.sh.*install-autoskills\.sh.*install-antigravity\.sh.*install-copilot\.sh.*\/home\/devuser\/post-script\//);
+  assert.match(df, /chmod \+x \/home\/devuser\/post-script\/\*\.sh/);
   assert.doesNotMatch(df, /ai-login/);
 });
 

@@ -1,4 +1,4 @@
-import type { DockerfileModule } from '../../types.js';
+import { POST_SCRIPT_DIR, type DockerfileModule } from '../../types.js';
 
 type CliId =
   | 'claude-code'
@@ -28,7 +28,9 @@ export const aiClisModule: DockerfileModule = {
   label: 'AI CLIs install scripts (Claude Code, OpenCode, Autoskills, Antigravity, Copilot CLI)',
   category: 'infra',
   requires: ['pnpm', 'github-cli'],
-  copyFiles: [...Object.values(SCRIPT_BY_TOOL)],
+  // Shipped as post-install scripts: baked into POST_SCRIPT_DIR by the generator,
+  // available inside the container, not auto-run.
+  postScriptFiles: (opts) => normalizeTools(opts.tools).map((t) => SCRIPT_BY_TOOL[t]),
   options: [
     {
       id: 'tools',
@@ -44,21 +46,8 @@ export const aiClisModule: DockerfileModule = {
       default: ALL,
     },
   ],
-  render(opts) {
-    const tools = normalizeTools(opts.tools);
-    const installScripts = tools.map((t) => SCRIPT_BY_TOOL[t]);
-
-    if (installScripts.length === 0) {
-      return `##\n## AI CLIs — no tools selected\n##\n`;
-    }
-
-    const targets = installScripts.map((s) => `/home/devuser/${s}`).join(' ');
-    return `##
-## AI CLIs — per-tool install scripts
-##
-COPY ${installScripts.join(' ')} /home/devuser/
-RUN chown devuser:devuser ${targets} && chmod +x ${targets}
-`;
+  render() {
+    return `##\n## AI CLIs — install scripts shipped under ${POST_SCRIPT_DIR}\n##\n`;
   },
 };
 
