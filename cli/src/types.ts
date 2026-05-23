@@ -49,7 +49,32 @@ export interface SelectedModule {
   options?: Record<string, unknown>;
 }
 
+export type BuildMode = 'local-cached' | 'remote';
+export const BUILD_MODES: readonly BuildMode[] = ['local-cached', 'remote'] as const;
+
+export const REMOTE_VARIANTS = [
+  'ssh',
+  'nodejs',
+  'bun',
+  'java-temurin',
+  'python',
+  'go',
+  'node-go',
+  'node-python',
+  'node-java-temurin',
+  'bun-go',
+  'bun-python',
+  'bun-java-temurin',
+] as const;
+export type RemoteVariant = (typeof REMOTE_VARIANTS)[number];
+
+export interface RemoteConfig {
+  variant: RemoteVariant;
+  registry?: string;
+}
+
 export interface DevcontainerConfig {
+  mode: BuildMode;
   image: string;
   workspace: string;
   dockerfile: {
@@ -60,6 +85,8 @@ export interface DevcontainerConfig {
     subnet?: string;
   };
   env: Record<string, string>;
+  remote?: RemoteConfig;
+  fingerprint?: string;
 }
 
 export function normalizeServices(

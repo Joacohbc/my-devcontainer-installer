@@ -91,21 +91,39 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: node-java
-            modules: nodejs,java-temurin,github-cli
-            description: "Node.js + Java Temurin"
-          - name: node-bun
-            modules: nodejs,bun,github-cli
-            description: "Node.js + Bun.js"
-          - name: node-go
-            modules: nodejs,go,github-cli
-            description: "Node.js + Go"
+          - name: nodejs
+            modules: nodejs,pnpm,github-cli,ai-clis
+            description: "Node.js only"
+          - name: bun
+            modules: bun,nodejs,pnpm,github-cli,ai-clis
+            description: "Bun only"
           - name: java-temurin
-            modules: java-temurin,github-cli
+            modules: java-temurin,nodejs,pnpm,github-cli,ai-clis
             description: "Java Temurin only"
           - name: python
-            modules: python,github-cli
+            modules: python,nodejs,pnpm,github-cli,ai-clis
             description: "Python only"
+          - name: go
+            modules: go,nodejs,pnpm,github-cli,ai-clis
+            description: "Go only"
+          - name: node-go
+            modules: nodejs,pnpm,go,github-cli,ai-clis
+            description: "Node.js + Go"
+          - name: node-python
+            modules: nodejs,pnpm,python,github-cli,ai-clis
+            description: "Node.js + Python"
+          - name: node-java-temurin
+            modules: nodejs,pnpm,java-temurin,github-cli,ai-clis
+            description: "Node.js + Java Temurin"
+          - name: bun-go
+            modules: bun,nodejs,pnpm,go,github-cli,ai-clis
+            description: "Bun + Go"
+          - name: bun-python
+            modules: bun,nodejs,pnpm,python,github-cli,ai-clis
+            description: "Bun + Python"
+          - name: bun-java-temurin
+            modules: bun,nodejs,pnpm,java-temurin,github-cli,ai-clis
+            description: "Bun + Java Temurin"
 
     steps:
       - name: Checkout code

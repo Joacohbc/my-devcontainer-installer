@@ -4,20 +4,43 @@ import { composeServices, getComposeService } from './registry.js';
 import { resolveDockerfileModules } from './resolver.js';
 import { SSH_DEFAULTS } from './ssh-defaults.js';
 import { lastHost } from './subnet.js';
+import { resolveRegistry } from './global-config.js';
 import {
   GENERATED_HEADER,
   GENERATED_HEADER_YAML,
   normalizeServices,
   type DevcontainerConfig,
+  type RemoteVariant,
 } from './types.js';
 
 const DEFAULT_SUBNET = '172.25.0.0/28';
 
-export function generateDockerfile(config: DevcontainerConfig): string {
+export function generateDockerfile(config: DevcontainerConfig): string | null {
+  if (config.mode === 'remote') return null;
   const resolved = resolveDockerfileModules(config.dockerfile.modules);
   const fragments = resolved.map((r) => r.module.render(r.options).trim());
   fragments.push(dockerfileLabelBlock(config));
   return `${GENERATED_HEADER}\n\n${fragments.join('\n\n')}\n`;
+}
+
+export function resolveRemoteImage(
+  variant: RemoteVariant,
+  registryOverride?: string,
+  perProject?: string,
+): string {
+  const registry = resolveRegistry(registryOverride, perProject);
+  const suffix = variant === 'ssh' ? 'devcontainer-ssh' : `devcontainer-${variant}`;
+  return `${registry}${suffix}:latest`;
+}
+
+export function resolveDevcontainerImageName(config: DevcontainerConfig): string {
+  if (config.mode === 'remote' && config.remote) {
+    return resolveRemoteImage(config.remote.variant, undefined, config.remote.registry);
+  }
+  if (config.mode === 'local-cached' && config.fingerprint) {
+    return `devcontainer-cli/${config.fingerprint.slice(0, 12)}:latest`;
+  }
+  return config.image;
 }
 
 const BASE_VOLUMES = ['devcontainer_etc', 'devcontainer_root', 'devcontainer_home'];
@@ -40,7 +63,7 @@ function remapVolumeMount(workspace: string, declared: Set<string>, mount: strin
   return `${prefixVolume(workspace, src)}${mount.slice(colon)}`;
 }
 
-export function generateCompose(config: DevcontainerConfig): string {
+export function generateCompose(config: DevcontainerConfig): string | null {
   const selected = normalizeServices(config.compose.services);
   const optionsById = new Map<string, Record<string, unknown>>();
   const enabled = new Set<string>();
@@ -68,14 +91,21 @@ export function generateCompose(config: DevcontainerConfig): string {
     for (const v of svc.volumes ?? []) declaredVolumes.add(v);
   }
 
+  const devcontainerImageName = resolveDevcontainerImageName(config);
+
   for (const id of enabledIds) {
     const svc = getComposeService(id);
     if (!svc) throw new Error(`Unknown compose service: ${id}`);
+    const imageNameForSvc = svc.id === 'devcontainer' ? devcontainerImageName : config.image;
     const rendered = svc.render({
-      imageName: config.image,
+      imageName: imageNameForSvc,
       enabledServiceIds: enabledIds,
       options: optionsById.get(id) ?? {},
     }) as Record<string, unknown>;
+
+    if (svc.id === 'devcontainer' && config.mode === 'remote') {
+      delete rendered.build;
+    }
 
     const baseContainer =
       typeof rendered.container_name === 'string'

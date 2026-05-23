@@ -137,6 +137,126 @@ graph LR
   * **AI CLIs (opcional, módulo `ai-clis`):** scripts de instalación embebidos para Claude Code, Gemini CLI, OpenCode y Autoskills.
 * **Terminal Mejorada:** ZSH preconfigurado con frameworks y plugins útiles.
 
+## Modos de Build
+
+La CLI ofrece dos modos para controlar cómo se construye la imagen del devcontainer. Se elige con `--mode` o por prompt interactivo.
+
+| Modo | Genera | Imagen | Para qué sirve |
+|---|---|---|---|
+| `local-cached` (default) | `Dockerfile` + `docker-compose.yml` | `devcontainer-cli/<fp12>:latest` | Build local. Deduplica por fingerprint del Dockerfile: si la imagen ya está en el daemon, no rebuildea. |
+| `remote` | `docker-compose.yml` (sin Dockerfile) | `ghcr.io/<owner>/devcontainer-<variant>:latest` | Salta el build. Usa las imágenes pre-buildeadas por GitHub Actions. Mucho más rápido. |
+
+**Variants disponibles** (para `remote`): `ssh` (imagen completa), `nodejs`, `bun`, `java-temurin`, `python`, `go`, `node-go`, `node-python`, `node-java-temurin`, `bun-go`, `bun-python`, `bun-java-temurin`.
+
+### Ejemplos
+
+```bash
+# Local-cached (default) — build local con dedup por fingerprint
+devcontainer-cli --with nodejs,java-temurin --service mongo
+
+# Remote — pull de imagen pre-buildeada, sin Dockerfile
+devcontainer-cli --mode remote --variant node-java-temurin --service postgres
+```
+
+### Actualizar imágenes
+
+```bash
+# Actualizar la imagen del proyecto actual (pull para remote, build --pull para local-cached)
+devcontainer-cli update
+
+# Actualizar TODAS las imágenes de los proyectos que conoce la CLI
+devcontainer-cli update --all
+
+# Forzar rebuild aunque el fingerprint coincida
+devcontainer-cli update --rebuild
+```
+
+> **Nota:** `update` opera sobre imágenes de proyecto. Para actualizar el binario de la CLI usá `devcontainer-cli upgrade-cli`.
+
+## Contenedor rápido (`run`)
+
+Levanta un container desde una imagen remota **sin crear ningún archivo** en el proyecto (sin `.dc_*/`, sin `devcontainer.config.json`). Ideal para tareas puntuales o exploración rápida.
+
+```bash
+# Interactivo — elige la variante por prompt
+devcontainer-cli run
+
+# Directo — especifica variante
+devcontainer-cli run --variant python
+
+# Con volumen persistente en /workspace
+devcontainer-cli run --variant nodejs --volume mi_workspace
+
+# Con puerto SSH expuesto al host
+devcontainer-cli run --variant ssh --port 2222
+
+# Todo junto
+devcontainer-cli run --variant node-go --name mi-dev --volume mi_vol --port 2222
+```
+
+El comando es **idempotente**: si el container ya existe (exited o paused) lo reinicia; si ya está corriendo no hace nada.
+
+Al finalizar imprime el comando para continuar con SSH:
+
+```bash
+devcontainer-cli setup-ssh --container dc-<variant>
+```
+
+**Flags disponibles:**
+
+| Flag | Descripción |
+|---|---|
+| `--variant <name>` | Variante de imagen remota |
+| `--name <name>` | Nombre del container (default: `dc-<variant>`) |
+| `--volume <name>` | Named volume montado en `/workspace` (opcional) |
+| `--port <n>` | Expone el puerto 22 del container en el host |
+| `--registry <url>` | Override del registry (default: `ghcr.io/joacohbc/`) |
+
+## Limpieza de recursos
+
+### Bajar el proyecto (`down`)
+
+Corre `docker compose down -v` para el proyecto en el directorio actual:
+
+```bash
+devcontainer-cli down
+
+# Sin confirmación
+devcontainer-cli down --yes
+```
+
+Elimina los contenedores y volúmenes del stack. Requiere que exista `.dc_<workspace>/build/docker-compose.yml`.
+
+### Limpiar imágenes huérfanas (`prune`)
+
+Elimina las imágenes `devcontainer-cli/*` cuyo proyecto ya no existe en disco:
+
+```bash
+# Solo huérfanas (proyecto borrado o movido)
+devcontainer-cli prune
+
+# Todas las imágenes devcontainer-cli/* sin excepción
+devcontainer-cli prune --all
+
+# Sin confirmación
+devcontainer-cli prune --yes
+```
+
+### Configurar registry global
+
+```bash
+# Ver el registry actual
+devcontainer-cli config registry
+
+# Cambiarlo (por ejemplo si forkeaste y publicaste en tu propio org)
+devcontainer-cli config registry ghcr.io/mi-org/
+
+# Restaurar el default
+devcontainer-cli config registry --unset
+```
+
+El registry también se puede override por invocación con `--registry ghcr.io/foo/`.
+
 ## Requisitos Previos
 
 * Docker y Docker Compose.
@@ -213,11 +333,17 @@ La CLI genera todo dentro de `.dc_<workspace>/` (donde `<workspace>` es el nombr
 
 **Subcomandos disponibles:**
 
-| Subcomando                  | Qué hace                                                                                                   |
-|-----------------------------|------------------------------------------------------------------------------------------------------------|
-| `devcontainer-cli`          | Genera/actualiza `Dockerfile`, `docker-compose.yml`, `.env` y scripts auxiliares (flujo interactivo o no). |
-| `devcontainer-cli setup-ssh`| Configura el acceso SSH (clave, `authorized_keys` en el contenedor y bloque `~/.ssh/config`) de forma automatizada. Ver [Acceso y Uso](#acceso-y-uso). |
-| `devcontainer-cli cleanup-tips` | Imprime los comandos `docker` para borrar los contenedores, redes y volúmenes generados para este proyecto. |
+| Subcomando                       | Qué hace                                                                                                    |
+|----------------------------------|-------------------------------------------------------------------------------------------------------------|
+| `devcontainer-cli`               | Genera/actualiza `Dockerfile`, `docker-compose.yml`, `.env` y scripts auxiliares (flujo interactivo o no). |
+| `devcontainer-cli setup-ssh`     | Configura el acceso SSH autodetectando el compose del proyecto. Ver [Acceso y Uso](#acceso-y-uso).          |
+| `devcontainer-cli run`           | Levanta un container desde una imagen remota sin crear archivos de proyecto. Ver [Contenedor rápido](#contenedor-rápido-run). |
+| `devcontainer-cli down`          | `docker compose down -v` para el proyecto en el directorio actual.                                         |
+| `devcontainer-cli prune`         | Elimina imágenes `devcontainer-cli/*` huérfanas (proyecto borrado). `--all` elimina todas.                 |
+| `devcontainer-cli update`        | Actualiza la imagen del proyecto actual (pull o rebuild según el modo). `--all` recorre todos los proyectos.|
+| `devcontainer-cli upgrade-cli`   | Reemplaza el binario de la CLI con la última release de GitHub.                                             |
+| `devcontainer-cli config`        | Lee/escribe configuración global (ej. `config registry ghcr.io/mi-org/`).                                   |
+| `devcontainer-cli cleanup-tips`  | Imprime los comandos `docker` para borrar contenedores, redes y volúmenes del proyecto.                     |
 
 ### 3. Iniciar el entorno
 

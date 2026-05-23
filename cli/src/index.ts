@@ -12,6 +12,8 @@ import {
   collectRequiredCopyFiles,
   collectRequiredEnvVars,
   collectRequiredPostScriptFiles,
+  resolveDevcontainerImageName,
+  resolveRemoteImage,
 } from './generator.js';
 import { printCleanupInstructions } from './cleanup-instructions.js';
 import { findConflicts } from './docker-conflicts.js';
@@ -22,8 +24,47 @@ import { confirm, input, multiselect, PromptCancelledError, select } from './pro
 import { composeServices, dockerfileModules, getDockerfileModule } from './registry.js';
 import { runSetupSsh } from './setup-ssh.js';
 import { cleanupStaleUpdate, getCurrentVersion, runSelfUpdate } from './self-update.js';
-import type { DevcontainerConfig, ModuleOption, SelectedModule } from './types.js';
+import { runUpdateImages } from './update-images.js';
+import { runConfigCmd } from './config-cmd.js';
+import { runQuickRun } from './quick-run.js';
+import { runDown } from './down.js';
+import { runPrune } from './prune.js';
+import {
+  computeFingerprint,
+  fingerprintTag,
+  localImageExists,
+  recordEntry,
+} from './image-registry.js';
+import {
+  BUILD_MODES,
+  REMOTE_VARIANTS,
+  type BuildMode,
+  type DevcontainerConfig,
+  type ModuleOption,
+  type RemoteVariant,
+  type SelectedModule,
+} from './types.js';
 import { isValidCidr, isValidDockerName, isValidImageName, sanitizeDockerName } from './validators.js';
+
+const MODE_LABELS: Record<BuildMode, string> = {
+  'local-cached': 'local-cached — generate Dockerfile + compose, reuse cached image when unchanged',
+  remote: 'remote — skip the build, pull a pre-built image from the registry',
+};
+
+const VARIANT_LABELS: Record<RemoteVariant, string> = {
+  ssh: 'ssh — full image (all modules)',
+  nodejs: 'nodejs — Node.js only',
+  bun: 'bun — Bun only',
+  'java-temurin': 'java-temurin — Java Temurin only',
+  python: 'python — Python only',
+  go: 'go — Go only',
+  'node-go': 'node-go — Node.js + Go',
+  'node-python': 'node-python — Node.js + Python',
+  'node-java-temurin': 'node-java-temurin — Node.js + Java Temurin',
+  'bun-go': 'bun-go — Bun + Go',
+  'bun-python': 'bun-python — Bun + Python',
+  'bun-java-temurin': 'bun-java-temurin — Bun + Java Temurin',
+};
 
 async function buildConfigFromPrompts(base: DevcontainerConfig): Promise<DevcontainerConfig> {
   const workspace = await input(
@@ -34,89 +75,120 @@ async function buildConfigFromPrompts(base: DevcontainerConfig): Promise<Devcont
   );
   base.workspace = workspace;
 
-  const selectableModules = dockerfileModules.filter((m) => !m.always);
-  const selectedIds = await multiselect(
-    'modules',
-    'Select Dockerfile modules (Space to select, Enter to confirm):',
-    selectableModules.map((m) => ({ name: m.id, message: m.label })),
-    base.dockerfile.modules.map((m) => m.id),
-  );
+  const mode = (await select(
+    'mode',
+    'Build mode:',
+    BUILD_MODES.map((m) => ({ name: m, message: MODE_LABELS[m] })),
+    base.mode ?? 'local-cached',
+  )) as BuildMode;
+
+  let variant: RemoteVariant | undefined;
+  if (mode === 'remote') {
+    variant = (await select(
+      'variant',
+      'Image variant:',
+      REMOTE_VARIANTS.map((v) => ({ name: v, message: VARIANT_LABELS[v] })),
+      base.remote?.variant ?? 'ssh',
+    )) as RemoteVariant;
+  }
 
   const modules: SelectedModule[] = [];
-  for (const id of selectedIds) {
-    const mod = getDockerfileModule(id)!;
-    const opts: Record<string, unknown> = {};
-    for (const o of mod.options ?? []) {
-      opts[o.id] = await promptOption(o);
+  if (mode === 'local-cached') {
+    const selectableModules = dockerfileModules.filter((m) => !m.always);
+    const selectedIds = await multiselect(
+      'modules',
+      'Select Dockerfile modules (Space to select, Enter to confirm):',
+      selectableModules.map((m) => ({ name: m.id, message: m.label })),
+      base.dockerfile.modules.map((m) => m.id),
+    );
+    for (const id of selectedIds) {
+      const mod = getDockerfileModule(id)!;
+      const opts: Record<string, unknown> = {};
+      for (const o of mod.options ?? []) {
+        opts[o.id] = await promptOption(o);
+      }
+      modules.push({ id, options: opts });
     }
-    modules.push({ id, options: opts });
   }
-
-  const selectableServices = composeServices.filter((s) => !s.always);
-  const baseServiceIds = base.compose.services.map((s) =>
-    typeof s === 'string' ? s : s.id,
-  );
-  const serviceIds = await multiselect(
-    'services',
-    'Select compose services:',
-    selectableServices.map((s) => ({ name: s.id, message: s.label })),
-    baseServiceIds,
-  );
 
   const services: SelectedModule[] = [];
-  for (const id of serviceIds) {
-    const svc = composeServices.find((s) => s.id === id)!;
-    const opts: Record<string, unknown> = {};
-    const prev = base.compose.services.find(
-      (s) => (typeof s === 'string' ? s : s.id) === id,
+  {
+    const selectableServices = composeServices.filter((s) => !s.always);
+    const baseServiceIds = base.compose.services.map((s) =>
+      typeof s === 'string' ? s : s.id,
     );
-    const prevOpts = typeof prev === 'object' && prev ? prev.options ?? {} : {};
-    for (const o of svc.options ?? []) {
-      opts[o.id] = await promptOption({
-        ...o,
-        default: prevOpts[o.id] ?? o.default,
-      });
+    const serviceIds = await multiselect(
+      'services',
+      'Select compose services:',
+      selectableServices.map((s) => ({ name: s.id, message: s.label })),
+      baseServiceIds,
+    );
+    for (const id of serviceIds) {
+      const svc = composeServices.find((s) => s.id === id)!;
+      const opts: Record<string, unknown> = {};
+      const prev = base.compose.services.find(
+        (s) => (typeof s === 'string' ? s : s.id) === id,
+      );
+      const prevOpts = typeof prev === 'object' && prev ? prev.options ?? {} : {};
+      for (const o of svc.options ?? []) {
+        opts[o.id] = await promptOption({
+          ...o,
+          default: prevOpts[o.id] ?? o.default,
+        });
+      }
+      services.push({ id, options: opts });
     }
-    services.push({ id, options: opts });
   }
 
-  const image = await input(
-    'image',
-    'Image name:',
-    base.image,
-    (v) => (isValidImageName(v) ? true : 'Invalid Docker image name'),
-  );
-
-  const usedSubnets = listUsedSubnets();
-  const preferredSubnet = base.compose.subnet ?? '172.25.0.0/28';
-  const suggestedSubnet = findFreeSubnet(preferredSubnet, usedSubnets);
-  if (suggestedSubnet !== preferredSubnet) {
-    console.log(
-      chalk.yellow(
-        `⚠  Subnet ${preferredSubnet} overlaps with existing Docker network. Suggesting ${suggestedSubnet}.`,
-      ),
+  let image: string;
+  if (mode === 'remote' && variant) {
+    image = resolveRemoteImage(variant, undefined, base.remote?.registry);
+  } else {
+    image = await input(
+      'image',
+      'Image name:',
+      base.image,
+      (v) => (isValidImageName(v) ? true : 'Invalid Docker image name'),
     );
   }
-  const subnet = await input(
-    'subnet',
-    'Docker network subnet (CIDR):',
-    suggestedSubnet,
-    (v) => {
-      if (!isValidCidr(v)) return 'Invalid CIDR';
-      const clash = subnetConflict(v, usedSubnets);
-      if (clash) return `Overlaps with existing network ${formatCidr(clash)}`;
-      return true;
-    },
-  );
+
+  let subnet: string | undefined;
+  {
+    const usedSubnets = listUsedSubnets();
+    const preferredSubnet = base.compose.subnet ?? '172.25.0.0/28';
+    const suggestedSubnet = findFreeSubnet(preferredSubnet, usedSubnets);
+    if (suggestedSubnet !== preferredSubnet) {
+      console.log(
+        chalk.yellow(
+          `⚠  Subnet ${preferredSubnet} overlaps with existing Docker network. Suggesting ${suggestedSubnet}.`,
+        ),
+      );
+    }
+    subnet = await input(
+      'subnet',
+      'Docker network subnet (CIDR):',
+      suggestedSubnet,
+      (v) => {
+        if (!isValidCidr(v)) return 'Invalid CIDR';
+        const clash = subnetConflict(v, usedSubnets);
+        if (clash) return `Overlaps with existing network ${formatCidr(clash)}`;
+        return true;
+      },
+    );
+  }
 
   const env: Record<string, string> = { ...base.env };
   const cfgDraft: DevcontainerConfig = {
+    mode,
     image,
     workspace,
     dockerfile: { modules },
     compose: { services, subnet },
     env,
   };
+  if (mode === 'remote' && variant) {
+    cfgDraft.remote = { variant, registry: base.remote?.registry };
+  }
   for (const e of collectRequiredEnvVars(cfgDraft)) {
     env[e.name] = await input(e.name, `${e.prompt}:`, env[e.name] ?? e.default ?? '');
   }
@@ -148,7 +220,7 @@ async function promptOption(o: ModuleOption): Promise<unknown> {
 }
 
 function applyFlags(config: DevcontainerConfig, flags: CliFlags): DevcontainerConfig {
-  if (flags.image) config.image = flags.image;
+  if (flags.mode) config.mode = flags.mode;
   if (flags.workspace) config.workspace = flags.workspace;
   if (flags.withModules) {
     config.dockerfile.modules = flags.withModules.map((id) => {
@@ -164,6 +236,22 @@ function applyFlags(config: DevcontainerConfig, flags: CliFlags): DevcontainerCo
       if (existing && typeof existing === 'object') return existing;
       return { id, options: {} };
     });
+  }
+  if (flags.mode === 'remote' || config.mode === 'remote') {
+    const variant = flags.variant ?? config.remote?.variant ?? 'ssh';
+    config.remote = {
+      variant,
+      registry: flags.registry ?? config.remote?.registry,
+    };
+  }
+  if (flags.image) {
+    config.image = flags.image;
+  } else if (config.mode === 'remote' && config.remote) {
+    config.image = resolveRemoteImage(
+      config.remote.variant,
+      flags.registry,
+      config.remote.registry,
+    );
   }
   return config;
 }
@@ -186,21 +274,29 @@ async function maybeOverwrite(filePath: string, label: string, interactive: bool
   return confirm('overwrite', `${label} exists and was not generated by this CLI. Overwrite?`, false);
 }
 
-function executeBuild(cwd: string): Promise<boolean> {
+function executeDockerCommand(cwd: string, command: string, label: string): Promise<boolean> {
   return new Promise((resolve) => {
-    const child = exec('docker compose build', { cwd });
+    const child = exec(command, { cwd });
     child.stdout?.pipe(process.stdout);
     child.stderr?.pipe(process.stderr);
     child.on('close', (code) => {
       if (code !== 0) {
-        console.error(chalk.red(`\n❌ Build failed (exit ${code})\n`));
+        console.error(chalk.red(`\n❌ ${label} failed (exit ${code})\n`));
         resolve(false);
       } else {
-        console.log(chalk.green.bold('\n✅ Build completed!\n'));
+        console.log(chalk.green.bold(`\n✅ ${label} completed!\n`));
         resolve(true);
       }
     });
   });
+}
+
+function executeBuild(cwd: string): Promise<boolean> {
+  return executeDockerCommand(cwd, 'docker compose build', 'Build');
+}
+
+function executePull(cwd: string): Promise<boolean> {
+  return executeDockerCommand(cwd, 'docker compose pull', 'Pull');
 }
 
 function installSignalHandlers(): void {
@@ -238,7 +334,27 @@ async function main() {
     return;
   }
   if (argv[0] === 'update') {
+    await runUpdateImages(argv.slice(1));
+    return;
+  }
+  if (argv[0] === 'upgrade-cli') {
     await runSelfUpdate(argv.slice(1));
+    return;
+  }
+  if (argv[0] === 'config') {
+    await runConfigCmd(argv.slice(1));
+    return;
+  }
+  if (argv[0] === 'run') {
+    await runQuickRun(argv.slice(1));
+    return;
+  }
+  if (argv[0] === 'down') {
+    await runDown(argv.slice(1));
+    return;
+  }
+  if (argv[0] === 'prune') {
+    await runPrune(argv.slice(1));
     return;
   }
 
@@ -259,10 +375,23 @@ async function main() {
   let config = existing ?? defaultConfig();
 
   const needsPrompts =
-    flags.forcePrompt || (!existing && flags.interactive && !flags.withModules);
+    flags.forcePrompt || (!existing && flags.interactive && !flags.withModules && !flags.mode);
 
   if (needsPrompts) {
     config = await buildConfigFromPrompts(config);
+  } else if (
+    flags.interactive &&
+    flags.mode === 'remote' &&
+    !flags.variant &&
+    !config.remote?.variant
+  ) {
+    const picked = (await select(
+      'variant',
+      'Image variant:',
+      REMOTE_VARIANTS.map((v) => ({ name: v, message: VARIANT_LABELS[v] })),
+      'ssh',
+    )) as RemoteVariant;
+    flags.variant = picked;
   }
 
   config = applyFlags(config, flags);
@@ -272,6 +401,18 @@ async function main() {
   }
   if (!isValidDockerName(config.workspace)) {
     throw new Error(`Invalid workspace name: ${config.workspace}`);
+  }
+
+  if (config.mode === 'remote' && !config.image && config.remote?.variant) {
+    config.image = resolveRemoteImage(
+      config.remote.variant,
+      flags.registry,
+      config.remote.registry,
+    );
+  }
+
+  if (config.mode === 'remote' && !config.remote) {
+    throw new Error(`mode=remote requires --variant (one of: ${REMOTE_VARIANTS.join(', ')})`);
   }
 
   if (!flags.interactive) {
@@ -321,18 +462,21 @@ async function main() {
   const postScriptDir = path.join(projectDir, 'post-script');
   fs.mkdirSync(buildDir, { recursive: true });
 
-  const copyFiles = collectRequiredCopyFiles(config);
-  const pre = preflight(copyFiles, buildDir);
-  if (pre.copied.length > 0) {
-    console.log(chalk.gray(`Copied build helpers → .dc_${config.workspace}/build/: ${pre.copied.join(', ')}`));
-  }
-  if (pre.missing.length > 0) {
-    throw new Error(
-      `Missing required scripts (not embedded in binary or available in cwd): ${pre.missing.join(', ')}`,
-    );
+  const skipBuildArtifacts = config.mode === 'remote';
+  const copyFiles = skipBuildArtifacts ? [] : collectRequiredCopyFiles(config);
+  if (copyFiles.length > 0) {
+    const pre = preflight(copyFiles, buildDir);
+    if (pre.copied.length > 0) {
+      console.log(chalk.gray(`Copied build helpers → .dc_${config.workspace}/build/: ${pre.copied.join(', ')}`));
+    }
+    if (pre.missing.length > 0) {
+      throw new Error(
+        `Missing required scripts (not embedded in binary or available in cwd): ${pre.missing.join(', ')}`,
+      );
+    }
   }
 
-  const postScriptFiles = collectRequiredPostScriptFiles(config);
+  const postScriptFiles = skipBuildArtifacts ? [] : collectRequiredPostScriptFiles(config);
   if (postScriptFiles.length > 0) {
     fs.mkdirSync(postScriptDir, { recursive: true });
     const postPre = preflight(postScriptFiles, postScriptDir);
@@ -350,17 +494,46 @@ async function main() {
   const composePath = path.join(buildDir, 'docker-compose.yml');
   const envPath = path.join(buildDir, '.env');
 
-  if (!(await maybeOverwrite(dockerfilePath, 'Dockerfile', flags.interactive, flags.force))) {
+  const dockerfileContent = generateDockerfile(config);
+
+  // Fingerprint computation (local-cached only): hash Dockerfile + copyFile contents
+  // + selected module IDs. Determines the canonical image name and whether we can
+  // skip the rebuild.
+  let cachedImageHit = false;
+  if (config.mode === 'local-cached' && dockerfileContent !== null) {
+    const copyContents: Record<string, string> = {};
+    for (const f of copyFiles) {
+      const onDisk = path.join(buildDir, f);
+      if (fs.existsSync(onDisk)) {
+        copyContents[f] = fs.readFileSync(onDisk, 'utf8');
+      }
+    }
+    const moduleIds = config.dockerfile.modules.map((m) => m.id);
+    const fp = computeFingerprint(dockerfileContent, copyContents, moduleIds);
+    config.fingerprint = fp;
+    config.image = fingerprintTag(fp);
+    if (localImageExists(config.image)) {
+      cachedImageHit = true;
+      console.log(chalk.gray(`Using cached image ${config.image} (fingerprint ${fp.slice(0, 12)})`));
+    }
+  }
+
+  if (dockerfileContent === null) {
+    console.log(chalk.gray(`Skipped Dockerfile (mode=${config.mode}).`));
+  } else if (!(await maybeOverwrite(dockerfilePath, 'Dockerfile', flags.interactive, flags.force))) {
     console.log(chalk.yellow('Skipped Dockerfile.'));
   } else {
-    writeOutput(dockerfilePath, generateDockerfile(config), true);
+    writeOutput(dockerfilePath, dockerfileContent, true);
     console.log(chalk.green('✅ Dockerfile generated.'));
   }
 
-  if (!(await maybeOverwrite(composePath, 'docker-compose.yml', flags.interactive, flags.force))) {
+  const composeContent = generateCompose(config);
+  if (composeContent === null) {
+    console.log(chalk.gray(`Skipped docker-compose.yml (mode=${config.mode}).`));
+  } else if (!(await maybeOverwrite(composePath, 'docker-compose.yml', flags.interactive, flags.force))) {
     console.log(chalk.yellow('Skipped docker-compose.yml.'));
   } else {
-    writeOutput(composePath, generateCompose(config), true);
+    writeOutput(composePath, composeContent, true);
     console.log(chalk.green('✅ docker-compose.yml generated.'));
   }
 
@@ -379,20 +552,51 @@ async function main() {
 
   printLayoutMessage(config.workspace, postScriptFiles.length > 0);
 
+  const isRemote = config.mode === 'remote';
   let build = flags.build;
+  if (cachedImageHit && build === null) {
+    // Fast path: image is already in the daemon for this fingerprint.
+    build = false;
+    console.log(chalk.green('✓ Local-cached image is up to date — skipping build.'));
+  }
   if (build === null && flags.interactive) {
-    build = await confirm('build', "Run 'docker compose build' now?", true);
+    const label = isRemote
+      ? "Run 'docker compose pull' now?"
+      : "Run 'docker compose build' now?";
+    build = await confirm('build', label, true);
   }
 
   if (build) {
-    console.log(chalk.yellow('\n⏳ Building...\n'));
-    const ok = await executeBuild(buildDir);
-    if (ok) {
-      printSshInstructions(config.workspace);
+    const action = isRemote ? executePull : executeBuild;
+    const banner = isRemote ? '\n⏳ Pulling image...\n' : '\n⏳ Building...\n';
+    console.log(chalk.yellow(banner));
+    const buildOk = await action(buildDir);
+    if (buildOk) {
+      recordProjectEntry(cwd, config);
+      printSshInstructions(config.workspace, config.mode);
     }
   } else {
+    recordProjectEntry(cwd, config);
     console.log(chalk.green.bold('\n✨ Done.\n'));
-    printSshInstructions(config.workspace);
+    printSshInstructions(config.workspace, config.mode);
+  }
+}
+
+function recordProjectEntry(projectDir: string, config: DevcontainerConfig): void {
+  try {
+    const now = new Date().toISOString();
+    recordEntry({
+      projectDir,
+      workspace: config.workspace,
+      mode: config.mode,
+      image: config.image,
+      variant: config.remote?.variant,
+      fingerprint: config.fingerprint,
+      createdAt: now,
+      lastUpdated: now,
+    });
+  } catch {
+    // Non-fatal: registry is a convenience for `update --all`.
   }
 }
 

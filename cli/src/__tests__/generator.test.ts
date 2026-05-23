@@ -1,11 +1,29 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { parse } from 'yaml';
-import { generateCompose, generateDockerfile, generateEnv } from '../generator.js';
+import {
+  generateCompose as generateComposeRaw,
+  generateDockerfile as generateDockerfileRaw,
+  generateEnv,
+  resolveRemoteImage,
+} from '../generator.js';
 import type { DevcontainerConfig } from '../types.js';
+
+function generateDockerfile(config: DevcontainerConfig): string {
+  const out = generateDockerfileRaw(config);
+  if (out === null) throw new Error('generateDockerfile returned null');
+  return out;
+}
+
+function generateCompose(config: DevcontainerConfig): string {
+  const out = generateComposeRaw(config);
+  if (out === null) throw new Error('generateCompose returned null');
+  return out;
+}
 
 function makeConfig(overrides: Partial<DevcontainerConfig> = {}): DevcontainerConfig {
   return {
+    mode: 'local-cached',
     image: 'devcontainer-ssh:local',
     workspace: 'devcontainer',
     dockerfile: { modules: [] },
@@ -192,4 +210,84 @@ test('env file writes both DOCKER_SUBNET and DEVCONTAINER_IP from compose subnet
   );
   assert.match(env, /DOCKER_SUBNET=172\.25\.0\.0\/28/);
   assert.match(env, /DEVCONTAINER_IP=172\.25\.0\.14/);
+});
+
+test('mode=remote returns null Dockerfile', () => {
+  assert.equal(
+    generateDockerfileRaw(
+      makeConfig({
+        mode: 'remote',
+        remote: { variant: 'python' },
+      }),
+    ),
+    null,
+  );
+});
+
+test('mode=remote compose omits build and uses ghcr image', () => {
+  const yml = generateCompose(
+    makeConfig({
+      mode: 'remote',
+      image: 'ghcr.io/joacohbc/devcontainer-node-java-temurin:latest',
+      remote: { variant: 'node-java-temurin' },
+    }),
+  );
+  const parsed = parse(yml) as {
+    services: { 'devcontainer-ssh': { image: string; build?: unknown } };
+  };
+  assert.equal(parsed.services['devcontainer-ssh'].build, undefined);
+  assert.equal(
+    parsed.services['devcontainer-ssh'].image,
+    'ghcr.io/joacohbc/devcontainer-node-java-temurin:latest',
+  );
+});
+
+test('mode=remote with DB service still emits compose for the DB', () => {
+  const yml = generateCompose(
+    makeConfig({
+      mode: 'remote',
+      image: 'ghcr.io/joacohbc/devcontainer-ssh:latest',
+      remote: { variant: 'ssh' },
+      compose: { services: ['mongo'], subnet: '172.25.0.0/24' },
+    }),
+  );
+  const parsed = parse(yml) as { services: Record<string, unknown> };
+  assert.ok(parsed.services.mongo);
+});
+
+test('resolveRemoteImage: ssh variant uses devcontainer-ssh suffix', () => {
+  assert.equal(
+    resolveRemoteImage('ssh', 'ghcr.io/joacohbc/'),
+    'ghcr.io/joacohbc/devcontainer-ssh:latest',
+  );
+});
+
+test('resolveRemoteImage: non-ssh variant uses devcontainer-<variant>', () => {
+  assert.equal(
+    resolveRemoteImage('bun', 'ghcr.io/joacohbc/'),
+    'ghcr.io/joacohbc/devcontainer-bun:latest',
+  );
+});
+
+test('resolveRemoteImage: registry override beats per-project', () => {
+  assert.equal(
+    resolveRemoteImage('python', 'ghcr.io/flag/', 'ghcr.io/proj/'),
+    'ghcr.io/flag/devcontainer-python:latest',
+  );
+});
+
+test('mode=local-cached uses devcontainer-cli/<fp>:latest as image when fingerprint set', () => {
+  const yml = generateCompose(
+    makeConfig({
+      mode: 'local-cached',
+      fingerprint: 'abc123def4567890abc123def4567890',
+      image: 'should-not-be-used:tag',
+    }),
+  );
+  const parsed = parse(yml) as {
+    services: { 'devcontainer-ssh': { image: string; build?: unknown } };
+  };
+  assert.equal(parsed.services['devcontainer-ssh'].image, 'devcontainer-cli/abc123def456:latest');
+  // build: '.' still present — daemon-level skip is decided at runtime, not in the compose
+  assert.equal(parsed.services['devcontainer-ssh'].build, '.');
 });

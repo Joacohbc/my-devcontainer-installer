@@ -27,6 +27,7 @@ export interface SetupSshFlags {
   service: string;
   serviceExplicit: boolean;
   composeFile: string;
+  composeFileExplicit: boolean;
   user: string;
   help: boolean;
 }
@@ -49,6 +50,7 @@ const DEFAULTS: SetupSshFlags = {
   service: SSH_DEFAULTS.serviceName,
   serviceExplicit: false,
   composeFile: defaultComposeFile(),
+  composeFileExplicit: false,
   user: SSH_DEFAULTS.user,
   help: false,
 };
@@ -95,6 +97,7 @@ export function parseSetupSshFlags(argv: string[]): SetupSshFlags {
       case '--compose-file':
       case '-f':
         f.composeFile = next();
+        f.composeFileExplicit = true;
         break;
       case '--user':
         f.user = next();
@@ -266,8 +269,7 @@ async function ensureStack(f: SetupSshFlags, mode: Mode): Promise<void> {
     : await confirm('startStack', 'Start it now with docker compose up -d?', true);
   if (!proceed) throw new Error('Aborting — stack must be running.');
 
-  const composeArgs = ['compose', '-f', f.composeFile, 'up', '-d'];
-  const r = runInherit('docker', composeArgs);
+  const r = runInherit('docker', ['compose', '-f', f.composeFile, 'up', '-d']);
   if (r.status !== 0) throw new Error('docker compose up failed.');
 
   let tries = 20;
@@ -283,10 +285,12 @@ function fetchPassword(f: SetupSshFlags, mode: Mode): void {
   log('Fetching temporary password from logs...');
   const r = run('docker', ['compose', '-f', f.composeFile, 'logs', f.service]);
   if (r.status !== 0) {
-    warn('Could not read compose logs.');
+    warn('Could not read logs.');
     return;
   }
-  const lines = r.stdout
+  // `docker logs` writes to stderr in some images
+  const combined = `${r.stdout}\n${r.stderr}`;
+  const lines = combined
     .split('\n')
     .filter((l) => l.includes(`${f.user} password`));
   const last = lines[lines.length - 1];

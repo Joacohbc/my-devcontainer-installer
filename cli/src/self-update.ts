@@ -371,10 +371,10 @@ function parseSelfUpdateFlags(argv: string[]): SelfUpdateFlags {
 }
 
 function helpText(): string {
-  return `devcontainer-cli update — replace the current binary with the latest release
+  return `devcontainer-cli upgrade-cli — replace the current binary with the latest release
 
 Usage:
-  devcontainer-cli update [--check] [--force]
+  devcontainer-cli upgrade-cli [--check] [--force]
 
 Flags:
   --check    Print current vs latest and exit (no download)
@@ -392,6 +392,12 @@ export async function runSelfUpdate(argv: string[]): Promise<void> {
     console.log(helpText());
     return;
   }
+
+  console.error(
+    chalk.gray(
+      "Note: 'devcontainer-cli update' now manages container images. Self-update lives at 'devcontainer-cli upgrade-cli'.",
+    ),
+  );
 
   const current = getCurrentVersion();
   console.log(chalk.gray(`Current version: ${current}`));

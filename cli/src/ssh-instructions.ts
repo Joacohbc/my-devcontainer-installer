@@ -1,5 +1,6 @@
 import chalk from 'chalk';
 import { SSH_DEFAULTS, buildSshConfigBlock } from './ssh-defaults.js';
+import type { BuildMode } from './types.js';
 
 const KEY = `~/.ssh/${SSH_DEFAULTS.keyName}`;
 
@@ -39,12 +40,13 @@ function windowsBlock(): string {
   ].join('\n');
 }
 
-export function printSshInstructions(workspace: string): void {
+export function printSshInstructions(workspace: string, _mode: BuildMode = 'local-cached'): void {
   const isWindows = process.platform === 'win32';
   const bar = chalk.gray('─'.repeat(64));
   const prompt = chalk.gray('   $ ');
   const composeRel = `.dc_${workspace}/build/docker-compose.yml`;
   const startCmd = `docker compose -f ${composeRel} up -d`;
+  const passwordCmd = `docker compose -f ${composeRel} logs ${SSH_DEFAULTS.serviceName} | grep "${SSH_DEFAULTS.user} password" | tail -n 1`;
 
   const out = [
     chalk.cyan.bold('🔑 Next steps — SSH access'),
@@ -53,8 +55,10 @@ export function printSshInstructions(workspace: string): void {
     chalk.bold('1) Start the stack (if not running):'),
     prompt + startCmd,
     '',
+    chalk.gray(`   Or simply run:  devcontainer-cli setup-ssh   (auto-detects compose)`),
+    '',
     chalk.bold('2) Get temporary password (one-time, to install your key):'),
-    prompt + `docker compose logs ${SSH_DEFAULTS.serviceName} | grep "${SSH_DEFAULTS.user} password" | tail -n 1`,
+    prompt + passwordCmd,
     '',
     chalk.bold(`3) Generate SSH key (skip if you already have ${KEY}):`),
     prompt + `ssh-keygen -t ed25519 -f ${KEY} -N "" -q`,

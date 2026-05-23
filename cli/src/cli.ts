@@ -1,3 +1,5 @@
+import { BUILD_MODES, REMOTE_VARIANTS, type BuildMode, type RemoteVariant } from './types.js';
+
 export interface CliFlags {
   interactive: boolean;
   forcePrompt: boolean;
@@ -10,6 +12,19 @@ export interface CliFlags {
   force: boolean;
   help: boolean;
   version: boolean;
+  mode?: BuildMode;
+  variant?: RemoteVariant;
+  registry?: string;
+}
+
+function parseMode(v: string): BuildMode {
+  if ((BUILD_MODES as readonly string[]).includes(v)) return v as BuildMode;
+  throw new Error(`Invalid --mode: ${v}. Expected one of: ${BUILD_MODES.join(', ')}`);
+}
+
+function parseVariant(v: string): RemoteVariant {
+  if ((REMOTE_VARIANTS as readonly string[]).includes(v)) return v as RemoteVariant;
+  throw new Error(`Invalid --variant: ${v}. Expected one of: ${REMOTE_VARIANTS.join(', ')}`);
 }
 
 export function parseFlags(argv: string[]): CliFlags {
@@ -66,6 +81,15 @@ export function parseFlags(argv: string[]): CliFlags {
       case '--force':
         flags.force = true;
         break;
+      case '--mode':
+        flags.mode = parseMode(next());
+        break;
+      case '--variant':
+        flags.variant = parseVariant(next());
+        break;
+      case '--registry':
+        flags.registry = next();
+        break;
       default:
         if (a.startsWith('--')) {
           throw new Error(`Unknown flag: ${a}`);
@@ -81,13 +105,21 @@ export function helpText(): string {
 Usage:
   cli [flags]
   cli setup-ssh [flags]     Run automated SSH setup (see: cli setup-ssh --help)
+  cli run [flags]           Spin up a remote image container without project files
+  cli down [flags]          docker compose down -v for the current project
+  cli prune [flags]         Remove orphan devcontainer-cli/* images
   cli cleanup-tips [flags]  Show docker cleanup commands for this project
-  cli update [flags]        Replace this binary with the latest GitHub release
+  cli update [flags]        Update container images for this project / all projects
+  cli upgrade-cli [flags]   Replace this binary with the latest GitHub release
+  cli config <key> [<val>]  Read or write global CLI config (e.g. 'config registry <url>')
 
 Flags:
+  --mode <name>         Build mode: local-cached (default), remote
+  --variant <name>      Remote variant: ssh, nodejs, bun, java-temurin, python, go, node-go, node-python, node-java-temurin, bun-go, bun-python, bun-java-temurin
+  --registry <url>      Container registry prefix for remote images (overrides global)
   --with <ids>          Comma-separated dockerfile modules (e.g. nodejs,java,dod)
   --service <ids>       Comma-separated compose services (e.g. mongo,postgres,tunnel)
-  --image <name>        Image name (default: devcontainer-ssh:local)
+  --image <name>        Image name (default: derived from fingerprint for local-cached)
   --workspace <name>    Workspace name (default: current dir name, used for .dc_<name>/)
   --config <path>       Path to devcontainer.config.json
   --no-interactive      Fail if any value is missing instead of prompting
