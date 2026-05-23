@@ -27,8 +27,9 @@ import { cleanupStaleUpdate, getCurrentVersion, runSelfUpdate } from './self-upd
 import { runUpdateImages } from './update-images.js';
 import { runConfigCmd } from './config-cmd.js';
 import { runQuickRun } from './quick-run.js';
-import { runDown } from './down.js';
 import { runPrune } from './prune.js';
+import { runPortForward } from './port-forward.js';
+import { runDown } from './down.js';
 import {
   computeFingerprint,
   fingerprintTag,
@@ -323,6 +324,10 @@ async function main() {
   installSignalHandlers();
   cleanupStaleUpdate();
   const argv = process.argv.slice(2);
+  if (argv[0] === 'port-forward') {
+    await runPortForward(argv.slice(1));
+    return;
+  }
   if (argv[0] === 'setup-ssh') {
     await runSetupSsh(argv.slice(1));
     return;
