@@ -308,6 +308,22 @@ curl -fsSL https://raw.githubusercontent.com/Joacohbc/my-devcontainer-installer/
 
 **Descarga manual** (alternativa): https://github.com/Joacohbc/my-devcontainer-installer/releases/latest — binarios disponibles: `devcontainer-cli-linux-x64`, `-linux-arm64`, `-darwin-x64` y `-windows-x64.exe`. Son ejecutables únicos (assets embebidos via Node.js SEA); descargás, `chmod +x` y listo.
 
+#### Desinstalación
+
+Si deseas eliminar la CLI y sus configuraciones:
+
+**Linux / macOS:**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Joacohbc/my-devcontainer-installer/main/cli/uninstall.sh | sh
+```
+
+**Windows (PowerShell):**
+
+```powershell
+irm https://raw.githubusercontent.com/Joacohbc/my-devcontainer-installer/main/cli/uninstall.ps1 | iex
+```
+
 ### 2. Generar el entorno
 
 ```bash
