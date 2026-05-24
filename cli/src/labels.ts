@@ -4,6 +4,7 @@ export const LABEL_NAMESPACE = 'dev.devcontainer-installer';
 export const LABEL_MANAGED = `${LABEL_NAMESPACE}.managed`;
 export const LABEL_PROJECT = `${LABEL_NAMESPACE}.project`;
 export const LABEL_VERSION = `${LABEL_NAMESPACE}.version`;
+export const LABEL_QUICK_RUN = `${LABEL_NAMESPACE}.quick-run`;
 
 export const SCHEMA_VERSION = '1';
 

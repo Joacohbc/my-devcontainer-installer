@@ -1,4 +1,4 @@
-import { BUILD_MODES, REMOTE_VARIANTS, type BuildMode, type RemoteVariant } from '@/types.js';
+import { BUILD_MODES, REMOTE_VARIANTS, parseVariant, type BuildMode, type RemoteVariant } from '@/types.js';
 
 export interface CliFlags {
   interactive: boolean;
@@ -8,7 +8,6 @@ export interface CliFlags {
   workspace?: string;
   withModules?: string[];
   services?: string[];
-  config?: string;
   force: boolean;
   help: boolean;
   version: boolean;
@@ -20,11 +19,6 @@ export interface CliFlags {
 function parseMode(v: string): BuildMode {
   if ((BUILD_MODES as readonly string[]).includes(v)) return v as BuildMode;
   throw new Error(`Invalid --mode: ${v}. Expected one of: ${BUILD_MODES.join(', ')}`);
-}
-
-function parseVariant(v: string): RemoteVariant {
-  if ((REMOTE_VARIANTS as readonly string[]).includes(v)) return v as RemoteVariant;
-  throw new Error(`Invalid --variant: ${v}. Expected one of: ${REMOTE_VARIANTS.join(', ')}`);
 }
 
 export function parseFlags(argv: string[]): CliFlags {
@@ -75,9 +69,6 @@ export function parseFlags(argv: string[]): CliFlags {
       case '--services':
         flags.services = next().split(',').map((s) => s.trim()).filter(Boolean);
         break;
-      case '--config':
-        flags.config = next();
-        break;
       case '--force':
         flags.force = true;
         break;
@@ -126,7 +117,6 @@ Flags:
   --service <ids>       Comma-separated compose services (e.g. mongo,postgres,tunnel)
   --image <name>        Image name (default: derived from fingerprint for local-cached)
   --workspace <name>    Workspace name (default: current dir name, used for .dc_<name>/)
-  --config <path>       Path to devcontainer.config.json
   --no-interactive      Fail if any value is missing instead of prompting
   --force-prompt        Prompt even if config file exists
   --force               Overwrite existing files without prompting

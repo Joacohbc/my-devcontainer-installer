@@ -1,6 +1,6 @@
 import * as fs from 'fs';
-import { spawnSync } from 'child_process';
 import chalk from 'chalk';
+import { dockerCapture, dockerInherit } from '@/docker.js';
 import { listEntries } from '@/image-registry.js';
 import { confirm } from '@/prompts.js';
 
@@ -59,12 +59,12 @@ interface LocalImage {
 }
 
 function listCliImages(): LocalImage[] {
-  const r = spawnSync('docker', [
+  const r = dockerCapture([
     'images',
     '--filter', 'reference=devcontainer-cli/*',
     '--format', '{{.Repository}}:{{.Tag}}\t{{.ID}}',
-  ], { encoding: 'utf8' });
-  if ((r.status ?? -1) !== 0 || !r.stdout.trim()) return [];
+  ]);
+  if (r.status !== 0 || !r.stdout.trim()) return [];
   return r.stdout.trim().split('\n').map((line) => {
     const [ref, id] = line.split('\t');
     return { ref: ref.trim(), id: id.trim() };
@@ -72,8 +72,8 @@ function listCliImages(): LocalImage[] {
 }
 
 function removeImage(ref: string): boolean {
-  const r = spawnSync('docker', ['rmi', ref], { stdio: 'inherit' });
-  return (r.status ?? -1) === 0;
+  const status = dockerInherit(['rmi', ref]);
+  return status === 0;
 }
 
 export async function runPrune(argv: string[]): Promise<void> {

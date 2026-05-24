@@ -1,4 +1,4 @@
-import { spawnSync } from 'child_process';
+import { dockerCapture } from '@/docker.js';
 import chalk from 'chalk';
 import { select } from '@/prompts.js';
 import { LABEL_MANAGED } from '@/labels.js';
@@ -17,11 +17,14 @@ export function containerWorkspace(containerName: string): string | null {
 }
 
 export function listManagedContainers(): ManagedContainer[] {
-  const r = spawnSync(
-    'docker',
-    ['ps', '-a', '--filter', `label=${LABEL_MANAGED}=true`, '--format', '{{json .}}'],
-    { encoding: 'utf8' },
-  );
+  const r = dockerCapture([
+    'ps',
+    '-a',
+    '--filter',
+    `label=${LABEL_MANAGED}=true`,
+    '--format',
+    '{{json .}}',
+  ]);
   if (r.status !== 0 || !r.stdout.trim()) return [];
   return r.stdout
     .trim()

@@ -72,6 +72,26 @@ export const REMOTE_VARIANTS = [
 ] as const;
 export type RemoteVariant = (typeof REMOTE_VARIANTS)[number];
 
+export const VARIANT_LABELS: Record<RemoteVariant, string> = {
+  ssh: 'ssh — full image (all modules)',
+  nodejs: 'nodejs — Node.js only',
+  bun: 'bun — Bun only',
+  'java-temurin': 'java-temurin — Java Temurin only',
+  python: 'python — Python only',
+  go: 'go — Go only',
+  'node-go': 'node-go — Node.js + Go',
+  'node-python': 'node-python — Node.js + Python',
+  'node-java-temurin': 'node-java-temurin — Node.js + Java Temurin',
+  'bun-go': 'bun-go — Bun + Go',
+  'bun-python': 'bun-python — Bun + Python',
+  'bun-java-temurin': 'bun-java-temurin — Bun + Java Temurin',
+};
+
+export function parseVariant(v: string): RemoteVariant {
+  if ((REMOTE_VARIANTS as readonly string[]).includes(v)) return v as RemoteVariant;
+  throw new Error(`Invalid --variant: ${v}. Expected one of: ${REMOTE_VARIANTS.join(', ')}`);
+}
+
 export interface RemoteConfig {
   variant: RemoteVariant;
   registry?: string;
