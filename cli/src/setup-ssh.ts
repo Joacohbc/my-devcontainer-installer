@@ -4,20 +4,22 @@ import * as path from 'path';
 import { spawnSync, type SpawnSyncOptions } from 'child_process';
 import chalk from 'chalk';
 import { parse as parseYaml } from 'yaml';
-import { confirm, select, PromptCancelledError } from './prompts.js';
-import { loadConfig } from './config.js';
-import { sanitizeDockerName } from './validators.js';
+import { confirm, input, select, PromptCancelledError } from '@/prompts.js';
+import { loadConfig } from '@/config.js';
+import { sanitizeDockerName } from '@/validators.js';
 import {
   SSH_DEFAULTS,
   authorizedKeysInstallScript,
   buildSshConfigBlock,
   defaultKeyPath,
   type SshConfigMode,
-} from './ssh-defaults.js';
+} from '@/ssh-defaults.js';
+import { pickManagedContainer } from '@/container-picker.js';
 
 export interface SetupSshFlags {
   remote: string;
   alias: string;
+  aliasExplicit: boolean;
   key: string;
   port: string;
   mode: '' | 'local' | 'windows' | 'remote';
@@ -27,6 +29,7 @@ export interface SetupSshFlags {
   service: string;
   serviceExplicit: boolean;
   composeFile: string;
+  composeFileExplicit: boolean;
   user: string;
   help: boolean;
 }
@@ -40,6 +43,7 @@ function defaultComposeFile(): string {
 const DEFAULTS: SetupSshFlags = {
   remote: '',
   alias: SSH_DEFAULTS.alias,
+  aliasExplicit: false,
   key: defaultKeyPath(),
   port: String(SSH_DEFAULTS.windowsPort),
   mode: '',
@@ -49,6 +53,7 @@ const DEFAULTS: SetupSshFlags = {
   service: SSH_DEFAULTS.serviceName,
   serviceExplicit: false,
   composeFile: defaultComposeFile(),
+  composeFileExplicit: false,
   user: SSH_DEFAULTS.user,
   help: false,
 };
@@ -69,6 +74,7 @@ export function parseSetupSshFlags(argv: string[]): SetupSshFlags {
         break;
       case '--alias':
         f.alias = next();
+        f.aliasExplicit = true;
         break;
       case '--key':
         f.key = next();
@@ -95,6 +101,7 @@ export function parseSetupSshFlags(argv: string[]): SetupSshFlags {
       case '--compose-file':
       case '-f':
         f.composeFile = next();
+        f.composeFileExplicit = true;
         break;
       case '--user':
         f.user = next();
@@ -199,8 +206,11 @@ async function resolveTargetService(f: SetupSshFlags): Promise<ComposeServiceInf
   const services = readComposeServices(composePath);
   if (!services) {
     if (f.containerExplicit) return { service: f.service, container: f.container };
-    warn(`No compose file at ${composePath} — using defaults.`);
-    return { service: f.service, container: f.container };
+    const picked = await pickManagedContainer('Select devcontainer to set up SSH for:', {
+      interactive: !f.assumeYes,
+      assumeYes: f.assumeYes,
+    });
+    return { service: SSH_DEFAULTS.serviceName, container: picked.name };
   }
 
   const picked = pickDevcontainerService(services);
@@ -261,13 +271,18 @@ async function ensureStack(f: SetupSshFlags, mode: Mode): Promise<void> {
     return;
   }
   warn(`Container '${f.container}' not running.`);
+  const composePath = path.resolve(process.cwd(), f.composeFile);
+  if (!fs.existsSync(composePath)) {
+    throw new Error(
+      `Compose file not found: ${composePath}\nRun 'devcontainer-cli' first to generate it, or pass -f <path> to specify a different compose file.`,
+    );
+  }
   const proceed = f.assumeYes
     ? true
     : await confirm('startStack', 'Start it now with docker compose up -d?', true);
   if (!proceed) throw new Error('Aborting — stack must be running.');
 
-  const composeArgs = ['compose', '-f', f.composeFile, 'up', '-d'];
-  const r = runInherit('docker', composeArgs);
+  const r = runInherit('docker', ['compose', '-f', f.composeFile, 'up', '-d']);
   if (r.status !== 0) throw new Error('docker compose up failed.');
 
   let tries = 20;
@@ -283,10 +298,12 @@ function fetchPassword(f: SetupSshFlags, mode: Mode): void {
   log('Fetching temporary password from logs...');
   const r = run('docker', ['compose', '-f', f.composeFile, 'logs', f.service]);
   if (r.status !== 0) {
-    warn('Could not read compose logs.');
+    warn('Could not read logs.');
     return;
   }
-  const lines = r.stdout
+  // `docker logs` writes to stderr in some images
+  const combined = `${r.stdout}\n${r.stderr}`;
+  const lines = combined
     .split('\n')
     .filter((l) => l.includes(`${f.user} password`));
   const last = lines[lines.length - 1];
@@ -527,6 +544,9 @@ function applyWorkspaceDefaults(f: SetupSshFlags, workspace: string): void {
   if (!f.containerExplicit && f.container === DEFAULTS.container) {
     f.container = `${workspace}-${SSH_DEFAULTS.serviceName}`;
   }
+  if (!f.composeFileExplicit) {
+    f.composeFile = `.dc_${workspace}/build/docker-compose.yml`;
+  }
 }
 
 export async function runSetupSsh(argv: string[]): Promise<void> {
@@ -548,6 +568,12 @@ export async function runSetupSsh(argv: string[]): Promise<void> {
 
   const workspace = deriveWorkspace(resolvedContainer);
   applyWorkspaceDefaults(f, workspace);
+
+  if (!f.aliasExplicit && !f.assumeYes) {
+    f.alias = await input('alias', 'SSH connection name (alias):', f.alias, (v) =>
+      v.trim().length > 0 ? true : 'Name cannot be empty',
+    );
+  }
 
   log(`Mode: ${mode}   Workspace: ${workspace}   Alias: ${f.alias}   Key: ${f.key}`);
   if (mode !== 'remote') {

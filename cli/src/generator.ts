@@ -1,23 +1,62 @@
 import { stringify } from 'yaml';
-import { composeLabels, dockerfileLabelBlock } from './labels.js';
-import { composeServices, getComposeService } from './registry.js';
-import { resolveDockerfileModules } from './resolver.js';
-import { SSH_DEFAULTS } from './ssh-defaults.js';
-import { lastHost } from './subnet.js';
+import { composeLabels, dockerfileLabelBlock } from '@/labels.js';
+import { composeServices, getComposeService } from '@/registry.js';
+import { resolveDockerfileModules } from '@/resolver.js';
+import { SSH_DEFAULTS } from '@/ssh-defaults.js';
+import { lastHost } from '@/subnet.js';
+import { resolveRegistry } from '@/global-config.js';
 import {
   GENERATED_HEADER,
   GENERATED_HEADER_YAML,
+  POST_SCRIPT_DIR,
   normalizeServices,
   type DevcontainerConfig,
-} from './types.js';
+  type RemoteVariant,
+} from '@/types.js';
 
 const DEFAULT_SUBNET = '172.25.0.0/28';
 
-export function generateDockerfile(config: DevcontainerConfig): string {
+export function generateDockerfile(config: DevcontainerConfig): string | null {
+  if (config.mode === 'remote') return null;
   const resolved = resolveDockerfileModules(config.dockerfile.modules);
   const fragments = resolved.map((r) => r.module.render(r.options).trim());
+  const postScripts = postScriptsDockerfileBlock(config);
+  if (postScripts) fragments.push(postScripts);
   fragments.push(dockerfileLabelBlock(config));
   return `${GENERATED_HEADER}\n\n${fragments.join('\n\n')}\n`;
+}
+
+// Bakes every declared post-install script into POST_SCRIPT_DIR. Driven entirely by
+// each module's `postScriptFiles` declaration — adding a new script needs no change
+// here: declare it on a module and drop the file in assets/.
+function postScriptsDockerfileBlock(config: DevcontainerConfig): string {
+  const files = collectRequiredPostScriptFiles(config);
+  if (files.length === 0) return '';
+  return `##
+## POST-INSTALL SCRIPTS (available inside the container, not auto-run)
+##
+COPY ${files.join(' ')} ${POST_SCRIPT_DIR}/
+RUN chown -R devuser:devuser ${POST_SCRIPT_DIR} && chmod +x ${POST_SCRIPT_DIR}/*.sh`;
+}
+
+export function resolveRemoteImage(
+  variant: RemoteVariant,
+  registryOverride?: string,
+  perProject?: string,
+): string {
+  const registry = resolveRegistry(registryOverride, perProject);
+  const suffix = variant === 'ssh' ? 'devcontainer-ssh' : `devcontainer-${variant}`;
+  return `${registry}${suffix}:latest`;
+}
+
+export function resolveDevcontainerImageName(config: DevcontainerConfig): string {
+  if (config.mode === 'remote' && config.remote) {
+    return resolveRemoteImage(config.remote.variant, undefined, config.remote.registry);
+  }
+  if (config.mode === 'local-cached' && config.fingerprint) {
+    return `devcontainer-cli/${config.fingerprint.slice(0, 12)}:latest`;
+  }
+  return config.image;
 }
 
 const BASE_VOLUMES = ['devcontainer_etc', 'devcontainer_root', 'devcontainer_home'];
@@ -40,7 +79,7 @@ function remapVolumeMount(workspace: string, declared: Set<string>, mount: strin
   return `${prefixVolume(workspace, src)}${mount.slice(colon)}`;
 }
 
-export function generateCompose(config: DevcontainerConfig): string {
+export function generateCompose(config: DevcontainerConfig): string | null {
   const selected = normalizeServices(config.compose.services);
   const optionsById = new Map<string, Record<string, unknown>>();
   const enabled = new Set<string>();
@@ -78,14 +117,21 @@ export function generateCompose(config: DevcontainerConfig): string {
     for (const v of svc.volumes ?? []) declaredVolumes.add(v);
   }
 
+  const devcontainerImageName = resolveDevcontainerImageName(config);
+
   for (const id of enabledIds) {
     const svc = getComposeService(id);
     if (!svc) throw new Error(`Unknown compose service: ${id}`);
+    const imageNameForSvc = svc.id === 'devcontainer' ? devcontainerImageName : config.image;
     const rendered = svc.render({
-      imageName: config.image,
+      imageName: imageNameForSvc,
       enabledServiceIds: enabledIds,
       options: optionsById.get(id) ?? {},
     }) as Record<string, unknown>;
+
+    if (svc.id === 'devcontainer' && config.mode === 'remote') {
+      delete rendered.build;
+    }
 
     const baseContainer =
       typeof rendered.container_name === 'string'
@@ -220,7 +266,9 @@ export function collectRequiredPostScriptFiles(config: DevcontainerConfig): stri
   const resolved = resolveDockerfileModules(config.dockerfile.modules);
   const files = new Set<string>();
   for (const r of resolved) {
-    for (const f of r.module.postScriptFiles ?? []) files.add(f);
+    const ps = r.module.postScriptFiles;
+    const list = typeof ps === 'function' ? ps(r.options) : (ps ?? []);
+    for (const f of list) files.add(f);
   }
   return [...files];
 }

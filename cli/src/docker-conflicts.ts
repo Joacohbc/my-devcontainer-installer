@@ -1,8 +1,8 @@
-import { spawnSync } from 'child_process';
-import { LABEL_PROJECT } from './labels.js';
-import { plannedComposeNames } from './generator.js';
-import { projectId } from './labels.js';
-import type { DevcontainerConfig } from './types.js';
+import { isDockerAvailable, dockerCapture } from '@/docker.js';
+import { LABEL_PROJECT } from '@/labels.js';
+import { plannedComposeNames } from '@/generator.js';
+import { projectId } from '@/labels.js';
+import type { DevcontainerConfig } from '@/types.js';
 
 export interface Conflict {
   kind: 'container' | 'network';
@@ -11,10 +11,7 @@ export interface Conflict {
 }
 
 function dockerAvailable(): boolean {
-  const r = spawnSync('docker', ['version', '--format', '{{.Client.Version}}'], {
-    encoding: 'utf8',
-  });
-  return r.status === 0;
+  return isDockerAvailable();
 }
 
 function listExisting(kind: 'container' | 'network', project: string): Map<string, string> {
@@ -22,7 +19,7 @@ function listExisting(kind: 'container' | 'network', project: string): Map<strin
     kind === 'container'
       ? ['container', 'ls', '-a', '--format', `{{.Names}}\t{{.Label "${LABEL_PROJECT}"}}`]
       : ['network', 'ls', '--format', `{{.Name}}\t{{.Label "${LABEL_PROJECT}"}}`];
-  const r = spawnSync('docker', args, { encoding: 'utf8' });
+  const r = dockerCapture(args);
   const out = new Map<string, string>();
   if (r.status !== 0) return out;
   for (const line of String(r.stdout ?? '').split('\n')) {

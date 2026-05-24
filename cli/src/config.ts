@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { CONFIG_FILE, type DevcontainerConfig } from './types.js';
-import { sanitizeDockerName } from './validators.js';
+import { CONFIG_FILE, type DevcontainerConfig } from '@/types.js';
+import { sanitizeDockerName } from '@/validators.js';
 
 export function configPath(cwd: string = process.cwd()): string {
   return path.join(cwd, CONFIG_FILE);
@@ -16,6 +16,10 @@ export function loadConfig(cwd: string = process.cwd()): DevcontainerConfig | nu
     if (!parsed.workspace) {
       parsed.workspace = sanitizeDockerName(path.basename(cwd));
     }
+    // Compat: old configs used 'custom' or 'standalone' — both map to 'local-cached'.
+    if (!parsed.mode || parsed.mode === ('custom' as string) || parsed.mode === ('standalone' as string)) {
+      parsed.mode = 'local-cached';
+    }
     return parsed;
   } catch (e) {
     throw new Error(`Failed to parse ${CONFIG_FILE}: ${(e as Error).message}`);
@@ -29,6 +33,7 @@ export function saveConfig(config: DevcontainerConfig, cwd: string = process.cwd
 export function defaultConfig(cwd: string = process.cwd()): DevcontainerConfig {
   const workspace = sanitizeDockerName(path.basename(cwd));
   return {
+    mode: 'local-cached',
     image: `${workspace}:local`,
     workspace,
     dockerfile: { modules: [] },

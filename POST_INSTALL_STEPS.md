@@ -15,10 +15,10 @@ sudo passwd
 
 ## Loguearse con Github
 
-La CLI deja el script en `.dc_<workspace>/post-script/`, accesible dentro del contenedor como:
+Los scripts post-instalación se hornean dentro de la imagen, accesibles en `~/post-script/`:
 
 ```bash
-/workspace/.dc_<workspace>/post-script/login-github-cli.sh
+~/post-script/login-github-cli.sh
 ```
 
 ## Actualizar Go (si elegiste el módulo `go`)
@@ -26,10 +26,10 @@ La CLI deja el script en `.dc_<workspace>/post-script/`, accesible dentro del co
 Si generaste el entorno con `--with go`:
 
 ```bash
-/workspace/.dc_<workspace>/post-script/update_golang.sh
+sudo ~/post-script/update_golang.sh
 ```
 
-Actualiza la instalación de Go a la última versión estable.
+Actualiza la instalación de Go a la última versión estable (requiere root porque escribe en `/usr/local/go`).
 
 ## Instalar Firebase Tools (Opcional)
 
@@ -43,13 +43,14 @@ firebase login
 
 ## Instalar CLIs de IA (Opcional)
 
-Si generaste el entorno con `--with ai-clis`, los scripts de instalación quedan disponibles en `/home/devuser/` dentro del contenedor. Ejecutá el que necesites:
+Si generaste el entorno con `--with ai-clis`, los scripts de instalación quedan disponibles en `~/post-script/` dentro del contenedor. Ejecutá el que necesites:
 
 ```bash
-~/install-claude-code.sh   # Claude Code (@anthropic-ai/claude-code)
-~/install-gemini.sh        # Gemini CLI (@google/gemini-cli)
-~/install-opencode.sh      # OpenCode (opencode.ai)
-~/install-autoskills.sh    # Autoskills (usa npx, no requiere instalación global)
+~/post-script/install-claude-code.sh   # Claude Code (@anthropic-ai/claude-code)
+~/post-script/install-opencode.sh      # OpenCode (opencode.ai)
+~/post-script/install-codex-cli.sh     # Codex CLI (usa npx, no requiere instalación global)
+~/post-script/install-antigravity.sh   # Antigravity CLI
+~/post-script/install-copilot.sh       # GitHub Copilot CLI
 ```
 
 Si no incluiste el módulo `ai-clis`, podés instalarlas manualmente. Ejemplos:

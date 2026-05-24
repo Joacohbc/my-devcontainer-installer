@@ -1,14 +1,14 @@
-import type { ComposeService } from '../../types.js';
-import { SSH_DEFAULTS } from '../../ssh-defaults.js';
+import type { ComposeService } from '@/types.js';
+import { SSH_DEFAULTS } from '@/ssh-defaults.js';
 import {
   DOCKER_SOCKET_PROXY_HOST,
   DOCKER_SOCKET_PROXY_PORT,
-} from './docker-socket-proxy.js';
+} from '@/modules/compose/docker-socket-proxy.js';
 import {
   DIND_ENGINE_HOST,
   DIND_ENGINE_PORT,
   DIND_ENGINE_NETWORK,
-} from './dind-engine.js';
+} from '@/modules/compose/dind-engine.js';
 
 export type DockerSocketMode = 'none' | 'dind' | 'proxy' | 'rw';
 

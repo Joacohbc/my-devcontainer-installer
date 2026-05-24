@@ -1,5 +1,9 @@
 export type ModuleOptionType = 'select' | 'multiselect' | 'input' | 'confirm';
 
+// Directory inside the image where post-install scripts are baked, so they are
+// available in any container (including remote-image `run`, which mounts no host files).
+export const POST_SCRIPT_DIR = '/home/devuser/post-script';
+
 export interface ModuleOptionChoice {
   value: string;
   label: string;
@@ -24,7 +28,7 @@ export interface DockerfileModule {
   conflicts?: string[];
   options?: ModuleOption[];
   copyFiles?: string[];
-  postScriptFiles?: string[];
+  postScriptFiles?: string[] | ((opts: Record<string, unknown>) => string[]);
   render(opts: Record<string, unknown>): string;
 }
 
@@ -49,7 +53,52 @@ export interface SelectedModule {
   options?: Record<string, unknown>;
 }
 
+export type BuildMode = 'local-cached' | 'remote';
+export const BUILD_MODES: readonly BuildMode[] = ['local-cached', 'remote'] as const;
+
+export const REMOTE_VARIANTS = [
+  'ssh',
+  'nodejs',
+  'bun',
+  'java-temurin',
+  'python',
+  'go',
+  'node-go',
+  'node-python',
+  'node-java-temurin',
+  'bun-go',
+  'bun-python',
+  'bun-java-temurin',
+] as const;
+export type RemoteVariant = (typeof REMOTE_VARIANTS)[number];
+
+export const VARIANT_LABELS: Record<RemoteVariant, string> = {
+  ssh: 'ssh — full image (all modules)',
+  nodejs: 'nodejs — Node.js only',
+  bun: 'bun — Bun only',
+  'java-temurin': 'java-temurin — Java Temurin only',
+  python: 'python — Python only',
+  go: 'go — Go only',
+  'node-go': 'node-go — Node.js + Go',
+  'node-python': 'node-python — Node.js + Python',
+  'node-java-temurin': 'node-java-temurin — Node.js + Java Temurin',
+  'bun-go': 'bun-go — Bun + Go',
+  'bun-python': 'bun-python — Bun + Python',
+  'bun-java-temurin': 'bun-java-temurin — Bun + Java Temurin',
+};
+
+export function parseVariant(v: string): RemoteVariant {
+  if ((REMOTE_VARIANTS as readonly string[]).includes(v)) return v as RemoteVariant;
+  throw new Error(`Invalid --variant: ${v}. Expected one of: ${REMOTE_VARIANTS.join(', ')}`);
+}
+
+export interface RemoteConfig {
+  variant: RemoteVariant;
+  registry?: string;
+}
+
 export interface DevcontainerConfig {
+  mode: BuildMode;
   image: string;
   workspace: string;
   dockerfile: {
@@ -60,6 +109,8 @@ export interface DevcontainerConfig {
     subnet?: string;
   };
   env: Record<string, string>;
+  remote?: RemoteConfig;
+  fingerprint?: string;
 }
 
 export function normalizeServices(

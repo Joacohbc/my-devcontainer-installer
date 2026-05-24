@@ -1,4 +1,4 @@
-import type { ComposeService } from '../../types.js';
+import type { ComposeService } from '@/types.js';
 
 // Rootless Docker-in-Docker engine. Runs its own dockerd in an isolated
 // sidecar so workloads launched from the devcontainer never touch the host

@@ -1,4 +1,4 @@
-import type { ComposeService } from '../../types.js';
+import type { ComposeService } from '@/types.js';
 
 export const DOCKER_SOCKET_PROXY_HOST = 'docker-socket-proxy';
 export const DOCKER_SOCKET_PROXY_PORT = 2375;

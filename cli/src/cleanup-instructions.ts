@@ -1,6 +1,6 @@
 import chalk from 'chalk';
-import { LABEL_MANAGED, LABEL_PROJECT, projectId } from './labels.js';
-import type { DevcontainerConfig } from './types.js';
+import { LABEL_MANAGED, LABEL_PROJECT, projectId } from '@/labels.js';
+import type { DevcontainerConfig } from '@/types.js';
 
 export function printCleanupInstructions(config: DevcontainerConfig): void {
   const project = projectId(config);
@@ -10,7 +10,7 @@ export function printCleanupInstructions(config: DevcontainerConfig): void {
   const projFilter = `--filter "label=${LABEL_PROJECT}=${project}"`;
 
   const out = [
-    chalk.cyan.bold('🧹 Cleanup / update — managed by label'),
+    chalk.cyan.bold('Cleanup / update — managed by label'),
     bar,
     chalk.gray(`Every image, container, volume and network created by this CLI is tagged with:`),
     chalk.gray(`  ${LABEL_MANAGED}=true`),

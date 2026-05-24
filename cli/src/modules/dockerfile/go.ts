@@ -1,11 +1,12 @@
-import type { DockerfileModule } from '../../types.js';
+import type { DockerfileModule } from '@/types.js';
 
 export const goModule: DockerfileModule = {
   id: 'go',
   label: 'Go / Golang (Latest version)',
   category: 'lang',
   copyFiles: ['golang_utils.sh'],
-  postScriptFiles: ['update_golang.sh'],
+  // golang_utils.sh is also shipped so update_golang.sh can source it at runtime.
+  postScriptFiles: ['update_golang.sh', 'golang_utils.sh'],
   render() {
     return `##
 ## GO
