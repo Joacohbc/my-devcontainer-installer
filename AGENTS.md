@@ -2,6 +2,20 @@
 
 Guide for agents (human or AI) modifying this repo.
 
+## Mandatory rule: pnpm only
+
+This repo uses **pnpm** exclusively. Do **not** run `npm` or `yarn` — they
+produce a conflicting lockfile and the scripts/CI assume pnpm.
+
+- Install: `pnpm install`
+- Test: `cd cli && pnpm test`
+- Typecheck: `cd cli && pnpm run typecheck`
+- Build: `pnpm run build` / `pnpm run build:binary`
+- Run dev: `pnpm dev`
+
+The only committed lockfile is `pnpm-lock.yaml`. If you ever see a
+`package-lock.json` or `yarn.lock`, it was added by mistake — delete it.
+
 ## Mandatory rule: module changes require tests
 
 Every time a CLI module is **added**, **modified**, or **updated**, tests in `cli/src/__tests__/` must reflect it. No code is merged without matching coverage.
@@ -9,7 +23,7 @@ Every time a CLI module is **added**, **modified**, or **updated**, tests in `cl
 Applies to:
 
 - `cli/src/modules/dockerfile/*.ts` — Dockerfile modules (base, nodejs, python, java, go, bun, pnpm, sqlite, dbclients, github-cli, dod, cleanup, etc.).
-- `cli/src/modules/compose/*.ts` — docker-compose services (devcontainer, mongo, redis, postgres, tunnel).
+- `cli/src/modules/compose/*.ts` — docker-compose services (devcontainer, docker-socket-proxy, docker-dind, mongo, redis, postgres, tunnel).
 - `cli/src/registry.ts` — module/service registry.
 - `cli/src/generator.ts`, `resolver.ts`, `validators.ts`, `cli.ts` — generator core.
 
@@ -35,6 +49,32 @@ When the version installed by a module changes (e.g. Node 22 → 24, Java 17 →
 
 - Update the matching assert in `generator.test.ts` (e.g. `temurin-17-jdk` → `temurin-21-jdk`, `FROM ubuntu:22.04` → `FROM ubuntu:24.04`).
 - If the version is parameterizable, add a test for the new default and for an explicit override.
+
+## Docker access & sandboxing (`dockerSocket` modes)
+
+The devcontainer service exposes a `dockerSocket` option. Full security
+rationale lives in `DOCKER_HOST_SECURITY.md`; the contract for agents:
+
+- `none` (default) — no Docker access.
+- `dind` — **isolated rootless Docker-in-Docker** sidecar (`docker-dind`,
+  `cli/src/modules/compose/dind-engine.ts`). The real sandbox: workloads run
+  against an isolated daemon over `tcp://docker-dind:2375`, the host socket is
+  never mounted. The engine sits on a dedicated `*-engine-network` bridge
+  (declared in `generator.ts` only when used) joined solely by the devcontainer
+  and the engine — keep DB/other sidecars off it.
+- `proxy` — host daemon via `docker-socket-proxy` (hardened DooD, not a sandbox).
+- `rw` — direct host socket mount (= host root). There is intentionally **no
+  `ro` mode**: `:ro` on a unix socket does not restrict the Docker API.
+
+Invariants to preserve when touching these:
+- If `proxy`/`dind` is selected but its backing service is not enabled, the
+  generator falls back to `none` — **never** silently mount the host socket.
+- The dind engine image is **pinned** (`docker:NN-dind-rootless`), not `:latest`.
+- `docker-dind` is `privileged: true` (needs cgroups/overlayfs/netns); that is
+  expected — rootless contains the blast radius to a user namespace.
+
+Any change here needs matching asserts in `generator.test.ts` (wiring, network
+segmentation, fallback behavior).
 
 ## PR checklist
 
