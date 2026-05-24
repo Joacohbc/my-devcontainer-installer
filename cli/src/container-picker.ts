@@ -17,14 +17,22 @@ export function containerWorkspace(containerName: string): string | null {
 }
 
 export function listManagedContainers(): ManagedContainer[] {
-  const r = dockerCapture([
-    'ps',
-    '-a',
-    '--filter',
-    `label=${LABEL_MANAGED}=true`,
-    '--format',
-    '{{json .}}',
-  ]);
+  // dockerCapture throws via ensureDocker() when docker is absent. Callers
+  // (shell completion, interactive picker) expect a graceful empty list in
+  // that case, so swallow the failure here.
+  let r: { status: number; stdout: string; stderr: string };
+  try {
+    r = dockerCapture([
+      'ps',
+      '-a',
+      '--filter',
+      `label=${LABEL_MANAGED}=true`,
+      '--format',
+      '{{json .}}',
+    ]);
+  } catch {
+    return [];
+  }
   if (r.status !== 0 || !r.stdout.trim()) return [];
   return r.stdout
     .trim()
