@@ -108,6 +108,7 @@ Usage:
   cli update [flags]        Update container images for this project / all projects
   cli upgrade-cli [flags]   Replace this binary with the latest GitHub release
   cli config <key> [<val>]  Read or write global CLI config (e.g. 'config registry <url>')
+  cli completion <shell>    Print shell completion script (bash|zsh)
 
 Flags:
   --mode <name>         Build mode: local-cached (default), remote

@@ -15,8 +15,11 @@ import { defaultConfig, loadConfig } from '@/config.js';
 import { resolveWorkspace } from '@/project.js';
 import { PromptCancelledError } from '@/prompts.js';
 import { runGenerate } from '@/generate.js';
+import { runCompleteHidden, runCompletion } from '@/completion.js';
 
 const COMMANDS: Record<string, (argv: string[]) => Promise<void>> = {
+  __complete: runCompleteHidden,
+  completion: runCompletion,
   'setup-ssh': runSetupSsh,
   'port-forward': runPortForward,
   run: runQuickRun,
