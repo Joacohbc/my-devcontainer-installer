@@ -126,7 +126,7 @@ graph LR
   * Redis — default `7.4-alpine` (opciones: `7.4-alpine`, `8.0-alpine`, `8.6-alpine`).
   * PostgreSQL — default `17-alpine` (opciones: `16-alpine`, `17-alpine`, `18-alpine`).
 * **Lenguajes y Herramientas Preinstalados (módulos opcionales):**
-  * **Java:** Temurin (default 11+17) u OpenJDK (default 17), Maven opcional. Versiones 11/17/21 disponibles.
+  * **Java:** Temurin (default 17+21) u OpenJDK (default 17), Maven opcional. Versiones 11/17/21 disponibles.
   * **Python:** Python 3 + pip, con `uv` (Astral) opcional.
   * **Node.js:** `nvm` (default) o `fnm`. Versión: LTS, 22 o 24.
   * **pnpm / Bun:** instaladores oficiales como módulos opcionales.

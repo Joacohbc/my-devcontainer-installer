@@ -15,7 +15,7 @@ export const javaTemurinModule: DockerfileModule = {
         { value: '17', label: 'Temurin JDK 17' },
         { value: '21', label: 'Temurin JDK 21' },
       ],
-      default: ['11', '17'],
+      default: ['17', '21'],
     },
     {
       id: 'maven',
@@ -25,7 +25,7 @@ export const javaTemurinModule: DockerfileModule = {
     },
   ],
   render(opts) {
-    const versions = (opts.versions as string[]) ?? ['11', '17'];
+    const versions = (opts.versions as string[]) ?? ['17', '21'];
     const maven = opts.maven !== false;
     const pkgs = versions.map((v) => `temurin-${v}-jdk`).concat(maven ? ['maven'] : []);
     return `##
