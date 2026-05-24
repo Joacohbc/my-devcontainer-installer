@@ -1,24 +1,9 @@
-import { spawnSync } from 'child_process';
 import chalk from 'chalk';
+import { dockerCapture, dockerInherit } from '@/docker.js';
 import { select, confirm, PromptCancelledError } from '@/prompts.js';
 import { resolveRemoteImage } from '@/generator.js';
-import { REMOTE_VARIANTS, type RemoteVariant } from '@/types.js';
-
-const VARIANT_LABELS: Record<RemoteVariant, string> = {
-  ssh: 'ssh — full image (all modules)',
-  nodejs: 'nodejs — Node.js only',
-  bun: 'bun — Bun only',
-  'java-temurin': 'java-temurin — Java Temurin only',
-  python: 'python — Python only',
-  go: 'go — Go only',
-  'node-go': 'node-go — Node.js + Go',
-  'node-python': 'node-python — Node.js + Python',
-  'node-java-temurin': 'node-java-temurin — Node.js + Java Temurin',
-  'bun-go': 'bun-go — Bun + Go',
-  'bun-python': 'bun-python — Bun + Python',
-  'bun-java-temurin': 'bun-java-temurin — Bun + Java Temurin',
-};
-
+import { LABEL_MANAGED, LABEL_QUICK_RUN } from '@/labels.js';
+import { REMOTE_VARIANTS, VARIANT_LABELS, parseVariant, type RemoteVariant } from '@/types.js';
 export interface QuickRunFlags {
   variant?: RemoteVariant;
   volume?: string;
@@ -27,11 +12,6 @@ export interface QuickRunFlags {
   registry?: string;
   interactive: boolean;
   help: boolean;
-}
-
-function parseVariant(v: string): RemoteVariant {
-  if ((REMOTE_VARIANTS as readonly string[]).includes(v)) return v as RemoteVariant;
-  throw new Error(`Invalid --variant: ${v}. Expected one of: ${REMOTE_VARIANTS.join(', ')}`);
 }
 
 export function parseQuickRunFlags(argv: string[]): QuickRunFlags {
@@ -89,9 +69,7 @@ Flags:
 `;
 }
 
-function runInherit(cmd: string, args: string[]): number {
-  return spawnSync(cmd, args, { stdio: 'inherit' }).status ?? -1;
-}
+
 
 export async function runQuickRun(argv: string[]): Promise<void> {
   const flags = parseQuickRunFlags(argv);
@@ -119,10 +97,8 @@ export async function runQuickRun(argv: string[]): Promise<void> {
   console.log('');
 
   // Check if container already running
-  const inspect = spawnSync('docker', ['inspect', '-f', '{{.State.Status}}', containerName], {
-    encoding: 'utf8',
-  });
-  const state = (inspect.stdout ?? '').replace(/\s/g, '');
+  const inspect = dockerCapture(['inspect', '-f', '{{.State.Status}}', containerName]);
+  const state = inspect.stdout.replace(/\s/g, '');
   if (state === 'running') {
     console.log(chalk.green(`✓ Container '${containerName}' is already running.`));
     printNextSteps(containerName);
@@ -130,7 +106,7 @@ export async function runQuickRun(argv: string[]): Promise<void> {
   }
   if (state === 'exited' || state === 'created' || state === 'paused') {
     console.log(chalk.yellow(`↻ Starting existing container '${containerName}'...`));
-    const code = runInherit('docker', ['start', containerName]);
+    const code = dockerInherit(['start', containerName]);
     if (code !== 0) throw new Error('docker start failed.');
     printNextSteps(containerName);
     return;
@@ -142,19 +118,19 @@ export async function runQuickRun(argv: string[]): Promise<void> {
     '--name', containerName,
     '--restart', 'unless-stopped',
     '-v', '/var/run/docker.sock:/var/run/docker.sock',
-    '--label', 'dev.devcontainer-installer.managed=true',
-    '--label', `dev.devcontainer-installer.quick-run=${variant}`,
+    '--label', `${LABEL_MANAGED}=true`,
+    '--label', `${LABEL_QUICK_RUN}=${variant}`,
   ];
   if (volumeName) {
     // Create volume if it doesn't exist
-    spawnSync('docker', ['volume', 'create', volumeName], { stdio: 'inherit' });
+    dockerInherit(['volume', 'create', volumeName]);
     args.push('-v', `${volumeName}:/workspace`);
   }
   if (flags.port) args.push('-p', `${flags.port}:22`);
   args.push(image, 'sleep', 'infinity');
 
   console.log(chalk.yellow('Pulling and starting container...\n'));
-  const code = runInherit('docker', args);
+  const code = dockerInherit(args);
   if (code !== 0) throw new Error('docker run failed.');
 
   console.log('');

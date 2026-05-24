@@ -29,6 +29,322 @@ Before merging, confirm tests cover:
 2. Run local: `cd cli && pnpm test && pnpm run typecheck`.
 3. CI (`.github/workflows/cli-tests.yml`) runs on every push/PR touching `cli/**`. Must pass before merge.
 
+---
+
+## Architecture overview
+
+The CLI source (`cli/src/`) follows a layered architecture introduced in the refactor. Each layer has a single responsibility and strict import direction (inner layers never import outer ones).
+
+```
+┌───────────────────────────────────────────────────────────────┐
+│  Entry point  index.ts  — signal handlers + COMMANDS dispatch │
+├───────────────────────────────────────────────────────────────┤
+│  Subcommands  generate.ts · down.ts · destroy.ts · prune.ts  │
+│               lifecycle.ts · quick-run.ts · update-images.ts │
+│               setup-ssh.ts · self-update.ts · config-cmd.ts  │
+│               port-forward.ts · cleanup-instructions.ts       │
+├───────────────────────────────────────────────────────────────┤
+│  Domain logic generator.ts · resolver.ts · validators.ts      │
+│               preflight.ts · subnet.ts · docker-conflicts.ts  │
+│               image-registry.ts · global-config.ts · config.ts│
+├───────────────────────────────────────────────────────────────┤
+│  Infrastructure helpers (import freely from any layer above)  │
+│   docker.ts · project.ts · ui.ts · parse.ts · labels.ts      │
+│   prompts.ts · ssh-defaults.ts · ssh-instructions.ts          │
+├───────────────────────────────────────────────────────────────┤
+│  Pure data  types.ts · registry.ts · version.d.ts            │
+└───────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Infrastructure helper modules
+
+These modules were introduced during the refactor. Always prefer them over re-implementing the same logic.
+
+### `cli/src/docker.ts` — Docker execution layer
+
+Centralises **all** `child_process` calls that invoke the `docker` binary.
+
+| Export | Purpose |
+|---|---|
+| `spawner` | Mutable object wrapping `spawnSync`. Replace in tests to avoid real Docker calls. |
+| `resetDockerCache()` | Clears the availability cache — call in test `beforeEach` / `afterEach`. |
+| `isDockerAvailable()` | Cached check; returns `false` if docker is absent/daemon down. |
+| `ensureDocker()` | Throws if docker is unavailable. Call at the top of any docker-dependent handler. |
+| `dockerInherit(args)` | `docker <args>` with `stdio: 'inherit'`; returns exit code. |
+| `dockerCapture(args)` | `docker <args>` piped; returns `{ status, stdout, stderr }`. |
+| `dockerCompose(file, args, opts?)` | `docker compose -f <file> <args>`; returns exit code. |
+| `dockerComposeOrThrow(file, args, opts?)` | Same but throws on non-zero exit. |
+
+**Rules:**
+- **Never** call `child_process.spawnSync('docker', …)` directly in any other file.
+- In tests, mock via `spawner.spawnSync = (cmd, args, opts) => { … }` and always restore in `finally`.
+- `dockerCompose` accepts an optional `env` map that is merged on top of `process.env`.
+
+### `cli/src/project.ts` — Project path resolution
+
+Resolves the canonical paths for a project based on `cwd` + workspace name.
+
+| Export | Purpose |
+|---|---|
+| `resolveWorkspace(cwd, config?)` | Returns `config.workspace` or `sanitizeDockerName(basename(cwd))`. |
+| `projectPaths(cwd, workspace)` | Returns `{ projectDir, buildDir, composeFile, dockerfilePath, envPath }`. |
+| `resolveProjectComposeFile(cwd)` | Resolves compose file and throws if it doesn't exist yet. |
+
+**Rules:**
+- **Never** build `.dc_<workspace>` paths manually with `path.join`. Always call `projectPaths()`.
+- `resolveWorkspace` is the single source of truth for the workspace name fallback logic.
+
+### `cli/src/ui.ts` — Console output
+
+Provides a consistent visual style for all terminal output.
+
+| Export | Usage |
+|---|---|
+| `ui.log(s)` | Section header / progress step (`==> …` in bold blue). |
+| `ui.ok(s)` | Success item (`✓   …` in bold green). |
+| `ui.warn(s)` | Warning item (`!   …` in bold yellow). |
+| `ui.success(s)` | Final success banner (full bold green line). |
+| `ui.bar()` | Horizontal separator (64 gray dashes). |
+
+**Rules:**
+- Prefer `ui.*` over bare `chalk.*` calls for structured output.
+- Direct `chalk` use is still acceptable for inline colouring within a longer string (e.g. `chalk.gray('...')`), but avoid constructing complete log lines with chalk directly.
+- Do **not** define local `log/ok/warn` helpers in subcommand files — they duplicate `ui` functionality.
+
+> **Known inconsistency**: `setup-ssh.ts` defines its own `log/ok/warn` helpers locally. `update-images.ts` imports `ui` but then re-wraps calls in local aliases. When touching either file, migrate to direct `ui.*` calls.
+
+### `cli/src/parse.ts` — Flag parsing utilities
+
+Provides shared flag parsing logic and help-text formatting.
+
+| Export | Purpose |
+|---|---|
+| `parseCommonFlags(argv)` | Parses `-h/--help`, `-y/--yes`, `--no-interactive`; returns `{ flags, remaining }`. |
+| `CommonFlags` | Interface: `{ help, yes, interactive }`. |
+| `helpBlock(cmd, desc, usage, flags[])` | Generates a standardised help string. |
+| `HelpFlagDoc` | Interface: `{ name, description }`. |
+
+**Rules:**
+- When writing a new subcommand, call `parseCommonFlags(argv)` first to extract the three standard flags, then handle command-specific flags from `remaining`.
+- Use `helpBlock()` to generate the help string so all commands share the same layout.
+- `destroy.ts` is the canonical example of this pattern; see it for reference.
+
+> **Known inconsistencies**:
+> - `down.ts`, `prune.ts`, `lifecycle.ts`, `quick-run.ts`, `update-images.ts`, `port-forward.ts`, `setup-ssh.ts`, `self-update.ts` still use hand-rolled switch/case parsers instead of `parseCommonFlags`. When touching those files, migrate them.
+> - `cli.ts` accepts both `--no-interactive` and `--non-interactive` as aliases. `down.ts` only accepts `--no-interactive`. `port-forward.ts` accepts both. New subcommands must only support `--no-interactive`.
+> - Most subcommands use raw template literals for help text instead of `helpBlock()`. When touching a file, migrate it.
+
+### `cli/src/labels.ts` — Docker label constants
+
+Single source of truth for Docker labels applied to all managed images and containers.
+
+| Export | Purpose |
+|---|---|
+| `LABEL_NAMESPACE` | Root namespace (`dev.devcontainer-installer`). |
+| `LABEL_MANAGED` | `…managed` — marks images created by this CLI. |
+| `LABEL_PROJECT` | `…project` — project identifier derived from the image name. |
+| `LABEL_VERSION` | `…version` — schema version (`SCHEMA_VERSION`). |
+| `LABEL_QUICK_RUN` | `…quick-run` — marks containers started by `devcontainer-cli run`. |
+| `dockerfileLabelBlock(config)` | Returns the `LABEL …` Dockerfile stanza. |
+| `composeLabels(config)` | Returns a `Record<string, string>` for compose label maps. |
+
+### `cli/src/generate.ts` — generate subcommand (no-arg default)
+
+Orchestrates the full generation flow: load config → interactive prompts → apply flags → validate → write Dockerfile/compose/.env → fingerprint → optional build/pull.
+
+- `buildConfigFromPrompts(base)` — full interactive wizard; called only when `needsPrompts` is true.
+- `applyFlags(config, flags)` — merges CLI flags onto the loaded/default config; called before validation.
+- `writeOutput(path, content, force)` — writes a file, skipping if it exists and was not auto-generated.
+- `maybeOverwrite(path, label, interactive, force)` — prompts the user when a non-generated file would be overwritten.
+- `executeBuild / executePull` — thin wrappers over `dockerCompose` for the post-generation build step.
+
+> **Coverage gap**: `generate.ts` has no dedicated test file. As of this writing, `applyFlags`, `writeOutput`, and `maybeOverwrite` are not unit-tested. When making changes to this file, add corresponding tests in `cli/src/__tests__/generate.test.ts`.
+
+---
+
+## Subcommand authoring pattern
+
+Every subcommand follows the same structure. Use `destroy.ts` as the canonical template:
+
+```
+cli/src/<name>.ts
+  ├── interface <Name>Flags { … }            // always include help, interactive; add yes if destructive
+  ├── function parse<Name>Flags(argv): <Name>Flags
+  │     ├── const { flags, remaining } = parseCommonFlags(argv)
+  │     └── // handle command-specific flags from `remaining`
+  ├── function <name>Help(): string
+  │     └── return helpBlock(…)
+  └── export async function run<Name>(argv: string[]): Promise<void>
+        ├── const flags = parse<Name>Flags(argv)
+        ├── if (flags.help) { console.log(<name>Help()); return; }
+        └── // business logic using docker.ts, project.ts, ui.ts
+```
+
+When registering a new subcommand:
+
+1. Create `cli/src/<name>.ts` with a `run<Name>(argv: string[]): Promise<void>` export.
+2. Add the entry to the declarative `COMMANDS` mapping in `index.ts`.
+3. Add the entry to `helpText()` in `cli/src/cli.ts`.
+4. Add tests in `cli/src/__tests__/<name>.test.ts` (flag parsing + help at minimum).
+
+### `setup-ssh.ts` — known outlier
+
+`setup-ssh.ts` is the largest subcommand (≈600 lines) and currently deviates from the infrastructure helpers in three ways:
+
+1. **Direct `child_process.spawnSync`**: uses raw `spawnSync('docker', …)` instead of routing through `docker.ts`. This makes Docker calls in this file **untestable** via `spawner` mocking.
+2. **Local `log/ok/warn` helpers**: duplicates `ui.ts` with its own chalk-based helpers.
+3. **Local `defaultComposeFile()` / `deriveWorkspace()`**: re-implements logic already in `project.ts` (`resolveProjectComposeFile`, `resolveWorkspace`).
+
+When modifying `setup-ssh.ts`, prefer migrating these towards the shared helpers. Until then, do not replicate these patterns in new files.
+
+### `cleanup-tips` — special case
+
+`cleanup-tips` is dispatched **before** the `COMMANDS` lookup in `index.ts` because it needs `loadConfig` + `resolveWorkspace` to print per-project instructions. It is intentionally not in the `COMMANDS` map. Do not add it there.
+
+### Current subcommands
+
+| argv[0] | Handler file | Purpose |
+|---|---|---|
+| `setup-ssh` | `setup-ssh.ts` | Automated SSH key + config |
+| `port-forward` | `port-forward.ts` | Forward host ports into the running container |
+| `run` | `quick-run.ts` | `docker run` from remote image, no project files |
+| `down` | `down.ts` | `docker compose down [-v]` for current project |
+| `destroy` | `destroy.ts` | Compose down + delete `.dc_<ws>/` + config |
+| `start` | `lifecycle.ts` | `docker compose start` |
+| `stop` | `lifecycle.ts` | `docker compose stop` |
+| `restart` | `lifecycle.ts` | `docker compose restart` |
+| `prune` | `prune.ts` | Remove orphan `devcontainer-cli/*` images |
+| `update` | `update-images.ts` | Pull / rebuild images; `--all` for every tracked project |
+| `upgrade-cli` | `self-update.ts` | Binary self-update from GitHub release |
+| `config` | `config-cmd.ts` | Read/write global config (`registry`) |
+| `cleanup-tips` | `cleanup-instructions.ts` | Print docker cleanup commands (special-cased, see above) |
+
+---
+
+## Test authoring patterns
+
+The project uses the **Node.js built-in test runner** (`node:test` + `node:assert/strict`). No Jest or Vitest.
+
+### Flag parser tests (most common pattern)
+```typescript
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { parse<Name>Flags, <name>Help } from '@/<name>.js';
+
+test('parse<Name>Flags: defaults', () => {
+  const f = parse<Name>Flags([]);
+  assert.equal(f.help, false);
+  assert.equal(f.interactive, true);
+});
+test('parse<Name>Flags: --yes', () => {
+  assert.equal(parse<Name>Flags(['--yes']).yes, true);
+  assert.equal(parse<Name>Flags(['-y']).yes, true);
+});
+test('parse<Name>Flags: --help', () => {
+  assert.equal(parse<Name>Flags(['--help']).help, true);
+});
+test('parse<Name>Flags: --no-interactive', () => {
+  assert.equal(parse<Name>Flags(['--no-interactive']).interactive, false);
+});
+test('parse<Name>Flags: unknown flag throws', () => {
+  assert.throws(() => parse<Name>Flags(['--banana']));
+});
+```
+
+### Mocking `docker.ts` in tests
+```typescript
+import { spawner, resetDockerCache } from '@/docker.js';
+
+test('description', () => {
+  resetDockerCache();
+  const original = spawner.spawnSync;
+  spawner.spawnSync = (() => ({ status: 0, stdout: 'mock', stderr: '' })) as any;
+  try {
+    // ... assertions
+  } finally {
+    spawner.spawnSync = original;
+    resetDockerCache();
+  }
+});
+```
+
+### I/O tests with a temp XDG home
+```typescript
+function withTempHome<T>(fn: () => T): T {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'dc-cli-test-'));
+  const prev = process.env.XDG_CONFIG_HOME;
+  process.env.XDG_CONFIG_HOME = tmp;
+  try { return fn(); }
+  finally {
+    if (prev === undefined) delete process.env.XDG_CONFIG_HOME;
+    else process.env.XDG_CONFIG_HOME = prev;
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+}
+```
+
+### Known test coverage gaps
+
+| File | Gap | Priority |
+|---|---|---|
+| `generate.ts` | No dedicated test file. `applyFlags`, `writeOutput`, `maybeOverwrite` are untested. | High |
+| `setup-ssh.ts` | Docker-calling functions untestable (direct `spawnSync`). | High (blocked by R2) |
+| `update-images.ts` | `updateOne()` and `updateAll()` untested. | Medium |
+| `port-forward.ts` | `runPortForward()` untested. | Medium |
+
+---
+
+## Error handling and exit-code contract
+
+- **User-facing errors**: throw `new Error('…')`. `main()` catches, prints with `chalk.red`, exits `1`.
+- **User cancellation**: throw `PromptCancelledError` (from `prompts.ts`) or call `process.exit(130)`. `main()` catches `PromptCancelledError` and exits `130`.
+- **SIGINT / SIGTERM**: handled in `installSignalHandlers()` in `index.ts`. Restores stdin raw mode before exiting `130`.
+- **Unhandled rejections**: swallowed if `err.code === 'ERR_USE_AFTER_CLOSE'` or `err.message === 'canceled'` (enquirer cancel signal).
+- Do **not** call `process.exit()` directly in subcommand handlers — throw instead so `main()` can apply consistent formatting.
+
+---
+
+## Interactive vs non-interactive mode
+
+All subcommands that touch the user (prompts, confirmations) must respect an `interactive` flag:
+
+- `flags.interactive = true` (default) — prompts are shown.
+- `flags.interactive = false` (via `--no-interactive`) — prompts must not be shown; missing required data must throw.
+- `flags.yes = true` (via `-y/--yes`) — destructive confirmation prompts are skipped (implies the user accepts).
+
+Pattern for a destructive action:
+
+```typescript
+if (!flags.yes) {
+  if (!flags.interactive) {
+    throw new Error('Pass --yes to confirm in non-interactive mode.');
+  }
+  const proceed = await confirm('actionId', 'Are you sure?', false);
+  if (!proceed) { console.log(chalk.yellow('Cancelled.')); return; }
+}
+```
+
+---
+
+## Known technical debt
+
+These are tracked inconsistencies that do not need to be fixed immediately but **must not be worsened**:
+
+| ID | Location | Issue |
+|---|---|---|
+| KTD-1 | `setup-ssh.ts` | Uses `child_process.spawnSync` directly instead of `docker.ts` |
+| KTD-2 | 9 of 10 subcommands | Hand-rolled flag parsers instead of `parseCommonFlags` |
+| KTD-3 | `setup-ssh.ts`, `generate.ts`, `quick-run.ts` | Use raw chalk instead of `ui.*` |
+| KTD-4 | `setup-ssh.ts` | Local `deriveWorkspace()` duplicates `resolveWorkspace()` from `project.ts` |
+| KTD-5 | `setup-ssh.ts` | Local `defaultComposeFile()` duplicates `projectPaths()` from `project.ts` |
+| KTD-6 | `types.ts` | `GENERATED_HEADER` and `GENERATED_HEADER_YAML` are identical strings |
+| KTD-7 | `docker-conflicts.ts` | Local `dockerAvailable()` is a no-op wrapper around `isDockerAvailable()` |
+| KTD-8 | `update-images.ts` | Wraps `ui.*` in local `log/ok/warn` aliases; import placed mid-file |
+
+---
+
 ## Build modes
 
 The CLI supports two `mode` values in `DevcontainerConfig`. See README.md → "Modos de Build" for the user-facing summary. For agents modifying this code:
@@ -50,36 +366,12 @@ When adding a new mode, update **all three** files plus tests, plus the `BUILD_M
 
 The `remote` mode (and `devcontainer-cli run`) serve pre-built images published by `.github/workflows/docker-image.yml`. The variant list is duplicated:
 
-1. `cli/src/types.ts` → `REMOTE_VARIANTS` constant.
+1. `cli/src/types.ts` → `REMOTE_VARIANTS` constant and `VARIANT_LABELS` map.
 2. `.github/workflows/docker-image.yml` → `build-variants.matrix.include[].name`.
-3. `cli/src/index.ts` → `VARIANT_LABELS` map (display labels for prompts).
-4. `cli/src/quick-run.ts` → `VARIANT_LABELS` map (display labels for `run` prompt).
 
-When adding a variant: update **all four** locations + add a test in `generator.test.ts` (`resolveRemoteImage`). Otherwise users will be unable to select the new image via `--variant` or `devcontainer-cli run`.
+When adding a variant: update **both** locations + add a test in `generator.test.ts` (`resolveRemoteImage`). Otherwise users will be unable to select the new image via `--variant` or `devcontainer-cli run`.
 
 Exclusion: `ssh` is the full image from `build-base` (not from `build-variants`) — it maps to `devcontainer-ssh:latest`.
-
-## Subcommand map
-
-Every subcommand dispatched in `cli/src/index.ts` → `main()`. When adding a new subcommand:
-
-1. Create `cli/src/<name>.ts` with a `run<Name>(argv: string[]): Promise<void>` export.
-2. Add the dispatch case in `index.ts` before the `parseFlags` block.
-3. Add the entry to `helpText()` in `cli/src/cli.ts`.
-4. Add tests in `cli/src/__tests__/<name>.test.ts` (flag parsing at minimum).
-
-Current subcommands:
-
-| argv[0] | Handler file | Purpose |
-|---|---|---|
-| `setup-ssh` | `setup-ssh.ts` | Automated SSH key + config |
-| `run` | `quick-run.ts` | `docker run` from remote image, no project files |
-| `down` | `down.ts` | `docker compose down -v` for current project |
-| `prune` | `prune.ts` | Remove orphan `devcontainer-cli/*` images |
-| `update` | `update-images.ts` | Pull / rebuild images; `--all` for every tracked project |
-| `upgrade-cli` | `self-update.ts` | Binary self-update from GitHub release |
-| `config` | `config-cmd.ts` | Read/write global config (`registry`) |
-| `cleanup-tips` | `cleanup-instructions.ts` | Print docker cleanup commands |
 
 ## Global config and image registry
 

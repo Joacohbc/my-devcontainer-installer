@@ -1,9 +1,9 @@
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
-import { spawnSync } from 'child_process';
+import { dockerCapture } from '@/docker.js';
 import { globalConfigDir } from '@/global-config.js';
-import type { BuildMode, RemoteVariant } from '@/types.js';
+import type { BuildMode, RemoteVariant, DevcontainerConfig } from '@/types.js';
 
 export interface ImageEntry {
   projectDir: string;
@@ -123,8 +123,24 @@ export function fingerprintTag(fingerprint: string): string {
 }
 
 export function localImageExists(image: string): boolean {
-  const r = spawnSync('docker', ['image', 'inspect', image], {
-    stdio: 'ignore',
-  });
+  const r = dockerCapture(['image', 'inspect', image]);
   return r.status === 0;
+}
+
+export function recordProject(projectDir: string, config: DevcontainerConfig, customImage?: string): void {
+  try {
+    const now = new Date().toISOString();
+    recordEntry({
+      projectDir,
+      workspace: config.workspace,
+      mode: config.mode,
+      image: customImage ?? config.image,
+      variant: config.remote?.variant,
+      fingerprint: config.fingerprint,
+      createdAt: now,
+      lastUpdated: now,
+    });
+  } catch {
+    // Non-fatal
+  }
 }

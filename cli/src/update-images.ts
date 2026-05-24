@@ -1,10 +1,11 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { spawnSync } from 'child_process';
 import chalk from 'chalk';
+import { dockerInherit, dockerCompose } from '@/docker.js';
 import { loadConfig } from '@/config.js';
-import { listEntries, recordEntry, removeEntry } from '@/image-registry.js';
+import { listEntries, recordProject, removeEntry } from '@/image-registry.js';
 import { resolveRemoteImage } from '@/generator.js';
+import { projectPaths } from '@/project.js';
 import type { DevcontainerConfig } from '@/types.js';
 
 export interface UpdateImagesFlags {
@@ -62,22 +63,15 @@ Note: To update the CLI binary itself, run 'devcontainer-cli upgrade-cli'.
 `;
 }
 
-const log = (s: string) => console.log(`${chalk.blue.bold('==>')} ${s}`);
-const ok = (s: string) => console.log(`${chalk.green.bold('✓')}   ${s}`);
-const warn = (s: string) => console.log(`${chalk.yellow.bold('!')}   ${s}`);
+import { ui } from '@/ui.js';
 
-function runInherit(cmd: string, args: string[], cwd?: string): number {
-  const r = spawnSync(cmd, args, { stdio: 'inherit', cwd });
-  return r.status ?? -1;
-}
+const log = (s: string) => ui.log(s);
+const ok = (s: string) => ui.ok(s);
+const warn = (s: string) => ui.warn(s);
 
-function buildDirFor(projectDir: string, workspace: string): string {
-  return path.join(projectDir, `.dc_${workspace}`, 'build');
-}
 
-function composeFileFor(projectDir: string, workspace: string): string {
-  return path.join(buildDirFor(projectDir, workspace), 'docker-compose.yml');
-}
+
+
 
 interface UpdateResult {
   ok: boolean;
@@ -102,21 +96,22 @@ async function updateOne(
       undefined,
       config.remote.registry,
     );
-    const status = runInherit('docker', ['pull', image]);
+    const status = dockerInherit(['pull', image]);
     if (status !== 0) return { ok: false, image };
     ok(`Pulled ${image}`);
     return { ok: true, image };
   }
 
   // custom or local-cached → docker compose build --pull
-  const composeFile = composeFileFor(projectDir, workspace);
+  const paths = projectPaths(projectDir, workspace);
+  const composeFile = paths.composeFile;
   if (!fs.existsSync(composeFile)) {
     warn(`No compose file at ${composeFile} — skipping.`);
     return { ok: false, image: config.image };
   }
-  const args = ['compose', '-f', composeFile, 'build'];
-  if (!flags.rebuild || flags.pull) args.push('--pull');
-  const status = runInherit('docker', args, projectDir);
+  const composeArgs = ['build'];
+  if (!flags.rebuild || flags.pull) composeArgs.push('--pull');
+  const status = dockerCompose(composeFile, composeArgs, { cwd: projectDir });
   if (status !== 0) return { ok: false, image: config.image };
   ok(`Rebuilt ${config.image}`);
   return { ok: true, image: config.image };
@@ -147,12 +142,7 @@ async function updateAll(flags: UpdateImagesFlags): Promise<void> {
     try {
       const r = await updateOne(e.projectDir, cfg, flags);
       if (r.ok) {
-        recordEntry({
-          ...e,
-          mode: cfg.mode,
-          image: r.image,
-          lastUpdated: new Date().toISOString(),
-        });
+        recordProject(e.projectDir, cfg, r.image);
         okCount++;
       } else {
         failCount++;
@@ -186,16 +176,7 @@ export async function runUpdateImages(argv: string[]): Promise<void> {
   }
   const r = await updateOne(cwd, config, flags);
   if (r.ok) {
-    recordEntry({
-      projectDir: cwd,
-      workspace: config.workspace,
-      mode: config.mode,
-      image: r.image,
-      variant: config.remote?.variant,
-      fingerprint: config.fingerprint,
-      createdAt: new Date().toISOString(),
-      lastUpdated: new Date().toISOString(),
-    });
+    recordProject(cwd, config, r.image);
   } else {
     throw new Error('Update failed.');
   }

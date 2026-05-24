@@ -1,4 +1,4 @@
-import { spawnSync } from 'child_process';
+import { dockerCapture } from '@/docker.js';
 import { isValidCidr } from '@/validators.js';
 
 export interface CidrRange {
@@ -32,24 +32,20 @@ export function rangesOverlap(a: CidrRange, b: CidrRange): boolean {
 }
 
 export function listUsedSubnets(): CidrRange[] {
-  const ids = spawnSync('docker', ['network', 'ls', '--quiet'], { encoding: 'utf8' });
+  const ids = dockerCapture(['network', 'ls', '--quiet']);
   if (ids.status !== 0) return [];
-  const idList = String(ids.stdout ?? '')
+  const idList = ids.stdout
     .split('\n')
     .map((s) => s.trim())
     .filter(Boolean);
   if (idList.length === 0) return [];
-  const r = spawnSync(
-    'docker',
-    [
-      'network',
-      'inspect',
-      '--format',
-      '{{range .IPAM.Config}}{{.Subnet}}\n{{end}}',
-      ...idList,
-    ],
-    { encoding: 'utf8' },
-  );
+  const r = dockerCapture([
+    'network',
+    'inspect',
+    '--format',
+    '{{range .IPAM.Config}}{{.Subnet}}\n{{end}}',
+    ...idList,
+  ]);
   if (r.status !== 0) return [];
   const out: CidrRange[] = [];
   for (const line of String(r.stdout ?? '').split('\n')) {

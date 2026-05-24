@@ -1,11 +1,13 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { spawnSync } from 'child_process';
+import { dockerComposeOrThrow } from '@/docker.js';
 import chalk from 'chalk';
 import { loadConfig, configPath } from '@/config.js';
 import { confirm } from '@/prompts.js';
 import { removeEntry } from '@/image-registry.js';
-import { sanitizeDockerName } from '@/validators.js';
+import { resolveWorkspace, projectPaths } from '@/project.js';
+
+import { parseCommonFlags, helpBlock } from '@/parse.js';
 
 export interface DestroyFlags {
   yes: boolean;
@@ -14,41 +16,24 @@ export interface DestroyFlags {
 }
 
 export function parseDestroyFlags(argv: string[]): DestroyFlags {
-  const flags: DestroyFlags = { yes: false, help: false, interactive: true };
-  for (const a of argv) {
-    switch (a) {
-      case '-h':
-      case '--help':
-        flags.help = true;
-        break;
-      case '-y':
-      case '--yes':
-        flags.yes = true;
-        break;
-      case '--no-interactive':
-        flags.interactive = false;
-        break;
-      default:
-        throw new Error(`Unknown flag for destroy: ${a}`);
-    }
+  const { flags, remaining } = parseCommonFlags(argv);
+  if (remaining.length > 0) {
+    throw new Error(`Unknown flag for destroy: ${remaining[0]}`);
   }
   return flags;
 }
 
 export function destroyHelp(): string {
-  return `devcontainer-cli destroy — tear down everything for the current project
-
-Usage:
-  devcontainer-cli destroy [flags]
-
-Runs 'docker compose down -v' (containers + volumes), then deletes the generated
-.dc_<workspace>/ directory and devcontainer.config.json. This is irreversible.
-
-Flags:
-  -y, --yes          Skip the confirmation prompt
-  --no-interactive   Non-interactive mode (requires -y to proceed)
-  -h, --help         Show this help
-`;
+  return helpBlock(
+    'devcontainer-cli destroy',
+    'tear down everything for the current project',
+    'devcontainer-cli destroy [flags]\n\nRuns \'docker compose down -v\' (containers + volumes), then deletes the generated\n.dc_<workspace>/ directory and devcontainer.config.json. This is irreversible.',
+    [
+      { name: '-y, --yes', description: 'Skip confirmation prompt' },
+      { name: '--no-interactive', description: 'Non-interactive mode' },
+      { name: '-h, --help', description: 'Show this help' },
+    ]
+  );
 }
 
 export async function runDestroy(argv: string[]): Promise<void> {
@@ -56,10 +41,10 @@ export async function runDestroy(argv: string[]): Promise<void> {
   if (flags.help) { console.log(destroyHelp()); return; }
 
   const cwd = process.cwd();
-  const config = loadConfig(cwd);
-  const workspace = config?.workspace ?? sanitizeDockerName(path.basename(cwd));
-  const projectDir = path.join(cwd, `.dc_${workspace}`);
-  const composeFile = path.join(projectDir, 'build', 'docker-compose.yml');
+  const workspace = resolveWorkspace(cwd);
+  const paths = projectPaths(cwd, workspace);
+  const projectDir = paths.projectDir;
+  const composeFile = paths.composeFile;
   const cfgPath = configPath(cwd);
 
   if (!flags.yes) {
@@ -76,8 +61,7 @@ export async function runDestroy(argv: string[]): Promise<void> {
 
   if (fs.existsSync(composeFile)) {
     console.log(chalk.yellow(`\nBringing down '${workspace}' (with volumes)...\n`));
-    const r = spawnSync('docker', ['compose', '-f', composeFile, 'down', '-v'], { stdio: 'inherit' });
-    if ((r.status ?? -1) !== 0) throw new Error('docker compose down failed.');
+    dockerComposeOrThrow(composeFile, ['down', '-v']);
   } else {
     console.log(chalk.gray(`No compose file at ${composeFile}; skipping 'docker compose down'.`));
   }

@@ -1,9 +1,8 @@
-import { spawnSync } from 'child_process';
 import chalk from 'chalk';
 import { loadConfig } from '@/config.js';
 import { confirm } from '@/prompts.js';
-import { resolveProjectComposeFile } from '@/lifecycle.js';
-import { sanitizeDockerName } from '@/validators.js';
+import { dockerComposeOrThrow } from '@/docker.js';
+import { resolveWorkspace, resolveProjectComposeFile } from '@/project.js';
 import * as path from 'path';
 
 export interface DownFlags {
@@ -61,8 +60,7 @@ export async function runDown(argv: string[]): Promise<void> {
   if (flags.help) { console.log(downHelp()); return; }
 
   const cwd = process.cwd();
-  const config = loadConfig(cwd);
-  const workspace = config?.workspace ?? sanitizeDockerName(path.basename(cwd));
+  const workspace = resolveWorkspace(cwd);
   const composeFile = resolveProjectComposeFile(cwd);
 
   let removeVolumes = flags.volumes;
@@ -74,11 +72,10 @@ export async function runDown(argv: string[]): Promise<void> {
     );
   }
 
-  const args = ['compose', '-f', composeFile, 'down'];
+  const args = ['down'];
   if (removeVolumes) args.push('-v');
 
   console.log(chalk.yellow(`\nBringing down '${workspace}'${removeVolumes ? ' (with volumes)' : ''}...\n`));
-  const r = spawnSync('docker', args, { stdio: 'inherit' });
-  if ((r.status ?? -1) !== 0) throw new Error('docker compose down failed.');
+  dockerComposeOrThrow(composeFile, args);
   console.log(chalk.green.bold('\nDone.\n'));
 }
