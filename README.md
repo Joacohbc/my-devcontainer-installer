@@ -126,15 +126,18 @@ graph LR
   * Redis — default `7.4-alpine` (opciones: `7.4-alpine`, `8.0-alpine`, `8.6-alpine`).
   * PostgreSQL — default `17-alpine` (opciones: `16-alpine`, `17-alpine`, `18-alpine`).
 * **Lenguajes y Herramientas Preinstalados (módulos opcionales):**
-  * **Java:** Temurin (default 11+17) u OpenJDK (default 17), Maven opcional. Versiones 11/17/21 disponibles.
+  * **Java:** Temurin (default 17+21) u OpenJDK (default 17), Maven opcional. Versiones 11/17/21 disponibles.
   * **Python:** Python 3 + pip, con `uv` (Astral) opcional.
   * **Node.js:** `nvm` (default) o `fnm`. Versión: LTS, 22 o 24.
   * **pnpm / Bun:** instaladores oficiales como módulos opcionales.
   * **Go:** Última versión (instalada vía script utilitario, módulo `go`).
   * **SQLite:** sqlite3 (módulo `sqlite`).
-  * **Clientes de DB en el devcontainer:** `psql`, `redis-cli`, `mongosh` (módulo `dbclients`).
-  * **Herramientas CLI:** `git`, `gh` (GitHub CLI), `docker-ce-cli` (Docker outside Docker, módulo `dod`), `nano`, `wget`, `jq`.
-  * **AI CLIs (opcional, módulo `ai-clis`):** scripts de instalación embebidos para Claude Code, Gemini CLI, OpenCode y Autoskills.
+  * **Tmux:** tmux (módulo `tmux`).
+  * **Clientes de DB en el devcontainer:** `psql`, `redis-tools`, `mongosh` (módulo `dbclients`, seleccionables individualmente).
+  * **GitHub CLI:** `gh` + `jq` (módulo `github-cli`, incluido por defecto).
+  * **Docker (acceso al daemon):** el módulo `dod` instala `docker-ce-cli` en la imagen. El motor lo provee el servicio `docker-dind` (`docker:28-dind-rootless`), que expone el daemon vía `DOCKER_HOST=tcp://docker-dind:2375` en una red aislada. Ambos deben activarse juntos — sin el servicio `docker-dind` no hay engine al que conectarse.
+  * **AI CLIs (opcional, módulo `ai-clis`):** scripts de instalación embebidos para Claude Code, OpenCode, Codex CLI, Antigravity CLI y GitHub Copilot CLI.
+* **Herramientas base:** `git`, `nano`, `wget`, `curl`, `unzip`, `ca-certificates` — siempre presentes.
 * **Terminal Mejorada:** ZSH preconfigurado con frameworks y plugins útiles.
 
 ## Modos de Build
@@ -146,7 +149,22 @@ La CLI ofrece dos modos para controlar cómo se construye la imagen del devconta
 | `local-cached` (default) | `Dockerfile` + `docker-compose.yml` | `devcontainer-cli/<fp12>:latest` | Build local. Deduplica por fingerprint del Dockerfile: si la imagen ya está en el daemon, no rebuildea. |
 | `remote` | `docker-compose.yml` (sin Dockerfile) | `ghcr.io/<owner>/devcontainer-<variant>:latest` | Salta el build. Usa las imágenes pre-buildeadas por GitHub Actions. Mucho más rápido. |
 
-**Variants disponibles** (para `remote`): `ssh` (imagen completa), `nodejs`, `bun`, `java-temurin`, `python`, `go`, `node-go`, `node-python`, `node-java-temurin`, `bun-go`, `bun-python`, `bun-java-temurin`.
+**Variants disponibles** (para `remote`):
+
+| Variant | Contenido |
+|---|---|
+| `ssh` | Imagen completa (todos los módulos) |
+| `nodejs` | Node.js |
+| `bun` | Bun |
+| `java-temurin` | Java Temurin |
+| `python` | Python |
+| `go` | Go |
+| `node-go` | Node.js + Go |
+| `node-python` | Node.js + Python |
+| `node-java-temurin` | Node.js + Java Temurin |
+| `bun-go` | Bun + Go |
+| `bun-python` | Bun + Python |
+| `bun-java-temurin` | Bun + Java Temurin |
 
 ### Ejemplos
 
@@ -211,6 +229,40 @@ devcontainer-cli setup-ssh --container dc-<variant>
 | `--volume <name>` | Named volume montado en `/workspace` (opcional) |
 | `--port <n>` | Expone el puerto 22 del container en el host |
 | `--registry <url>` | Override del registry (default: `ghcr.io/joacohbc/`) |
+
+## Port Forwarding
+
+Redirige un puerto local de tu máquina al contenedor (o a un servicio interno de la red Docker) usando un túnel SSH. Requiere que `setup-ssh` esté configurado.
+
+```bash
+# Forward del puerto 3000 (local) → 3000 (contenedor)
+devcontainer-cli port-forward 3000
+
+# Puerto local distinto al remoto
+devcontainer-cli port-forward 8080:80
+
+# Acceder a un servicio interno (ej. la base de datos postgres del stack)
+devcontainer-cli port-forward 5432:postgres:5432
+
+# Usando flag --service
+devcontainer-cli port-forward 5432 --service postgres
+
+# Forzar un alias SSH específico
+devcontainer-cli port-forward 3000 --alias mi-devcontainer
+```
+
+El proceso queda en foreground. `Ctrl+C` cierra el túnel.
+
+**Flags disponibles:**
+
+| Flag | Descripción |
+|---|---|
+| `<local>:<host>:<remote>` | Mapeo completo: puerto local, host destino, puerto remoto |
+| `<local>:<remote>` | Puerto local distinto al remoto (host = `localhost`) |
+| `<port>` | Puerto idéntico en ambos extremos |
+| `--service <name>` | Servicio compose destino del túnel |
+| `--alias <name>` | Alias SSH a usar (sin autodetección) |
+| `--no-interactive` | Falla si falta algún parámetro |
 
 ## Limpieza de recursos
 
@@ -324,6 +376,25 @@ curl -fsSL https://raw.githubusercontent.com/Joacohbc/my-devcontainer-installer/
 irm https://raw.githubusercontent.com/Joacohbc/my-devcontainer-installer/main/cli/uninstall.ps1 | iex
 ```
 
+#### Autocompletado
+
+El instalador configura el autocompletado automáticamente en `.zshrc` y `.bashrc`/`.bash_profile`. Si por algún motivo falla, podés habilitarlo a mano:
+
+```bash
+# Zsh
+devcontainer-cli completion zsh > ~/.local/share/devcontainer-cli/completions/_devcontainer-cli
+# Agregar a ~/.zshrc:
+#   fpath=(~/.local/share/devcontainer-cli/completions $fpath)
+#   autoload -U compinit && compinit
+
+# Bash
+devcontainer-cli completion bash > ~/.local/share/devcontainer-cli/completions/devcontainer-cli.bash
+# Agregar a ~/.bashrc:
+#   source ~/.local/share/devcontainer-cli/completions/devcontainer-cli.bash
+```
+
+> Para deshabilitar la configuración automática al instalar: `SETUP_COMPLETION=0 sh install.sh`
+
 ### 2. Generar el entorno
 
 ```bash
@@ -354,17 +425,19 @@ Los scripts post-instalación se hornean dentro de la imagen en `~/post-script/`
 |----------------------------------|-------------------------------------------------------------------------------------------------------------|
 | `devcontainer-cli`               | Genera/actualiza `Dockerfile`, `docker-compose.yml`, `.env` y scripts auxiliares (flujo interactivo o no). |
 | `devcontainer-cli setup-ssh`     | Configura el acceso SSH autodetectando el compose del proyecto. Ver [Acceso y Uso](#acceso-y-uso).          |
+| `devcontainer-cli port-forward`  | Reenvía un puerto local al contenedor (o a un servicio interno) vía túnel SSH. Ver [Port Forwarding](#port-forwarding). |
 | `devcontainer-cli run`           | Levanta un container desde una imagen remota sin crear archivos de proyecto. Ver [Contenedor rápido](#contenedor-rápido-run). |
 | `devcontainer-cli start`         | `docker compose start` para el proyecto en el directorio actual.                                           |
 | `devcontainer-cli stop`          | `docker compose stop` para el proyecto en el directorio actual.                                            |
 | `devcontainer-cli restart`       | `docker compose restart` para el proyecto en el directorio actual.                                         |
-| `devcontainer-cli down`          | `docker compose down` para el proyecto. Agrega `-v`/`--volumes` para borrar también los volúmenes.         |
+| `devcontainer-cli down`          | `docker compose down` para el proyecto. Agrega `--volumes` para borrar también los volúmenes.              |
 | `devcontainer-cli destroy`       | `down -v` + borra `.dc_<workspace>/` y `devcontainer.config.json`. Irreversible.                           |
 | `devcontainer-cli prune`         | Elimina imágenes `devcontainer-cli/*` huérfanas (proyecto borrado). `--all` elimina todas.                 |
 | `devcontainer-cli update`        | Actualiza la imagen del proyecto actual (pull o rebuild según el modo). `--all` recorre todos los proyectos.|
 | `devcontainer-cli upgrade-cli`   | Reemplaza el binario de la CLI con la última release de GitHub.                                             |
 | `devcontainer-cli config`        | Lee/escribe configuración global (ej. `config registry ghcr.io/mi-org/`).                                   |
 | `devcontainer-cli cleanup-tips`  | Imprime los comandos `docker` para borrar contenedores, redes y volúmenes del proyecto.                     |
+| `devcontainer-cli completion`    | Imprime el script de autocompletado para bash o zsh (`completion bash` / `completion zsh`).                 |
 
 ### 3. Iniciar el entorno
 
@@ -507,7 +580,7 @@ Los scripts viven dentro del contenedor en `~/post-script/` (horneados en la ima
 
 * **GitHub CLI:** `~/post-script/login-github-cli.sh` - Te ayuda a iniciar sesión y configurar tus credenciales de GitHub.
 * **Actualizar Go:** `~/post-script/update_golang.sh` - Actualiza la instalación de Go a la última versión estable disponible (solo si elegiste el módulo `go`).
-* **CLIs de IA:** `~/post-script/install-*.sh` - Instaladores de las CLIs de IA (solo si elegiste el módulo `ai-clis`).
+* **CLIs de IA:** `~/post-script/install-*.sh` - Instaladores de las CLIs de IA (solo si elegiste el módulo `ai-clis`): `install-claude-code.sh`, `install-opencode.sh`, `install-codex-cli.sh`, `install-antigravity.sh`, `install-copilot.sh`.
 * **Actualizar Sistema:** Es relevante mantener el entorno al día (incluyendo e.g. el cliente de Docker) ejecutando `sudo apt update && sudo apt upgrade -y`.
 
 Consulta [POST_INSTALL_STEPS.md](POST_INSTALL_STEPS.md) para más detalles sobre backups y herramientas adicionales.
