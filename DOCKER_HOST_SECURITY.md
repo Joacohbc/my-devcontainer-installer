@@ -1,30 +1,49 @@
-# Docker Host Security (DooD hardening)
+# Docker access & sandboxing
 
-This devcontainer can talk to the host's Docker daemon (Docker-outside-Docker).
-That access is dangerous by default: anything inside the container that can
-reach `/var/run/docker.sock` can become root on the host. The CLI ships several
-layers you can opt into.
+A devcontainer that needs Docker has two fundamentally different models:
 
-## Layers
+- **DinD (Docker-in-Docker)** — run an *isolated* daemon in a sidecar. Workloads
+  you launch never touch the host. This is the only model that is a real
+  sandbox. Use it when you just need *a* Docker engine for your own project.
+- **DooD (Docker-outside-of-Docker)** — talk to the *host* daemon over its
+  socket. Convenient (shares the host image cache, can manage host containers)
+  but it is **not a sandbox**: anything that can reach `/var/run/docker.sock` —
+  proxied or not — can become root on the host. Hardening only narrows the path.
 
-1. **Socket mode (`dockerSocket` option on the devcontainer service)**
-   - `none` (default): no socket access at all.
-   - `proxy`: talk to the daemon through `docker-socket-proxy` (Tecnativa).
-     `DOCKER_HOST=tcp://docker-socket-proxy:2375` is injected; the raw socket
-     is NOT mounted into the devcontainer.
-   - `ro`: socket mounted read-only (limits some attacks, not all).
-   - `rw`: legacy direct read-write mount (avoid).
-2. **Socket proxy service** — enable the `docker-socket-proxy` compose service
-   and pair it with `dockerSocket: proxy`. Toggle which endpoint groups are
-   exposed (CONTAINERS/IMAGES/POST/EXEC/VOLUMES) per project.
-3. **Host daemon hardening** — `cli/assets/daemon.json` is a recommended
-   `/etc/docker/daemon.json` template. Not applied automatically.
+## Socket mode (`dockerSocket` option on the devcontainer service)
 
-## Recommended setup
+- `none` (default): no Docker access at all.
+- `dind`: isolated rootless Docker-in-Docker engine (recommended sandbox).
+  Requires the `docker-dind` compose service. `DOCKER_HOST=tcp://docker-dind:2375`
+  is injected; no host socket is mounted. The engine sits on a dedicated
+  `*-engine-network` joined only by the devcontainer and the engine.
+- `proxy`: host daemon via `docker-socket-proxy` (Tecnativa). Hardened DooD, not
+  a sandbox. Requires the `docker-socket-proxy` service.
+- `rw`: direct read-write host socket mount. Equivalent to handing out host
+  root. Avoid.
+
+> A read-only (`:ro`) socket mount was intentionally **removed**: `:ro` on a unix
+> socket does not restrict the Docker API (the mount flag blocks file writes, not
+> `connect()`), so it gave a false sense of safety equal to `rw`.
+
+If you select `proxy` or `dind` but the backing service is not enabled, the
+generator falls back to `none` (no access) — never to a silent socket mount.
+
+## Recommended setup — sandbox (DinD)
+
+Enable the `docker-dind` service + `dockerSocket: dind`. The engine runs
+rootless, so a workload-container escape lands in an unprivileged user namespace
+rather than as host root. Caveat: the dind container itself is `privileged`
+(needs cgroups/overlayfs/netns), so compromising *that* container is host root —
+but your code runs in the devcontainer, which only reaches it over TCP.
+
+## Recommended setup — host daemon (DooD)
 
 `docker-socket-proxy` + `dockerSocket: proxy` + host `daemon.json` with
-`userns-remap`. Pick this if the workload only needs to manage containers it
-itself created and never needs `docker exec` from the proxied side.
+`userns-remap`. **Set `POST=0`** on the proxy unless you truly need to create
+containers: with `POST=1` an attacker can create a privileged container that
+mounts host `/`, i.e. proxy access ≈ host root. Pick this only if the workload
+needs the host's images/containers, not isolation.
 
 ## Installing the host daemon.json
 
