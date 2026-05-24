@@ -234,6 +234,23 @@ devcontainer-cli setup-ssh --container dc-<variant>
 
 Redirige un puerto local de tu máquina al contenedor (o a un servicio interno de la red Docker) usando un túnel SSH. Requiere que `setup-ssh` esté configurado.
 
+### Modo interactivo (varios containers y puertos)
+
+Ejecuta el comando sin argumentos para abrir el selector interactivo:
+
+```bash
+devcontainer-cli port-forward
+```
+
+1. Elegís un container de la lista de **todos** los containers en ejecución (no solo devcontainers). Los devcontainers aparecen marcados con `(devcontainer)`.
+2. Ingresás uno o más puertos a reenviar de ese container, separados por coma (ej. `3000, 8080:80`).
+3. Te pregunta si querés agregar otro container y repetís el proceso.
+4. Cuando confirmás, se muestra un resumen del plan y se abren **todos** los túneles en paralelo. `Ctrl+C` los cierra a la vez.
+
+Los devcontainers con alias SSH propio se alcanzan directamente. Los containers que **no** son devcontainers (postgres, redis, etc.) se reenvían a través de un devcontainer que actúe como _jump host_ SSH; si hay varios, la CLI te pregunta cuál usar.
+
+### Modo directo (un solo mapeo)
+
 ```bash
 # Forward del puerto 3000 (local) → 3000 (contenedor)
 devcontainer-cli port-forward 3000

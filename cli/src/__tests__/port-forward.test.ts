@@ -6,6 +6,8 @@ import * as path from 'path';
 import {
   parsePortForwardFlags,
   parsePortMapping,
+  parsePortPair,
+  parsePortsList,
   parseSshConfigContent,
   getSshAliases,
   portForwardHelp,
@@ -110,6 +112,47 @@ test('parsePortMapping: invalid ports', () => {
   assert.throws(() => parsePortMapping('abc:postgres:5432'));
   assert.throws(() => parsePortMapping('5432::5432'));
   assert.throws(() => parsePortMapping('5432:postgres:5432:extra'));
+});
+
+test('parsePortPair: single port', () => {
+  assert.deepEqual(parsePortPair('3000'), { localPort: 3000, containerPort: 3000 });
+});
+
+test('parsePortPair: local:container', () => {
+  assert.deepEqual(parsePortPair('8080:80'), { localPort: 8080, containerPort: 80 });
+});
+
+test('parsePortPair: trims whitespace', () => {
+  assert.deepEqual(parsePortPair(' 8080 : 80 '), { localPort: 8080, containerPort: 80 });
+});
+
+test('parsePortPair: invalid', () => {
+  assert.throws(() => parsePortPair('abc'));
+  assert.throws(() => parsePortPair('0'));
+  assert.throws(() => parsePortPair('70000'));
+  assert.throws(() => parsePortPair('8080:abc'));
+  assert.throws(() => parsePortPair('5432:postgres:5432'), /Invalid port mapping/);
+});
+
+test('parsePortsList: comma-separated list', () => {
+  assert.deepEqual(parsePortsList('3000, 8080:80 , 5432'), [
+    { localPort: 3000, containerPort: 3000 },
+    { localPort: 8080, containerPort: 80 },
+    { localPort: 5432, containerPort: 5432 },
+  ]);
+});
+
+test('parsePortsList: single entry', () => {
+  assert.deepEqual(parsePortsList('3000'), [{ localPort: 3000, containerPort: 3000 }]);
+});
+
+test('parsePortsList: empty throws', () => {
+  assert.throws(() => parsePortsList(''));
+  assert.throws(() => parsePortsList('  ,  '));
+});
+
+test('parsePortsList: propagates invalid entry', () => {
+  assert.throws(() => parsePortsList('3000, abc'));
 });
 
 test('parseSshConfigContent: extracts hosts correctly', () => {

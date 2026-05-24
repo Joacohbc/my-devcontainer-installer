@@ -11,6 +11,11 @@ export interface ManagedContainer {
   state: string;
 }
 
+export interface DockerContainer extends ManagedContainer {
+  /** true when the container carries the CLI managed label (i.e. a devcontainer). */
+  managed: boolean;
+}
+
 export function containerWorkspace(containerName: string): string | null {
   const suffix = `-${SSH_DEFAULTS.serviceName}`;
   return containerName.endsWith(suffix) ? containerName.slice(0, -suffix.length) : null;
@@ -49,7 +54,46 @@ export function listManagedContainers(): ManagedContainer[] {
     });
 }
 
-function statusLabel(c: ManagedContainer): string {
+export function listAllContainers(): DockerContainer[] {
+  // Lists running containers regardless of the managed label, flagging which
+  // ones are CLI-managed devcontainers. Used by port-forward so the user can
+  // tunnel into any container, not just devcontainers. Swallows docker errors
+  // the same way listManagedContainers does.
+  let r: { status: number; stdout: string; stderr: string };
+  try {
+    r = dockerCapture(['ps', '--format', '{{json .}}']);
+  } catch {
+    return [];
+  }
+  if (r.status !== 0 || !r.stdout.trim()) return [];
+  return r.stdout
+    .trim()
+    .split('\n')
+    .flatMap((line) => {
+      try {
+        const obj = JSON.parse(line) as Record<string, string>;
+        const name = obj['Names'] ?? '';
+        if (!name) return [];
+        const labels = obj['Labels'] ?? '';
+        const managed = labels
+          .split(',')
+          .some((l) => l.trim() === `${LABEL_MANAGED}=true`);
+        return [
+          {
+            name,
+            image: obj['Image'] ?? '',
+            status: obj['Status'] ?? '',
+            state: obj['State'] ?? '',
+            managed,
+          },
+        ];
+      } catch {
+        return [];
+      }
+    });
+}
+
+export function statusLabel(c: ManagedContainer): string {
   const text = c.status || c.state;
   if (c.state === 'running') return chalk.green(text);
   if (c.state === 'exited') return chalk.red(text);

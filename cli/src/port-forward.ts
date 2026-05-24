@@ -1,10 +1,16 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { spawn } from 'child_process';
+import { spawn, type ChildProcess } from 'child_process';
 import chalk from 'chalk';
-import { input, select } from '@/prompts.js';
-import { pickManagedContainer, containerWorkspace } from '@/container-picker.js';
+import { input, select, confirm } from '@/prompts.js';
+import {
+  pickManagedContainer,
+  containerWorkspace,
+  listAllContainers,
+  statusLabel,
+  type DockerContainer,
+} from '@/container-picker.js';
 
 export interface PortForwardConfig {
   portMapping?: string;
@@ -18,6 +24,20 @@ export interface ParsedPortMapping {
   localPort: number;
   targetHost: string;
   containerPort: number;
+}
+
+export interface PortPair {
+  localPort: number;
+  containerPort: number;
+}
+
+interface PlannedTunnel {
+  localPort: number;
+  containerPort: number;
+  targetHost: string;
+  alias: string;
+  containerName: string;
+  isDevcontainer: boolean;
 }
 
 export function parsePortForwardFlags(argv: string[]): PortForwardConfig {
@@ -124,6 +144,40 @@ export function parsePortMapping(mapping: string, defaultService?: string): Pars
   }
 }
 
+function parsePort(value: string, label: string): number {
+  const n = parseInt(value, 10);
+  if (isNaN(n) || n <= 0 || n > 65535) {
+    throw new Error(`Invalid ${label}: ${value}`);
+  }
+  return n;
+}
+
+export function parsePortPair(item: string): PortPair {
+  const parts = item.split(':').map((s) => s.trim());
+  if (parts.length === 1) {
+    const port = parsePort(parts[0], 'port');
+    return { localPort: port, containerPort: port };
+  }
+  if (parts.length === 2) {
+    return {
+      localPort: parsePort(parts[0], 'local port'),
+      containerPort: parsePort(parts[1], 'container port'),
+    };
+  }
+  throw new Error(`Invalid port mapping: ${item} (expected 'port' or 'local:container')`);
+}
+
+export function parsePortsList(value: string): PortPair[] {
+  const items = value
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (items.length === 0) {
+    throw new Error('No ports specified.');
+  }
+  return items.map(parsePortPair);
+}
+
 export function parseSshConfigContent(content: string): string[] {
   const hosts: string[] = [];
   const lines = content.split(/\r?\n/);
@@ -160,12 +214,18 @@ export function getSshAliases(configPath?: string): string[] {
 }
 
 export function portForwardHelp(): string {
-  return `devcontainer-cli port-forward — forward host port to a container port using SSH
+  return `devcontainer-cli port-forward — forward host ports to container ports using SSH
 
 Usage:
   devcontainer-cli port-forward [port_mapping] [flags]
 
+Run with no port_mapping for an interactive session: pick any running container
+(devcontainers are marked '(devcontainer)'), enter one or more ports, and repeat
+for other containers. All tunnels are opened in parallel after you confirm.
+Non-devcontainer targets are reached through a devcontainer SSH jump host.
+
 Examples:
+  devcontainer-cli port-forward                 # interactive multi-container picker
   devcontainer-cli port-forward 3000
   devcontainer-cli port-forward 8080:80
   devcontainer-cli port-forward 5432:postgres:5432
@@ -181,6 +241,237 @@ Flags:
 `;
 }
 
+/** SSH alias a container exposes itself under, or null when none is configured. */
+function ownSshAlias(containerName: string, aliases: string[]): string | null {
+  const candidate = containerWorkspace(containerName) ?? containerName;
+  return aliases.includes(candidate) ? candidate : null;
+}
+
+/** SSH aliases of running devcontainers, usable as jump hosts. */
+function jumpHostAliases(containers: DockerContainer[], aliases: string[]): string[] {
+  const result: string[] = [];
+  for (const c of containers) {
+    if (!c.managed) continue;
+    const a = ownSshAlias(c.name, aliases);
+    if (a && !result.includes(a)) result.push(a);
+  }
+  return result;
+}
+
+async function pickContainerFromList(
+  containers: DockerContainer[],
+  prompt: string,
+): Promise<DockerContainer> {
+  const maxName = Math.max(...containers.map((c) => c.name.length));
+  const maxImage = Math.max(...containers.map((c) => c.image.length));
+  const chosen = await select(
+    'container',
+    prompt,
+    containers.map((c) => ({
+      name: c.name,
+      message: `${c.name.padEnd(maxName)}  ${
+        c.managed ? chalk.green('(devcontainer)') : chalk.gray('              ')
+      }  ${chalk.gray(c.image.padEnd(maxImage))}  ${statusLabel(c)}`,
+    })),
+  );
+  return containers.find((c) => c.name === chosen)!;
+}
+
+/**
+ * Resolve which SSH alias to tunnel through for a target container, plus the
+ * host name the tunnel should reach on the far side. Devcontainers with their
+ * own alias are reached directly (targetHost = localhost); everything else is
+ * reached by container name through a devcontainer jump host.
+ */
+async function resolveTarget(
+  container: DockerContainer,
+  aliases: string[],
+  containers: DockerContainer[],
+  state: { jumpHost?: string },
+  interactive: boolean,
+): Promise<{ alias: string; targetHost: string }> {
+  if (container.managed) {
+    const own = ownSshAlias(container.name, aliases);
+    if (own) return { alias: own, targetHost: 'localhost' };
+  }
+
+  if (!state.jumpHost) {
+    const candidates = jumpHostAliases(containers, aliases);
+    if (candidates.length === 1) {
+      state.jumpHost = candidates[0];
+      console.log(chalk.cyan(`Using SSH jump host '${state.jumpHost}'.`));
+    } else if (candidates.length > 1) {
+      if (!interactive) {
+        throw new Error('Multiple SSH jump hosts available; specify --alias.');
+      }
+      state.jumpHost = await select(
+        'jumpHost',
+        'Select the devcontainer SSH host to tunnel through:',
+        candidates.map((a) => ({ name: a, message: a })),
+      );
+    } else {
+      if (!interactive) {
+        throw new Error(
+          `No devcontainer SSH alias found to tunnel through '${container.name}'. Run 'setup-ssh' first or specify --alias.`,
+        );
+      }
+      state.jumpHost = await input(
+        'jumpHost',
+        `No devcontainer SSH alias found to reach '${container.name}'. Enter SSH alias to tunnel through:`,
+        undefined,
+        (v) => (v.trim() ? true : 'SSH alias cannot be empty.'),
+      );
+    }
+  }
+
+  return { alias: state.jumpHost, targetHost: container.name };
+}
+
+async function buildTunnelsInteractive(flags: PortForwardConfig): Promise<PlannedTunnel[]> {
+  const containers = listAllContainers();
+  if (containers.length === 0) {
+    throw new Error("No running containers found. Start a container with 'devcontainer-cli' first.");
+  }
+
+  const aliases = getSshAliases();
+  const tunnels: PlannedTunnel[] = [];
+  const state: { jumpHost?: string } = { jumpHost: flags.alias };
+
+  for (;;) {
+    const container =
+      containers.length === 1
+        ? containers[0]
+        : await pickContainerFromList(containers, 'Select a container to forward from:');
+    if (containers.length === 1) {
+      console.log(
+        chalk.cyan(
+          `Using container: ${container.name}${container.managed ? ' (devcontainer)' : ''}`,
+        ),
+      );
+    }
+
+    const { alias, targetHost } = await resolveTarget(
+      container,
+      aliases,
+      containers,
+      state,
+      flags.interactive,
+    );
+
+    const portsStr = await input(
+      'ports',
+      `Ports to forward from '${container.name}' (e.g. 3000, 8080:80):`,
+      undefined,
+      (v) => {
+        try {
+          parsePortsList(v);
+          return true;
+        } catch (e) {
+          return (e as Error).message;
+        }
+      },
+    );
+
+    for (const pair of parsePortsList(portsStr)) {
+      tunnels.push({
+        localPort: pair.localPort,
+        containerPort: pair.containerPort,
+        targetHost,
+        alias,
+        containerName: container.name,
+        isDevcontainer: container.managed,
+      });
+    }
+
+    const more = await confirm('more', 'Add ports from another container?', false);
+    if (!more) break;
+  }
+
+  return tunnels;
+}
+
+function printPlan(tunnels: PlannedTunnel[]): void {
+  console.log(chalk.cyan('\nPort forwarding plan:'));
+  const maxName = Math.max(...tunnels.map((t) => t.containerName.length));
+  for (const t of tunnels) {
+    const tag = t.isDevcontainer ? chalk.green('(devcontainer)') : chalk.gray('              ');
+    console.log(
+      `  ${t.containerName.padEnd(maxName)}  ${tag}  ` +
+        chalk.yellow(`localhost:${t.localPort}`) +
+        ` → ${t.targetHost}:${t.containerPort}  ` +
+        chalk.gray(`(via ${t.alias})`),
+    );
+  }
+  console.log('');
+}
+
+function runTunnels(tunnels: PlannedTunnel[]): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    const children: ChildProcess[] = [];
+    let remaining = tunnels.length;
+    let firstError: Error | null = null;
+    let terminating = false;
+    let settled = false;
+
+    const killAll = () => {
+      for (const c of children) {
+        if (c.exitCode === null && !c.killed) {
+          try {
+            c.kill('SIGTERM');
+          } catch {
+            /* already gone */
+          }
+        }
+      }
+    };
+
+    const onSigint = () => {
+      terminating = true;
+      killAll();
+    };
+    process.on('SIGINT', onSigint);
+
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      process.removeListener('SIGINT', onSigint);
+      if (firstError) {
+        reject(firstError);
+      } else {
+        console.log(chalk.green(`\nAll SSH tunnels closed.\n`));
+        resolve();
+      }
+    };
+
+    for (const t of tunnels) {
+      const child = spawn('ssh', ['-N', '-L', `${t.localPort}:${t.targetHost}:${t.containerPort}`, t.alias], {
+        stdio: 'inherit',
+      });
+      children.push(child);
+
+      child.on('error', (err) => {
+        if (!firstError) firstError = new Error(`Failed to spawn SSH process: ${err.message}`);
+        terminating = true;
+        killAll();
+      });
+
+      child.on('close', (code) => {
+        remaining--;
+        if (code !== 0 && code !== null && !terminating && !firstError) {
+          firstError = new Error(
+            `SSH tunnel ${t.localPort}→${t.targetHost}:${t.containerPort} (${t.alias}) closed with exit code ${code}`,
+          );
+          // One failing tunnel tears down the rest so the user isn't left with a
+          // partial set silently running in the background.
+          terminating = true;
+          killAll();
+        }
+        if (remaining === 0) finish();
+      });
+    }
+  });
+}
+
 export async function runPortForward(argv: string[]): Promise<void> {
   const flags = parsePortForwardFlags(argv);
   if (flags.help) {
@@ -188,33 +479,38 @@ export async function runPortForward(argv: string[]): Promise<void> {
     return;
   }
 
-  let mappingStr = flags.portMapping;
-  if (!mappingStr) {
-    if (!flags.interactive) {
-      throw new Error('Port mapping is required in non-interactive mode.');
-    }
-    mappingStr = await input(
-      'portMapping',
-      'Enter port mapping (e.g. 3000, 8080:80, 5432:postgres:5432):',
-      undefined,
-      (v) => {
-        try {
-          parsePortMapping(v, flags.service);
-          return true;
-        } catch (e) {
-          return (e as Error).message;
-        }
-      }
+  // No explicit mapping + interactive → multi-container picker.
+  if (!flags.portMapping && flags.interactive) {
+    const tunnels = await buildTunnelsInteractive(flags);
+    printPlan(tunnels);
+    const ok = await confirm(
+      'start',
+      `Open ${tunnels.length} tunnel${tunnels.length === 1 ? '' : 's'} now?`,
+      true,
     );
+    if (!ok) {
+      console.log(chalk.yellow('Aborted. No tunnels were opened.'));
+      return;
+    }
+    console.log(chalk.green('Press Ctrl+C to terminate the port forwarding session.\n'));
+    return runTunnels(tunnels);
   }
 
-  const mapping = parsePortMapping(mappingStr, flags.service);
+  // Explicit single mapping (positional or non-interactive).
+  if (!flags.portMapping) {
+    throw new Error('Port mapping is required in non-interactive mode.');
+  }
+
+  const mapping = parsePortMapping(flags.portMapping, flags.service);
 
   let alias = flags.alias;
+  let containerName = alias ?? mapping.targetHost;
+  let isDevcontainer = true;
   if (!alias) {
     const container = await pickManagedContainer('Select devcontainer to forward into:', {
       interactive: flags.interactive,
     });
+    containerName = container.name;
     const ws = containerWorkspace(container.name);
     const candidate = ws ?? container.name;
     const aliases = getSshAliases();
@@ -249,28 +545,16 @@ export async function runPortForward(argv: string[]): Promise<void> {
     }
   }
 
-  const { localPort, targetHost, containerPort } = mapping;
+  const tunnel: PlannedTunnel = {
+    localPort: mapping.localPort,
+    containerPort: mapping.containerPort,
+    targetHost: mapping.targetHost,
+    alias,
+    containerName,
+    isDevcontainer,
+  };
 
-  console.log(chalk.cyan(`\nEstablishing SSH Tunnel mapping local port ${localPort} to ${targetHost}:${containerPort} on alias '${alias}'...`));
-  console.log(chalk.yellow(`Command: ssh -N -L ${localPort}:${targetHost}:${containerPort} ${alias}`));
-  console.log(chalk.green(`Press Ctrl+C to terminate the port forwarding session.\n`));
-
-  return new Promise<void>((resolve, reject) => {
-    const child = spawn('ssh', ['-N', '-L', `${localPort}:${targetHost}:${containerPort}`, alias], {
-      stdio: 'inherit',
-    });
-
-    child.on('error', (err) => {
-      reject(new Error(`Failed to spawn SSH process: ${err.message}`));
-    });
-
-    child.on('close', (code) => {
-      if (code !== 0 && code !== null) {
-        reject(new Error(`SSH tunnel closed with exit code ${code}`));
-      } else {
-        console.log(chalk.green(`\nSSH tunnel closed.\n`));
-        resolve();
-      }
-    });
-  });
+  printPlan([tunnel]);
+  console.log(chalk.green('Press Ctrl+C to terminate the port forwarding session.\n'));
+  return runTunnels([tunnel]);
 }
