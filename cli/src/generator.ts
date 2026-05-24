@@ -94,6 +94,16 @@ export function generateCompose(config: DevcontainerConfig): string | null {
 
   const workspace = config.workspace;
   const networkName = `${workspace}-network`;
+  const engineNetwork = `${workspace}-engine-network`;
+  let usesEngineNetwork = false;
+  const mapNetwork = (n: string): string => {
+    if (n === 'local-network') return networkName;
+    if (n === 'engine-network') {
+      usesEngineNetwork = true;
+      return engineNetwork;
+    }
+    return n;
+  };
   const labels = composeLabels(config);
   const services: Record<string, unknown> = {};
   const volumes: Record<string, unknown> = {};
@@ -135,9 +145,7 @@ export function generateCompose(config: DevcontainerConfig): string | null {
       );
     }
     if (Array.isArray(rendered.networks)) {
-      const mapped = (rendered.networks as string[]).map((n) =>
-        n === 'local-network' ? networkName : n,
-      );
+      const mapped = (rendered.networks as string[]).map(mapNetwork);
       if (svc.id === 'devcontainer' && devcontainerIp) {
         const netObj: Record<string, unknown> = {};
         for (const n of mapped) {
@@ -158,15 +166,26 @@ export function generateCompose(config: DevcontainerConfig): string | null {
     volumes[prefixVolume(workspace, v)] = { labels: { ...labels } };
   }
 
+  const networksDoc: Record<string, unknown> = {
+    [networkName]: {
+      driver: 'bridge',
+      ipam: { config: [{ subnet: `\${DOCKER_SUBNET:-${subnet}}` }] },
+      labels: { ...labels },
+    },
+  };
+  if (usesEngineNetwork) {
+    // Dedicated bridge joined only by the devcontainer and the dind engine.
+    // Not `internal` — the engine needs egress to pull workload images; the
+    // isolation here is segmentation (DB/other sidecars stay off this network).
+    networksDoc[engineNetwork] = {
+      driver: 'bridge',
+      labels: { ...labels },
+    };
+  }
+
   const doc: Record<string, unknown> = {
     services,
-    networks: {
-      [networkName]: {
-        driver: 'bridge',
-        ipam: { config: [{ subnet: `\${DOCKER_SUBNET:-${subnet}}` }] },
-        labels: { ...labels },
-      },
-    },
+    networks: networksDoc,
     volumes,
   };
 

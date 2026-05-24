@@ -194,6 +194,158 @@ test('ai-clis pulls pnpm + github-cli via requires', () => {
   assert.match(df, /cli\.github\.com\/packages/);
 });
 
+test('compose default does not mount the docker socket into devcontainer', () => {
+  const yml = generateCompose(makeConfig());
+  const parsed = parse(yml) as {
+    services: { 'devcontainer-ssh': { volumes: string[]; environment?: string[] } };
+  };
+  const vols = parsed.services['devcontainer-ssh'].volumes;
+  assert.ok(!vols.some((v) => v.includes('docker.sock')), 'socket must not be mounted by default');
+  assert.equal(parsed.services['devcontainer-ssh'].environment, undefined);
+});
+
+test('compose dockerSocket=rw mounts socket read-write', () => {
+  const yml = generateCompose(
+    makeConfig({
+      compose: {
+        services: [{ id: 'devcontainer', options: { dockerSocket: 'rw' } }],
+        subnet: '172.25.0.0/24',
+      },
+    }),
+  );
+  const parsed = parse(yml) as {
+    services: { 'devcontainer-ssh': { volumes: string[] } };
+  };
+  assert.ok(
+    parsed.services['devcontainer-ssh'].volumes.includes(
+      '/var/run/docker.sock:/var/run/docker.sock',
+    ),
+  );
+});
+
+test('compose dockerSocket=dind wires DOCKER_HOST, engine network, and isolated engine', () => {
+  const yml = generateCompose(
+    makeConfig({
+      compose: {
+        services: [
+          { id: 'devcontainer', options: { dockerSocket: 'dind' } },
+          { id: 'docker-dind', options: {} },
+          { id: 'postgres', options: {} },
+        ],
+        subnet: '172.25.0.0/24',
+      },
+    }),
+  );
+  const parsed = parse(yml) as {
+    services: {
+      'devcontainer-ssh': {
+        volumes: string[];
+        environment: string[];
+        depends_on: string[];
+        networks: Record<string, unknown>;
+      };
+      'docker-dind': {
+        image: string;
+        privileged: boolean;
+        volumes: string[];
+        networks: string[];
+      };
+      postgres: { networks: string[] | Record<string, unknown> };
+    };
+    networks: Record<string, unknown>;
+  };
+  const dev = parsed.services['devcontainer-ssh'];
+  // No host socket is ever mounted in dind mode.
+  assert.ok(!dev.volumes.some((v) => v.includes('docker.sock')));
+  assert.ok(dev.environment.includes('DOCKER_HOST=tcp://docker-dind:2375'));
+  assert.ok(dev.depends_on.includes('docker-dind'));
+  // Devcontainer joins both the main and the dedicated engine network.
+  assert.ok('devcontainer-network' in dev.networks);
+  assert.ok('devcontainer-engine-network' in dev.networks);
+
+  const dind = parsed.services['docker-dind'];
+  assert.match(dind.image, /docker:\d+-dind-rootless/);
+  assert.equal(dind.privileged, true);
+  assert.ok(!dind.volumes.some((v) => v.includes('docker.sock')));
+  assert.deepEqual(dind.networks, ['devcontainer-engine-network']);
+
+  // The engine network exists and DB sidecars are kept off it.
+  assert.ok('devcontainer-engine-network' in parsed.networks);
+  const pg = parsed.services.postgres.networks;
+  assert.ok(!JSON.stringify(pg).includes('engine-network'));
+});
+
+test('compose dockerSocket=proxy wires DOCKER_HOST and depends_on proxy', () => {
+  const yml = generateCompose(
+    makeConfig({
+      compose: {
+        services: [
+          { id: 'devcontainer', options: { dockerSocket: 'proxy' } },
+          { id: 'docker-socket-proxy', options: {} },
+        ],
+        subnet: '172.25.0.0/24',
+      },
+    }),
+  );
+  const parsed = parse(yml) as {
+    services: {
+      'devcontainer-ssh': {
+        volumes: string[];
+        environment: string[];
+        depends_on: string[];
+      };
+      'docker-socket-proxy': {
+        image: string;
+        environment: string[];
+        volumes: string[];
+      };
+    };
+  };
+  const dev = parsed.services['devcontainer-ssh'];
+  assert.ok(!dev.volumes.some((v) => v.includes('docker.sock')));
+  assert.ok(dev.environment.includes('DOCKER_HOST=tcp://docker-socket-proxy:2375'));
+  assert.ok(dev.depends_on.includes('docker-socket-proxy'));
+  const proxy = parsed.services['docker-socket-proxy'];
+  assert.match(proxy.image, /tecnativa\/docker-socket-proxy/);
+  assert.ok(proxy.volumes.includes('/var/run/docker.sock:/var/run/docker.sock:ro'));
+  assert.ok(proxy.environment.includes('POST=1'));
+  assert.ok(proxy.environment.includes('EXEC=0'));
+});
+
+test('compose dockerSocket=proxy without proxy service falls back to none (no socket)', () => {
+  const yml = generateCompose(
+    makeConfig({
+      compose: {
+        services: [{ id: 'devcontainer', options: { dockerSocket: 'proxy' } }],
+        subnet: '172.25.0.0/24',
+      },
+    }),
+  );
+  const parsed = parse(yml) as {
+    services: { 'devcontainer-ssh': { volumes: string[]; environment?: string[] } };
+  };
+  const dev = parsed.services['devcontainer-ssh'];
+  assert.ok(!dev.volumes.some((v) => v.includes('docker.sock')), 'must not silently mount host socket');
+  assert.equal(dev.environment, undefined);
+});
+
+test('compose dockerSocket=dind without dind service falls back to none (no socket)', () => {
+  const yml = generateCompose(
+    makeConfig({
+      compose: {
+        services: [{ id: 'devcontainer', options: { dockerSocket: 'dind' } }],
+        subnet: '172.25.0.0/24',
+      },
+    }),
+  );
+  const parsed = parse(yml) as {
+    services: { 'devcontainer-ssh': { volumes: string[]; environment?: string[] } };
+  };
+  const dev = parsed.services['devcontainer-ssh'];
+  assert.ok(!dev.volumes.some((v) => v.includes('docker.sock')));
+  assert.equal(dev.environment, undefined);
+});
+
 test('env file includes selected env vars', () => {
   const env = generateEnv(
     makeConfig({ env: { TUNNEL_TOKEN: 'abc' }, compose: { services: [], subnet: '10.0.0.0/8' } }),

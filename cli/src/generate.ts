@@ -91,6 +91,23 @@ async function buildConfigFromPrompts(base: DevcontainerConfig): Promise<Devcont
   }
 
   const services: SelectedModule[] = [];
+  // Always-on services (e.g. the devcontainer itself) are not in the
+  // multiselect list, but may still expose options (e.g. dockerSocket mode).
+  for (const svc of composeServices.filter((s) => s.always)) {
+    if (!svc.options?.length) continue;
+    const opts: Record<string, unknown> = {};
+    const prev = base.compose.services.find(
+      (s) => (typeof s === 'string' ? s : s.id) === svc.id,
+    );
+    const prevOpts = typeof prev === 'object' && prev ? prev.options ?? {} : {};
+    for (const o of svc.options) {
+      opts[o.id] = await promptOption({
+        ...o,
+        default: prevOpts[o.id] ?? o.default,
+      });
+    }
+    services.push({ id: svc.id, options: opts });
+  }
   {
     const selectableServices = composeServices.filter((s) => !s.always);
     const baseServiceIds = base.compose.services.map((s) =>
