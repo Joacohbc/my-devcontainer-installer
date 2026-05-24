@@ -32,6 +32,7 @@ import { runPortForward } from '@/port-forward.js';
 import { runDown } from '@/down.js';
 import { runDestroy } from '@/destroy.js';
 import { runLifecycle } from '@/lifecycle.js';
+import { runCompleteHidden, runCompletion } from '@/completion.js';
 import {
   computeFingerprint,
   fingerprintTag,
@@ -326,6 +327,14 @@ async function main() {
   installSignalHandlers();
   cleanupStaleUpdate();
   const argv = process.argv.slice(2);
+  if (argv[0] === '__complete') {
+    await runCompleteHidden(argv.slice(1));
+    return;
+  }
+  if (argv[0] === 'completion') {
+    await runCompletion(argv.slice(1));
+    return;
+  }
   if (argv[0] === 'port-forward') {
     await runPortForward(argv.slice(1));
     return;

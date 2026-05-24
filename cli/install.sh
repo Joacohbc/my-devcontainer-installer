@@ -65,10 +65,75 @@ ln -sf "$binary_path" "$BIN_DIR/devcontainer-cli"
 info "Installed:"
 printf '  binary : %s\n' "$BIN_DIR/devcontainer-cli"
 
-case ":$PATH:" in
-  *":$BIN_DIR:"*) ;;
-  *) printf '\nAdd to PATH:\n  export PATH="%s:$PATH"\n' "$BIN_DIR" ;;
-esac
+# ---------------------------------------------------------------------------
+# Shell completion + PATH setup
+# ---------------------------------------------------------------------------
+# Writes a marker-delimited managed block into the user's rc file(s). The same
+# markers are used by uninstall.sh to remove it cleanly. Re-running the
+# installer replaces the block instead of duplicating it. Opt out with
+# SETUP_COMPLETION=0.
+SETUP_COMPLETION="${SETUP_COMPLETION:-1}"
+COMPLETION_DIR="$INSTALL_DIR/completions"
+MARK_START="# >>> devcontainer-cli >>>"
+MARK_END="# <<< devcontainer-cli <<<"
+
+# Replace any existing managed block in $1 with the block read from stdin.
+update_rc() {
+  rc="$1"
+  [ -f "$rc" ] || { mkdir -p "$(dirname "$rc")"; : > "$rc"; }
+  block="$(cat)"
+  tmp="${rc}.dcbak.$$"
+  awk -v s="$MARK_START" -v e="$MARK_END" '
+    $0==s {skip=1; next}
+    $0==e {skip=0; next}
+    skip!=1 {print}
+  ' "$rc" > "$tmp"
+  {
+    printf '%s\n' "$MARK_START"
+    printf '%s\n' "$block"
+    printf '%s\n' "$MARK_END"
+  } >> "$tmp"
+  mv -f "$tmp" "$rc"
+}
+
+if [ "$SETUP_COMPLETION" = "1" ]; then
+  mkdir -p "$COMPLETION_DIR"
+
+  # zsh
+  if command -v zsh >/dev/null 2>&1 || [ -f "${ZDOTDIR:-$HOME}/.zshrc" ]; then
+    if "$binary_path" completion zsh > "$COMPLETION_DIR/_devcontainer-cli" 2>/dev/null; then
+      update_rc "${ZDOTDIR:-$HOME}/.zshrc" <<EOF
+export PATH="$BIN_DIR:\$PATH"
+fpath=("$COMPLETION_DIR" \$fpath)
+autoload -U compinit && compinit
+EOF
+      info "zsh completion: ${ZDOTDIR:-$HOME}/.zshrc"
+    fi
+  fi
+
+  # bash
+  if command -v bash >/dev/null 2>&1 || [ -f "$HOME/.bashrc" ]; then
+    if "$binary_path" completion bash > "$COMPLETION_DIR/devcontainer-cli.bash" 2>/dev/null; then
+      bashrc="$HOME/.bashrc"
+      [ "$os" = darwin ] && [ -f "$HOME/.bash_profile" ] && bashrc="$HOME/.bash_profile"
+      update_rc "$bashrc" <<EOF
+export PATH="$BIN_DIR:\$PATH"
+[ -f "$COMPLETION_DIR/devcontainer-cli.bash" ] && source "$COMPLETION_DIR/devcontainer-cli.bash"
+EOF
+      info "bash completion: $bashrc"
+    fi
+  fi
+
+  info "Restart your shell (or 'exec \$SHELL') to enable PATH + completion."
+else
+  case ":$PATH:" in
+    *":$BIN_DIR:"*) ;;
+    *) printf '\nAdd to PATH:\n  export PATH="%s:$PATH"\n' "$BIN_DIR" ;;
+  esac
+  printf '\nEnable completion manually:\n'
+  printf '  devcontainer-cli completion zsh  > %s/_devcontainer-cli\n' "$COMPLETION_DIR"
+  printf '  devcontainer-cli completion bash > %s/devcontainer-cli.bash\n' "$COMPLETION_DIR"
+fi
 
 info "Verify: devcontainer-cli --help"
 info "Self-update: devcontainer-cli update"
