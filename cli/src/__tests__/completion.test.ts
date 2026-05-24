@@ -1,9 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import {
   completionCandidates,
   bashCompletionScript,
   zshCompletionScript,
+  refreshInstalledCompletions,
   type CompletionProviders,
 } from '@/completion.js';
 import { BUILD_MODES, REMOTE_VARIANTS } from '@/types.js';
@@ -155,4 +159,29 @@ test('subcommand → flags include --help', () => {
   const out = completionCandidates(['setup-ssh', ''], stubs);
   assert.ok(out.includes('--help'));
   assert.ok(out.includes('--container'));
+});
+
+test('refreshInstalledCompletions rewrites only existing files', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dccli-comp-'));
+  const compDir = path.join(dir, 'completions');
+  fs.mkdirSync(compDir);
+  // Only zsh file pre-exists (simulates zsh-only install); bash file absent.
+  const zshPath = path.join(compDir, '_devcontainer-cli');
+  fs.writeFileSync(zshPath, 'stale');
+  const bashPath = path.join(compDir, 'devcontainer-cli.bash');
+
+  const fakeExec = path.join(dir, 'devcontainer-cli');
+  const updated = refreshInstalledCompletions(fakeExec);
+
+  assert.deepEqual(updated, [zshPath]);
+  assert.equal(fs.readFileSync(zshPath, 'utf8'), zshCompletionScript());
+  assert.ok(!fs.existsSync(bashPath), 'must not create files that were not installed');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('refreshInstalledCompletions no-ops when completions dir absent', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dccli-comp-'));
+  const updated = refreshInstalledCompletions(path.join(dir, 'devcontainer-cli'));
+  assert.deepEqual(updated, []);
+  fs.rmSync(dir, { recursive: true, force: true });
 });

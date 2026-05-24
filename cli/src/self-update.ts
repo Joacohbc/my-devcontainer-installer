@@ -5,6 +5,7 @@ import * as https from 'https';
 import * as crypto from 'crypto';
 import { URL } from 'url';
 import chalk from 'chalk';
+import { refreshInstalledCompletions } from '@/completion.js';
 
 const REPO = 'Joacohbc/my-devcontainer-installer';
 const USER_AGENT = 'devcontainer-cli';
@@ -438,6 +439,13 @@ export async function runSelfUpdate(argv: string[]): Promise<void> {
     throw e;
   } finally {
     try { fs.rmdirSync(tmpDir); } catch { /* noop */ }
+  }
+
+  try {
+    const refreshed = refreshInstalledCompletions(process.execPath);
+    if (refreshed.length) console.log(chalk.gray(`Refreshed completion: ${refreshed.join(', ')}`));
+  } catch (e) {
+    console.error(chalk.yellow(`Completion refresh skipped: ${(e as Error).message}`));
   }
 
   console.log(chalk.green(`Updated to ${latest}. Restart any running session to use the new binary.`));

@@ -1,3 +1,5 @@
+import * as fs from 'fs';
+import * as path from 'path';
 import { BUILD_MODES, REMOTE_VARIANTS } from '@/types.js';
 import { composeServices, dockerfileModules } from '@/registry.js';
 import { listManagedContainers } from '@/container-picker.js';
@@ -312,6 +314,28 @@ _devcontainer_cli() {
 }
 _devcontainer_cli "$@"
 `;
+}
+
+// Completion scripts installed by install.sh live in a `completions/` dir next
+// to the binary. They are static wrappers (delegating to `__complete` at
+// runtime), so they only need refreshing when their template changes — but
+// rewriting them after a self-update is cheap and keeps them in sync. Only
+// files that already exist are touched, so a user who opted out of completion
+// (SETUP_COMPLETION=0) or installed for only one shell stays untouched.
+export function refreshInstalledCompletions(execPath: string): string[] {
+  const dir = path.join(path.dirname(execPath), 'completions');
+  const targets: Array<{ file: string; gen: () => string }> = [
+    { file: '_devcontainer-cli', gen: zshCompletionScript },
+    { file: 'devcontainer-cli.bash', gen: bashCompletionScript },
+  ];
+  const updated: string[] = [];
+  for (const t of targets) {
+    const p = path.join(dir, t.file);
+    if (!fs.existsSync(p)) continue;
+    fs.writeFileSync(p, t.gen(), { mode: 0o644 });
+    updated.push(p);
+  }
+  return updated;
 }
 
 export async function runCompletion(argv: string[]): Promise<void> {

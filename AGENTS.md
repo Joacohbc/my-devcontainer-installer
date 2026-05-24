@@ -441,6 +441,7 @@ segmentation, fallback behavior).
 - [ ] New/modified module has test in `cli/src/__tests__/`.
 - [ ] `pnpm test` passes locally.
 - [ ] `pnpm run typecheck` passes.
+- [ ] Installer script change mirrored to its `.sh`/`.ps1` counterpart (see "Installer script parity").
 - [ ] CI green.
 
 ## Self-contained binary (SEA assets bundling)
@@ -514,3 +515,23 @@ On Windows you cannot overwrite a running `.exe`, but you _can_ rename it. `repl
 Release artifacts are **raw binaries** (one per target), no tar/zip. The installer scripts (`cli/install.sh`, `cli/install.ps1`) and the `upgrade-cli` subcommand both expect this format.
 
 Do not reintroduce archive packaging unless you also update both installers and `self-update.ts` consistently.
+
+## Installer script parity (sh ↔ ps1)
+
+The install/uninstall scripts ship in matched pairs — one POSIX shell (Linux/macOS), one PowerShell (Windows):
+
+- `cli/install.sh` ↔ `cli/install.ps1`
+- `cli/uninstall.sh` ↔ `cli/uninstall.ps1`
+
+**When you change one script in a pair, you must apply the equivalent change to its counterpart in the same PR.** Examples: a new env override (`INSTALL_DIR`, `KEEP_CONFIG`, …), changed install layout, new PATH/rc/completion handling, changed asset naming.
+
+Platform differences are expected — mirror the *behavior*, not the syntax:
+
+| Concern | sh (Linux/macOS) | ps1 (Windows) |
+|---|---|---|
+| Install dir | `$HOME/.local/share/devcontainer-cli` | `$env:LOCALAPPDATA\devcontainer-cli` |
+| PATH exposure | symlink in `$BIN_DIR` + rc `export PATH` | entry in user `Path` env var |
+| Shell completion | zsh/bash files + managed rc block | not installed (no PowerShell completion yet) |
+| Opt-out flags | `SETUP_COMPLETION=0`, `KEEP_CONFIG=1` | `KEEP_CONFIG=1` |
+
+If a feature genuinely has no Windows analogue (e.g. bash/zsh completion), the ps1 side legitimately skips it — note that rather than forcing a port.
