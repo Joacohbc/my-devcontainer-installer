@@ -135,8 +135,7 @@ graph LR
   * **Tmux:** tmux (módulo `tmux`).
   * **Clientes de DB en el devcontainer:** `psql`, `redis-tools`, `mongosh` (módulo `dbclients`, seleccionables individualmente).
   * **GitHub CLI:** `gh` + `jq` (módulo `github-cli`, incluido por defecto).
-  * **Docker outside Docker (DoD):** `docker-ce-cli` montando el socket del host (módulo `dod`).
-  * **Docker-in-Docker (DinD):** motor rootless aislado en sidecar `docker:28-dind-rootless` (servicio `docker-dind`).
+  * **Docker (acceso al daemon):** el módulo `dod` instala `docker-ce-cli` en la imagen. El motor lo provee el servicio `docker-dind` (`docker:28-dind-rootless`), que expone el daemon vía `DOCKER_HOST=tcp://docker-dind:2375` en una red aislada. Ambos deben activarse juntos — sin el servicio `docker-dind` no hay engine al que conectarse.
   * **AI CLIs (opcional, módulo `ai-clis`):** scripts de instalación embebidos para Claude Code, OpenCode, Codex CLI, Antigravity CLI y GitHub Copilot CLI.
 * **Herramientas base:** `git`, `nano`, `wget`, `curl`, `unzip`, `ca-certificates` — siempre presentes.
 * **Terminal Mejorada:** ZSH preconfigurado con frameworks y plugins útiles.
