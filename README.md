@@ -377,15 +377,24 @@ curl -fsSL https://raw.githubusercontent.com/Joacohbc/my-devcontainer-installer/
 irm https://raw.githubusercontent.com/Joacohbc/my-devcontainer-installer/main/cli/uninstall.ps1 | iex
 ```
 
-#### Autocompletado (opcional)
+#### Autocompletado
+
+El instalador configura el autocompletado automáticamente en `.zshrc` y `.bashrc`/`.bash_profile`. Si por algún motivo falla, podés habilitarlo a mano:
 
 ```bash
-# Bash
-devcontainer-cli completion bash >> ~/.bashrc
-
 # Zsh
-devcontainer-cli completion zsh >> ~/.zshrc
+devcontainer-cli completion zsh > ~/.local/share/devcontainer-cli/completions/_devcontainer-cli
+# Agregar a ~/.zshrc:
+#   fpath=(~/.local/share/devcontainer-cli/completions $fpath)
+#   autoload -U compinit && compinit
+
+# Bash
+devcontainer-cli completion bash > ~/.local/share/devcontainer-cli/completions/devcontainer-cli.bash
+# Agregar a ~/.bashrc:
+#   source ~/.local/share/devcontainer-cli/completions/devcontainer-cli.bash
 ```
+
+> Para deshabilitar la configuración automática al instalar: `SETUP_COMPLETION=0 sh install.sh`
 
 ### 2. Generar el entorno
 
