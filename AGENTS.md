@@ -1,4 +1,4 @@
-# AGENTS.md
+# AGENTS.md / GEMINI.md / CLAUDE.md
 
 Guide for agents (human or AI) modifying this repo.
 
