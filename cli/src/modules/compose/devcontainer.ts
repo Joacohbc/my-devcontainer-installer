@@ -40,12 +40,9 @@ export const devcontainerService: ComposeService = {
     const depends = enabledServiceIds.filter((s) =>
       ['mongo', 'redis', 'postgres'].includes(s),
     );
-    const requested = (options.dockerSocket as DockerSocketMode | undefined) ?? 'none';
-    const dindEnabled = enabledServiceIds.includes(DIND_ENGINE_HOST);
-
-    // Fail safe: if dind is requested but the engine service is not enabled,
-    // fall back to 'none' (no access) rather than producing a broken DOCKER_HOST.
-    const mode: DockerSocketMode = requested === 'dind' && !dindEnabled ? 'none' : requested;
+    // The dind engine is auto-provisioned by generateCompose whenever this mode
+    // is 'dind', so the engine service is always present when we wire DOCKER_HOST.
+    const mode = (options.dockerSocket as DockerSocketMode | undefined) ?? 'none';
 
     const volumes: string[] = [
       '../..:/workspace',

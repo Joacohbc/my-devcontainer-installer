@@ -116,7 +116,10 @@ async function buildConfigFromPrompts(base: DevcontainerConfig): Promise<Devcont
   }
   {
     const selectableServices = composeServices.filter(
-      (s) => !s.always && (!s.requiresModule || selectedModuleIds.has(s.requiresModule)),
+      (s) =>
+        !s.always &&
+        !s.internal &&
+        (!s.requiresModule || selectedModuleIds.has(s.requiresModule)),
     );
     const baseServiceIds = base.compose.services.map((s) =>
       typeof s === 'string' ? s : s.id,

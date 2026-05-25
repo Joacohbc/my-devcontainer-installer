@@ -40,6 +40,8 @@ export interface ComposeService {
   always?: boolean;
   // Only offer this service interactively when the given Dockerfile module is selected.
   requiresModule?: string;
+  // Provisioned programmatically (e.g. from another option), never shown in the service picker.
+  internal?: boolean;
   options?: ModuleOption[];
   requiresEnv?: { name: string; prompt: string; default?: string }[];
   volumes?: string[];

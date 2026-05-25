@@ -204,13 +204,14 @@ test('compose default does not mount the docker socket into devcontainer', () =>
   assert.equal(parsed.services['devcontainer-ssh'].environment, undefined);
 });
 
-test('compose dockerSocket=dind wires DOCKER_HOST, engine network, and isolated engine', () => {
+test('compose dockerSocket=dind auto-provisions the engine and wires DOCKER_HOST', () => {
+  // The dind engine is NOT listed explicitly — it must be auto-provisioned
+  // purely from the devcontainer's access mode.
   const yml = generateCompose(
     makeConfig({
       compose: {
         services: [
           { id: 'devcontainer', options: { dockerSocket: 'dind' } },
-          { id: 'docker-dind', options: {} },
           { id: 'postgres', options: {} },
         ],
         subnet: '172.25.0.0/24',
@@ -256,18 +257,19 @@ test('compose dockerSocket=dind wires DOCKER_HOST, engine network, and isolated 
   assert.ok(!JSON.stringify(pg).includes('engine-network'));
 });
 
-test('compose dockerSocket=dind without dind service falls back to none (no socket)', () => {
+test('compose without dind mode does not provision the dind engine', () => {
   const yml = generateCompose(
     makeConfig({
       compose: {
-        services: [{ id: 'devcontainer', options: { dockerSocket: 'dind' } }],
+        services: [{ id: 'devcontainer', options: { dockerSocket: 'none' } }],
         subnet: '172.25.0.0/24',
       },
     }),
   );
   const parsed = parse(yml) as {
-    services: { 'devcontainer-ssh': { volumes: string[]; environment?: string[] } };
+    services: Record<string, { volumes: string[]; environment?: string[] }>;
   };
+  assert.ok(!('docker-dind' in parsed.services));
   const dev = parsed.services['devcontainer-ssh'];
   assert.ok(!dev.volumes.some((v) => v.includes('docker.sock')));
   assert.equal(dev.environment, undefined);

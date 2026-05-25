@@ -1,6 +1,8 @@
 import { stringify } from 'yaml';
 import { composeLabels, dockerfileLabelBlock } from '@/labels.js';
 import { composeServices, getComposeService } from '@/registry.js';
+import { DIND_ENGINE_HOST } from '@/modules/compose/dind-engine.js';
+import type { DockerSocketMode } from '@/modules/compose/devcontainer.js';
 import { resolveDockerfileModules } from '@/resolver.js';
 import { SSH_DEFAULTS } from '@/ssh-defaults.js';
 import { lastHost } from '@/subnet.js';
@@ -15,6 +17,31 @@ import {
 } from '@/types.js';
 
 const DEFAULT_SUBNET = '172.25.0.0/28';
+
+// Resolves the full set of enabled compose services for a config: the
+// user-selected ones, the always-on ones, plus services that are
+// auto-provisioned from another setting (the rootless dind engine is pulled
+// in by the devcontainer's `dind` access mode, never selected directly).
+function resolveEnabledServices(config: DevcontainerConfig): {
+  enabledIds: string[];
+  optionsById: Map<string, Record<string, unknown>>;
+} {
+  const selected = normalizeServices(config.compose.services);
+  const enabled = new Set<string>();
+  const optionsById = new Map<string, Record<string, unknown>>();
+  for (const s of selected) {
+    enabled.add(s.id);
+    optionsById.set(s.id, s.options ?? {});
+  }
+  for (const svc of composeServices) {
+    if (svc.always) enabled.add(svc.id);
+  }
+  const devOpts = optionsById.get('devcontainer');
+  if ((devOpts?.dockerSocket as DockerSocketMode | undefined) === 'dind') {
+    enabled.add(DIND_ENGINE_HOST);
+  }
+  return { enabledIds: [...enabled], optionsById };
+}
 
 export function generateDockerfile(config: DevcontainerConfig): string | null {
   if (config.mode === 'remote') return null;
@@ -80,17 +107,7 @@ function remapVolumeMount(workspace: string, declared: Set<string>, mount: strin
 }
 
 export function generateCompose(config: DevcontainerConfig): string | null {
-  const selected = normalizeServices(config.compose.services);
-  const optionsById = new Map<string, Record<string, unknown>>();
-  const enabled = new Set<string>();
-  for (const s of selected) {
-    enabled.add(s.id);
-    optionsById.set(s.id, s.options ?? {});
-  }
-  for (const svc of composeServices) {
-    if (svc.always) enabled.add(svc.id);
-  }
-  const enabledIds = [...enabled];
+  const { enabledIds, optionsById } = resolveEnabledServices(config);
 
   const workspace = config.workspace;
   const networkName = `${workspace}-network`;
@@ -197,17 +214,7 @@ export function plannedComposeNames(config: DevcontainerConfig): {
   network: string;
   volumes: string[];
 } {
-  const selected = normalizeServices(config.compose.services);
-  const enabled = new Set<string>();
-  const optionsById = new Map<string, Record<string, unknown>>();
-  for (const s of selected) {
-    enabled.add(s.id);
-    optionsById.set(s.id, s.options ?? {});
-  }
-  for (const svc of composeServices) {
-    if (svc.always) enabled.add(svc.id);
-  }
-  const enabledIds = [...enabled];
+  const { enabledIds, optionsById } = resolveEnabledServices(config);
 
   const containers: string[] = [];
   const declaredVolumes = new Set<string>(BASE_VOLUMES);

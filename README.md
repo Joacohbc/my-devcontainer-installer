@@ -144,9 +144,9 @@ Detalles de la configuración del túnel en [CLOUDFLARE_TUNNEL.md](CLOUDFLARE_TU
   * **Docker (acceso al daemon):** el módulo `dod` instala `docker-ce-cli` en la imagen y habilita el prompt de **Docker access mode** con tres modos:
     * `none` — sin acceso a Docker (default, más seguro).
     * `socket` — monta el socket del host (`/var/run/docker.sock`); acceso completo al Docker del host (⚠️ equivale a root en el host).
-    * `dind` — motor Docker-in-Docker rootless aislado, provisto por el servicio `docker-dind` (`docker:28-dind-rootless`) vía `DOCKER_HOST=tcp://docker-dind:2375` en una red dedicada. Requiere activar también ese servicio.
+    * `dind` — motor Docker-in-Docker rootless aislado. Al elegir este modo, el servicio `docker-dind` (`docker:28-dind-rootless`) se agrega automáticamente y se expone vía `DOCKER_HOST=tcp://docker-dind:2375` en una red dedicada. No es un servicio que se seleccione aparte.
 
-    Sin el módulo `dod` no se pregunta el modo de acceso ni se ofrece el motor `docker-dind`.
+    Sin el módulo `dod` no se pregunta el modo de acceso. El motor `docker-dind` no se ofrece como servicio: lo gobierna el modo de acceso.
   * **AI CLIs (opcional, módulo `ai-clis`):** scripts de instalación embebidos para Claude Code, OpenCode, Codex CLI, Antigravity CLI y GitHub Copilot CLI.
 * **Herramientas base:** `git`, `nano`, `wget`, `curl`, `unzip`, `ca-certificates` — siempre presentes.
 * **Terminal Mejorada:** ZSH preconfigurado con frameworks y plugins útiles.
