@@ -526,7 +526,9 @@ ssh-keygen -t ed25519 -f ~/.ssh/id_devcontainer -N "" -q
 
 ```bash
 # 1. Obtener IP del contenedor
-IP_SSH=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' <workspace>-devcontainer-ssh)
+# Nota: si el contenedor está en varias redes Docker, inspect devuelve una IP
+# por línea; `head -n1` se queda con la primera.
+IP_SSH=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{"\n"}}{{end}}' <workspace>-devcontainer-ssh | head -n1)
 
 # 2. Copiar clave (te pedirá la contraseña obtenida en el paso 1)
 ssh-copy-id -i ~/.ssh/id_devcontainer.pub devuser@$IP_SSH
@@ -576,7 +578,7 @@ Para conectar fácilmente, añade esto a tu `~/.ssh/config`:
 Host devcontainer-remote
     User devuser
     IdentityFile ~/.ssh/id_devcontainer
-    ProxyCommand ssh usuario@servidor "nc -q0 \$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' <workspace>-devcontainer-ssh) 22"
+    ProxyCommand ssh usuario@servidor "nc -q0 \$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{\"\n\"}}{{end}}' <workspace>-devcontainer-ssh | head -n1) 22"
 ```
 
 ### 3. Conectarse

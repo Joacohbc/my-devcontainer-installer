@@ -7,7 +7,9 @@ export const SSH_DEFAULTS = {
   alias: 'devcontainer',
   keyName: 'id_devcontainer',
   windowsPort: 2222,
-  dockerIpFormat: '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}',
+  // Emit one IP per line: a container attached to several networks would
+  // otherwise concatenate addresses with no separator (e.g. "172.19.0.3172.25.0.14").
+  dockerIpFormat: '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{"\\n"}}{{end}}',
 } as const;
 
 export function defaultKeyPath(): string {
@@ -50,7 +52,7 @@ export function buildSshConfigBlock(opts: SshConfigBlockOptions): string {
     case 'remote': {
       if (!opts.remote) throw new Error('remote required for remote mode');
       if (!opts.container) throw new Error('container required for remote mode');
-      const ipExpr = `$(docker inspect -f '${SSH_DEFAULTS.dockerIpFormat}' ${opts.container})`;
+      const ipExpr = `$(docker inspect -f '${SSH_DEFAULTS.dockerIpFormat}' ${opts.container} | head -n1)`;
       lines.push(`    User ${user}`);
       lines.push(`    IdentityFile ${key}`);
       lines.push(`    ProxyCommand ssh ${opts.remote} "nc -q0 ${ipExpr} 22"`);

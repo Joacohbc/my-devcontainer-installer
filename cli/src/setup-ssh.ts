@@ -329,7 +329,8 @@ function genKey(keyPath: string): void {
 function containerIp(container: string): string {
   const r = run('docker', ['inspect', '-f', SSH_DEFAULTS.dockerIpFormat, container]);
   if (r.status !== 0) throw new Error('Could not resolve container IP.');
-  return r.stdout.trim();
+  // A container on multiple networks yields one IP per line; take the first.
+  return r.stdout.split('\n').map((l) => l.trim()).find((l) => l.length > 0) ?? '';
 }
 
 interface InstallResult {
