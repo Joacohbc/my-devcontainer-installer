@@ -326,10 +326,29 @@ function genKey(keyPath: string): void {
   ok('Key generated.');
 }
 
-function containerIp(container: string): string {
-  const r = run('docker', ['inspect', '-f', SSH_DEFAULTS.dockerIpFormat, container]);
+async function containerIp(container: string, f: SetupSshFlags): Promise<string> {
+  const fmt = '{{range $name, $net := .NetworkSettings.Networks}}{{$name}} {{$net.IPAddress}}{{"\\n"}}{{end}}';
+  const r = run('docker', ['inspect', '-f', fmt, container]);
   if (r.status !== 0) throw new Error('Could not resolve container IP.');
-  return r.stdout.trim();
+  const entries = r.stdout
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0)
+    .map((l) => {
+      const sep = l.indexOf(' ');
+      return { network: l.slice(0, sep), ip: l.slice(sep + 1).trim() };
+    })
+    .filter((e) => e.ip.length > 0);
+
+  if (entries.length === 0) return '';
+  if (entries.length === 1) return entries[0].ip;
+
+  if (f.assumeYes) {
+    warn(`Container '${container}' is on ${entries.length} networks; using '${entries[0].network}' (${entries[0].ip}).`);
+    return entries[0].ip;
+  }
+  const choices = entries.map((e) => ({ name: e.ip, message: `${e.network} (${e.ip})` }));
+  return select('containerNetwork', 'Container is on multiple networks. Select one:', choices, choices[0].name);
 }
 
 interface InstallResult {
@@ -337,7 +356,7 @@ interface InstallResult {
   port: string;
 }
 
-function installKey(f: SetupSshFlags, mode: Mode): InstallResult {
+async function installKey(f: SetupSshFlags, mode: Mode): Promise<InstallResult> {
   const pub = fs.readFileSync(`${f.key}.pub`);
   const dockerExecArgs = ['exec', '-i', '-u', f.user, f.container, 'sh', '-c', authorizedKeysInstallScript()];
 
@@ -354,7 +373,7 @@ function installKey(f: SetupSshFlags, mode: Mode): InstallResult {
   }
 
   if (mode === 'local') {
-    const ip = containerIp(f.container);
+    const ip = await containerIp(f.container, f);
     if (!ip) throw new Error('Could not resolve container IP.');
     log(`Installing public key into ${f.container} (${ip}) via docker exec...`);
     const r = spawnSync('docker', dockerExecArgs, { input: pub, stdio: ['pipe', 'inherit', 'inherit'] });
@@ -584,7 +603,7 @@ export async function runSetupSsh(argv: string[]): Promise<void> {
   fetchPassword(f, mode);
   genKey(f.key);
 
-  const inst = installKey(f, mode);
+  const inst = await installKey(f, mode);
 
   await updateSshConfig(f, mode, inst);
   testConnection(f.alias);

@@ -19,6 +19,7 @@ import { findFreeSubnet, formatCidr, listUsedSubnets, subnetConflict } from '@/s
 import { printSshInstructions } from '@/ssh-instructions.js';
 import { confirm, input, multiselect, select } from '@/prompts.js';
 import { composeServices, dockerfileModules, getDockerfileModule } from '@/registry.js';
+import { HOST_DOCKER_SOCKET, type DockerSocketMode } from '@/modules/compose/devcontainer.js';
 import { getCurrentVersion } from '@/self-update.js';
 import {
   computeFingerprint,
@@ -90,6 +91,8 @@ async function buildConfigFromPrompts(base: DevcontainerConfig): Promise<Devcont
     }
   }
 
+  const selectedModuleIds = new Set(modules.map((m) => m.id));
+
   const services: SelectedModule[] = [];
   // Always-on services (e.g. the devcontainer itself) are not in the
   // multiselect list, but may still expose options (e.g. dockerSocket mode).
@@ -101,6 +104,9 @@ async function buildConfigFromPrompts(base: DevcontainerConfig): Promise<Devcont
     );
     const prevOpts = typeof prev === 'object' && prev ? prev.options ?? {} : {};
     for (const o of svc.options) {
+      // Skip options gated on a module that wasn't selected (e.g. Docker
+      // access mode only makes sense when the `dod` CLI is installed).
+      if (o.requiresModule && !selectedModuleIds.has(o.requiresModule)) continue;
       opts[o.id] = await promptOption({
         ...o,
         default: prevOpts[o.id] ?? o.default,
@@ -109,7 +115,12 @@ async function buildConfigFromPrompts(base: DevcontainerConfig): Promise<Devcont
     services.push({ id: svc.id, options: opts });
   }
   {
-    const selectableServices = composeServices.filter((s) => !s.always);
+    const selectableServices = composeServices.filter(
+      (s) =>
+        !s.always &&
+        !s.internal &&
+        (!s.requiresModule || selectedModuleIds.has(s.requiresModule)),
+    );
     const baseServiceIds = base.compose.services.map((s) =>
       typeof s === 'string' ? s : s.id,
     );
@@ -380,6 +391,20 @@ export async function runGenerate(argv: string[]): Promise<void> {
           `Subnet ${config.compose.subnet} overlaps with existing Docker network ${formatCidr(clash)}. Set subnet to ${free} in devcontainer.config.json or remove the conflicting network.`,
         );
       }
+    }
+  }
+
+  const devSvc = config.compose.services.find(
+    (s) => typeof s === 'object' && s.id === 'devcontainer',
+  );
+  const socketMode =
+    typeof devSvc === 'object' && (devSvc.options?.dockerSocket as DockerSocketMode) === 'socket';
+  if (socketMode && !fs.existsSync(HOST_DOCKER_SOCKET)) {
+    const msg = `Docker access mode 'socket' is selected but ${HOST_DOCKER_SOCKET} does not exist on this host. Docker would create an empty directory there on 'up' and docker commands inside the container would fail. Start the Docker daemon, or pick the 'dind'/'none' access mode.`;
+    console.log(chalk.yellow(`\nWarning: ${msg}`));
+    if (flags.interactive) {
+      const ok = await confirm('proceedNoSocket', 'Continue anyway?', false);
+      if (!ok) throw new Error('Aborted: host Docker socket not found.');
     }
   }
 

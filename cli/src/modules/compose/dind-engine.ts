@@ -16,7 +16,9 @@ export const DIND_IMAGE = 'docker:28-dind-rootless';
 
 export const dindEngineService: ComposeService = {
   id: DIND_ENGINE_HOST,
-  label: 'Rootless Docker-in-Docker engine (isolated sandbox, recommended for DooD)',
+  label: 'Rootless Docker-in-Docker engine (isolated sandbox for the "dind" access mode)',
+  // Auto-provisioned when the devcontainer's Docker access mode is 'dind'; never picked directly.
+  internal: true,
   volumes: ['dind_data'],
   render() {
     return {

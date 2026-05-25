@@ -50,20 +50,23 @@ El contenedor SSH recibe una IP **fija** (`DEVCONTAINER_IP` del `.env`, derivada
 
 Para el contenedor SSH normalmente alcanza con leer `DEVCONTAINER_IP` del `.env`. Si necesitas la IP runtime, usa `docker inspect`. Los contenedores se prefijan con el `workspace` configurado en la CLI, así que sustituye `<workspace>` por ese nombre (o consulta `docker ps`):
 
+> Si un contenedor está conectado a varias redes Docker, `inspect` devuelve
+> una IP por línea; `head -n1` se queda con la primera.
+
 **Para el entorno SSH (`<workspace>-devcontainer-ssh`):**
 
 ```bash
-docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' <workspace>-devcontainer-ssh
+docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{"\n"}}{{end}}' <workspace>-devcontainer-ssh | head -n1
 ```
 
 **Para Bases de Datos:**
 
 ```bash
 # PostgreSQL
-docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' <workspace>-postgres
+docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{"\n"}}{{end}}' <workspace>-postgres | head -n1
 
 # MongoDB
-docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' <workspace>-mongo
+docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{"\n"}}{{end}}' <workspace>-mongo | head -n1
 ```
 
 ### Conexión SSH

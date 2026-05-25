@@ -217,4 +217,6 @@ test('buildConfigBlock: remote mode', () => {
   assert.match(block, /ProxyCommand/);
   assert.match(block, /user@myserver/);
   assert.match(block, /joaco-devcontainer-ssh/);
+  // A container on multiple networks must resolve to a single IP.
+  assert.match(block, /\| head -n1/);
 });

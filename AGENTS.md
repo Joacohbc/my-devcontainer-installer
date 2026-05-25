@@ -361,7 +361,7 @@ These are tracked inconsistencies that do not need to be fixed immediately but *
 
 ## Build modes
 
-The CLI supports two `mode` values in `DevcontainerConfig`. See README.md → "Modos de Build" for the user-facing summary. For agents modifying this code:
+The CLI supports two `mode` values in `DevcontainerConfig`. See DOC_CLI.md → "Modos de Build" for the user-facing summary. For agents modifying this code:
 
 - `mode: 'local-cached'` (default) — goes through the full Dockerfile + compose generation pipeline. Computes a fingerprint (SHA-256 of normalized Dockerfile + copyFile contents + sorted module IDs, first 12 chars) and sets `config.image` to `devcontainer-cli/<fp12>:latest`. Multiple projects with identical Dockerfiles share a single daemon-level image; if the image already exists the build is skipped.
 - `mode: 'remote'` — skips Dockerfile generation (returns `null`) and rewrites the devcontainer compose service to use `image: ghcr.io/<owner>/devcontainer-<variant>:latest` with no `build:` key. DB services are still emitted normally.
@@ -414,27 +414,41 @@ When the version installed by a module changes (e.g. Node 22 → 24, Java 17 →
 
 ## Docker access & sandboxing (`dockerSocket` modes)
 
-The devcontainer service exposes a `dockerSocket` option. Only two modes exist —
-the host Docker socket is intentionally **never** mounted (no DooD), because
-anything that can reach it is host root.
+The devcontainer service exposes a `dockerSocket` option with three modes. The
+prompt is **gated on the `dod` Dockerfile module** (`requiresModule: 'dod'` on
+the option in `cli/src/modules/compose/devcontainer.ts`) — without the `docker`
+CLI installed, asking about Docker access is meaningless, so it is not shown and
+defaults to `none`.
 
 - `none` (default) — no Docker access.
+- `socket` — mounts the host `/var/run/docker.sock` (classic Docker-outside-of-
+  Docker). Full control of the host daemon → **root-equivalent on the host**.
+  Opt-in only; clearly labeled with a warning.
 - `dind` — **isolated rootless Docker-in-Docker** sidecar (`docker-dind`,
-  `cli/src/modules/compose/dind-engine.ts`). The sandbox: workloads run against
-  an isolated daemon over `tcp://docker-dind:2375`, the host socket is never
-  mounted. The engine sits on a dedicated `*-engine-network` bridge (declared in
+  `cli/src/modules/compose/dind-engine.ts`). Workloads run against an isolated
+  daemon over `tcp://docker-dind:2375`; the host socket is never mounted. The
+  engine sits on a dedicated `*-engine-network` bridge (declared in
   `generator.ts` only when used) joined solely by the devcontainer and the
   engine — keep DB/other sidecars off it.
 
+The `dockerSocket` mode is the **single source of truth** for the dind engine.
+`docker-dind` is marked `internal: true`, so it is never offered in the service
+picker; instead `resolveEnabledServices` in `generator.ts` auto-provisions it
+whenever the mode is `dind`. There is no separate "enable the engine" step and
+no fallback — selecting `dind` always brings the engine.
+
 Invariants to preserve when touching these:
-- If `dind` is selected but the `docker-dind` service is not enabled, the
-  generator falls back to `none` — **never** mount the host socket.
+- Never auto-mount the host socket: only `socket` mode mounts it, and only as an
+  explicit, warned opt-in. `generate.ts` warns (and prompts to confirm when
+  interactive) if `socket` is chosen but `/var/run/docker.sock` is missing.
+- Keep `docker-dind` `internal` and auto-provisioned from the mode — do not turn
+  it back into a separately-selectable service.
 - The dind engine image is **pinned** (`docker:NN-dind-rootless`), not `:latest`.
 - `docker-dind` is `privileged: true` (needs cgroups/overlayfs/netns); that is
   expected — rootless contains the blast radius to a user namespace.
 
 Any change here needs matching asserts in `generator.test.ts` (wiring, network
-segmentation, fallback behavior).
+segmentation, socket mount, auto-provisioning).
 
 ## PR checklist
 

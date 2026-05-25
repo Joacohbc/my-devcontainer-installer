@@ -15,6 +15,8 @@ export interface ModuleOption {
   type: ModuleOptionType;
   choices?: ModuleOptionChoice[];
   default?: unknown;
+  // Only prompt this option interactively when the given Dockerfile module is selected.
+  requiresModule?: string;
 }
 
 export type DockerfileCategory = 'base' | 'infra' | 'lang' | 'runtime' | 'db' | 'cleanup';
@@ -36,6 +38,10 @@ export interface ComposeService {
   id: string;
   label: string;
   always?: boolean;
+  // Only offer this service interactively when the given Dockerfile module is selected.
+  requiresModule?: string;
+  // Provisioned programmatically (e.g. from another option), never shown in the service picker.
+  internal?: boolean;
   options?: ModuleOption[];
   requiresEnv?: { name: string; prompt: string; default?: string }[];
   volumes?: string[];

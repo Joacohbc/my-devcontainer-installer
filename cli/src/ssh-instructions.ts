@@ -7,7 +7,7 @@ const KEY = `~/.ssh/${SSH_DEFAULTS.keyName}`;
 function linuxBlock(): string {
   const prompt = chalk.gray('   $ ');
   const ipVar = 'IP_SSH';
-  const ipCmd = `${ipVar}=$(docker inspect -f '${SSH_DEFAULTS.dockerIpFormat}' ${SSH_DEFAULTS.serviceName})`;
+  const ipCmd = `${ipVar}=$(docker inspect -f '${SSH_DEFAULTS.dockerIpFormat}' ${SSH_DEFAULTS.serviceName} | head -n1)`;
   const block = buildSshConfigBlock({
     mode: 'local',
     alias: SSH_DEFAULTS.alias,
