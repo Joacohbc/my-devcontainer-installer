@@ -8,7 +8,7 @@ import {
 
 export type DockerSocketMode = 'none' | 'socket' | 'dind';
 
-const HOST_DOCKER_SOCKET = '/var/run/docker.sock';
+export const HOST_DOCKER_SOCKET = '/var/run/docker.sock';
 
 const SOCKET_CHOICES: { value: DockerSocketMode; label: string }[] = [
   { value: 'none', label: 'none — no Docker access (safest)' },
