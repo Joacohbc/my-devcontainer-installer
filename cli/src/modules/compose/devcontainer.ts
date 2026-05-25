@@ -6,10 +6,16 @@ import {
   DIND_ENGINE_NETWORK,
 } from '@/modules/compose/dind-engine.js';
 
-export type DockerSocketMode = 'none' | 'dind';
+export type DockerSocketMode = 'none' | 'socket' | 'dind';
+
+const HOST_DOCKER_SOCKET = '/var/run/docker.sock';
 
 const SOCKET_CHOICES: { value: DockerSocketMode; label: string }[] = [
   { value: 'none', label: 'none — no Docker access (safest)' },
+  {
+    value: 'socket',
+    label: 'socket — mount the host /var/run/docker.sock (full host Docker, root-equivalent ⚠️)',
+  },
   {
     value: 'dind',
     label: 'dind — isolated rootless Docker-in-Docker engine (sandbox)',
@@ -27,6 +33,7 @@ export const devcontainerService: ComposeService = {
       type: 'select',
       choices: SOCKET_CHOICES,
       default: 'none',
+      requiresModule: 'dod',
     },
   ],
   render({ imageName, enabledServiceIds, options }) {
@@ -38,7 +45,7 @@ export const devcontainerService: ComposeService = {
 
     // Fail safe: if dind is requested but the engine service is not enabled,
     // fall back to 'none' (no access) rather than producing a broken DOCKER_HOST.
-    const mode: DockerSocketMode = requested === 'dind' && dindEnabled ? 'dind' : 'none';
+    const mode: DockerSocketMode = requested === 'dind' && !dindEnabled ? 'none' : requested;
 
     const volumes: string[] = [
       '../..:/workspace',
@@ -46,6 +53,7 @@ export const devcontainerService: ComposeService = {
       'devcontainer_root:/root',
       'devcontainer_home:/home',
     ];
+    if (mode === 'socket') volumes.push(`${HOST_DOCKER_SOCKET}:${HOST_DOCKER_SOCKET}`);
 
     const networks: string[] = ['local-network'];
     if (mode === 'dind') networks.push(DIND_ENGINE_NETWORK);

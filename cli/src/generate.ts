@@ -90,6 +90,8 @@ async function buildConfigFromPrompts(base: DevcontainerConfig): Promise<Devcont
     }
   }
 
+  const selectedModuleIds = new Set(modules.map((m) => m.id));
+
   const services: SelectedModule[] = [];
   // Always-on services (e.g. the devcontainer itself) are not in the
   // multiselect list, but may still expose options (e.g. dockerSocket mode).
@@ -101,6 +103,9 @@ async function buildConfigFromPrompts(base: DevcontainerConfig): Promise<Devcont
     );
     const prevOpts = typeof prev === 'object' && prev ? prev.options ?? {} : {};
     for (const o of svc.options) {
+      // Skip options gated on a module that wasn't selected (e.g. Docker
+      // access mode only makes sense when the `dod` CLI is installed).
+      if (o.requiresModule && !selectedModuleIds.has(o.requiresModule)) continue;
       opts[o.id] = await promptOption({
         ...o,
         default: prevOpts[o.id] ?? o.default,
@@ -109,7 +114,9 @@ async function buildConfigFromPrompts(base: DevcontainerConfig): Promise<Devcont
     services.push({ id: svc.id, options: opts });
   }
   {
-    const selectableServices = composeServices.filter((s) => !s.always);
+    const selectableServices = composeServices.filter(
+      (s) => !s.always && (!s.requiresModule || selectedModuleIds.has(s.requiresModule)),
+    );
     const baseServiceIds = base.compose.services.map((s) =>
       typeof s === 'string' ? s : s.id,
     );

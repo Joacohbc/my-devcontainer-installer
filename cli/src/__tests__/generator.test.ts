@@ -273,6 +273,27 @@ test('compose dockerSocket=dind without dind service falls back to none (no sock
   assert.equal(dev.environment, undefined);
 });
 
+test('compose dockerSocket=socket mounts the host docker socket', () => {
+  const yml = generateCompose(
+    makeConfig({
+      compose: {
+        services: [{ id: 'devcontainer', options: { dockerSocket: 'socket' } }],
+        subnet: '172.25.0.0/24',
+      },
+    }),
+  );
+  const parsed = parse(yml) as {
+    services: {
+      'devcontainer-ssh': { volumes: string[]; environment?: string[]; networks: Record<string, unknown> };
+    };
+  };
+  const dev = parsed.services['devcontainer-ssh'];
+  assert.ok(dev.volumes.some((v) => v === '/var/run/docker.sock:/var/run/docker.sock'));
+  // Host-socket mode talks to the host daemon directly: no DOCKER_HOST, no engine network.
+  assert.equal(dev.environment, undefined);
+  assert.ok(!('devcontainer-engine-network' in dev.networks));
+});
+
 test('env file includes selected env vars', () => {
   const env = generateEnv(
     makeConfig({ env: { TUNNEL_TOKEN: 'abc' }, compose: { services: [], subnet: '10.0.0.0/8' } }),
