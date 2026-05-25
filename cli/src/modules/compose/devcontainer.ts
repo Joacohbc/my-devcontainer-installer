@@ -1,5 +1,5 @@
-import type { ComposeService } from '@/types.js';
-import { SSH_DEFAULTS } from '@/ssh-defaults.js';
+import type { ComposeService } from '@/core/types.js';
+import { SSH_DEFAULTS } from '@/infra/ssh-defaults.js';
 import {
   DIND_ENGINE_HOST,
   DIND_ENGINE_PORT,

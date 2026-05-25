@@ -1,8 +1,8 @@
 import chalk from 'chalk';
-import { LABEL_MANAGED, LABEL_PROJECT, projectId } from '@/labels.js';
-import type { DevcontainerConfig } from '@/types.js';
-import { defaultConfig, loadConfig } from '@/config.js';
-import { resolveWorkspace } from '@/project.js';
+import { LABEL_MANAGED, LABEL_PROJECT, projectId } from '@/core/labels.js';
+import type { DevcontainerConfig } from '@/core/types.js';
+import { defaultConfig, loadConfig } from '@/domain/config.js';
+import { resolveWorkspace } from '@/infra/project.js';
 import type { Command } from '@/commands/command.js';
 
 export function printCleanupInstructions(config: DevcontainerConfig): void {

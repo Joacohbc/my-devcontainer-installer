@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { isValidCidr, isValidImageName } from '@/validators.js';
+import { isValidCidr, isValidImageName } from '@/domain/validators.js';
 
 test('valid image names', () => {
   assert.ok(isValidImageName('foo'));

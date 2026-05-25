@@ -1,20 +1,16 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { dockerComposeOrThrow } from '@/docker.js';
+import { dockerComposeOrThrow } from '@/infra/docker.js';
 import chalk from 'chalk';
-import { loadConfig, configPath } from '@/config.js';
-import { confirm } from '@/prompts.js';
-import { removeEntry } from '@/image-registry.js';
-import { resolveWorkspace, projectPaths } from '@/project.js';
+import { loadConfig, configPath } from '@/domain/config.js';
+import { confirm } from '@/infra/prompts.js';
+import { removeEntry } from '@/domain/image-registry.js';
+import { resolveWorkspace, projectPaths } from '@/infra/project.js';
 
-import { parseCommonFlags, helpBlock } from '@/parse.js';
+import { parseCommonFlags, helpBlock, type CommonFlags } from '@/infra/parse.js';
 import type { Command } from '@/commands/command.js';
 
-export interface DestroyFlags {
-  yes: boolean;
-  help: boolean;
-  interactive: boolean;
-}
+export type DestroyFlags = CommonFlags;
 
 export function parseDestroyFlags(argv: string[]): DestroyFlags {
   const { flags, remaining } = parseCommonFlags(argv);

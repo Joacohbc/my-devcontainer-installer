@@ -1,6 +1,6 @@
 import chalk from 'chalk';
 import { cleanupStaleUpdate } from '@/commands/self-update.js';
-import { PromptCancelledError } from '@/prompts.js';
+import { PromptCancelledError } from '@/infra/prompts.js';
 import { getCommands, defaultCommand } from '@/commands/registry.js';
 import { dispatch, runCommand } from '@/commands/command.js';
 

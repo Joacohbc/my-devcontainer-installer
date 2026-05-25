@@ -1,9 +1,9 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { BUILD_MODES, REMOTE_VARIANTS } from '@/types.js';
-import { composeServices, dockerfileModules } from '@/registry.js';
-import { listManagedContainers } from '@/container-picker.js';
-import { getSshAliases } from '@/port-forward.js';
+import { BUILD_MODES, REMOTE_VARIANTS } from '@/core/types.js';
+import { composeServices, dockerfileModules } from '@/core/module-registry.js';
+import { listManagedContainers } from '@/infra/container-picker.js';
+import { getSshAliases } from '@/commands/port-forward.js';
 import { completableCommandNames } from '@/commands/registry.js';
 
 export interface CompletionProviders {

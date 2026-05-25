@@ -1,9 +1,9 @@
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
-import { dockerCapture } from '@/docker.js';
-import { globalConfigDir } from '@/global-config.js';
-import type { BuildMode, RemoteVariant, DevcontainerConfig } from '@/types.js';
+import { dockerCapture } from '@/infra/docker.js';
+import { globalConfigDir } from '@/domain/global-config.js';
+import type { BuildMode, RemoteVariant, DevcontainerConfig } from '@/core/types.js';
 
 export interface ImageEntry {
   projectDir: string;

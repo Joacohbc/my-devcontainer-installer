@@ -1,8 +1,8 @@
-import { dockerCapture } from '@/docker.js';
+import { dockerCapture } from '@/infra/docker.js';
 import chalk from 'chalk';
-import { select } from '@/prompts.js';
-import { LABEL_MANAGED } from '@/labels.js';
-import { SSH_DEFAULTS } from '@/ssh-defaults.js';
+import { select } from '@/infra/prompts.js';
+import { LABEL_MANAGED } from '@/core/labels.js';
+import { SSH_DEFAULTS } from '@/infra/ssh-defaults.js';
 
 export interface ManagedContainer {
   name: string;

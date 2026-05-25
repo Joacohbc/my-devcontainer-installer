@@ -1,4 +1,4 @@
-import type { ComposeService, DockerfileModule } from '@/types.js';
+import type { ComposeService, DockerfileModule } from '@/core/types.js';
 
 import { baseModule } from '@/modules/dockerfile/base.js';
 import { githubCliModule } from '@/modules/dockerfile/github-cli.js';

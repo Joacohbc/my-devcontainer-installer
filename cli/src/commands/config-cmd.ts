@@ -4,7 +4,7 @@ import {
   saveGlobalConfig,
   globalConfigPath,
   REGISTRY_DEFAULT,
-} from '@/global-config.js';
+} from '@/domain/global-config.js';
 import { findCommand, type Command } from '@/commands/command.js';
 
 export function configCmdHelp(): string {

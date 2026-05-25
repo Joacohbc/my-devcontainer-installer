@@ -3,7 +3,7 @@ import * as path from 'path';
 import chalk from 'chalk';
 
 import { parseFlags, helpText, type CliFlags } from '@/cli.js';
-import { defaultConfig, loadConfig, saveConfig } from '@/config.js';
+import { defaultConfig, loadConfig, saveConfig } from '@/domain/config.js';
 import {
   generateDockerfile,
   generateCompose,
@@ -12,21 +12,21 @@ import {
   collectRequiredEnvVars,
   collectRequiredPostScriptFiles,
   resolveRemoteImage,
-} from '@/generator.js';
-import { findConflicts } from '@/docker-conflicts.js';
-import { isGeneratedFile, validateRequiredFiles } from '@/preflight.js';
-import { findFreeSubnet, formatCidr, listUsedSubnets, subnetConflict } from '@/subnet.js';
-import { printSshInstructions } from '@/ssh-instructions.js';
-import { confirm, input, multiselect, select } from '@/prompts.js';
-import { composeServices, dockerfileModules, getDockerfileModule } from '@/registry.js';
+} from '@/domain/generator.js';
+import { findConflicts } from '@/domain/docker-conflicts.js';
+import { isGeneratedFile, preflight, validateRequiredFiles } from '@/infra/preflight.js';
+import { findFreeSubnet, formatCidr, listUsedSubnets, subnetConflict } from '@/domain/subnet.js';
+import { printSshInstructions } from '@/infra/ssh-instructions.js';
+import { confirm, input, multiselect, select } from '@/infra/prompts.js';
+import { composeServices, dockerfileModules, getDockerfileModule } from '@/core/module-registry.js';
 import { HOST_DOCKER_SOCKET, type DockerSocketMode } from '@/modules/compose/devcontainer.js';
-import { getCurrentVersion } from '@/self-update.js';
+import { getCurrentVersion } from '@/commands/self-update.js';
 import {
   computeFingerprint,
   fingerprintTag,
   localImageExists,
   recordProject,
-} from '@/image-registry.js';
+} from '@/domain/image-registry.js';
 import {
   BUILD_MODES,
   REMOTE_VARIANTS,
@@ -36,10 +36,10 @@ import {
   type ModuleOption,
   type RemoteVariant,
   type SelectedModule,
-} from '@/types.js';
-import { isValidCidr, isValidDockerName, isValidImageName, sanitizeDockerName } from '@/validators.js';
-import { projectPaths, resolveWorkspace } from '@/project.js';
-import { dockerCompose, dockerInherit } from '@/docker.js';
+} from '@/core/types.js';
+import { isValidCidr, isValidDockerName, isValidImageName, sanitizeDockerName } from '@/domain/validators.js';
+import { projectPaths, resolveWorkspace } from '@/infra/project.js';
+import { dockerCompose, dockerInherit } from '@/infra/docker.js';
 
 const MODE_LABELS: Record<BuildMode, string> = {
   'local-cached': 'local-cached — generate Dockerfile + compose, reuse cached image when unchanged',
@@ -448,8 +448,6 @@ export async function runGenerate(argv: string[]): Promise<void> {
 
   const copyFiles = skipBuildArtifacts ? [] : collectRequiredCopyFiles(config);
   if (copyFiles.length > 0) {
-    // We import preflight at execution-time or we can just import it
-    const { preflight } = await import('@/preflight.js');
     const pre = preflight(copyFiles, buildDir);
     if (pre.copied.length > 0) {
       console.log(chalk.gray(`Copied build helpers → .dc_${config.workspace}/build/: ${pre.copied.join(', ')}`));
@@ -463,7 +461,7 @@ export async function runGenerate(argv: string[]): Promise<void> {
 
   const postScriptFiles = skipBuildArtifacts ? [] : collectRequiredPostScriptFiles(config);
   if (postScriptFiles.length > 0) {
-    const { preflight } = await import('@/preflight.js');
+    const { preflight } = await import('@/infra/preflight.js');
     const postPre = preflight(postScriptFiles, buildDir);
     if (postPre.copied.length > 0) {
       console.log(chalk.gray(`Copied post-install scripts → .dc_${config.workspace}/build/: ${postPre.copied.join(', ')}`));

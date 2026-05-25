@@ -1,56 +1,49 @@
 import chalk from 'chalk';
-import { dockerCapture, dockerInherit } from '@/docker.js';
-import { select, confirm, PromptCancelledError } from '@/prompts.js';
-import { resolveRemoteImage } from '@/generator.js';
-import { LABEL_MANAGED, LABEL_QUICK_RUN } from '@/labels.js';
-import { REMOTE_VARIANTS, VARIANT_LABELS, parseVariant, type RemoteVariant } from '@/types.js';
+import { dockerCapture, dockerInherit } from '@/infra/docker.js';
+import { select, confirm, PromptCancelledError } from '@/infra/prompts.js';
+import { resolveRemoteImage } from '@/domain/generator.js';
+import { LABEL_MANAGED, LABEL_QUICK_RUN } from '@/core/labels.js';
+import { REMOTE_VARIANTS, VARIANT_LABELS, parseVariant, type RemoteVariant } from '@/core/types.js';
+import { parseCommonFlags, type CommonFlags } from '@/infra/parse.js';
 import type { Command } from '@/commands/command.js';
-export interface QuickRunFlags {
+export interface QuickRunFlags extends CommonFlags {
   variant?: RemoteVariant;
   volume?: string;
   name?: string;
   port?: number;
   registry?: string;
-  interactive: boolean;
-  help: boolean;
 }
 
 export function parseQuickRunFlags(argv: string[]): QuickRunFlags {
-  const flags: QuickRunFlags = { interactive: true, help: false };
-  for (let i = 0; i < argv.length; i++) {
-    const a = argv[i];
-    const next = () => argv[++i];
+  const { flags, remaining } = parseCommonFlags(argv);
+  const result: QuickRunFlags = { ...flags };
+  for (let i = 0; i < remaining.length; i++) {
+    const a = remaining[i];
+    const next = () => remaining[++i];
     switch (a) {
-      case '-h':
-      case '--help':
-        flags.help = true;
-        break;
       case '--variant':
-        flags.variant = parseVariant(next());
+        result.variant = parseVariant(next());
         break;
       case '--volume':
-        flags.volume = next();
+        result.volume = next();
         break;
       case '--name':
-        flags.name = next();
+        result.name = next();
         break;
       case '--port': {
         const n = Number(next());
         if (!Number.isInteger(n) || n < 0 || n > 65535) throw new Error('Invalid --port value');
-        flags.port = n;
+        result.port = n;
         break;
       }
       case '--registry':
-        flags.registry = next();
-        break;
-      case '--no-interactive':
-        flags.interactive = false;
+        result.registry = next();
         break;
       default:
         throw new Error(`Unknown flag for run: ${a}`);
     }
   }
-  return flags;
+  return result;
 }
 
 export function quickRunHelp(): string {

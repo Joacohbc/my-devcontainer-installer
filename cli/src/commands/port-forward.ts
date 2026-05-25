@@ -3,14 +3,14 @@ import * as os from 'os';
 import * as path from 'path';
 import { spawn, type ChildProcess } from 'child_process';
 import chalk from 'chalk';
-import { input, select, confirm } from '@/prompts.js';
+import { input, select, confirm } from '@/infra/prompts.js';
 import {
   pickManagedContainer,
   containerWorkspace,
   listAllContainers,
   statusLabel,
   type DockerContainer,
-} from '@/container-picker.js';
+} from '@/infra/container-picker.js';
 import type { Command } from '@/commands/command.js';
 
 export interface PortForwardConfig {

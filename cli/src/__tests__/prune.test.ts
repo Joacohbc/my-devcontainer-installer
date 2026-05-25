@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parsePruneFlags, pruneHelp } from '@/prune.js';
+import { parsePruneFlags, pruneHelp } from '@/commands/prune.js';
 
 test('parsePruneFlags: defaults', () => {
   const f = parsePruneFlags([]);

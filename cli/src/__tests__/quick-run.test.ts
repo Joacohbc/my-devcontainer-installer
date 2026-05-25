@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseQuickRunFlags, quickRunHelp } from '@/quick-run.js';
+import { parseQuickRunFlags, quickRunHelp } from '@/commands/quick-run.js';
 
 test('parseQuickRunFlags: --variant', () => {
   assert.equal(parseQuickRunFlags(['--variant', 'python']).variant, 'python');
@@ -37,6 +37,12 @@ test('parseQuickRunFlags: unknown flag throws', () => {
 
 test('parseQuickRunFlags: --no-interactive', () => {
   assert.equal(parseQuickRunFlags(['--no-interactive']).interactive, false);
+});
+
+test('parseQuickRunFlags: --variant survives surrounding common flags', () => {
+  const f = parseQuickRunFlags(['--no-interactive', '--variant', 'python']);
+  assert.equal(f.variant, 'python');
+  assert.equal(f.interactive, false);
 });
 
 test('quickRunHelp mentions all variants', () => {

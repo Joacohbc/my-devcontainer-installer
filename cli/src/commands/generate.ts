@@ -1,5 +1,5 @@
 import { parseFlags, helpText, type CliFlags } from '@/cli.js';
-import { runGenerate } from '@/generate.js';
+import { runGenerate } from '@/domain/generate.js';
 import type { Command } from '@/commands/command.js';
 
 // The default command: runs when the CLI is invoked with no recognised

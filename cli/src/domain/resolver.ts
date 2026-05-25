@@ -1,5 +1,5 @@
-import { dockerfileModules, getDockerfileModule } from '@/registry.js';
-import type { DockerfileCategory, DockerfileModule, SelectedModule } from '@/types.js';
+import { dockerfileModules, getDockerfileModule } from '@/core/module-registry.js';
+import type { DockerfileCategory, DockerfileModule, SelectedModule } from '@/core/types.js';
 
 const CATEGORY_ORDER: DockerfileCategory[] = ['base', 'infra', 'lang', 'runtime', 'db', 'cleanup'];
 

@@ -1,20 +1,20 @@
 import { stringify } from 'yaml';
-import { composeLabels, dockerfileLabelBlock } from '@/labels.js';
-import { composeServices, getComposeService } from '@/registry.js';
+import { composeLabels, dockerfileLabelBlock } from '@/core/labels.js';
+import { composeServices, getComposeService } from '@/core/module-registry.js';
 import { DIND_ENGINE_HOST } from '@/modules/compose/dind-engine.js';
 import type { DockerSocketMode } from '@/modules/compose/devcontainer.js';
-import { resolveDockerfileModules } from '@/resolver.js';
-import { SSH_DEFAULTS } from '@/ssh-defaults.js';
-import { lastHost } from '@/subnet.js';
-import { resolveRegistry } from '@/global-config.js';
+import { resolveDockerfileModules } from '@/domain/resolver.js';
+import { SSH_DEFAULTS } from '@/infra/ssh-defaults.js';
+import { lastHost } from '@/domain/subnet.js';
+import { resolveRegistry } from '@/domain/global-config.js';
 import {
   GENERATED_HEADER,
-  GENERATED_HEADER_YAML,
   POST_SCRIPT_DIR,
   normalizeServices,
   type DevcontainerConfig,
   type RemoteVariant,
-} from '@/types.js';
+  type RequiredEnvVar,
+} from '@/core/types.js';
 
 const DEFAULT_SUBNET = '172.25.0.0/28';
 
@@ -206,7 +206,7 @@ export function generateCompose(config: DevcontainerConfig): string | null {
     volumes,
   };
 
-  return `${GENERATED_HEADER_YAML}\n${stringify(doc, { lineWidth: 0 })}`;
+  return `${GENERATED_HEADER}\n${stringify(doc, { lineWidth: 0 })}`;
 }
 
 export function plannedComposeNames(config: DevcontainerConfig): {
@@ -282,9 +282,9 @@ export function collectRequiredPostScriptFiles(config: DevcontainerConfig): stri
 
 export function collectRequiredEnvVars(
   config: DevcontainerConfig,
-): { name: string; prompt: string; default?: string }[] {
+): RequiredEnvVar[] {
   const selected = normalizeServices(config.compose.services);
-  const out: { name: string; prompt: string; default?: string }[] = [];
+  const out: RequiredEnvVar[] = [];
   for (const s of selected) {
     const svc = getComposeService(s.id);
     for (const e of svc?.requiresEnv ?? []) out.push(e);

@@ -1,4 +1,4 @@
-import type { ComposeService } from '@/types.js';
+import type { ComposeService } from '@/core/types.js';
 
 export const mongoService: ComposeService = {
   id: 'mongo',

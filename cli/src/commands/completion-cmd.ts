@@ -3,7 +3,7 @@ import {
   runCompleteHidden,
   parseCompletionArgs,
   type CompletionArgs,
-} from '@/completion.js';
+} from '@/domain/completion.js';
 import type { Command } from '@/commands/command.js';
 
 export const completionCommand: Command<CompletionArgs> = {

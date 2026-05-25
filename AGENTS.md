@@ -24,8 +24,8 @@ Applies to:
 
 - `cli/src/modules/dockerfile/*.ts` — Dockerfile modules (base, nodejs, python, java, go, bun, pnpm, sqlite, dbclients, github-cli, dod, cleanup, etc.).
 - `cli/src/modules/compose/*.ts` — docker-compose services (devcontainer, docker-dind, mongo, redis, postgres, tunnel).
-- `cli/src/registry.ts` — module/service registry.
-- `cli/src/generator.ts`, `resolver.ts`, `validators.ts`, `cli.ts` — generator core.
+- `cli/src/core/module-registry.ts` — module/service registry.
+- `cli/src/domain/generator.ts`, `domain/resolver.ts`, `domain/validators.ts`, `cli.ts` — generator core.
 
 ## What to validate when adding/updating a module
 
@@ -47,28 +47,31 @@ Before merging, confirm tests cover:
 
 ## Architecture overview
 
-The CLI source (`cli/src/`) follows a layered architecture introduced in the refactor. Each layer has a single responsibility and strict import direction (inner layers never import outer ones).
+The CLI source (`cli/src/`) is split into subdirectories by **responsibility**,
+not by feature. Each one is a layer with a single job; a layer may import from
+the layers below it but never from the layers above. When adding a file, put it
+in the directory whose responsibility it matches — not next to the command that
+happens to call it. The table below is the contract for what each directory is
+*for*; it deliberately does not inventory individual files (those change).
 
-```
-┌───────────────────────────────────────────────────────────────┐
-│  Entry point  index.ts  — signal handlers + registry dispatch │
-├───────────────────────────────────────────────────────────────┤
-│  Commands     commands/command.ts (Command interface)         │
-│               commands/registry.ts (single source of truth)   │
-│               commands/{generate,down,destroy,prune,...}.ts   │
-│               each exports a `Command` object (run/help/parse) │
-├───────────────────────────────────────────────────────────────┤
-│  Domain logic generator.ts · resolver.ts · validators.ts      │
-│               preflight.ts · subnet.ts · docker-conflicts.ts  │
-│               image-registry.ts · global-config.ts · config.ts│
-├───────────────────────────────────────────────────────────────┤
-│  Infrastructure helpers (import freely from any layer above)  │
-│   docker.ts · project.ts · ui.ts · parse.ts · labels.ts      │
-│   prompts.ts · ssh-defaults.ts · ssh-instructions.ts          │
-├───────────────────────────────────────────────────────────────┤
-│  Pure data  types.ts · registry.ts · version.d.ts            │
-└───────────────────────────────────────────────────────────────┘
-```
+| Directory | Why it exists / what belongs here |
+|---|---|
+| `src/` (root) | Process wiring only: `index.ts` (signal handlers + dispatch) and `cli.ts` (root flag parser + help). No business logic lives at the root. |
+| `src/commands/` | One file per CLI command, each exporting a `Command` object (`parse`/`help`/`run`), plus the command registry that is the single source of truth for which commands exist. A command *orchestrates* domain + infra; it holds no reusable logic of its own. |
+| `src/domain/` | Business logic: generating the Dockerfile/compose, resolving module dependencies, validating input, loading and persisting config. It decides *what* should happen; it delegates I/O and process spawning to infra rather than doing them inline. |
+| `src/infra/` | The only layer that touches the outside world: running `docker`, resolving filesystem paths, console output, interactive prompts, flag parsing. Reusable, command-agnostic plumbing. |
+| `src/core/` | Pure data shared across layers: types and constants (`types.ts`), Docker label constants, and the catalogue/registry of available modules and services. No command-specific or I/O logic. |
+| `src/modules/` | The catalogue itself — one file per installable thing: `modules/dockerfile/` (image layers) and `modules/compose/` (services), plus their shared render helpers. Each describes a single module and how to render it. |
+| `src/__tests__/` | `node:test` suites. Every change to a module above must be mirrored here (see "module changes require tests"). |
+
+Import paths follow the directory: `@/core/types.js`, `@/domain/generator.js`,
+`@/infra/docker.js`, `@/commands/down.js`. The `@/*` alias maps to `src/*`
+(`cli/tsconfig.json`), so every cross-module import names the layer it comes from.
+
+**Type placement convention:** a type used by **more than one module** lives in
+`src/core/types.ts` (e.g. `DevcontainerConfig`, `ComposeService`,
+`RequiredEnvVar`); a type used by a **single module** stays local to that file
+(e.g. each command's `XxxFlags`, extending `CommonFlags` from `@/infra/parse.js`).
 
 ---
 
@@ -76,7 +79,7 @@ The CLI source (`cli/src/`) follows a layered architecture introduced in the ref
 
 These modules were introduced during the refactor. Always prefer them over re-implementing the same logic.
 
-### `cli/src/docker.ts` — Docker execution layer
+### `cli/src/infra/docker.ts` — Docker execution layer
 
 Centralises **all** `child_process` calls that invoke the `docker` binary.
 
@@ -96,7 +99,7 @@ Centralises **all** `child_process` calls that invoke the `docker` binary.
 - In tests, mock via `spawner.spawnSync = (cmd, args, opts) => { … }` and always restore in `finally`.
 - `dockerCompose` accepts an optional `env` map that is merged on top of `process.env`.
 
-### `cli/src/project.ts` — Project path resolution
+### `cli/src/infra/project.ts` — Project path resolution
 
 Resolves the canonical paths for a project based on `cwd` + workspace name.
 
@@ -110,7 +113,7 @@ Resolves the canonical paths for a project based on `cwd` + workspace name.
 - **Never** build `.dc_<workspace>` paths manually with `path.join`. Always call `projectPaths()`.
 - `resolveWorkspace` is the single source of truth for the workspace name fallback logic.
 
-### `cli/src/ui.ts` — Console output
+### `cli/src/infra/ui.ts` — Console output
 
 Provides a consistent visual style for all terminal output.
 
@@ -129,7 +132,7 @@ Provides a consistent visual style for all terminal output.
 
 > **Known inconsistency**: `setup-ssh.ts` defines its own `log/ok/warn` helpers locally. `update-images.ts` imports `ui` but then re-wraps calls in local aliases. When touching either file, migrate to direct `ui.*` calls.
 
-### `cli/src/parse.ts` — Flag parsing utilities
+### `cli/src/infra/parse.ts` — Flag parsing utilities
 
 Provides shared flag parsing logic and help-text formatting.
 
@@ -145,12 +148,16 @@ Provides shared flag parsing logic and help-text formatting.
 - Use `helpBlock()` to generate the help string so all commands share the same layout.
 - `destroy.ts` is the canonical example of this pattern; see it for reference.
 
+`destroy.ts`, `down.ts`, `prune.ts`, and `quick-run.ts` now delegate to
+`parseCommonFlags` and declare their flag interfaces as `extends CommonFlags`
+(KTD-2 is resolved for these).
+
 > **Known inconsistencies**:
-> - `down.ts`, `prune.ts`, `lifecycle.ts`, `quick-run.ts`, `update-images.ts`, `port-forward.ts`, `setup-ssh.ts`, `self-update.ts` still use hand-rolled switch/case parsers instead of `parseCommonFlags`. When touching those files, migrate them.
-> - `cli.ts` accepts both `--no-interactive` and `--non-interactive` as aliases. `down.ts` only accepts `--no-interactive`. `port-forward.ts` accepts both. New subcommands must only support `--no-interactive`.
+> - `update-images.ts`, `port-forward.ts`, `setup-ssh.ts`, `self-update.ts`, `lifecycle.ts` still use hand-rolled switch/case parsers. They do not declare the full `help`/`yes`/`interactive` trio (e.g. `lifecycle` only takes `help`, `setup-ssh` uses `assumeYes` with no `interactive`), so migrating them would change their observable flag surface — do that only when intentionally reworking the command's flags.
+> - `cli.ts` accepts both `--no-interactive` and `--non-interactive` as aliases. `port-forward.ts` accepts both. New subcommands must only support `--no-interactive`.
 > - Most subcommands use raw template literals for help text instead of `helpBlock()`. When touching a file, migrate it.
 
-### `cli/src/labels.ts` — Docker label constants
+### `cli/src/core/labels.ts` — Docker label constants
 
 Single source of truth for Docker labels applied to all managed images and containers.
 
@@ -164,7 +171,21 @@ Single source of truth for Docker labels applied to all managed images and conta
 | `dockerfileLabelBlock(config)` | Returns the `LABEL …` Dockerfile stanza. |
 | `composeLabels(config)` | Returns a `Record<string, string>` for compose label maps. |
 
-### `cli/src/generate.ts` — generate subcommand (no-arg default)
+### `cli/src/modules/dockerfile/shell-init.ts` — shared rc-file installer helper
+
+Reusable helper for Dockerfile modules that need a tool available in **every**
+interactive shell. `emitShellInit(initFileName, lines)` writes `lines` to an
+init script in devuser's home and sources it from all `RC_FILES`
+(`.zshrc`, `.bashrc`, `.profile`).
+
+**Rule:** when a runtime/tool installer needs to export `PATH`/env for devuser,
+route it through `emitShellInit` — **do not** append only to `.profile`. The
+default shell is zsh, which does not read `.profile`, so a `.profile`-only
+installer is invisible in the default shell. Used by `nodejs.ts`, `python.ts`
+(uv) and `bun.ts`. (`pnpm.ts` is exempt: its upstream installer manages rc
+files itself.)
+
+### `cli/src/domain/generate.ts` — generate subcommand (no-arg default)
 
 Orchestrates the full generation flow: load config → interactive prompts → apply flags → validate → write Dockerfile/compose/.env → fingerprint → optional build/pull.
 
@@ -217,9 +238,8 @@ under `assets/`) before calling `run`, so a missing reference fails fast. The
 default command (`generate`) additionally validates every referenced module
 script up front via `validateRequiredFiles()` before creating any files.
 
-> Old top-level paths (`cli/src/down.ts`, etc.) remain as one-line re-export
-> shims so existing imports/tests keep resolving. New code should import from
-> `cli/src/commands/`.
+> The old top-level re-export shims (`cli/src/down.ts`, etc.) have been removed.
+> Always import commands directly from `cli/src/commands/<name>.js`.
 
 ### `setup-ssh.ts` — known outlier
 
@@ -243,7 +263,7 @@ All handler files live under `cli/src/commands/`.
 
 | argv[0] | Handler file | Purpose |
 |---|---|---|
-| _(default)_ | `generate.ts` (logic in `cli/src/generate.ts`) | Generate Dockerfile + compose |
+| _(default)_ | `commands/generate.ts` (logic in `cli/src/domain/generate.ts`) | Generate Dockerfile + compose |
 | `setup-ssh` | `setup-ssh.ts` | Automated SSH key + config |
 | `port-forward` | `port-forward.ts` | Forward host ports into the running container |
 | `run` | `quick-run.ts` | `docker run` from remote image, no project files |
@@ -257,7 +277,7 @@ All handler files live under `cli/src/commands/`.
 | `upgrade-cli` | `self-update.ts` | Binary self-update from GitHub release |
 | `config` | `config-cmd.ts` | Read/write global config (subcommand `registry`) |
 | `cleanup-tips` | `cleanup-instructions.ts` | Print docker cleanup commands |
-| `completion` | `completion-cmd.ts` (logic in `cli/src/completion.ts`) | Print shell completion script |
+| `completion` | `completion-cmd.ts` (logic in `cli/src/domain/completion.ts`) | Print shell completion script |
 
 ---
 
@@ -269,7 +289,7 @@ The project uses the **Node.js built-in test runner** (`node:test` + `node:asser
 ```typescript
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parse<Name>Flags, <name>Help } from '@/<name>.js';
+import { parse<Name>Flags, <name>Help } from '@/commands/<name>.js';
 
 test('parse<Name>Flags: defaults', () => {
   const f = parse<Name>Flags([]);
@@ -293,7 +313,7 @@ test('parse<Name>Flags: unknown flag throws', () => {
 
 ### Mocking `docker.ts` in tests
 ```typescript
-import { spawner, resetDockerCache } from '@/docker.js';
+import { spawner, resetDockerCache } from '@/infra/docker.js';
 
 test('description', () => {
   resetDockerCache();
@@ -372,14 +392,14 @@ These are tracked inconsistencies that do not need to be fixed immediately but *
 
 | ID | Location | Issue |
 |---|---|---|
-| KTD-1 | `setup-ssh.ts` | Uses `child_process.spawnSync` directly instead of `docker.ts` |
-| KTD-2 | 9 of 10 subcommands | Hand-rolled flag parsers instead of `parseCommonFlags` |
-| KTD-3 | `setup-ssh.ts`, `generate.ts`, `quick-run.ts` | Use raw chalk instead of `ui.*` |
-| KTD-4 | `setup-ssh.ts` | Local `deriveWorkspace()` duplicates `resolveWorkspace()` from `project.ts` |
-| KTD-5 | `setup-ssh.ts` | Local `defaultComposeFile()` duplicates `projectPaths()` from `project.ts` |
-| KTD-6 | `types.ts` | `GENERATED_HEADER` and `GENERATED_HEADER_YAML` are identical strings |
-| KTD-7 | `docker-conflicts.ts` | Local `dockerAvailable()` is a no-op wrapper around `isDockerAvailable()` |
-| KTD-8 | `update-images.ts` | Wraps `ui.*` in local `log/ok/warn` aliases; import placed mid-file |
+| KTD-1 | `commands/setup-ssh.ts` | Uses `child_process.spawnSync` directly instead of `infra/docker.ts` |
+| KTD-2 | `update-images.ts`, `port-forward.ts`, `setup-ssh.ts`, `self-update.ts`, `lifecycle.ts` | Hand-rolled flag parsers instead of `parseCommonFlags` (resolved for `destroy`/`down`/`prune`/`quick-run`) |
+| KTD-3 | `commands/setup-ssh.ts`, `domain/generate.ts`, `commands/quick-run.ts` | Use raw chalk instead of `ui.*` |
+| KTD-4 | `commands/setup-ssh.ts` | Local `deriveWorkspace()` duplicates `resolveWorkspace()` from `infra/project.ts` |
+| KTD-5 | `commands/setup-ssh.ts` | Local `defaultComposeFile()` duplicates `projectPaths()` from `infra/project.ts` |
+| ~~KTD-6~~ | _(resolved)_ | `GENERATED_HEADER_YAML` removed; `GENERATED_HEADER` is the single header constant |
+| KTD-7 | `domain/docker-conflicts.ts` | Local `dockerAvailable()` is a no-op wrapper around `isDockerAvailable()` |
+| KTD-8 | `commands/update-images.ts` | Wraps `ui.*` in local `log/ok/warn` aliases; import placed mid-file |
 
 ---
 
@@ -394,17 +414,17 @@ The CLI supports two `mode` values in `DevcontainerConfig`. See DOC_CLI.md → "
 
 Where the mode is read:
 
-- `cli/src/generator.ts` — `generateDockerfile` returns `null` for `remote`; `generateCompose` omits `build:` and sets the ghcr image for `remote`.
+- `cli/src/domain/generator.ts` — `generateDockerfile` returns `null` for `remote`; `generateCompose` omits `build:` and sets the ghcr image for `remote`.
 - `cli/src/index.ts` — `main()` skips preflight and conflict checks for `remote`; fingerprint fast-path for `local-cached`.
-- `cli/src/update-images.ts` — per-mode dispatch: `local-cached` → `docker compose build`; `remote` → `docker pull`.
+- `cli/src/commands/update-images.ts` — per-mode dispatch: `local-cached` → `docker compose build`; `remote` → `docker pull`.
 
-When adding a new mode, update **all three** files plus tests, plus the `BUILD_MODES` constant in `cli/src/types.ts`.
+When adding a new mode, update **all three** files plus tests, plus the `BUILD_MODES` constant in `cli/src/core/types.ts`.
 
 ## Remote image variants (must stay in sync with the workflow)
 
 The `remote` mode (and `devcontainer-cli run`) serve pre-built images published by `.github/workflows/docker-image.yml`. The variant list is duplicated:
 
-1. `cli/src/types.ts` → `REMOTE_VARIANTS` constant and `VARIANT_LABELS` map.
+1. `cli/src/core/types.ts` → `REMOTE_VARIANTS` constant and `VARIANT_LABELS` map.
 2. `.github/workflows/docker-image.yml` → `build-variants.matrix.include[].name`.
 
 When adding a variant: update **both** locations + add a test in `generator.test.ts` (`resolveRemoteImage`). Otherwise users will be unable to select the new image via `--variant` or `devcontainer-cli run`.
@@ -413,8 +433,8 @@ Exclusion: `ssh` is the full image from `build-base` (not from `build-variants`)
 
 ## Global config and image registry
 
-- `cli/src/global-config.ts` — reads/writes `~/.config/devcontainer-cli/config.json` (XDG; `%APPDATA%` on Windows). Stores `registry` (default `ghcr.io/joacohbc/`). Accessed via `devcontainer-cli config registry`.
-- `cli/src/image-registry.ts` — reads/writes `~/.config/devcontainer-cli/images.json`. Tracks every project the CLI has generated or pulled for, enabling `devcontainer-cli update --all` and `devcontainer-cli prune`. Also contains `computeFingerprint()` used by `local-cached` mode.
+- `cli/src/domain/global-config.ts` — reads/writes `~/.config/devcontainer-cli/config.json` (XDG; `%APPDATA%` on Windows). Stores `registry` (default `ghcr.io/joacohbc/`). Accessed via `devcontainer-cli config registry`.
+- `cli/src/domain/image-registry.ts` — reads/writes `~/.config/devcontainer-cli/images.json`. Tracks every project the CLI has generated or pulled for, enabling `devcontainer-cli update --all` and `devcontainer-cli prune`. Also contains `computeFingerprint()` used by `local-cached` mode.
 
 ## Devcontainer-ssh full image `--with` list
 
@@ -503,7 +523,7 @@ When you add a file under `cli/assets/`, you **must** also register it in `cli/s
 
 ### How asset resolution works
 
-`cli/src/preflight.ts`:
+`cli/src/infra/preflight.ts`:
 - If `node:sea.isSea()` is true → reads the script via `sea.getAsset(name, 'utf8')` and writes it to cwd.
 - Otherwise (dev runs via `pnpm dev`, `pnpm start`) → falls back to reading from `cli/assets/` on disk.
 
@@ -511,9 +531,9 @@ This means: **never delete the dev disk fallback** without a replacement — `pn
 
 ## Self-update flow (`devcontainer-cli upgrade-cli`)
 
-The CLI has a built-in binary updater: `devcontainer-cli upgrade-cli [--check] [--force]`. Implementation lives in `cli/src/self-update.ts`.
+The CLI has a built-in binary updater: `devcontainer-cli upgrade-cli [--check] [--force]`. Implementation lives in `cli/src/commands/self-update.ts`.
 
-> Historical note: the binary self-update used to be exposed as `devcontainer-cli update`. That command now manages container images via `cli/src/update-images.ts`. Self-update was renamed to `upgrade-cli` to free up the namespace. No alias is kept.
+> Historical note: the binary self-update used to be exposed as `devcontainer-cli update`. That command now manages container images via `cli/src/commands/update-images.ts`. Self-update was renamed to `upgrade-cli` to free up the namespace. No alias is kept.
 
 ### Version injection
 
@@ -536,7 +556,7 @@ If you change the artifact naming, you **must** update all four (workflow + self
 ### Adding a new target (e.g. `darwin-arm64` native)
 
 1. Add a matrix entry in `cli-release.yml` with the new `target` value.
-2. Add the triplet to the branch logic in `getTargetTriplet()` (`cli/src/self-update.ts`).
+2. Add the triplet to the branch logic in `getTargetTriplet()` (`cli/src/commands/self-update.ts`).
 3. Add the case to `install.sh` (the `uname_m` switch) and remove the Rosetta workaround for Apple Silicon if applicable.
 4. Bump the CLI version and tag.
 

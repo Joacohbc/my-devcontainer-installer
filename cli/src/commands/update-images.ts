@@ -1,12 +1,12 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import chalk from 'chalk';
-import { dockerInherit, dockerCompose } from '@/docker.js';
-import { loadConfig } from '@/config.js';
-import { listEntries, recordProject, removeEntry } from '@/image-registry.js';
-import { resolveRemoteImage } from '@/generator.js';
-import { projectPaths } from '@/project.js';
-import type { DevcontainerConfig } from '@/types.js';
+import { dockerInherit, dockerCompose } from '@/infra/docker.js';
+import { loadConfig } from '@/domain/config.js';
+import { listEntries, recordProject, removeEntry } from '@/domain/image-registry.js';
+import { resolveRemoteImage } from '@/domain/generator.js';
+import { projectPaths } from '@/infra/project.js';
+import type { DevcontainerConfig } from '@/core/types.js';
 import type { Command } from '@/commands/command.js';
 
 export interface UpdateImagesFlags {
@@ -64,7 +64,7 @@ Note: To update the CLI binary itself, run 'devcontainer-cli upgrade-cli'.
 `;
 }
 
-import { ui } from '@/ui.js';
+import { ui } from '@/infra/ui.js';
 
 const log = (s: string) => ui.log(s);
 const ok = (s: string) => ui.ok(s);

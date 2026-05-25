@@ -1,6 +1,6 @@
 import chalk from 'chalk';
-import { dockerComposeOrThrow } from '@/docker.js';
-import { resolveProjectComposeFile } from '@/project.js';
+import { dockerComposeOrThrow } from '@/infra/docker.js';
+import { resolveProjectComposeFile } from '@/infra/project.js';
 import type { Command } from '@/commands/command.js';
 
 export type LifecycleVerb = 'start' | 'stop' | 'restart';

@@ -1,4 +1,4 @@
-import type { DockerfileModule } from '@/types.js';
+import type { DockerfileModule } from '@/core/types.js';
 
 export const pnpmModule: DockerfileModule = {
   id: 'pnpm',

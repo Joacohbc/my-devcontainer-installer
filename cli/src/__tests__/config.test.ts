@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { defaultConfig, loadConfig, saveConfig } from '@/config.js';
-import { CONFIG_FILE } from '@/types.js';
+import { defaultConfig, loadConfig, saveConfig } from '@/domain/config.js';
+import { CONFIG_FILE } from '@/core/types.js';
 
 function tempDir(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'dc-cli-config-'));

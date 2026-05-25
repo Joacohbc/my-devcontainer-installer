@@ -1,4 +1,4 @@
-import { validateAssetReferences } from '@/preflight.js';
+import { validateAssetReferences } from '@/infra/preflight.js';
 
 // Reusable shape every CLI command (and subcommand) implements. It captures the
 // four things that previously lived as a loose convention of free functions per

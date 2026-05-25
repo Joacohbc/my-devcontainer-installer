@@ -6,7 +6,7 @@ import {
   buildConfigBlock,
   hasAliasBlock,
   stripAliasBlock,
-} from '@/setup-ssh.js';
+} from '@/commands/setup-ssh.js';
 
 // --- parseSetupSshFlags ---
 

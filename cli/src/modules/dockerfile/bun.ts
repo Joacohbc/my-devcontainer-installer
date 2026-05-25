@@ -1,4 +1,5 @@
-import type { DockerfileModule } from '@/types.js';
+import type { DockerfileModule } from '@/core/types.js';
+import { emitShellInit } from '@/modules/dockerfile/shell-init.js';
 
 export const bunModule: DockerfileModule = {
   id: 'bun',
@@ -8,9 +9,11 @@ export const bunModule: DockerfileModule = {
     return `##
 ## BUN
 ##
-RUN su - devuser -c "curl -fsSL https://bun.sh/install | bash" && \\
-    su - devuser -c 'echo "export BUN_INSTALL=\\"\\$HOME/.bun\\"" >> /home/devuser/.profile' && \\
-    su - devuser -c 'echo "export PATH=\\"\\$BUN_INSTALL/bin:\\$PATH\\"" >> /home/devuser/.profile'
+RUN su - devuser -c "curl -fsSL https://bun.sh/install | bash"
+${emitShellInit('.bun_init.sh', [
+  'export BUN_INSTALL="$HOME/.bun"',
+  'export PATH="$BUN_INSTALL/bin:$PATH"',
+])}
 `;
   },
 };

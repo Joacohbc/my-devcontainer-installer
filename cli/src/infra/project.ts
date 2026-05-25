@@ -1,8 +1,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { loadConfig } from '@/config.js';
-import { sanitizeDockerName } from '@/validators.js';
-import type { DevcontainerConfig } from '@/types.js';
+import { loadConfig } from '@/domain/config.js';
+import { sanitizeDockerName } from '@/domain/validators.js';
+import type { DevcontainerConfig } from '@/core/types.js';
 
 export function resolveWorkspace(cwd: string, config?: DevcontainerConfig | null): string {
   const cfg = config !== undefined ? config : loadConfig(cwd);

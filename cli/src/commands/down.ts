@@ -1,42 +1,27 @@
 import chalk from 'chalk';
-import { loadConfig } from '@/config.js';
-import { confirm } from '@/prompts.js';
-import { dockerComposeOrThrow } from '@/docker.js';
-import { resolveWorkspace, resolveProjectComposeFile } from '@/project.js';
+import { loadConfig } from '@/domain/config.js';
+import { confirm } from '@/infra/prompts.js';
+import { dockerComposeOrThrow } from '@/infra/docker.js';
+import { resolveWorkspace, resolveProjectComposeFile } from '@/infra/project.js';
 import * as path from 'path';
+import { parseCommonFlags, type CommonFlags } from '@/infra/parse.js';
 import type { Command } from '@/commands/command.js';
 
-export interface DownFlags {
-  yes: boolean;
+export interface DownFlags extends CommonFlags {
   volumes: boolean;
-  help: boolean;
-  interactive: boolean;
 }
 
 export function parseDownFlags(argv: string[]): DownFlags {
-  const flags: DownFlags = { yes: false, volumes: false, help: false, interactive: true };
-  for (const a of argv) {
-    switch (a) {
-      case '-h':
-      case '--help':
-        flags.help = true;
-        break;
-      case '-y':
-      case '--yes':
-        flags.yes = true;
-        break;
-      case '-v':
-      case '--volumes':
-        flags.volumes = true;
-        break;
-      case '--no-interactive':
-        flags.interactive = false;
-        break;
-      default:
-        throw new Error(`Unknown flag for down: ${a}`);
+  const { flags, remaining } = parseCommonFlags(argv);
+  let volumes = false;
+  for (const a of remaining) {
+    if (a === '-v' || a === '--volumes') {
+      volumes = true;
+    } else {
+      throw new Error(`Unknown flag for down: ${a}`);
     }
   }
-  return flags;
+  return { ...flags, volumes };
 }
 
 export function downHelp(): string {

@@ -1,5 +1,5 @@
-import { dockerCapture } from '@/docker.js';
-import { isValidCidr } from '@/validators.js';
+import { dockerCapture } from '@/infra/docker.js';
+import { isValidCidr } from '@/domain/validators.js';
 
 export interface CidrRange {
   start: number;

@@ -1,8 +1,8 @@
-import { isDockerAvailable, dockerCapture } from '@/docker.js';
-import { LABEL_PROJECT } from '@/labels.js';
-import { plannedComposeNames } from '@/generator.js';
-import { projectId } from '@/labels.js';
-import type { DevcontainerConfig } from '@/types.js';
+import { isDockerAvailable, dockerCapture } from '@/infra/docker.js';
+import { LABEL_PROJECT } from '@/core/labels.js';
+import { plannedComposeNames } from '@/domain/generator.js';
+import { projectId } from '@/core/labels.js';
+import type { DevcontainerConfig } from '@/core/types.js';
 
 export interface Conflict {
   kind: 'container' | 'network';

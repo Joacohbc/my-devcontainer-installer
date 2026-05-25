@@ -1,6 +1,6 @@
 import chalk from 'chalk';
-import { SSH_DEFAULTS, buildSshConfigBlock } from '@/ssh-defaults.js';
-import type { BuildMode } from '@/types.js';
+import { SSH_DEFAULTS, buildSshConfigBlock } from '@/infra/ssh-defaults.js';
+import type { BuildMode } from '@/core/types.js';
 
 const KEY = `~/.ssh/${SSH_DEFAULTS.keyName}`;
 

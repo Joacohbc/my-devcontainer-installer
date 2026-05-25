@@ -1,40 +1,26 @@
 import * as fs from 'fs';
 import chalk from 'chalk';
-import { dockerCapture, dockerInherit } from '@/docker.js';
-import { listEntries } from '@/image-registry.js';
-import { confirm } from '@/prompts.js';
+import { dockerCapture, dockerInherit } from '@/infra/docker.js';
+import { listEntries } from '@/domain/image-registry.js';
+import { confirm } from '@/infra/prompts.js';
+import { parseCommonFlags, type CommonFlags } from '@/infra/parse.js';
 import type { Command } from '@/commands/command.js';
 
-export interface PruneFlags {
+export interface PruneFlags extends CommonFlags {
   all: boolean;
-  yes: boolean;
-  interactive: boolean;
-  help: boolean;
 }
 
 export function parsePruneFlags(argv: string[]): PruneFlags {
-  const flags: PruneFlags = { all: false, yes: false, interactive: true, help: false };
-  for (const a of argv) {
-    switch (a) {
-      case '-h':
-      case '--help':
-        flags.help = true;
-        break;
-      case '--all':
-        flags.all = true;
-        break;
-      case '-y':
-      case '--yes':
-        flags.yes = true;
-        break;
-      case '--no-interactive':
-        flags.interactive = false;
-        break;
-      default:
-        throw new Error(`Unknown flag for prune: ${a}`);
+  const { flags, remaining } = parseCommonFlags(argv);
+  let all = false;
+  for (const a of remaining) {
+    if (a === '--all') {
+      all = true;
+    } else {
+      throw new Error(`Unknown flag for prune: ${a}`);
     }
   }
-  return flags;
+  return { ...flags, all };
 }
 
 export function pruneHelp(): string {

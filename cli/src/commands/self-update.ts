@@ -5,7 +5,7 @@ import * as https from 'https';
 import * as crypto from 'crypto';
 import { URL } from 'url';
 import chalk from 'chalk';
-import { refreshInstalledCompletions } from '@/completion.js';
+import { refreshInstalledCompletions } from '@/domain/completion.js';
 import type { Command } from '@/commands/command.js';
 
 const REPO = 'Joacohbc/my-devcontainer-installer';
