@@ -4,6 +4,10 @@ Este repositorio proporciona un entorno de desarrollo completo y remoto basado e
 
 El entorno ofrece un contenedor principal (`devcontainer-ssh`) accesible vía SSH, con acceso directo a bases de datos y herramientas de desarrollo preinstaladas, simulando una máquina virtual ligera pero con la flexibilidad de Docker.
 
+Todo se genera y administra con la CLI `devcontainer-cli`.
+
+> 📖 **Referencia completa de la CLI** (todos los subcomandos, flags y modos de build): [DOC_CLI.md](DOC_CLI.md).
+
 ## Arquitectura
 
 El siguiente diagrama ilustra cómo interactúan los componentes del entorno:
@@ -114,6 +118,8 @@ graph LR
     Cloudflared -- "Ruteo IP Privada" --> DevContainer
 ```
 
+Detalles de la configuración del túnel en [CLOUDFLARE_TUNNEL.md](CLOUDFLARE_TUNNEL.md).
+
 ## Características Principales
 
 * **Sistema Base:** Ubuntu 24.04 LTS (Noble) por defecto. 22.04 (Jammy) seleccionable.
@@ -140,192 +146,6 @@ graph LR
 * **Herramientas base:** `git`, `nano`, `wget`, `curl`, `unzip`, `ca-certificates` — siempre presentes.
 * **Terminal Mejorada:** ZSH preconfigurado con frameworks y plugins útiles.
 
-## Modos de Build
-
-La CLI ofrece dos modos para controlar cómo se construye la imagen del devcontainer. Se elige con `--mode` o por prompt interactivo.
-
-| Modo | Genera | Imagen | Para qué sirve |
-|---|---|---|---|
-| `local-cached` (default) | `Dockerfile` + `docker-compose.yml` | `devcontainer-cli/<fp12>:latest` | Build local. Deduplica por fingerprint del Dockerfile: si la imagen ya está en el daemon, no rebuildea. |
-| `remote` | `docker-compose.yml` (sin Dockerfile) | `ghcr.io/<owner>/devcontainer-<variant>:latest` | Salta el build. Usa las imágenes pre-buildeadas por GitHub Actions. Mucho más rápido. |
-
-**Variants disponibles** (para `remote`):
-
-| Variant | Contenido |
-|---|---|
-| `ssh` | Imagen completa (todos los módulos) |
-| `nodejs` | Node.js |
-| `bun` | Bun |
-| `java-temurin` | Java Temurin |
-| `python` | Python |
-| `go` | Go |
-| `node-go` | Node.js + Go |
-| `node-python` | Node.js + Python |
-| `node-java-temurin` | Node.js + Java Temurin |
-| `bun-go` | Bun + Go |
-| `bun-python` | Bun + Python |
-| `bun-java-temurin` | Bun + Java Temurin |
-
-### Ejemplos
-
-```bash
-# Local-cached (default) — build local con dedup por fingerprint
-devcontainer-cli --with nodejs,java-temurin --service mongo
-
-# Remote — pull de imagen pre-buildeada, sin Dockerfile
-devcontainer-cli --mode remote --variant node-java-temurin --service postgres
-```
-
-### Actualizar imágenes
-
-```bash
-# Actualizar la imagen del proyecto actual (pull para remote, build --pull para local-cached)
-devcontainer-cli update
-
-# Actualizar TODAS las imágenes de los proyectos que conoce la CLI
-devcontainer-cli update --all
-
-# Forzar rebuild aunque el fingerprint coincida
-devcontainer-cli update --rebuild
-```
-
-> **Nota:** `update` opera sobre imágenes de proyecto. Para actualizar el binario de la CLI usá `devcontainer-cli upgrade-cli`.
-
-## Contenedor rápido (`run`)
-
-Levanta un container desde una imagen remota **sin crear ningún archivo** en el proyecto (sin `.dc_*/`, sin `devcontainer.config.json`). Ideal para tareas puntuales o exploración rápida.
-
-```bash
-# Interactivo — elige la variante por prompt
-devcontainer-cli run
-
-# Directo — especifica variante
-devcontainer-cli run --variant python
-
-# Con volumen persistente en /workspace
-devcontainer-cli run --variant nodejs --volume mi_workspace
-
-# Con puerto SSH expuesto al host
-devcontainer-cli run --variant ssh --port 2222
-
-# Todo junto
-devcontainer-cli run --variant node-go --name mi-dev --volume mi_vol --port 2222
-```
-
-El comando es **idempotente**: si el container ya existe (exited o paused) lo reinicia; si ya está corriendo no hace nada.
-
-Al finalizar imprime el comando para continuar con SSH:
-
-```bash
-devcontainer-cli setup-ssh --container dc-<variant>
-```
-
-**Flags disponibles:**
-
-| Flag | Descripción |
-|---|---|
-| `--variant <name>` | Variante de imagen remota |
-| `--name <name>` | Nombre del container (default: `dc-<variant>`) |
-| `--volume <name>` | Named volume montado en `/workspace` (opcional) |
-| `--port <n>` | Expone el puerto 22 del container en el host |
-| `--registry <url>` | Override del registry (default: `ghcr.io/joacohbc/`) |
-
-## Port Forwarding
-
-Redirige un puerto local de tu máquina al contenedor (o a un servicio interno de la red Docker) usando un túnel SSH. Requiere que `setup-ssh` esté configurado.
-
-### Modo interactivo (varios containers y puertos)
-
-Ejecuta el comando sin argumentos para abrir el selector interactivo:
-
-```bash
-devcontainer-cli port-forward
-```
-
-1. Elegís un container de la lista de **todos** los containers en ejecución (no solo devcontainers). Los devcontainers aparecen marcados con `(devcontainer)`.
-2. Ingresás uno o más puertos a reenviar de ese container, separados por coma (ej. `3000, 8080:80`).
-3. Te pregunta si querés agregar otro container y repetís el proceso.
-4. Cuando confirmás, se muestra un resumen del plan y se abren **todos** los túneles en paralelo. `Ctrl+C` los cierra a la vez.
-
-Los devcontainers con alias SSH propio se alcanzan directamente. Los containers que **no** son devcontainers (postgres, redis, etc.) se reenvían a través de un devcontainer que actúe como _jump host_ SSH; si hay varios, la CLI te pregunta cuál usar.
-
-### Modo directo (un solo mapeo)
-
-```bash
-# Forward del puerto 3000 (local) → 3000 (contenedor)
-devcontainer-cli port-forward 3000
-
-# Puerto local distinto al remoto
-devcontainer-cli port-forward 8080:80
-
-# Acceder a un servicio interno (ej. la base de datos postgres del stack)
-devcontainer-cli port-forward 5432:postgres:5432
-
-# Usando flag --service
-devcontainer-cli port-forward 5432 --service postgres
-
-# Forzar un alias SSH específico
-devcontainer-cli port-forward 3000 --alias mi-devcontainer
-```
-
-El proceso queda en foreground. `Ctrl+C` cierra el túnel.
-
-**Flags disponibles:**
-
-| Flag | Descripción |
-|---|---|
-| `<local>:<host>:<remote>` | Mapeo completo: puerto local, host destino, puerto remoto |
-| `<local>:<remote>` | Puerto local distinto al remoto (host = `localhost`) |
-| `<port>` | Puerto idéntico en ambos extremos |
-| `--service <name>` | Servicio compose destino del túnel |
-| `--alias <name>` | Alias SSH a usar (sin autodetección) |
-| `--no-interactive` | Falla si falta algún parámetro |
-
-## Limpieza de recursos
-
-### Bajar el proyecto (`down`)
-
-Corre `docker compose down -v` para el proyecto en el directorio actual:
-
-```bash
-devcontainer-cli down
-
-# Sin confirmación
-devcontainer-cli down --yes
-```
-
-Elimina los contenedores y volúmenes del stack. Requiere que exista `.dc_<workspace>/build/docker-compose.yml`.
-
-### Limpiar imágenes huérfanas (`prune`)
-
-Elimina las imágenes `devcontainer-cli/*` cuyo proyecto ya no existe en disco:
-
-```bash
-# Solo huérfanas (proyecto borrado o movido)
-devcontainer-cli prune
-
-# Todas las imágenes devcontainer-cli/* sin excepción
-devcontainer-cli prune --all
-
-# Sin confirmación
-devcontainer-cli prune --yes
-```
-
-### Configurar registry global
-
-```bash
-# Ver el registry actual
-devcontainer-cli config registry
-
-# Cambiarlo (por ejemplo si forkeaste y publicaste en tu propio org)
-devcontainer-cli config registry ghcr.io/mi-org/
-
-# Restaurar el default
-devcontainer-cli config registry --unset
-```
-
-El registry también se puede override por invocación con `--registry ghcr.io/foo/`.
-
 ## Requisitos Previos
 
 * Docker y Docker Compose.
@@ -339,11 +159,7 @@ Si estás utilizando **Windows**, se recomienda encarecidamente usar **Git Bash*
 1.  **Formato de Archivos (LF vs CRLF):** Los scripts y archivos de configuración deben tener terminaciones de línea estilo UNIX (`LF`). Se ha incluido un archivo `.gitattributes` para manejar esto automáticamente.
 2.  **Firewall:** Para conectarte al contenedor, es necesario que el firewall de Windows permita las conexiones al puerto expuesto (por defecto `2222`).
 
-## Instalación y Configuración
-
-La CLI genera el `Dockerfile`, `docker-compose.yml`, `.env` y archivos auxiliares según los módulos que selecciones (Node, Java, Mongo, Postgres, Redis, Cloudflare Tunnel, etc.) — sin clonar el repo.
-
-### 1. Instalar la CLI (one-liner)
+## Instalación de la CLI
 
 **Linux / macOS:**
 
@@ -377,7 +193,7 @@ curl -fsSL https://raw.githubusercontent.com/Joacohbc/my-devcontainer-installer/
 
 **Descarga manual** (alternativa): https://github.com/Joacohbc/my-devcontainer-installer/releases/latest — binarios disponibles: `devcontainer-cli-linux-x64`, `-linux-arm64`, `-darwin-x64` y `-windows-x64.exe`. Son ejecutables únicos (assets embebidos via Node.js SEA); descargás, `chmod +x` y listo.
 
-#### Desinstalación
+### Desinstalación
 
 Si deseas eliminar la CLI y sus configuraciones:
 
@@ -393,7 +209,7 @@ curl -fsSL https://raw.githubusercontent.com/Joacohbc/my-devcontainer-installer/
 irm https://raw.githubusercontent.com/Joacohbc/my-devcontainer-installer/main/cli/uninstall.ps1 | iex
 ```
 
-#### Autocompletado
+### Autocompletado
 
 El instalador configura el autocompletado automáticamente en `.zshrc` y `.bashrc`/`.bash_profile`. Si por algún motivo falla, podés habilitarlo a mano:
 
@@ -412,106 +228,49 @@ devcontainer-cli completion bash > ~/.local/share/devcontainer-cli/completions/d
 
 > Para deshabilitar la configuración automática al instalar: `SETUP_COMPLETION=0 sh install.sh`
 
-### 2. Generar el entorno
+## Uso rápido
+
+Una vez instalada la CLI, generá el entorno dentro de la carpeta de tu proyecto y levantalo:
 
 ```bash
 mkdir mi-proyecto && cd mi-proyecto
-devcontainer-cli
+devcontainer-cli                       # flujo interactivo: elegís módulos y servicios
+docker compose -f .dc_mi-proyecto/build/docker-compose.yml up -d
 ```
 
-Modo no-interactivo:
+Eso genera el `Dockerfile`, `docker-compose.yml`, `.env` y scripts auxiliares dentro de `.dc_<workspace>/`.
 
-```bash
-devcontainer-cli --with nodejs,java --service mongo,postgres --image mi-dev:local --no-build
-```
-
-Ayuda completa: `devcontainer-cli --help`.
-
-La CLI genera todo dentro de `.dc_<workspace>/` (donde `<workspace>` es el nombre del directorio actual, o el valor de `--workspace`):
-
-```
-.dc_<workspace>/
-└── build/          # Dockerfile, docker-compose.yml, .env, helper .sh y post-scripts
-```
-
-Los scripts post-instalación se hornean dentro de la imagen en `~/post-script/` (`/home/devuser/post-script/`), disponibles en cualquier contenedor sin montar archivos del host.
-
-**Subcomandos disponibles:**
-
-| Subcomando                       | Qué hace                                                                                                    |
-|----------------------------------|-------------------------------------------------------------------------------------------------------------|
-| `devcontainer-cli`               | Genera/actualiza `Dockerfile`, `docker-compose.yml`, `.env` y scripts auxiliares (flujo interactivo o no). |
-| `devcontainer-cli setup-ssh`     | Configura el acceso SSH autodetectando el compose del proyecto. Ver [Acceso y Uso](#acceso-y-uso).          |
-| `devcontainer-cli port-forward`  | Reenvía un puerto local al contenedor (o a un servicio interno) vía túnel SSH. Ver [Port Forwarding](#port-forwarding). |
-| `devcontainer-cli run`           | Levanta un container desde una imagen remota sin crear archivos de proyecto. Ver [Contenedor rápido](#contenedor-rápido-run). |
-| `devcontainer-cli start`         | `docker compose start` para el proyecto en el directorio actual.                                           |
-| `devcontainer-cli stop`          | `docker compose stop` para el proyecto en el directorio actual.                                            |
-| `devcontainer-cli restart`       | `docker compose restart` para el proyecto en el directorio actual.                                         |
-| `devcontainer-cli down`          | `docker compose down` para el proyecto. Agrega `--volumes` para borrar también los volúmenes.              |
-| `devcontainer-cli destroy`       | `down -v` + borra `.dc_<workspace>/` y `devcontainer.config.json`. Irreversible.                           |
-| `devcontainer-cli prune`         | Elimina imágenes `devcontainer-cli/*` huérfanas (proyecto borrado). `--all` elimina todas.                 |
-| `devcontainer-cli update`        | Actualiza la imagen del proyecto actual (pull o rebuild según el modo). `--all` recorre todos los proyectos.|
-| `devcontainer-cli upgrade-cli`   | Reemplaza el binario de la CLI con la última release de GitHub.                                             |
-| `devcontainer-cli config`        | Lee/escribe configuración global (ej. `config registry ghcr.io/mi-org/`).                                   |
-| `devcontainer-cli cleanup-tips`  | Imprime los comandos `docker` para borrar contenedores, redes y volúmenes del proyecto.                     |
-| `devcontainer-cli completion`    | Imprime el script de autocompletado para bash o zsh (`completion bash` / `completion zsh`).                 |
-
-### 3. Iniciar el entorno
-
-```bash
-docker compose -f .dc_<workspace>/build/docker-compose.yml up -d
-```
-
-Si deseas personalizar la configuración de red (opcional), edita `.dc_<workspace>/build/.env` antes de iniciar (ver [CLOUDFLARE_TUNNEL.md](CLOUDFLARE_TUNNEL.md)).
+> 📖 Para el flujo no-interactivo, todos los subcomandos (`run`, `port-forward`, `update`, `down`, `prune`, `config`…), los modos de build y la estructura generada, ver **[DOC_CLI.md](DOC_CLI.md)**.
 
 ## Acceso y Uso
 
 La forma recomendada y más segura de acceder es mediante **Claves SSH**. El uso de contraseñas debería limitarse únicamente a la configuración inicial.
 
-### 1. Preparación (Host)
+### 1. Obtener la contraseña temporal (Host)
 
-Primero, obtén la contraseña temporal generada durante la instalación. La necesitarás **solo una vez** para instalar tu clave SSH.
+Primero, obtén la contraseña generada durante la instalación. La necesitarás **solo una vez** para instalar tu clave SSH.
 
 ```bash
 docker compose logs devcontainer-ssh | grep "devuser password" | tail -n 1
 ```
 
-### 2. Configurar Acceso SSH (Recomendado)
+### 2. Configurar el acceso SSH
 
-Tienes dos caminos: el modo **automático** con `devcontainer-cli setup-ssh` (recomendado) o el manual paso a paso.
+#### Opción A: Modo automático (recomendado)
 
-#### Opción A: Modo automático (`setup-ssh`)
-
-La CLI puede generar la clave, copiarla al contenedor y dejar listo el bloque `~/.ssh/config` por ti. Detecta automáticamente el `container_name` desde `docker-compose.yml` (incluyendo el prefijo del workspace) y elige el modo (`local`, `windows` o `remote`) según el contexto.
-
-Desde la carpeta del proyecto (donde está el `docker-compose.yml`):
+La CLI genera la clave, la copia al contenedor y deja listo el bloque `~/.ssh/config` por ti:
 
 ```bash
-# Local / Windows (autodetecta): genera clave si falta, copia al contenedor, escribe ~/.ssh/config
 devcontainer-cli setup-ssh
-
-# Forzar un modo concreto
-devcontainer-cli setup-ssh --mode local
-devcontainer-cli setup-ssh --mode windows --port 2222
-
-# Acceso remoto vía servidor con ProxyCommand
-devcontainer-cli setup-ssh --remote usuario@servidor
-
-# No interactivo (CI o scripts)
-devcontainer-cli setup-ssh --yes --alias devcontainer --key ~/.ssh/id_devcontainer
 ```
 
-Ayuda completa: `devcontainer-cli setup-ssh --help`.
-
-Tras esto puedes conectar directamente con `ssh devcontainer` (o el alias que hayas pasado).
+Detecta el `container_name` y el modo (`local`, `windows`, `remote`) automáticamente. Detalles y flags en **[DOC_CLI.md → Configurar acceso SSH](DOC_CLI.md#configurar-acceso-ssh-setup-ssh)**.
 
 #### Opción B: Manual
 
 Sigue estos pasos desde tu máquina local (tu PC o Laptop) para autorizar tu acceso sin contraseña.
 
-##### A. Generar par de claves (Si no tienes una)
-
-Se recomienda usar una clave específica para este entorno:
+##### A. Generar par de claves (si no tienes una)
 
 ```bash
 ssh-keygen -t ed25519 -f ~/.ssh/id_devcontainer -N "" -q
@@ -593,16 +352,9 @@ ssh devcontainer-remote
 
 ## Pasos Post-Instalación
 
-Una vez dentro, puedes ejecutar los scripts de configuración incluidos para terminar de preparar tu entorno:
+Una vez dentro del contenedor puedes terminar de preparar tu entorno: login de GitHub CLI, actualizar Go, instalar CLIs de IA, backups de base de datos, etc. Los scripts viven horneados en `~/post-script/`.
 
-Los scripts viven dentro del contenedor en `~/post-script/` (horneados en la imagen):
-
-* **GitHub CLI:** `~/post-script/login-github-cli.sh` - Te ayuda a iniciar sesión y configurar tus credenciales de GitHub.
-* **Actualizar Go:** `~/post-script/update_golang.sh` - Actualiza la instalación de Go a la última versión estable disponible (solo si elegiste el módulo `go`).
-* **CLIs de IA:** `~/post-script/install-*.sh` - Instaladores de las CLIs de IA (solo si elegiste el módulo `ai-clis`): `install-claude-code.sh`, `install-opencode.sh`, `install-codex-cli.sh`, `install-antigravity.sh`, `install-copilot.sh`.
-* **Actualizar Sistema:** Es relevante mantener el entorno al día (incluyendo e.g. el cliente de Docker) ejecutando `sudo apt update && sudo apt upgrade -y`.
-
-Consulta [POST_INSTALL_STEPS.md](POST_INSTALL_STEPS.md) para más detalles sobre backups y herramientas adicionales.
+Consulta **[POST_INSTALL_STEPS.md](POST_INSTALL_STEPS.md)** para el detalle.
 
 ## Agregar Servicios Extra (Docker Run)
 
@@ -644,30 +396,6 @@ docker run -d \
 ### Conflicto de Puertos
 
 * Si Docker falla al iniciar porque un puerto (ej. 27017, 5432, 2222) ya está en uso, detén el servicio local que lo ocupa en tu máquina host o modifica el mapeo de puertos en `.dc_<workspace>/build/docker-compose.yml`.
-
-## Estructura del Proyecto
-
-Tras ejecutar `devcontainer-cli` en tu directorio de trabajo obtendrás:
-
-```
-<tu-proyecto>/
-├── devcontainer.config.json          # Estado persistido (módulos, servicios, subnet)
-└── .dc_<workspace>/
-    └── build/                        # Contexto de `docker build`
-        ├── Dockerfile
-        ├── docker-compose.yml
-        ├── .env                      # DOCKER_SUBNET, DEVCONTAINER_IP, TUNNEL_TOKEN…
-        ├── entrypoint.sh
-        ├── zsh-installer.sh
-        ├── golang_utils.sh           # solo con módulo `go`
-        ├── install-*.sh              # solo con módulo `ai-clis`
-        ├── login-github-cli.sh
-        └── update_golang.sh          # solo con módulo `go`
-```
-
-Los scripts post-instalación del contexto de build se hornean dentro de la imagen en `~/post-script/` (`/home/devuser/post-script/`), listos para ejecutar dentro del contenedor.
-
-Tu código vive en `<tu-proyecto>/` (la raíz), que se monta como `/workspace` dentro del contenedor.
 
 ## Bases de Datos
 

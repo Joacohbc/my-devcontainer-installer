@@ -361,7 +361,7 @@ These are tracked inconsistencies that do not need to be fixed immediately but *
 
 ## Build modes
 
-The CLI supports two `mode` values in `DevcontainerConfig`. See README.md → "Modos de Build" for the user-facing summary. For agents modifying this code:
+The CLI supports two `mode` values in `DevcontainerConfig`. See DOC_CLI.md → "Modos de Build" for the user-facing summary. For agents modifying this code:
 
 - `mode: 'local-cached'` (default) — goes through the full Dockerfile + compose generation pipeline. Computes a fingerprint (SHA-256 of normalized Dockerfile + copyFile contents + sorted module IDs, first 12 chars) and sets `config.image` to `devcontainer-cli/<fp12>:latest`. Multiple projects with identical Dockerfiles share a single daemon-level image; if the image already exists the build is skipped.
 - `mode: 'remote'` — skips Dockerfile generation (returns `null`) and rewrites the devcontainer compose service to use `image: ghcr.io/<owner>/devcontainer-<variant>:latest` with no `build:` key. DB services are still emitted normally.

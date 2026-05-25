@@ -1,49 +1,27 @@
-# Post Installation Steps
+# Pasos Post-Instalación
 
-## Obtener la contraseña del DevUser
+Acciones que se ejecutan **dentro del contenedor** una vez levantado. Para instalar la CLI y configurar el acceso SSH, ver [README.md](README.md); para los subcomandos de la CLI, [DOC_CLI.md](DOC_CLI.md).
 
-```bash
-docker compose logs devcontainer-ssh | grep 'devuser password' | tail -1
-# >>> devuser password: <password>
-```
+## Cambiar la contraseña del DevUser (opcional)
 
-## Cambiar la contraseña (Opcional)
+La contraseña temporal del primer login se obtiene en el host con `docker compose logs devcontainer-ssh | grep 'devuser password' | tail -1`. Una vez dentro podés cambiarla:
 
 ```bash
 sudo passwd
 ```
 
-## Loguearse con Github
+## Scripts horneados en `~/post-script/`
 
-Los scripts post-instalación se hornean dentro de la imagen, accesibles en `~/post-script/`:
-
-```bash
-~/post-script/login-github-cli.sh
-```
-
-## Actualizar Go (si elegiste el módulo `go`)
-
-Si generaste el entorno con `--with go`:
+La CLI hornea estos scripts dentro de la imagen según los módulos elegidos:
 
 ```bash
-sudo ~/post-script/update_golang.sh
+~/post-script/login-github-cli.sh   # login de GitHub CLI (módulo github-cli)
+sudo ~/post-script/update_golang.sh  # actualiza Go a la última estable (módulo go; requiere root, escribe en /usr/local/go)
 ```
 
-Actualiza la instalación de Go a la última versión estable (requiere root porque escribe en `/usr/local/go`).
+### CLIs de IA (módulo `ai-clis`)
 
-## Instalar Firebase Tools (Opcional)
-
-```bash
-pnpm install -g firebase-tools
-```
-
-```bash
-firebase login
-```
-
-## Instalar CLIs de IA (Opcional)
-
-Si generaste el entorno con `--with ai-clis`, los scripts de instalación quedan disponibles en `~/post-script/` dentro del contenedor. Ejecutá el que necesites:
+Si generaste el entorno con `--with ai-clis`, los instaladores quedan disponibles. Ejecutá el que necesites:
 
 ```bash
 ~/post-script/install-claude-code.sh   # Claude Code (@anthropic-ai/claude-code)
@@ -53,54 +31,39 @@ Si generaste el entorno con `--with ai-clis`, los scripts de instalación quedan
 ~/post-script/install-copilot.sh       # GitHub Copilot CLI
 ```
 
-Si no incluiste el módulo `ai-clis`, podés instalarlas manualmente. Ejemplos:
-
-### Claude Code
+Si no incluiste el módulo, podés instalarlas manualmente, por ejemplo:
 
 ```bash
-pnpm install -g @anthropic-ai/claude-code
-claude   # primera vez te pedirá autenticarte
+pnpm install -g @anthropic-ai/claude-code   # Claude Code
+pnpm install -g @google/gemini-cli          # Gemini CLI
+curl -fsSL https://opencode.ai/install | bash  # OpenCode
 ```
 
-### Gemini CLI
-
-Te permite usar los modelos de IA de Google directamente desde tu terminal para tareas de codificación, refactorización y chat.
+## Instalar Firebase Tools (opcional)
 
 ```bash
-pnpm install -g @google/gemini-cli
-gemini   # primera vez te pedirá autenticarte con tu cuenta de Google
+pnpm install -g firebase-tools
+firebase login
 ```
 
-### OpenCode
+## Bases de datos
 
-```bash
-curl -fsSL https://opencode.ai/install | bash
-```
+> Requiere los servicios de DB y el módulo `dbclients` (clientes `psql`/`mongosh`/`redis-cli`). Credenciales y comandos de conexión en [README.md → Bases de Datos](README.md#bases-de-datos).
 
-## Resetear la base de datos (Opcional)
+### Resetear la base de datos
 
-Si necesitas limpiar completamente la base de datos y empezar desde cero, puedes eliminar y recrear el schema `public`:
+Elimina y recrea el schema `public` de PostgreSQL:
 
 ```bash
 docker exec -it postgres psql -U devuser -d devdb -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
 ```
 
-> ⚠️ **Advertencia**: Este comando eliminará **todos** los datos y tablas de la base de datos. Úsalo solo cuando necesites reiniciar el estado de la base de datos.
+> ⚠️ **Advertencia**: elimina **todos** los datos y tablas. Úsalo solo cuando necesites reiniciar el estado de la base de datos.
 
-## Exportar la base de datos (Backup)
-
-Para crear un backup de la base de datos actual, ejecuta el siguiente comando:
+### Exportar la base de datos (backup)
 
 ```bash
 docker exec -it postgres pg_dump -U devuser --no-owner --no-acl devdb > backup.sql
 ```
 
-Este comando:
-
-- `docker exec -it postgres`: Ejecuta un comando dentro del contenedor de PostgreSQL
-- `pg_dump`: Herramienta de PostgreSQL para exportar bases de datos
-- `-U devuser`: Usuario de la base de datos
-- `--no-owner`: Omite los comandos de propietario (útil para portabilidad)
-- `--no-acl`: Omite los permisos de acceso (útil para portabilidad)
-- `devdb`: Nombre de la base de datos a exportar
-- `> backup.sql`: Guarda el resultado en el archivo `backup.sql` en el directorio actual
+`--no-owner` y `--no-acl` omiten propietario y permisos (útil para portabilidad); `> backup.sql` guarda el dump en el directorio actual.
