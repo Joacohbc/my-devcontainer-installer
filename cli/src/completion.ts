@@ -4,6 +4,7 @@ import { BUILD_MODES, REMOTE_VARIANTS } from '@/types.js';
 import { composeServices, dockerfileModules } from '@/registry.js';
 import { listManagedContainers } from '@/container-picker.js';
 import { getSshAliases } from '@/port-forward.js';
+import { completableCommandNames } from '@/commands/registry.js';
 
 export interface CompletionProviders {
   containers: () => string[];
@@ -32,23 +33,6 @@ const ROOT_FLAGS = [
   '--version',
   '-h',
   '--help',
-];
-
-const COMMANDS_COMPLETABLE = [
-  'setup-ssh',
-  'port-forward',
-  'run',
-  'start',
-  'stop',
-  'restart',
-  'down',
-  'destroy',
-  'prune',
-  'cleanup-tips',
-  'update',
-  'upgrade-cli',
-  'config',
-  'completion',
 ];
 
 interface CommandSpec {
@@ -261,7 +245,7 @@ export function completionCandidates(
     if (current.startsWith('-')) {
       return ROOT_FLAGS;
     }
-    return [...COMMANDS_COMPLETABLE, ...ROOT_FLAGS];
+    return [...completableCommandNames(), ...ROOT_FLAGS];
   }
 
   // Rule 3: have a subcommand → offer its flags + any positional candidates.
@@ -338,11 +322,20 @@ export function refreshInstalledCompletions(execPath: string): string[] {
   return updated;
 }
 
-export async function runCompletion(argv: string[]): Promise<void> {
+export interface CompletionArgs {
+  shell: 'bash' | 'zsh';
+}
+
+export function parseCompletionArgs(argv: string[]): CompletionArgs {
   const shell = argv[0];
-  if (!shell || (shell !== 'bash' && shell !== 'zsh')) {
-    throw new Error("Usage: devcontainer-cli completion <bash|zsh>");
+  if (shell !== 'bash' && shell !== 'zsh') {
+    throw new Error('Usage: devcontainer-cli completion <bash|zsh>');
   }
+  return { shell };
+}
+
+export async function runCompletion(argv: string[]): Promise<void> {
+  const { shell } = parseCompletionArgs(argv);
   const script = shell === 'bash' ? bashCompletionScript() : zshCompletionScript();
   process.stdout.write(script);
 }

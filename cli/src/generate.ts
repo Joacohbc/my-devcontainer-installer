@@ -14,7 +14,7 @@ import {
   resolveRemoteImage,
 } from '@/generator.js';
 import { findConflicts } from '@/docker-conflicts.js';
-import { isGeneratedFile } from '@/preflight.js';
+import { isGeneratedFile, validateRequiredFiles } from '@/preflight.js';
 import { findFreeSubnet, formatCidr, listUsedSubnets, subnetConflict } from '@/subnet.js';
 import { printSshInstructions } from '@/ssh-instructions.js';
 import { confirm, input, multiselect, select } from '@/prompts.js';
@@ -425,9 +425,27 @@ export async function runGenerate(argv: string[]): Promise<void> {
   const paths = projectPaths(cwd, config.workspace);
   const projectDir = paths.projectDir;
   const buildDir = paths.buildDir;
-  fs.mkdirSync(buildDir, { recursive: true });
 
   const skipBuildArtifacts = config.mode === 'remote';
+
+  // Validate every referenced static asset up front — before creating any
+  // directories or writing files — so a missing script fails fast instead of
+  // half-way through generation.
+  if (!skipBuildArtifacts) {
+    const referenced = [
+      ...collectRequiredCopyFiles(config),
+      ...collectRequiredPostScriptFiles(config),
+    ];
+    const missing = validateRequiredFiles(referenced, buildDir);
+    if (missing.length > 0) {
+      throw new Error(
+        `Missing required script(s) (not embedded in binary, assets/, or ${buildDir}): ${missing.join(', ')}`,
+      );
+    }
+  }
+
+  fs.mkdirSync(buildDir, { recursive: true });
+
   const copyFiles = skipBuildArtifacts ? [] : collectRequiredCopyFiles(config);
   if (copyFiles.length > 0) {
     // We import preflight at execution-time or we can just import it

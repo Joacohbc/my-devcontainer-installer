@@ -51,12 +51,12 @@ The CLI source (`cli/src/`) follows a layered architecture introduced in the ref
 
 ```
 ┌───────────────────────────────────────────────────────────────┐
-│  Entry point  index.ts  — signal handlers + COMMANDS dispatch │
+│  Entry point  index.ts  — signal handlers + registry dispatch │
 ├───────────────────────────────────────────────────────────────┤
-│  Subcommands  generate.ts · down.ts · destroy.ts · prune.ts  │
-│               lifecycle.ts · quick-run.ts · update-images.ts │
-│               setup-ssh.ts · self-update.ts · config-cmd.ts  │
-│               port-forward.ts · cleanup-instructions.ts       │
+│  Commands     commands/command.ts (Command interface)         │
+│               commands/registry.ts (single source of truth)   │
+│               commands/{generate,down,destroy,prune,...}.ts   │
+│               each exports a `Command` object (run/help/parse) │
 ├───────────────────────────────────────────────────────────────┤
 │  Domain logic generator.ts · resolver.ts · validators.ts      │
 │               preflight.ts · subnet.ts · docker-conflicts.ts  │
@@ -178,30 +178,48 @@ Orchestrates the full generation flow: load config → interactive prompts → a
 
 ---
 
-## Subcommand authoring pattern
+## Command authoring pattern
 
-Every subcommand follows the same structure. Use `destroy.ts` as the canonical template:
+Every command lives in `cli/src/commands/<name>.ts` and exposes both the free
+functions (`parse`/`help`/`run`, kept for tests and internal reuse) and a
+`Command` object that implements the shared interface in
+`cli/src/commands/command.ts`. Use `destroy.ts` as the canonical template:
 
 ```
-cli/src/<name>.ts
-  ├── interface <Name>Flags { … }            // always include help, interactive; add yes if destructive
+cli/src/commands/<name>.ts
+  ├── interface <Name>Flags { … }            // include help, interactive; add yes if destructive
   ├── function parse<Name>Flags(argv): <Name>Flags
-  │     ├── const { flags, remaining } = parseCommonFlags(argv)
-  │     └── // handle command-specific flags from `remaining`
   ├── function <name>Help(): string
-  │     └── return helpBlock(…)
-  └── export async function run<Name>(argv: string[]): Promise<void>
-        ├── const flags = parse<Name>Flags(argv)
-        ├── if (flags.help) { console.log(<name>Help()); return; }
-        └── // business logic using docker.ts, project.ts, ui.ts
+  ├── async function run<Name>(argv): Promise<void>
+  │     ├── const flags = parse<Name>Flags(argv)
+  │     ├── if (flags.help) { console.log(<name>Help()); return; }
+  │     └── // business logic using docker.ts, project.ts, ui.ts
+  └── export const <name>Command: Command<<Name>Flags> = {
+        name, summary, parse, help, run,   // + optional aliases / subcommands / requiredAssets
+      }
 ```
 
-When registering a new subcommand:
+When registering a new command:
 
-1. Create `cli/src/<name>.ts` with a `run<Name>(argv: string[]): Promise<void>` export.
-2. Add the entry to the declarative `COMMANDS` mapping in `index.ts`.
-3. Add the entry to `helpText()` in `cli/src/cli.ts`.
+1. Create `cli/src/commands/<name>.ts` exporting a `Command` object.
+2. Add it to the `getCommands()` array in `cli/src/commands/registry.ts`. That
+   list is the **single source of truth**: `index.ts` dispatches from it and
+   `completion.ts` derives its completable command names from it.
+3. Add the entry to `helpText()` in `cli/src/cli.ts` (root help text).
 4. Add tests in `cli/src/__tests__/<name>.test.ts` (flag parsing + help at minimum).
+
+Subcommands (e.g. `config registry`) are themselves `Command` objects listed in
+the parent's `subcommands` array; the parent's `run` delegates via
+`findCommand(subcommands, token)`.
+
+The dispatcher validates each command's `requiredAssets` (static files shipped
+under `assets/`) before calling `run`, so a missing reference fails fast. The
+default command (`generate`) additionally validates every referenced module
+script up front via `validateRequiredFiles()` before creating any files.
+
+> Old top-level paths (`cli/src/down.ts`, etc.) remain as one-line re-export
+> shims so existing imports/tests keep resolving. New code should import from
+> `cli/src/commands/`.
 
 ### `setup-ssh.ts` — known outlier
 
@@ -213,14 +231,19 @@ When registering a new subcommand:
 
 When modifying `setup-ssh.ts`, prefer migrating these towards the shared helpers. Until then, do not replicate these patterns in new files.
 
-### `cleanup-tips` — special case
+### `cleanup-tips`
 
-`cleanup-tips` is dispatched **before** the `COMMANDS` lookup in `index.ts` because it needs `loadConfig` + `resolveWorkspace` to print per-project instructions. It is intentionally not in the `COMMANDS` map. Do not add it there.
+`cleanup-tips` is a normal command in the registry (`cleanupTipsCommand` in
+`commands/cleanup-instructions.ts`). Its `run` loads the config and resolves the
+workspace itself before printing per-project instructions.
 
-### Current subcommands
+### Current commands
+
+All handler files live under `cli/src/commands/`.
 
 | argv[0] | Handler file | Purpose |
 |---|---|---|
+| _(default)_ | `generate.ts` (logic in `cli/src/generate.ts`) | Generate Dockerfile + compose |
 | `setup-ssh` | `setup-ssh.ts` | Automated SSH key + config |
 | `port-forward` | `port-forward.ts` | Forward host ports into the running container |
 | `run` | `quick-run.ts` | `docker run` from remote image, no project files |
@@ -232,8 +255,9 @@ When modifying `setup-ssh.ts`, prefer migrating these towards the shared helpers
 | `prune` | `prune.ts` | Remove orphan `devcontainer-cli/*` images |
 | `update` | `update-images.ts` | Pull / rebuild images; `--all` for every tracked project |
 | `upgrade-cli` | `self-update.ts` | Binary self-update from GitHub release |
-| `config` | `config-cmd.ts` | Read/write global config (`registry`) |
-| `cleanup-tips` | `cleanup-instructions.ts` | Print docker cleanup commands (special-cased, see above) |
+| `config` | `config-cmd.ts` | Read/write global config (subcommand `registry`) |
+| `cleanup-tips` | `cleanup-instructions.ts` | Print docker cleanup commands |
+| `completion` | `completion-cmd.ts` (logic in `cli/src/completion.ts`) | Print shell completion script |
 
 ---
 

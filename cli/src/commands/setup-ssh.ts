@@ -1,0 +1,632 @@
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+import { spawnSync, type SpawnSyncOptions } from 'child_process';
+import chalk from 'chalk';
+import { parse as parseYaml } from 'yaml';
+import { confirm, input, select, PromptCancelledError } from '@/prompts.js';
+import { loadConfig } from '@/config.js';
+import { sanitizeDockerName } from '@/validators.js';
+import {
+  SSH_DEFAULTS,
+  authorizedKeysInstallScript,
+  buildSshConfigBlock,
+  defaultKeyPath,
+  type SshConfigMode,
+} from '@/ssh-defaults.js';
+import { pickManagedContainer } from '@/container-picker.js';
+import type { Command } from '@/commands/command.js';
+
+export interface SetupSshFlags {
+  remote: string;
+  alias: string;
+  aliasExplicit: boolean;
+  key: string;
+  port: string;
+  mode: '' | 'local' | 'windows' | 'remote';
+  assumeYes: boolean;
+  container: string;
+  containerExplicit: boolean;
+  service: string;
+  serviceExplicit: boolean;
+  composeFile: string;
+  composeFileExplicit: boolean;
+  user: string;
+  help: boolean;
+}
+
+function defaultComposeFile(): string {
+  const cfg = loadConfig(process.cwd());
+  const ws = cfg?.workspace ?? sanitizeDockerName(path.basename(process.cwd()));
+  return `.dc_${ws}/build/docker-compose.yml`;
+}
+
+const DEFAULTS: SetupSshFlags = {
+  remote: '',
+  alias: SSH_DEFAULTS.alias,
+  aliasExplicit: false,
+  key: defaultKeyPath(),
+  port: String(SSH_DEFAULTS.windowsPort),
+  mode: '',
+  assumeYes: false,
+  container: SSH_DEFAULTS.serviceName,
+  containerExplicit: false,
+  service: SSH_DEFAULTS.serviceName,
+  serviceExplicit: false,
+  composeFile: defaultComposeFile(),
+  composeFileExplicit: false,
+  user: SSH_DEFAULTS.user,
+  help: false,
+};
+
+export function parseSetupSshFlags(argv: string[]): SetupSshFlags {
+  const f: SetupSshFlags = { ...DEFAULTS };
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    const next = () => argv[++i];
+    switch (a) {
+      case '-h':
+      case '--help':
+        f.help = true;
+        break;
+      case '--remote':
+        f.remote = next();
+        f.mode = 'remote';
+        break;
+      case '--alias':
+        f.alias = next();
+        f.aliasExplicit = true;
+        break;
+      case '--key':
+        f.key = next();
+        break;
+      case '--port':
+        f.port = next();
+        break;
+      case '--mode': {
+        const v = next();
+        if (v !== 'local' && v !== 'windows' && v !== 'remote') {
+          throw new Error(`Invalid --mode: ${v}`);
+        }
+        f.mode = v;
+        break;
+      }
+      case '--container':
+        f.container = next();
+        f.containerExplicit = true;
+        break;
+      case '--service':
+        f.service = next();
+        f.serviceExplicit = true;
+        break;
+      case '--compose-file':
+      case '-f':
+        f.composeFile = next();
+        f.composeFileExplicit = true;
+        break;
+      case '--user':
+        f.user = next();
+        break;
+      case '-y':
+      case '--yes':
+        f.assumeYes = true;
+        break;
+      default:
+        throw new Error(`Unknown flag: ${a}`);
+    }
+  }
+  return f;
+}
+
+export function setupSshHelp(): string {
+  return `cli setup-ssh — automate SSH key + config for devcontainer-ssh
+
+Usage:
+  cli setup-ssh [flags]
+
+Flags:
+  --remote USER@HOST   Configure remote-server access (ProxyCommand mode).
+  --alias NAME         SSH alias to register (default: ${DEFAULTS.alias}).
+  --key PATH           Private key path (default: ${DEFAULTS.key}).
+  --port PORT          Port for Windows mode (default: ${DEFAULTS.port}).
+  --mode MODE          Force mode: local | windows | remote.
+  --container NAME     Container name (auto-detected from compose if omitted).
+  --service NAME       Compose service name (auto-detected if omitted).
+  -f, --compose-file F Compose file path (default: ${DEFAULTS.composeFile}).
+  --user NAME          SSH user inside container (default: ${DEFAULTS.user}).
+  -y, --yes            Assume "yes" to all prompts.
+  -h, --help           Show this help.
+`;
+}
+
+const log = (s: string) => console.log(`${chalk.blue.bold('==>')} ${s}`);
+const ok = (s: string) => console.log(`${chalk.green.bold('✓')}   ${s}`);
+const warn = (s: string) => console.log(`${chalk.yellow.bold('!')}   ${s}`);
+const dim = (s: string) => console.log(chalk.gray(s));
+
+function run(cmd: string, args: string[], opts: SpawnSyncOptions = {}) {
+  const r = spawnSync(cmd, args, { encoding: 'utf8', ...opts });
+  return { status: r.status, stdout: String(r.stdout ?? ''), stderr: String(r.stderr ?? '') };
+}
+
+function runInherit(cmd: string, args: string[]) {
+  return spawnSync(cmd, args, { stdio: 'inherit' });
+}
+
+function which(bin: string): boolean {
+  const r = run('sh', ['-c', `command -v ${bin}`]);
+  return r.status === 0 && r.stdout.trim().length > 0;
+}
+
+type Mode = 'local' | 'windows' | 'remote';
+
+interface ComposeServiceInfo {
+  service: string;
+  container: string;
+}
+
+function readComposeServices(composeFile: string): Map<string, Record<string, unknown>> | null {
+  if (!fs.existsSync(composeFile)) return null;
+  try {
+    const raw = fs.readFileSync(composeFile, 'utf8');
+    const doc = parseYaml(raw) as { services?: Record<string, Record<string, unknown>> } | null;
+    if (!doc?.services) return null;
+    return new Map(Object.entries(doc.services));
+  } catch {
+    return null;
+  }
+}
+
+function pickDevcontainerService(
+  services: Map<string, Record<string, unknown>>,
+): ComposeServiceInfo | null {
+  const containerOf = (svc: Record<string, unknown>, key: string) =>
+    typeof svc.container_name === 'string' ? (svc.container_name as string) : key;
+
+  for (const [key, svc] of services) {
+    if (key === SSH_DEFAULTS.serviceName || containerOf(svc, key) === SSH_DEFAULTS.serviceName) {
+      return { service: key, container: containerOf(svc, key) };
+    }
+  }
+  const candidates: ComposeServiceInfo[] = [];
+  for (const [key, svc] of services) {
+    const c = containerOf(svc, key);
+    if (key.includes('devcontainer') || c.includes('devcontainer')) {
+      candidates.push({ service: key, container: c });
+    }
+  }
+  if (candidates.length === 1) return candidates[0];
+  return null;
+}
+
+async function resolveTargetService(f: SetupSshFlags): Promise<ComposeServiceInfo> {
+  if (f.containerExplicit && f.serviceExplicit) {
+    return { service: f.service, container: f.container };
+  }
+  const composePath = path.resolve(process.cwd(), f.composeFile);
+  const services = readComposeServices(composePath);
+  if (!services) {
+    if (f.containerExplicit) return { service: f.service, container: f.container };
+    const picked = await pickManagedContainer('Select devcontainer to set up SSH for:', {
+      interactive: !f.assumeYes,
+      assumeYes: f.assumeYes,
+    });
+    return { service: SSH_DEFAULTS.serviceName, container: picked.name };
+  }
+
+  const picked = pickDevcontainerService(services);
+  if (picked) {
+    if (f.containerExplicit) picked.container = f.container;
+    if (f.serviceExplicit) picked.service = f.service;
+    return picked;
+  }
+
+  const choices = [...services.entries()].map(([key, svc]) => ({
+    name: key,
+    message: typeof svc.container_name === 'string'
+      ? `${key} (container: ${svc.container_name})`
+      : key,
+  }));
+  if (choices.length === 0) throw new Error(`No services found in ${composePath}`);
+  if (f.assumeYes) {
+    const first = choices[0];
+    const svc = services.get(first.name)!;
+    return {
+      service: first.name,
+      container: typeof svc.container_name === 'string' ? (svc.container_name as string) : first.name,
+    };
+  }
+  const chosen = await select('sshService', 'Select SSH service:', choices, choices[0].name);
+  const svc = services.get(chosen)!;
+  return {
+    service: chosen,
+    container: typeof svc.container_name === 'string' ? (svc.container_name as string) : chosen,
+  };
+}
+
+function detectMode(f: SetupSshFlags): Mode {
+  if (f.mode) return f.mode;
+  if (process.platform === 'win32') return 'windows';
+  return 'local';
+}
+
+function checkPrereqs(mode: Mode) {
+  for (const t of ['ssh', 'ssh-keygen']) {
+    if (!which(t)) throw new Error(`Missing tool: ${t}`);
+  }
+  if (mode === 'local' || mode === 'windows') {
+    if (!which('docker')) throw new Error('Missing tool: docker');
+  }
+}
+
+function stackRunning(container: string): boolean {
+  const r = run('docker', ['ps', '--format', '{{.Names}}']);
+  if (r.status !== 0) return false;
+  return r.stdout.split('\n').some((l) => l.trim() === container);
+}
+
+async function ensureStack(f: SetupSshFlags, mode: Mode): Promise<void> {
+  if (mode === 'remote') return;
+  if (stackRunning(f.container)) {
+    ok(`Container '${f.container}' is running.`);
+    return;
+  }
+  warn(`Container '${f.container}' not running.`);
+  const composePath = path.resolve(process.cwd(), f.composeFile);
+  if (!fs.existsSync(composePath)) {
+    throw new Error(
+      `Compose file not found: ${composePath}\nRun 'devcontainer-cli' first to generate it, or pass -f <path> to specify a different compose file.`,
+    );
+  }
+  const proceed = f.assumeYes
+    ? true
+    : await confirm('startStack', 'Start it now with docker compose up -d?', true);
+  if (!proceed) throw new Error('Aborting — stack must be running.');
+
+  const r = runInherit('docker', ['compose', '-f', f.composeFile, 'up', '-d']);
+  if (r.status !== 0) throw new Error('docker compose up failed.');
+
+  let tries = 20;
+  while (tries > 0 && !stackRunning(f.container)) {
+    await new Promise((res) => setTimeout(res, 1000));
+    tries--;
+  }
+  if (!stackRunning(f.container)) throw new Error('Container failed to start.');
+}
+
+function fetchPassword(f: SetupSshFlags, mode: Mode): void {
+  if (mode === 'remote') return;
+  log('Fetching temporary password from logs...');
+  const r = run('docker', ['compose', '-f', f.composeFile, 'logs', f.service]);
+  if (r.status !== 0) {
+    warn('Could not read logs.');
+    return;
+  }
+  // `docker logs` writes to stderr in some images
+  const combined = `${r.stdout}\n${r.stderr}`;
+  const lines = combined
+    .split('\n')
+    .filter((l) => l.includes(`${f.user} password`));
+  const last = lines[lines.length - 1];
+  if (!last) {
+    warn('Could not read password from logs (maybe key already installed).');
+  } else {
+    dim(`   ${last}`);
+  }
+}
+
+function genKey(keyPath: string): void {
+  if (fs.existsSync(keyPath) && fs.existsSync(`${keyPath}.pub`)) {
+    ok(`Key already exists: ${keyPath}`);
+    return;
+  }
+  log(`Generating ed25519 key at ${keyPath}`);
+  fs.mkdirSync(path.dirname(keyPath), { recursive: true });
+  const r = runInherit('ssh-keygen', ['-t', 'ed25519', '-f', keyPath, '-N', '', '-q']);
+  if (r.status !== 0) throw new Error('ssh-keygen failed.');
+  ok('Key generated.');
+}
+
+async function containerIp(container: string, f: SetupSshFlags): Promise<string> {
+  const fmt = '{{range $name, $net := .NetworkSettings.Networks}}{{$name}} {{$net.IPAddress}}{{"\\n"}}{{end}}';
+  const r = run('docker', ['inspect', '-f', fmt, container]);
+  if (r.status !== 0) throw new Error('Could not resolve container IP.');
+  const entries = r.stdout
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0)
+    .map((l) => {
+      const sep = l.indexOf(' ');
+      return { network: l.slice(0, sep), ip: l.slice(sep + 1).trim() };
+    })
+    .filter((e) => e.ip.length > 0);
+
+  if (entries.length === 0) return '';
+  if (entries.length === 1) return entries[0].ip;
+
+  if (f.assumeYes) {
+    warn(`Container '${container}' is on ${entries.length} networks; using '${entries[0].network}' (${entries[0].ip}).`);
+    return entries[0].ip;
+  }
+  const choices = entries.map((e) => ({ name: e.ip, message: `${e.network} (${e.ip})` }));
+  return select('containerNetwork', 'Container is on multiple networks. Select one:', choices, choices[0].name);
+}
+
+interface InstallResult {
+  hostname: string;
+  port: string;
+}
+
+async function installKey(f: SetupSshFlags, mode: Mode): Promise<InstallResult> {
+  const pub = fs.readFileSync(`${f.key}.pub`);
+  const dockerExecArgs = ['exec', '-i', '-u', f.user, f.container, 'sh', '-c', authorizedKeysInstallScript()];
+
+  if (mode === 'remote') {
+    if (!f.remote) throw new Error('--remote USER@HOST required for remote mode.');
+    log(`Installing public key into ${f.container} via ${f.remote}...`);
+    const remoteCmd = `docker exec -i -u ${f.user} ${f.container} sh -c '${authorizedKeysInstallScript()}'`;
+    const r = spawnSync('ssh', [f.remote, remoteCmd], {
+      input: pub,
+      stdio: ['pipe', 'inherit', 'inherit'],
+    });
+    if (r.status !== 0) throw new Error('Remote key install failed.');
+    return { hostname: '', port: '' };
+  }
+
+  if (mode === 'local') {
+    const ip = await containerIp(f.container, f);
+    if (!ip) throw new Error('Could not resolve container IP.');
+    log(`Installing public key into ${f.container} (${ip}) via docker exec...`);
+    const r = spawnSync('docker', dockerExecArgs, { input: pub, stdio: ['pipe', 'inherit', 'inherit'] });
+    if (r.status !== 0) throw new Error('docker exec key install failed.');
+    return { hostname: ip, port: '' };
+  }
+
+  log(`Installing public key into ${f.container} via docker exec...`);
+  const r = spawnSync('docker', dockerExecArgs, { input: pub, stdio: ['pipe', 'inherit', 'inherit'] });
+  if (r.status !== 0) throw new Error('docker exec key install failed.');
+  return { hostname: 'localhost', port: f.port };
+}
+
+export function buildConfigBlock(
+  mode: Mode,
+  f: SetupSshFlags,
+  inst: InstallResult,
+): string {
+  return buildSshConfigBlock({
+    mode: mode as SshConfigMode,
+    alias: f.alias,
+    user: f.user,
+    key: f.key,
+    hostname: inst.hostname || undefined,
+    port: inst.port || undefined,
+    remote: f.remote || undefined,
+    container: f.container,
+  });
+}
+
+function aliasOfHostLine(line: string): string[] {
+  const m = line.match(/^\s*Host\s+(.+)$/);
+  if (!m) return [];
+  return m[1].split(/\s+/).filter(Boolean);
+}
+
+export function hasAliasBlock(content: string, alias: string): boolean {
+  for (const line of content.split('\n')) {
+    if (aliasOfHostLine(line).includes(alias)) return true;
+  }
+  return false;
+}
+
+export function stripAliasBlock(content: string, alias: string): string {
+  const lines = content.split('\n');
+  const out: string[] = [];
+  let skip = false;
+  for (const line of lines) {
+    const hosts = aliasOfHostLine(line);
+    const isHostLine = hosts.length > 0;
+    if (skip) {
+      if (isHostLine) {
+        if (hosts.includes(alias)) continue;
+        skip = false;
+        out.push(line);
+      }
+      continue;
+    }
+    if (isHostLine && hosts.includes(alias)) {
+      skip = true;
+      continue;
+    }
+    out.push(line);
+  }
+  return out.join('\n');
+}
+
+function extractAliasBlock(content: string, alias: string): string {
+  const lines = content.split('\n');
+  const out: string[] = [];
+  let printing = false;
+  for (const line of lines) {
+    const hosts = aliasOfHostLine(line);
+    const isHostLine = hosts.length > 0;
+    if (printing) {
+      if (isHostLine) {
+        if (!hosts.includes(alias)) break;
+        out.push(line);
+        continue;
+      }
+      out.push(line);
+      continue;
+    }
+    if (isHostLine && hosts.includes(alias)) {
+      printing = true;
+      out.push(line);
+    }
+  }
+  return out.join('\n');
+}
+
+async function updateSshConfig(
+  f: SetupSshFlags,
+  mode: Mode,
+  inst: InstallResult,
+): Promise<void> {
+  const sshDir = path.join(os.homedir(), '.ssh');
+  const configPath = path.join(sshDir, 'config');
+  fs.mkdirSync(sshDir, { recursive: true });
+  if (!fs.existsSync(configPath)) fs.writeFileSync(configPath, '');
+  fs.chmodSync(configPath, 0o600);
+
+  const newBlock = buildConfigBlock(mode, f, inst);
+  const current = fs.readFileSync(configPath, 'utf8');
+
+  if (hasAliasBlock(current, f.alias)) {
+    warn(`Host '${f.alias}' already defined in ${configPath}`);
+    dim('---- existing ----');
+    console.log(extractAliasBlock(current, f.alias));
+    dim('---- proposed ----');
+    console.log(newBlock);
+    const replace = f.assumeYes
+      ? true
+      : await confirm('replaceAlias', `Replace existing block for Host '${f.alias}'?`, false);
+    if (!replace) {
+      warn('Skipping ssh config update.');
+      return;
+    }
+    fs.copyFileSync(configPath, `${configPath}.bak`);
+    ok(`Backup saved: ${configPath}.bak`);
+    let stripped = stripAliasBlock(current, f.alias).trimEnd();
+    if (stripped.length > 0) stripped += '\n\n';
+    fs.writeFileSync(configPath, `${stripped}${newBlock}\n`);
+    fs.chmodSync(configPath, 0o600);
+    ok(`Replaced Host '${f.alias}' in ${configPath}`);
+  } else {
+    let body = current.trimEnd();
+    if (body.length > 0) body += '\n\n';
+    fs.writeFileSync(configPath, `${body}${newBlock}\n`);
+    fs.chmodSync(configPath, 0o600);
+    ok(`Appended Host '${f.alias}' to ${configPath}`);
+  }
+}
+
+function testConnection(alias: string): void {
+  log(`Testing ssh ${alias} ...`);
+  const r = spawnSync(
+    'ssh',
+    [
+      '-o',
+      'BatchMode=yes',
+      '-o',
+      'StrictHostKeyChecking=accept-new',
+      '-o',
+      'ConnectTimeout=5',
+      '-o',
+      'ServerAliveInterval=2',
+      '-o',
+      'ServerAliveCountMax=2',
+      alias,
+      'echo OK',
+    ],
+    { encoding: 'utf8', timeout: 15000, killSignal: 'SIGKILL' },
+  );
+  const stdout = String(r.stdout ?? '');
+  if (r.status === 0 && stdout.split('\n').some((l) => l.trim() === 'OK')) {
+    ok(`SSH alias '${alias}' works.`);
+    return;
+  }
+  if ((r as { signal?: string }).signal) {
+    warn(`SSH test timed out after 15s. Try manually:  ssh ${alias}`);
+  } else {
+    warn(`SSH test inconclusive (exit ${r.status ?? '?'}). Try manually:  ssh ${alias}`);
+  }
+}
+
+function deriveWorkspace(containerName: string | null): string {
+  try {
+    const cfg = loadConfig(process.cwd());
+    if (cfg?.workspace) return cfg.workspace;
+  } catch {
+    /* ignore — config optional */
+  }
+  if (containerName) {
+    const m = containerName.match(new RegExp(`^(.+)-${SSH_DEFAULTS.serviceName}$`));
+    if (m) return m[1];
+  }
+  return sanitizeDockerName(path.basename(process.cwd()));
+}
+
+function applyWorkspaceDefaults(f: SetupSshFlags, workspace: string): void {
+  if (!workspace) return;
+  if (f.alias === DEFAULTS.alias) f.alias = workspace;
+  if (f.key === DEFAULTS.key) {
+    f.key = path.join(os.homedir(), '.ssh', `id_${workspace}`);
+  }
+  if (!f.containerExplicit && f.container === DEFAULTS.container) {
+    f.container = `${workspace}-${SSH_DEFAULTS.serviceName}`;
+  }
+  if (!f.composeFileExplicit) {
+    f.composeFile = `.dc_${workspace}/build/docker-compose.yml`;
+  }
+}
+
+export async function runSetupSsh(argv: string[]): Promise<void> {
+  const f = parseSetupSshFlags(argv);
+  if (f.help) {
+    console.log(setupSshHelp());
+    return;
+  }
+  const mode = detectMode(f);
+  checkPrereqs(mode);
+
+  let resolvedContainer: string | null = null;
+  if (mode !== 'remote') {
+    const target = await resolveTargetService(f);
+    f.service = target.service;
+    f.container = target.container;
+    resolvedContainer = target.container;
+  }
+
+  const workspace = deriveWorkspace(resolvedContainer);
+  applyWorkspaceDefaults(f, workspace);
+
+  if (!f.aliasExplicit && !f.assumeYes) {
+    f.alias = await input('alias', 'SSH connection name (alias):', f.alias, (v) =>
+      v.trim().length > 0 ? true : 'Name cannot be empty',
+    );
+  }
+
+  log(`Mode: ${mode}   Workspace: ${workspace}   Alias: ${f.alias}   Key: ${f.key}`);
+  if (mode !== 'remote') {
+    log(`Service: ${f.service}   Container: ${f.container}   Compose: ${f.composeFile}`);
+  }
+
+  await ensureStack(f, mode);
+  fetchPassword(f, mode);
+  genKey(f.key);
+
+  const inst = await installKey(f, mode);
+
+  await updateSshConfig(f, mode, inst);
+  testConnection(f.alias);
+  ok(`Done. Connect with:  ssh ${f.alias}`);
+}
+
+export async function runSetupSshMain(argv: string[]): Promise<void> {
+  try {
+    await runSetupSsh(argv);
+  } catch (e) {
+    if (e instanceof PromptCancelledError) {
+      console.log(chalk.yellow('\nCancelled.'));
+      process.exit(130);
+    }
+    throw e;
+  }
+}
+
+export const setupSshCommand: Command<SetupSshFlags> = {
+  name: 'setup-ssh',
+  summary: 'Run automated SSH setup (see: cli setup-ssh --help)',
+  parse: parseSetupSshFlags,
+  help: setupSshHelp,
+  run: runSetupSsh,
+};
