@@ -73,11 +73,7 @@ func getTargetTriplet() (triplet, ext string, err error) {
 	var archName string
 	switch runtime.GOARCH {
 	case "arm64":
-		if osName == "darwin" {
-			archName = "x64"
-		} else {
-			archName = "arm64"
-		}
+		archName = "arm64"
 	case "amd64":
 		archName = "x64"
 	default:

@@ -1,0 +1,54 @@
+# goreleaser config for the Go devcontainer CLI.
+# Produces one raw binary per target named devcontainer-cli-<triplet>[.exe]
+# plus a per-binary <name>.sha256 checksum file. This naming is a contract
+# shared with install.sh, install.ps1 and the upgrade-cli self-updater
+# (getTargetTriplet); changing it here means changing all of those too.
+version: 2
+
+project_name: devcontainer-cli
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: devcontainer-cli
+    main: ./cmd/devcontainer-cli
+    binary: devcontainer-cli
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+    mod_timestamp: '{{ .CommitTimestamp }}'
+
+# Ship raw binaries (no tar/zip), matching the release-asset contract.
+archives:
+  - id: devcontainer-cli
+    formats:
+      - binary
+    name_template: >-
+      {{ .ProjectName }}-{{ .Os }}-{{ if eq .Arch "amd64" }}x64{{ else }}{{ .Arch }}{{ end }}
+
+# One checksum file per artifact: <artifact>.sha256 (sha256sum format).
+checksum:
+  algorithm: sha256
+  split: true
+
+release:
+  draft: false
+  prerelease: auto
+
+changelog:
+  use: github
