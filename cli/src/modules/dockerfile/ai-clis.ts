@@ -1,4 +1,4 @@
-import { POST_SCRIPT_DIR, type DockerfileModule } from '@/types.js';
+import { POST_SCRIPT_DIR, type DockerfileModule } from '@/core/types.js';
 
 type CliId =
   | 'claude-code'

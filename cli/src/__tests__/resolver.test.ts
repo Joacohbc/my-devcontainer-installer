@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { resolveDockerfileModules, ResolverError } from '@/resolver.js';
+import { resolveDockerfileModules, ResolverError } from '@/domain/resolver.js';
 
 test('always-on modules are always included', () => {
   const r = resolveDockerfileModules([]);

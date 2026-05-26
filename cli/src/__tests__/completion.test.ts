@@ -9,8 +9,8 @@ import {
   zshCompletionScript,
   refreshInstalledCompletions,
   type CompletionProviders,
-} from '@/completion.js';
-import { BUILD_MODES, REMOTE_VARIANTS } from '@/types.js';
+} from '@/domain/completion.js';
+import { BUILD_MODES, REMOTE_VARIANTS } from '@/core/types.js';
 
 const stubs: CompletionProviders = {
   containers: () => ['app-dev', 'db-dev'],

@@ -6,8 +6,8 @@ import {
   generateDockerfile as generateDockerfileRaw,
   generateEnv,
   resolveRemoteImage,
-} from '@/generator.js';
-import type { DevcontainerConfig } from '@/types.js';
+} from '@/domain/generator.js';
+import type { DevcontainerConfig } from '@/core/types.js';
 
 function generateDockerfile(config: DevcontainerConfig): string {
   const out = generateDockerfileRaw(config);
@@ -81,6 +81,18 @@ test('python module includes uv by default', () => {
     makeConfig({ dockerfile: { modules: [{ id: 'python' }] } }),
   );
   assert.match(df, /astral\.sh\/uv\/install\.sh/);
+  // uv PATH is sourced from every rc file (not just .profile, unread by zsh)
+  assert.match(df, /\.python_init\.sh/);
+  assert.match(df, /for f in \.zshrc \.bashrc \.profile/);
+});
+
+test('bun module sources its PATH from every rc file', () => {
+  const df = generateDockerfile(
+    makeConfig({ dockerfile: { modules: [{ id: 'bun' }] } }),
+  );
+  assert.match(df, /bun\.sh\/install/);
+  assert.match(df, /\.bun_init\.sh/);
+  assert.match(df, /for f in \.zshrc \.bashrc \.profile/);
 });
 
 test('python without uv', () => {

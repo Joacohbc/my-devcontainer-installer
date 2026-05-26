@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as path from 'path';
 import * as fs from 'fs';
-import { resolveWorkspace, projectPaths } from '@/project.js';
+import { resolveWorkspace, projectPaths } from '@/infra/project.js';
 
 test('resolveWorkspace resolves correct workspace name', () => {
   const cwd = '/home/joaco/my-project';

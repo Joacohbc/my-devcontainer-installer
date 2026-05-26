@@ -9,7 +9,7 @@ import {
   dockerComposeOrThrow,
   spawner,
   resetDockerCache,
-} from '@/docker.js';
+} from '@/infra/docker.js';
 
 test('docker.ts checks availability and executes commands', () => {
   resetDockerCache();

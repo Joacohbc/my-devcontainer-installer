@@ -1,4 +1,5 @@
-import type { DockerfileModule } from '@/types.js';
+import type { DockerfileModule } from '@/core/types.js';
+import { emitShellInit } from '@/modules/dockerfile/shell-init.js';
 
 export const pythonModule: DockerfileModule = {
   id: 'python',
@@ -17,8 +18,8 @@ export const pythonModule: DockerfileModule = {
     const uvBlock = uv
       ? `
 # Install uv (Astral Python installer/manager) for devuser
-RUN su - devuser -c 'curl -LsSf https://astral.sh/uv/install.sh | sh' && \\
-    su - devuser -c 'echo "export PATH=\\"\\$HOME/.local/bin:\\$PATH\\"" >> /home/devuser/.profile'
+RUN su - devuser -c 'curl -LsSf https://astral.sh/uv/install.sh | sh'
+${emitShellInit('.python_init.sh', ['export PATH="$HOME/.local/bin:$PATH"'])}
 `
       : '';
     return `##
