@@ -10,7 +10,7 @@ based on this principles must be followed by default, unless
 the project context explicitly states otherwise.
 
 **Before you touch any code, read `AGENTS.md` at the repo root** and obey its project-specific
-working rules (pnpm-only, tests required for every module change, layered architecture and
+working rules (Go toolchain, tests required for every module change, layered architecture and
 import direction, error-handling/exit-code contract, installer script parity). Those rules take
 precedence over these generic directives whenever they conflict.
 

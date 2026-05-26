@@ -196,7 +196,7 @@ Ejemplo versión fija:
 curl -fsSL https://raw.githubusercontent.com/Joacohbc/my-devcontainer-installer/main/cli/install.sh | VERSION=v1.0.0 sh
 ```
 
-**Descarga manual** (alternativa): https://github.com/Joacohbc/my-devcontainer-installer/releases/latest — binarios disponibles: `devcontainer-cli-linux-x64`, `-linux-arm64`, `-darwin-x64` y `-windows-x64.exe`. Son ejecutables únicos (assets embebidos via Node.js SEA); descargás, `chmod +x` y listo.
+**Descarga manual** (alternativa): https://github.com/Joacohbc/my-devcontainer-installer/releases/latest — binarios disponibles: `devcontainer-cli-linux-x64`, `-linux-arm64`, `-darwin-x64`, `-darwin-arm64` y `-windows-x64.exe`. Son ejecutables únicos (assets embebidos via `go:embed`); descargás, `chmod +x` y listo.
 
 ### Desinstalación
 

@@ -53,7 +53,7 @@ try {
     }
 
     Info "Verify: devcontainer-cli --help"
-    Info "Self-update: devcontainer-cli upgrade-cli"
+    Info "Self-update: devcontainer-cli update"
 }
 catch {
     if (Test-Path $tmpPath) { Remove-Item -Force $tmpPath -ErrorAction SilentlyContinue }

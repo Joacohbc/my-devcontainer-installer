@@ -24,7 +24,14 @@ esac
 
 case "$uname_m" in
   x86_64|amd64) arch=x64 ;;
-  arm64|aarch64) arch=arm64 ;;
+  arm64|aarch64)
+    if [ "$os" = darwin ]; then
+      arch=x64
+      info "Apple Silicon detected — using darwin-x64 build (Rosetta 2 required)"
+    else
+      arch=arm64
+    fi
+    ;;
   *) err "unsupported arch: $uname_m" ;;
 esac
 
@@ -129,4 +136,4 @@ else
 fi
 
 info "Verify: devcontainer-cli --help"
-info "Self-update: devcontainer-cli upgrade-cli"
+info "Self-update: devcontainer-cli update"

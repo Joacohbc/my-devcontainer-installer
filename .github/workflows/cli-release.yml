@@ -10,133 +10,30 @@ permissions:
   contents: write
 
 jobs:
-  build:
-    name: Build ${{ matrix.target }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-latest
-            target: linux-x64
-            binary: devcontainer-cli
-            ext: ''
-          - os: ubuntu-24.04-arm
-            target: linux-arm64
-            binary: devcontainer-cli
-            ext: ''
-          - os: macos-latest
-            target: darwin-x64
-            binary: devcontainer-cli
-            ext: ''
-          - os: windows-latest
-            target: windows-x64
-            binary: devcontainer-cli.exe
-            ext: '.exe'
-    defaults:
-      run:
-        working-directory: cli
-    env:
-      VERSION: ${{ github.ref_name }}
+  release:
+    name: Build and publish release
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v6
         with:
-          version: latest
+          fetch-depth: 0
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
+      - name: Setup Go
+        uses: actions/setup-go@v5
         with:
-          node-version: 24
-          cache: 'pnpm'
-          cache-dependency-path: cli/pnpm-lock.yaml
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Typecheck
-        run: pnpm run typecheck
+          go-version: '1.25'
+          cache-dependency-path: cli/go.sum
 
       - name: Run tests
-        run: pnpm test
+        working-directory: cli
+        run: go test ./...
 
-      - name: Build SEA bundle
-        run: pnpm run build:sea
-
-      - name: Generate SEA blob
-        run: pnpm run sea:blob
-
-      - name: Copy node binary (unix)
-        if: runner.os != 'Windows'
-        run: cp "$(command -v node)" "dist/${{ matrix.binary }}"
-
-      - name: Copy node binary (windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: Copy-Item (Get-Command node).Source "dist/${{ matrix.binary }}"
-
-      - name: Remove signature (macOS)
-        if: runner.os == 'macOS'
-        run: codesign --remove-signature "dist/${{ matrix.binary }}"
-
-      - name: Inject blob (unix)
-        if: runner.os != 'Windows'
-        run: |
-          npx -y postject "dist/${{ matrix.binary }}" NODE_SEA_BLOB dist/sea-prep.blob \
-            --sentinel-fuse NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2 \
-            ${{ runner.os == 'macOS' && '--macho-segment-name NODE_SEA' || '' }}
-
-      - name: Inject blob (windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: npx -y postject "dist/${{ matrix.binary }}" NODE_SEA_BLOB dist/sea-prep.blob --sentinel-fuse NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2
-
-      - name: Re-sign (macOS)
-        if: runner.os == 'macOS'
-        run: codesign --sign - "dist/${{ matrix.binary }}"
-
-      - name: Rename binary for release
-        shell: bash
-        run: mv "dist/${{ matrix.binary }}" "dist/devcontainer-cli-${{ matrix.target }}${{ matrix.ext }}"
-
-      - name: Generate SHA256 checksum
-        shell: bash
-        working-directory: cli/dist
-        run: |
-          asset="devcontainer-cli-${{ matrix.target }}${{ matrix.ext }}"
-          if command -v sha256sum >/dev/null 2>&1; then
-            sha256sum "$asset" | awk '{print $1}' > "$asset.sha256"
-          else
-            shasum -a 256 "$asset" | awk '{print $1}' > "$asset.sha256"
-          fi
-          cat "$asset.sha256"
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v7
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v6
         with:
-          name: devcontainer-cli-${{ matrix.target }}
-          path: |
-            cli/dist/devcontainer-cli-${{ matrix.target }}${{ matrix.ext }}
-            cli/dist/devcontainer-cli-${{ matrix.target }}${{ matrix.ext }}.sha256
-          if-no-files-found: error
-
-  release:
-    name: Publish release
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - name: Download artifacts
-        uses: actions/download-artifact@v8
-        with:
-          path: artifacts
-          merge-multiple: true
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v3
-        with:
-          files: artifacts/*
-          generate_release_notes: true
-          fail_on_unmatched_files: true
+          version: '~> v2'
+          args: release --clean
+          workdir: cli
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
