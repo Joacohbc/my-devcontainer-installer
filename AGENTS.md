@@ -228,7 +228,33 @@ When registering a new command:
    list is the **single source of truth**: `index.ts` dispatches from it and
    `completion.ts` derives its completable command names from it.
 3. Add the entry to `helpText()` in `cli/src/cli.ts` (root help text).
-4. Add tests in `cli/src/__tests__/<name>.test.ts` (flag parsing + help at minimum).
+4. Add an entry to `COMMAND_SPECS` in `cli/src/domain/completion.ts` (see
+   "Shell completion must track commands and flags" below).
+5. Add tests in `cli/src/__tests__/<name>.test.ts` (flag parsing + help at minimum).
+
+### Shell completion must track commands and flags
+
+`cli/src/domain/completion.ts` powers `bash`/`zsh` tab-completion. **Only the
+command *names* are derived automatically** (from the registry via
+`completableCommandNames()`); everything else is **hand-maintained** and must be
+updated whenever the CLI surface changes:
+
+- **Adding/removing a command** → add/remove its entry in `COMMAND_SPECS`. A
+  command with no entry completes its name but offers no flag/positional
+  candidates.
+- **Adding/removing/renaming a flag** → update the matching `flags` array
+  (`COMMAND_SPECS[<name>].flags` for a subcommand, or `ROOT_FLAGS` for the
+  default `generate` command).
+- **A flag that takes a value** → register it in `valueFlags` (enumerated
+  candidates, e.g. `--mode`), `ROOT_VALUE_FLAGS` (root-level enumerated), or
+  `FREEFORM_VALUE_FLAGS` (free-form text, no candidates). Omitting it means the
+  flag's value slot wrongly completes to flag names.
+- **A new positional argument** → add a generator to the command's `positionals`
+  array.
+
+Keep these in sync in the **same PR** as the flag/command change, and mirror the
+change in the command's `parse<Name>Flags` and help text so the three stay
+consistent.
 
 Subcommands (e.g. `config registry`) are themselves `Command` objects listed in
 the parent's `subcommands` array; the parent's `run` delegates via
