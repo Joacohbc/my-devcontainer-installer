@@ -21,7 +21,6 @@ interface SeaModule {
 function loadSea(): SeaModule | null {
   try {
     // node:sea is built-in on Node ≥ 20.12. In dev runs isSea() will be false even if the module loads.
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
     return require('node:sea') as SeaModule;
   } catch {
     return null;

@@ -9,6 +9,7 @@ produce a conflicting lockfile and the scripts/CI assume pnpm.
 
 - Install: `pnpm install`
 - Test: `cd cli && pnpm test`
+- Lint: `cd cli && pnpm lint`
 - Typecheck: `cd cli && pnpm run typecheck`
 - Build: `pnpm run build` / `pnpm run build:binary`
 - Run dev: `pnpm dev`
