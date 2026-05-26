@@ -7,16 +7,19 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/joacohbc/my-devcontainer-installer/cli-go/internal/commands"
 	"github.com/joacohbc/my-devcontainer-installer/cli-go/internal/infra/prompt"
-	"github.com/spf13/cobra"
 )
 
+// version is injected at build time via -ldflags "-X main.version=...".
 var version = "dev"
 
 func main() {
 	installSignalHandlers()
-	if err := rootCmd.Execute(); err != nil {
-		os.Exit(1)
+	commands.CleanupStaleUpdate()
+	root := commands.NewRootCommand(version)
+	if err := root.Execute(); err != nil {
+		handleError(err)
 	}
 }
 
@@ -29,30 +32,12 @@ func installSignalHandlers() {
 	}()
 }
 
-var rootCmd = &cobra.Command{
-	Use:          "devcontainer-cli",
-	Short:        "Generate and manage devcontainer environments",
-	Version:      version,
-	SilenceUsage: true,
-}
-
-func init() {
-	rootCmd.AddCommand(versionCmd)
-}
-
-var versionCmd = &cobra.Command{
-	Use:   "version",
-	Short: "Print the version",
-	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Printf("devcontainer-cli %s\n", version)
-	},
-}
-
 func handleError(err error) {
 	if err == nil {
 		return
 	}
 	if errors.Is(err, prompt.ErrCancelled) {
+		fmt.Fprintln(os.Stderr, "\nCancelled.")
 		os.Exit(130)
 	}
 	fmt.Fprintf(os.Stderr, "Error: %s\n", err.Error())

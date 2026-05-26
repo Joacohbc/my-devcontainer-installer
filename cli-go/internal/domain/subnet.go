@@ -126,6 +126,40 @@ func LastHost(cidr string) (string, bool) {
 	return toIP(ip), true
 }
 
+// ListUsedSubnets queries Docker (via the injected capture func) for the CIDR
+// ranges already allocated to existing networks.
+func ListUsedSubnets(capture CaptureFunc) []CidrRange {
+	idStatus, idStdout, _ := capture([]string{"network", "ls", "--quiet"})
+	if idStatus != 0 {
+		return nil
+	}
+	var ids []string
+	for _, line := range strings.Split(idStdout, "\n") {
+		if s := strings.TrimSpace(line); s != "" {
+			ids = append(ids, s)
+		}
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	args := append([]string{"network", "inspect", "--format", "{{range .IPAM.Config}}{{.Subnet}}\n{{end}}"}, ids...)
+	status, stdout, _ := capture(args)
+	if status != 0 {
+		return nil
+	}
+	var out []CidrRange
+	for _, line := range strings.Split(stdout, "\n") {
+		s := strings.TrimSpace(line)
+		if s == "" {
+			continue
+		}
+		if c, ok := ParseCidr(s); ok {
+			out = append(out, *c)
+		}
+	}
+	return out
+}
+
 func subnetCandidates() []string {
 	var candidates []string
 	for c := 0; c <= 255; c++ {

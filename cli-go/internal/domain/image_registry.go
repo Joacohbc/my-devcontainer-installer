@@ -153,6 +153,13 @@ func FingerprintTag(fp string) string {
 	return "devcontainer-cli/" + fp[:12] + ":latest"
 }
 
+// LocalImageExists reports whether a Docker image with the given reference is
+// present locally, using the injected capture func.
+func LocalImageExists(image string, capture CaptureFunc) bool {
+	status, stdout, _ := capture([]string{"images", "-q", image})
+	return status == 0 && strings.TrimSpace(stdout) != ""
+}
+
 func RecordProject(projectDir string, config *core.DevcontainerConfig, customImage string) {
 	now := time.Now().UTC().Format(time.RFC3339)
 	img := customImage

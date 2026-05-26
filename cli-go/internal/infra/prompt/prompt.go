@@ -69,11 +69,8 @@ func Select(message string, choices []Choice, initial string) (string, error) {
 }
 
 func Input(message, initial string, validate func(string) error) (string, error) {
-	var result string
+	result := initial
 	field := huh.NewInput().Title(message).Value(&result)
-	if initial != "" {
-		field = field.Placeholder(initial)
-	}
 	if validate != nil {
 		field = field.Validate(validate)
 	}

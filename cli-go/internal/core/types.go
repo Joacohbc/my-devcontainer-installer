@@ -23,12 +23,12 @@ type ModuleOptionChoice struct {
 }
 
 type ModuleOption struct {
-	ID             string              `json:"id"`
-	Label          string              `json:"label"`
-	Type           ModuleOptionType    `json:"type"`
+	ID             string               `json:"id"`
+	Label          string               `json:"label"`
+	Type           ModuleOptionType     `json:"type"`
 	Choices        []ModuleOptionChoice `json:"choices,omitempty"`
-	Default        any                 `json:"default,omitempty"`
-	RequiresModule string              `json:"requiresModule,omitempty"`
+	Default        any                  `json:"default,omitempty"`
+	RequiresModule string               `json:"requiresModule,omitempty"`
 }
 
 type DockerfileCategory string
@@ -78,18 +78,18 @@ var RemoteVariants = []string{
 }
 
 var VariantLabels = map[string]string{
-	"ssh":                "ssh — full image (all modules)",
-	"nodejs":             "nodejs — Node.js only",
-	"bun":                "bun — Bun only",
-	"java-temurin":       "java-temurin — Java Temurin only",
-	"python":             "python — Python only",
-	"go":                 "go — Go only",
-	"node-go":            "node-go — Node.js + Go",
-	"node-python":        "node-python — Node.js + Python",
-	"node-java-temurin":  "node-java-temurin — Node.js + Java Temurin",
-	"bun-go":             "bun-go — Bun + Go",
-	"bun-python":         "bun-python — Bun + Python",
-	"bun-java-temurin":   "bun-java-temurin — Bun + Java Temurin",
+	"ssh":               "ssh — full image (all modules)",
+	"nodejs":            "nodejs — Node.js only",
+	"bun":               "bun — Bun only",
+	"java-temurin":      "java-temurin — Java Temurin only",
+	"python":            "python — Python only",
+	"go":                "go — Go only",
+	"node-go":           "node-go — Node.js + Go",
+	"node-python":       "node-python — Node.js + Python",
+	"node-java-temurin": "node-java-temurin — Node.js + Java Temurin",
+	"bun-go":            "bun-go — Bun + Go",
+	"bun-python":        "bun-python — Bun + Python",
+	"bun-java-temurin":  "bun-java-temurin — Bun + Java Temurin",
 }
 
 func ParseVariant(v string) (string, error) {

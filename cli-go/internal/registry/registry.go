@@ -90,4 +90,3 @@ func AlwaysOnServices() []*compose.ServiceSpec {
 	}
 	return out
 }
-

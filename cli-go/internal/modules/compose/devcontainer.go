@@ -18,8 +18,8 @@ const (
 )
 
 var DevcontainerService = &ServiceSpec{
-	ID:    "devcontainer",
-	Label: SSHServiceName + " (main)",
+	ID:     "devcontainer",
+	Label:  SSHServiceName + " (main)",
 	Always: true,
 	Options: []core.ModuleOption{
 		{
