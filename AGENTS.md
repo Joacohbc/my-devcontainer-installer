@@ -38,12 +38,12 @@ Applies to:
   ai_clis, tmux, cleanup, shell_init).
 - `internal/modules/compose/*.go` — compose services (devcontainer, dind_engine,
   mongo, redis, postgres, tunnel).
-- `internal/core/registry.go` — the module/service registry.
+- `internal/registry/registry.go` — the module/service registry.
 - `internal/domain/{generator,resolver,validators,config}.go` — generator core.
 
 ### What to validate when adding/updating a module
 
-1. **Registry**: module appears in `internal/core/registry.go` and is resolvable
+1. **Registry**: module appears in `internal/registry/registry.go` and is resolvable
    by id.
 2. **Generated output**: the generated Dockerfile / compose contains the expected
    fragments (RUN, FROM, image, env, ports, volumes…). See `domain/generator_test.go`.
@@ -67,7 +67,8 @@ importable from outside the module.
 | `internal/commands/` | One file per command, each self-registering a `*cobra.Command`. A command *orchestrates* domain + infra; it holds no reusable logic of its own. `root.go` builds the root (the default `generate` command) and attaches subcommands. |
 | `internal/domain/` | Business logic: generating Dockerfile/compose, resolving module dependencies, validating input, loading/persisting config, fingerprinting, subnet math. Decides *what* happens; delegates I/O and process spawning to infra. **Never imports `infra`.** |
 | `internal/infra/` | The only layer that touches the outside world: running `docker` (`infra/docker`), resolving paths (`infra/project`), console output (`infra/ui`), interactive prompts (`infra/prompt`), embedded asset materialization (`infra/assets`), SSH helpers (`infra/sshdefaults`, `infra/sshinstructions`), container picking (`infra/containerpicker`). |
-| `internal/core/` | Pure data shared across layers: `types.go` (`DevcontainerConfig`, `ComposeService`, `BuildMode`, `SCHEMA_VERSION`, `RemoteVariants`, `VariantLabels`, `BuildModes`), `labels.go` (Docker label constants + helpers), `registry.go` (catalogue of modules/services). No I/O, no command-specific logic. |
+| `internal/core/` | Pure data shared across layers: `types.go` (`DevcontainerConfig`, `ComposeService`, `BuildMode`, `SCHEMA_VERSION`, `RemoteVariants`, `VariantLabels`, `BuildModes`), `labels.go` (Docker label constants + helpers, plus `ImageNamespace`). No I/O, no command-specific logic. |
+| `internal/registry/` | The catalogue of modules/services (`registry.go`): the ordered `DockerfileModules`/`ComposeServices` lists and their lookup helpers. Sits *above* `modules/` (it imports them) and *below* `domain`/`commands`. It can't live in `core` because `core` is the bottom layer that `modules/` import — putting the catalogue there would create an import cycle. |
 | `internal/modules/` | The catalogue itself — one file per installable thing: `dockerfile/` (image layers) and `compose/` (services), plus shared render helpers (`helpers.go`, `shell_init.go`). |
 
 **Why `cmd/devcontainer-cli/main.go` and not `cli/main.go`:** `cli/` is the
