@@ -148,9 +148,9 @@ func ComputeFingerprint(dockerfileContent string, copyFileContents map[string]st
 
 func FingerprintTag(fp string) string {
 	if len(fp) < 12 {
-		return "devcontainer-cli/" + fp + ":latest"
+		return core.ImageNamespace + "/" + fp + ":latest"
 	}
-	return "devcontainer-cli/" + fp[:12] + ":latest"
+	return core.ImageNamespace + "/" + fp[:12] + ":latest"
 }
 
 // LocalImageExists reports whether a Docker image with the given reference is

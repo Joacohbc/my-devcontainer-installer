@@ -12,6 +12,10 @@ const LabelVersion = LabelNamespace + ".version"
 const LabelQuickRun = LabelNamespace + ".quick-run"
 const SchemaVersion = "1"
 
+// ImageNamespace is the repository prefix for locally built images
+// (devcontainer-cli/<fingerprint>:latest). The prune filter must match it.
+const ImageNamespace = "devcontainer-cli"
+
 func ProjectID(config *DevcontainerConfig) string {
 	replacer := strings.NewReplacer(":", "_", "/", "_", "@", "_")
 	return replacer.Replace(config.Image)

@@ -78,7 +78,7 @@ func ResolveDevcontainerImageName(config *core.DevcontainerConfig) string {
 		if len(fp) > 12 {
 			fp = fp[:12]
 		}
-		return "devcontainer-cli/" + fp + ":latest"
+		return core.ImageNamespace + "/" + fp + ":latest"
 	}
 	return config.Image
 }

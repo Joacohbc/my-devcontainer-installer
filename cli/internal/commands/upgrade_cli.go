@@ -207,7 +207,7 @@ func httpGet(rawURL string, withAuth bool, maxBytes int64) (int, []byte, error) 
 }
 
 func fetchLatestRelease() (*release, error) {
-	apiURL := fmt.Sprintf("https://api.github.com/repos/%s/releases/latest", selfUpdateRepo)
+	apiURL := fmt.Sprintf("https://%s/repos/%s/releases/latest", primaryAPIHost, selfUpdateRepo)
 	status, body, err := httpGet(apiURL, true, 5*1024*1024)
 	if err != nil {
 		return nil, err

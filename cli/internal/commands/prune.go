@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/fatih/color"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/core"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/prompt"
@@ -37,7 +38,7 @@ type localImage struct {
 
 func listCliImages() []localImage {
 	status, stdout, _, err := docker.DockerCapture([]string{
-		"images", "--filter", "reference=devcontainer-cli/*",
+		"images", "--filter", "reference=" + core.ImageNamespace + "/*",
 		"--format", "{{.Repository}}:{{.Tag}}\t{{.ID}}",
 	})
 	if err != nil || status != 0 || strings.TrimSpace(stdout) == "" {
