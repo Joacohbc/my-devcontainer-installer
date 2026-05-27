@@ -64,7 +64,6 @@ Este documento consolida todas las oportunidades de mejora identificadas en el c
 *Cambios profundos que mejorarán la robustez y extensibilidad a largo plazo.*
 
 ### Arquitectura de Generación
-- [ ] **Reemplazar generación YAML manual**: Cambiar la concatenación de strings en los métodos `Render()` de compose por el uso de `gopkg.in/yaml.v3`. Elimina bugs de indentación.
 - [ ] **Contexto en Docker**: Propagar `context.Context` a través de `infra/docker` para permitir cancelación (Ctrl+C limpio) y timeouts.
 - [ ] **Fingerprint Completo**: El fingerprint actual solo mira el Dockerfile. Debería incluir también la configuración de Compose para recrear contenedores si cambian los servicios.
 
