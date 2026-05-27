@@ -92,23 +92,40 @@ update_rc() {
 if [ "$SETUP_COMPLETION" = "1" ]; then
   mkdir -p "$COMPLETION_DIR"
 
+  # Determine proper bash rc file early for accurate messaging
+  bashrc="$HOME/.bashrc"
+  if [ "$os" = darwin ]; then
+    if [ -f "$HOME/.bash_profile" ]; then
+      bashrc="$HOME/.bash_profile"
+    elif [ -f "$HOME/.profile" ]; then
+      bashrc="$HOME/.profile"
+    else
+      bashrc="$HOME/.bash_profile"
+    fi
+  fi
+
   # zsh
   if command -v zsh >/dev/null 2>&1 || [ -f "${ZDOTDIR:-$HOME}/.zshrc" ]; then
     if "$binary_path" completion zsh > "$COMPLETION_DIR/_devcontainer-cli" 2>/dev/null; then
       update_rc "${ZDOTDIR:-$HOME}/.zshrc" <<EOF
 export PATH="$BIN_DIR:\$PATH"
-fpath=("$COMPLETION_DIR" \$fpath)
-autoload -U compinit && compinit
+if [ -d "$COMPLETION_DIR" ]; then
+  fpath=("$COMPLETION_DIR" \$fpath)
+  if dummy=\$(type compdef) 2>/dev/null; then
+    autoload -Uz _devcontainer-cli
+    compdef _devcontainer-cli devcontainer-cli
+  else
+    autoload -Uz compinit && compinit
+  fi
+fi
 EOF
       info "zsh completion: ${ZDOTDIR:-$HOME}/.zshrc"
     fi
   fi
 
   # bash
-  if command -v bash >/dev/null 2>&1 || [ -f "$HOME/.bashrc" ]; then
+  if command -v bash >/dev/null 2>&1 || [ -f "$HOME/.bashrc" ] || [ -f "$HOME/.bash_profile" ]; then
     if "$binary_path" completion bash > "$COMPLETION_DIR/devcontainer-cli.bash" 2>/dev/null; then
-      bashrc="$HOME/.bashrc"
-      [ "$os" = darwin ] && [ -f "$HOME/.bash_profile" ] && bashrc="$HOME/.bash_profile"
       update_rc "$bashrc" <<EOF
 export PATH="$BIN_DIR:\$PATH"
 [ -f "$COMPLETION_DIR/devcontainer-cli.bash" ] && source "$COMPLETION_DIR/devcontainer-cli.bash"
@@ -117,7 +134,38 @@ EOF
     fi
   fi
 
-  info "Restart your shell (or 'exec \$SHELL') to enable PATH + completion."
+  # fish
+  if command -v fish >/dev/null 2>&1 || [ -d "${XDG_CONFIG_HOME:-$HOME/.config}/fish" ]; then
+    FISH_COMP_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/fish/completions"
+    mkdir -p "$FISH_COMP_DIR"
+    if "$binary_path" completion fish > "$FISH_COMP_DIR/devcontainer-cli.fish" 2>/dev/null; then
+      update_rc "${XDG_CONFIG_HOME:-$HOME/.config}/fish/config.fish" <<EOF
+if not contains "$BIN_DIR" \$PATH
+  set -gx PATH "$BIN_DIR" \$PATH
+fi
+EOF
+      info "fish completion: $FISH_COMP_DIR/devcontainer-cli.fish"
+    fi
+  fi
+
+  # Tailor exit instructions to user's active shell ($SHELL)
+  active_shell=""
+  shell_env="${SHELL:-}"
+  case "$shell_env" in
+    *zsh*)  active_shell="zsh" ;;
+    *bash*) active_shell="bash" ;;
+    *fish*) active_shell="fish" ;;
+  esac
+
+  if [ "$active_shell" = "zsh" ]; then
+    info "Restart your shell or run 'source ${ZDOTDIR:-$HOME}/.zshrc' to enable PATH + completion."
+  elif [ "$active_shell" = "bash" ]; then
+    info "Restart your shell or run 'source $bashrc' to enable PATH + completion."
+  elif [ "$active_shell" = "fish" ]; then
+    info "Restart your shell or run 'source ${XDG_CONFIG_HOME:-$HOME/.config}/fish/config.fish' to enable PATH + completion."
+  else
+    info "Restart your shell (or 'exec \$SHELL') to enable PATH + completion."
+  fi
 else
   case ":$PATH:" in
     *":$BIN_DIR:"*) ;;
@@ -126,6 +174,7 @@ else
   printf '\nEnable completion manually:\n'
   printf '  devcontainer-cli completion zsh  > %s/_devcontainer-cli\n' "$COMPLETION_DIR"
   printf '  devcontainer-cli completion bash > %s/devcontainer-cli.bash\n' "$COMPLETION_DIR"
+  printf '  devcontainer-cli completion fish > %s/devcontainer-cli.fish\n' "${XDG_CONFIG_HOME:-$HOME/.config}/fish/completions"
 fi
 
 info "Verify: devcontainer-cli --help"
