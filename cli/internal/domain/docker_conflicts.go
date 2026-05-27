@@ -3,7 +3,7 @@ package domain
 import (
 	"strings"
 
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/core"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 )
 
 type Conflict struct {
@@ -14,7 +14,7 @@ type Conflict struct {
 
 type CaptureFunc func(args []string) (status int, stdout, stderr string)
 
-func FindConflicts(config *core.DevcontainerConfig, dockerAvailable bool, capture CaptureFunc) []Conflict {
+func FindConflicts(config *types.DevcontainerConfig, dockerAvailable bool, capture CaptureFunc) []Conflict {
 	if !dockerAvailable {
 		return nil
 	}
@@ -22,7 +22,7 @@ func FindConflicts(config *core.DevcontainerConfig, dockerAvailable bool, captur
 	if err != nil {
 		return nil
 	}
-	project := core.ProjectID(config)
+	project := types.ProjectID(config)
 
 	var conflicts []Conflict
 
@@ -47,7 +47,7 @@ func FindConflicts(config *core.DevcontainerConfig, dockerAvailable bool, captur
 }
 
 func listExistingDockerResources(kind string, capture CaptureFunc) map[string]string {
-	labelKey := core.LabelProject
+	labelKey := types.LabelProject
 	var args []string
 	if kind == "container" {
 		args = []string{"container", "ls", "-a", "--format", `{{.Names}}\t{{.Label "` + labelKey + `"}}`}

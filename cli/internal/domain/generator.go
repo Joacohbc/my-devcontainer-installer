@@ -5,15 +5,15 @@ import (
 	"strings"
 
 	"github.com/goccy/go-yaml"
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/core"
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/modules/compose"
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/registry"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/catalog"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/modules/compose"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 )
 
 const DefaultSubnet = "172.25.0.0/28"
 
-func GenerateDockerfile(config *core.DevcontainerConfig) (string, error) {
-	if config.Mode == core.BuildModeRemote {
+func GenerateDockerfile(config *types.DevcontainerConfig) (string, error) {
+	if config.Mode == types.BuildModeRemote {
 		return "", nil
 	}
 	resolved, err := ResolveDockerfileModules(config.Dockerfile.Modules)
@@ -31,11 +31,11 @@ func GenerateDockerfile(config *core.DevcontainerConfig) (string, error) {
 	if postScripts != "" {
 		fragments = append(fragments, postScripts)
 	}
-	fragments = append(fragments, core.DockerfileLabelBlock(config))
-	return core.GeneratedHeader + "\n\n" + strings.Join(fragments, "\n\n") + "\n", nil
+	fragments = append(fragments, types.DockerfileLabelBlock(config))
+	return types.GeneratedHeader + "\n\n" + strings.Join(fragments, "\n\n") + "\n", nil
 }
 
-func postScriptsDockerfileBlock(config *core.DevcontainerConfig) (string, error) {
+func postScriptsDockerfileBlock(config *types.DevcontainerConfig) (string, error) {
 	files, err := CollectRequiredPostScriptFiles(config)
 	if err != nil {
 		return "", err
@@ -49,9 +49,9 @@ func postScriptsDockerfileBlock(config *core.DevcontainerConfig) (string, error)
 COPY %s %s/
 RUN chown -R devuser:devuser %s && chmod +x %s/*.sh`,
 		strings.Join(files, " "),
-		core.PostScriptDir,
-		core.PostScriptDir,
-		core.PostScriptDir,
+		types.PostScriptDir,
+		types.PostScriptDir,
+		types.PostScriptDir,
 	), nil
 }
 
@@ -68,17 +68,17 @@ func ResolveRemoteImage(variant, registry string) string {
 	return registry + suffix + ":latest"
 }
 
-func ResolveDevcontainerImageName(config *core.DevcontainerConfig) string {
-	if config.Mode == core.BuildModeRemote && config.Remote != nil {
+func ResolveDevcontainerImageName(config *types.DevcontainerConfig) string {
+	if config.Mode == types.BuildModeRemote && config.Remote != nil {
 		reg := config.Remote.Registry
 		return ResolveRemoteImage(config.Remote.Variant, reg)
 	}
-	if config.Mode == core.BuildModeLocalCached && config.Fingerprint != "" {
+	if config.Mode == types.BuildModeLocalCached && config.Fingerprint != "" {
 		fp := config.Fingerprint
 		if len(fp) > 12 {
 			fp = fp[:12]
 		}
-		return core.ImageNamespace + "/" + fp + ":latest"
+		return types.ImageNamespace + "/" + fp + ":latest"
 	}
 	return config.Image
 }
@@ -116,8 +116,8 @@ type enabledServicesResult struct {
 	optionsByID map[string]map[string]any
 }
 
-func resolveEnabledServices(config *core.DevcontainerConfig) enabledServicesResult {
-	selected := core.NormalizeServices(config.Compose.Services)
+func resolveEnabledServices(config *types.DevcontainerConfig) enabledServicesResult {
+	selected := types.NormalizeServices(config.Compose.Services)
 	enabled := make(map[string]bool)
 	optionsByID := make(map[string]map[string]any)
 
@@ -130,7 +130,7 @@ func resolveEnabledServices(config *core.DevcontainerConfig) enabledServicesResu
 		optionsByID[s.ID] = opts
 	}
 
-	for _, svc := range registry.ComposeServices {
+	for _, svc := range catalog.ComposeServices {
 		if svc.Always {
 			enabled[svc.ID] = true
 		}
@@ -143,7 +143,7 @@ func resolveEnabledServices(config *core.DevcontainerConfig) enabledServicesResu
 	return enabledServicesResult{enabledIDs: enabledIDs, optionsByID: optionsByID}
 }
 
-func GenerateCompose(config *core.DevcontainerConfig) (string, error) {
+func GenerateCompose(config *types.DevcontainerConfig) (string, error) {
 	result := resolveEnabledServices(config)
 	enabledIDs := result.enabledIDs
 	optionsByID := result.optionsByID
@@ -160,7 +160,7 @@ func GenerateCompose(config *core.DevcontainerConfig) (string, error) {
 		}
 	}
 
-	labels := core.ComposeLabels(config)
+	labels := types.ComposeLabels(config)
 	subnet := config.Compose.Subnet
 	if subnet == "" {
 		subnet = DefaultSubnet
@@ -172,7 +172,7 @@ func GenerateCompose(config *core.DevcontainerConfig) (string, error) {
 		declaredVolumes[v] = true
 	}
 	for _, id := range enabledIDs {
-		svc := registry.GetComposeService(id)
+		svc := catalog.GetComposeService(id)
 		if svc == nil {
 			return "", fmt.Errorf("unknown compose service: %s", id)
 		}
@@ -185,7 +185,7 @@ func GenerateCompose(config *core.DevcontainerConfig) (string, error) {
 	services := make(map[string]*compose.ServiceDef)
 
 	for _, id := range enabledIDs {
-		svc := registry.GetComposeService(id)
+		svc := catalog.GetComposeService(id)
 		if svc == nil {
 			return "", fmt.Errorf("unknown compose service: %s", id)
 		}
@@ -209,7 +209,7 @@ func GenerateCompose(config *core.DevcontainerConfig) (string, error) {
 			continue
 		}
 
-		if svc.ID == "devcontainer" && config.Mode == core.BuildModeRemote {
+		if svc.ID == "devcontainer" && config.Mode == types.BuildModeRemote {
 			rendered.Build = ""
 		}
 
@@ -282,10 +282,10 @@ func GenerateCompose(config *core.DevcontainerConfig) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("yaml marshal: %w", err)
 	}
-	return core.GeneratedHeader + "\n" + string(out), nil
+	return types.GeneratedHeader + "\n" + string(out), nil
 }
 
-func GenerateEnv(config *core.DevcontainerConfig) string {
+func GenerateEnv(config *types.DevcontainerConfig) string {
 	env := make(map[string]string, len(config.Env))
 	for k, v := range config.Env {
 		env[k] = v
@@ -313,7 +313,7 @@ func GenerateEnv(config *core.DevcontainerConfig) string {
 	return strings.Join(lines, "\n") + "\n"
 }
 
-func CollectRequiredCopyFiles(config *core.DevcontainerConfig) ([]string, error) {
+func CollectRequiredCopyFiles(config *types.DevcontainerConfig) ([]string, error) {
 	resolved, err := ResolveDockerfileModules(config.Dockerfile.Modules)
 	if err != nil {
 		return nil, err
@@ -331,7 +331,7 @@ func CollectRequiredCopyFiles(config *core.DevcontainerConfig) ([]string, error)
 	return files, nil
 }
 
-func CollectRequiredPostScriptFiles(config *core.DevcontainerConfig) ([]string, error) {
+func CollectRequiredPostScriptFiles(config *types.DevcontainerConfig) ([]string, error) {
 	resolved, err := ResolveDockerfileModules(config.Dockerfile.Modules)
 	if err != nil {
 		return nil, err
@@ -352,11 +352,11 @@ func CollectRequiredPostScriptFiles(config *core.DevcontainerConfig) ([]string, 
 	return files, nil
 }
 
-func CollectRequiredEnvVars(config *core.DevcontainerConfig) []core.RequiredEnvVar {
-	selected := core.NormalizeServices(config.Compose.Services)
-	var out []core.RequiredEnvVar
+func CollectRequiredEnvVars(config *types.DevcontainerConfig) []types.RequiredEnvVar {
+	selected := types.NormalizeServices(config.Compose.Services)
+	var out []types.RequiredEnvVar
 	for _, s := range selected {
-		svc := registry.GetComposeService(s.ID)
+		svc := catalog.GetComposeService(s.ID)
 		if svc == nil {
 			continue
 		}
@@ -365,7 +365,7 @@ func CollectRequiredEnvVars(config *core.DevcontainerConfig) []core.RequiredEnvV
 	return out
 }
 
-func PlannedComposeNames(config *core.DevcontainerConfig) (containers []string, network string, volumes []string, err error) {
+func PlannedComposeNames(config *types.DevcontainerConfig) (containers []string, network string, volumes []string, err error) {
 	result := resolveEnabledServices(config)
 	enabledIDs := result.enabledIDs
 	optionsByID := result.optionsByID
@@ -375,7 +375,7 @@ func PlannedComposeNames(config *core.DevcontainerConfig) (containers []string, 
 		declaredVolumes[v] = true
 	}
 	for _, id := range enabledIDs {
-		svc := registry.GetComposeService(id)
+		svc := catalog.GetComposeService(id)
 		if svc == nil {
 			return nil, "", nil, fmt.Errorf("unknown compose service: %s", id)
 		}
@@ -385,7 +385,7 @@ func PlannedComposeNames(config *core.DevcontainerConfig) (containers []string, 
 	}
 
 	for _, id := range enabledIDs {
-		svc := registry.GetComposeService(id)
+		svc := catalog.GetComposeService(id)
 		if svc == nil {
 			continue
 		}

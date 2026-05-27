@@ -4,12 +4,12 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/core"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 )
 
 func TestResolveDockerfileModules_AlwaysOnIncluded(t *testing.T) {
-	resolved, err := domain.ResolveDockerfileModules([]core.SelectedModule{})
+	resolved, err := domain.ResolveDockerfileModules([]types.SelectedModule{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -19,7 +19,7 @@ func TestResolveDockerfileModules_AlwaysOnIncluded(t *testing.T) {
 }
 
 func TestResolveDockerfileModules_RequiresAutoAdded(t *testing.T) {
-	resolved, err := domain.ResolveDockerfileModules([]core.SelectedModule{{ID: "nodejs"}})
+	resolved, err := domain.ResolveDockerfileModules([]types.SelectedModule{{ID: "nodejs"}})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -29,7 +29,7 @@ func TestResolveDockerfileModules_RequiresAutoAdded(t *testing.T) {
 }
 
 func TestResolveDockerfileModules_TransitiveRequires(t *testing.T) {
-	resolved, err := domain.ResolveDockerfileModules([]core.SelectedModule{{ID: "pnpm"}})
+	resolved, err := domain.ResolveDockerfileModules([]types.SelectedModule{{ID: "pnpm"}})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -40,7 +40,7 @@ func TestResolveDockerfileModules_TransitiveRequires(t *testing.T) {
 }
 
 func TestResolveDockerfileModules_UnknownModuleErrors(t *testing.T) {
-	_, err := domain.ResolveDockerfileModules([]core.SelectedModule{{ID: "nonexistent"}})
+	_, err := domain.ResolveDockerfileModules([]types.SelectedModule{{ID: "nonexistent"}})
 	if err == nil {
 		t.Fatal("expected error for unknown module, got nil")
 	}
@@ -51,7 +51,7 @@ func TestResolveDockerfileModules_UnknownModuleErrors(t *testing.T) {
 }
 
 func TestResolveDockerfileModules_CategoryOrder(t *testing.T) {
-	resolved, err := domain.ResolveDockerfileModules([]core.SelectedModule{
+	resolved, err := domain.ResolveDockerfileModules([]types.SelectedModule{
 		{ID: "java-temurin"},
 		{ID: "github-cli"},
 		{ID: "nodejs"},
@@ -69,7 +69,7 @@ func TestResolveDockerfileModules_CategoryOrder(t *testing.T) {
 }
 
 func TestResolveDockerfileModules_OptionsPassThrough(t *testing.T) {
-	resolved, err := domain.ResolveDockerfileModules([]core.SelectedModule{
+	resolved, err := domain.ResolveDockerfileModules([]types.SelectedModule{
 		{ID: "java-temurin", Options: map[string]any{"versions": []any{"17"}}},
 	})
 	if err != nil {
@@ -92,7 +92,7 @@ func TestResolveDockerfileModules_OptionsPassThrough(t *testing.T) {
 }
 
 func TestResolveDockerfileModules_ConflictsError(t *testing.T) {
-	_, err := domain.ResolveDockerfileModules([]core.SelectedModule{
+	_, err := domain.ResolveDockerfileModules([]types.SelectedModule{
 		{ID: "java-temurin"},
 		{ID: "java-openjdk"},
 	})

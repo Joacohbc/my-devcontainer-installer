@@ -33,17 +33,17 @@ it fits) — no third-party test framework.
 
 Applies to:
 
-- `internal/modules/dockerfile/*.go` — Dockerfile modules (base, nodejs, python,
+- `internal/domain/modules/dockerfile/*.go` — Dockerfile modules (base, nodejs, python,
   java_temurin, java_openjdk, golang, bun, pnpm, sqlite, dbclients, github_cli,
   ai_clis, tmux, cleanup, shell_init).
-- `internal/modules/compose/*.go` — compose services (devcontainer, dind_engine,
+- `internal/domain/modules/compose/*.go` — compose services (devcontainer, dind_engine,
   mongo, redis, postgres, tunnel).
-- `internal/registry/registry.go` — the module/service registry.
-- `internal/domain/{generator,resolver,validators,config}.go` — generator core.
+- `internal/domain/catalog/catalog.go` — the module/service catalog.
+- `internal/domain/{generator,resolver,validators,config,project,images}.go` — generator core.
 
 ### What to validate when adding/updating a module
 
-1. **Registry**: module appears in `internal/registry/registry.go` and is resolvable
+1. **Catalog**: module appears in `internal/domain/catalog/catalog.go` and is resolvable
    by id.
 2. **Generated output**: the generated Dockerfile / compose contains the expected
    fragments (RUN, FROM, image, env, ports, volumes…). See `domain/generator_test.go`.
@@ -51,7 +51,7 @@ Applies to:
    `domain/resolver_test.go` covers the cases.
 4. **Validation**: new options get valid/invalid cases in `domain/validators_test.go`.
 5. **CLI flags / prompts**: new flags or prompts are exercised in
-   `internal/commands/commands_test.go`.
+   `internal/cli/commands/commands_test.go`.
 
 ---
 
@@ -64,12 +64,12 @@ importable from outside the module.
 | Path | Why it exists / what belongs here |
 |---|---|
 | `cmd/devcontainer-cli/main.go` | Process wiring only: signal handlers (SIGINT/SIGTERM → exit 130), `version` var (injected via ldflags), root dispatch, error→exit-code mapping. No business logic. |
-| `internal/commands/` | One file per command, each self-registering a `*cobra.Command`. A command *orchestrates* domain + infra; it holds no reusable logic of its own. `root.go` builds the root (the default `generate` command) and attaches subcommands. |
-| `internal/domain/` | Business logic: generating Dockerfile/compose, resolving module dependencies, validating input, loading/persisting config, fingerprinting, subnet math. Decides *what* happens; delegates I/O and process spawning to infra. **Never imports `infra`.** |
-| `internal/infra/` | The only layer that touches the outside world: running `docker` (`infra/docker`), resolving paths (`infra/project`), console output (`infra/ui`), interactive prompts (`infra/prompt`), embedded asset materialization (`infra/assets`), SSH helpers (`infra/sshdefaults`, `infra/sshinstructions`), container picking (`infra/containerpicker`). |
-| `internal/core/` | Pure data shared across layers: `types.go` (`DevcontainerConfig`, `ComposeService`, `BuildMode`, `SCHEMA_VERSION`, `RemoteVariants`, `VariantLabels`, `BuildModes`), `labels.go` (Docker label constants + helpers, plus `ImageNamespace`). No I/O, no command-specific logic. |
-| `internal/registry/` | The catalogue of modules/services (`registry.go`): the ordered `DockerfileModules`/`ComposeServices` lists and their lookup helpers. Sits *above* `modules/` (it imports them) and *below* `domain`/`commands`. It can't live in `core` because `core` is the bottom layer that `modules/` import — putting the catalogue there would create an import cycle. |
-| `internal/modules/` | The catalogue itself — one file per installable thing: `dockerfile/` (image layers) and `compose/` (services), plus shared render helpers (`helpers.go`, `shell_init.go`). |
+| `internal/cli/` | User interaction layer. Contains subcommands (`cli/commands`), interactive prompts (`cli/prompt`), console output (`cli/ui`), container picker (`cli/pick`), and SSH next steps (`cli/sshhelp`). |
+| `internal/domain/` | Core logic layer: generating Dockerfile/compose, resolving module dependencies, validating input, loading/persisting config, fingerprinting, subnet math, workspace name resolution. **Never imports `infra` or `cli`.** |
+| `internal/domain/types/` | Shared domain data types: config structures, constants, label calculations. No I/O, no logic. (Was `internal/core`). |
+| `internal/domain/catalog/` | The catalog of modules/services (`catalog.go`). (Was `internal/registry`). |
+| `internal/domain/modules/` | Module definitions themselves: `modules/dockerfile/` and `modules/compose/`. |
+| `internal/infra/` | I/O execution layer. Contains raw subprocess running (`infra/docker`), assets embed extraction (`infra/assets`), SSH key default setup (`infra/sshdefaults`), and low-level project file-path definitions (`infra/project`). **Never imports `domain` or `cli`.** |
 
 **Why `cmd/devcontainer-cli/main.go` and not `cli/main.go`:** `cli/` is the
 module root — it holds `go.mod` and the release/installer artifacts
@@ -82,11 +82,11 @@ code lives in `internal/` (unimportable from outside the module), and `main.go`
 is a thin `package main` that only *wires* those internal pieces together — no
 business logic to misplace at the root.
 
-Import paths name the layer: `internal/core`, `internal/domain`,
-`internal/infra/docker`, `internal/commands`.
+Import paths name the layer: `internal/domain/types`, `internal/domain`,
+`internal/infra/docker`, `internal/cli/commands`.
 
 **Type placement:** a type used by **more than one package** lives in
-`core/types.go`; a type used by a **single command** stays local to that file
+`internal/domain/types/types.go`; a type used by a **single command** stays local to that file
 (e.g. each command's `genFlags`).
 
 ### The `CaptureFunc` injection pattern (domain never imports infra)
@@ -94,7 +94,7 @@ Import paths name the layer: `internal/core`, `internal/domain`,
 Domain functions that need to query Docker do **not** import `infra/docker`.
 Instead they take a `domain.CaptureFunc func(args []string) (status int, stdout, stderr string)`
 parameter, and the command passes a closure wrapping `docker.DockerCapture`
-(see `captureFunc()` / `dockerCapture()` in `internal/commands/registry.go`).
+(see `captureFunc()` / `dockerCapture()` in `internal/cli/commands/docker_capture.go`).
 This keeps the dependency direction clean and makes domain functions trivially
 testable with a fake capture. Examples: `domain.ListUsedSubnets(capture)`,
 `domain.LocalImageExists(image, capture)`.
@@ -126,19 +126,17 @@ Centralises **all** shell-outs to the `docker` binary (over `os/exec`).
 
 | Export | Purpose |
 |---|---|
-| `ResolveWorkspace(cwd, config)` | `config.Workspace` or sanitized basename of `cwd`. Single source of truth for the fallback. |
 | `ProjectPaths(cwd, workspace)` | `{ProjectDir, BuildDir, ComposeFile, DockerfilePath, EnvPath}` for `.dc_<workspace>/`. |
-| `ResolveProjectComposeFile(cwd)` | Resolves the compose file and errors if it doesn't exist yet. |
 
 **Rule:** never build `.dc_<workspace>` paths by hand — always call `ProjectPaths`.
 
-### `internal/infra/ui` — Console output
+### `internal/cli/ui` — Console output
 
 `ui.Log`, `ui.Ok`, `ui.Warn`, `ui.Success`, `ui.Bar` give consistent styling
 (over `fatih/color`). Prefer them over bare `color.*` calls for structured
 output lines.
 
-### `internal/infra/prompt` — Interactive prompts
+### `internal/cli/prompt` — Interactive prompts
 
 Wraps `charmbracelet/huh` (Select/MultiSelect/Input/Confirm). User aborts
 (`huh.ErrUserAborted`) are mapped to `prompt.ErrCancelled`, which `main()`
@@ -158,7 +156,7 @@ is always present in the binary.
 from the relevant module's `CopyFiles`, and add a test asserting it lands in the
 generated build dir. No config file to update (unlike the old SEA flow).
 
-### `internal/core/labels.go` — Docker label constants
+### `internal/domain/types/labels.go` — Docker label constants
 
 `LabelNamespace`, `LabelManaged`, `LabelProject`, `LabelVersion`,
 `LabelQuickRun`, plus `DockerfileLabelBlock(config)` and `ComposeLabels(config)`.

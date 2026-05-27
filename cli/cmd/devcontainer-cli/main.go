@@ -7,8 +7,8 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/commands"
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/prompt"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/commands"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/prompt"
 )
 
 // version is injected at build time via -ldflags "-X main.version=...".

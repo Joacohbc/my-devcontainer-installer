@@ -5,19 +5,19 @@ import (
 	"testing"
 
 	"github.com/goccy/go-yaml"
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/core"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 )
 
-func makeConfig(overrides ...func(*core.DevcontainerConfig)) *core.DevcontainerConfig {
-	cfg := &core.DevcontainerConfig{
-		Mode:      core.BuildModeLocalCached,
+func makeConfig(overrides ...func(*types.DevcontainerConfig)) *types.DevcontainerConfig {
+	cfg := &types.DevcontainerConfig{
+		Mode:      types.BuildModeLocalCached,
 		Image:     "devcontainer-ssh:local",
 		Workspace: "devcontainer",
-		Dockerfile: core.DockerfileConfig{
-			Modules: []core.SelectedModule{},
+		Dockerfile: types.DockerfileConfig{
+			Modules: []types.SelectedModule{},
 		},
-		Compose: core.ComposeConfig{
+		Compose: types.ComposeConfig{
 			Services: []any{},
 			Subnet:   "172.25.0.0/24",
 		},
@@ -29,7 +29,7 @@ func makeConfig(overrides ...func(*core.DevcontainerConfig)) *core.DevcontainerC
 	return cfg
 }
 
-func mustGenerateDockerfile(t *testing.T, cfg *core.DevcontainerConfig) string {
+func mustGenerateDockerfile(t *testing.T, cfg *types.DevcontainerConfig) string {
 	t.Helper()
 	out, err := domain.GenerateDockerfile(cfg)
 	if err != nil {
@@ -38,7 +38,7 @@ func mustGenerateDockerfile(t *testing.T, cfg *core.DevcontainerConfig) string {
 	return out
 }
 
-func mustGenerateCompose(t *testing.T, cfg *core.DevcontainerConfig) string {
+func mustGenerateCompose(t *testing.T, cfg *types.DevcontainerConfig) string {
 	t.Helper()
 	out, err := domain.GenerateCompose(cfg)
 	if err != nil {
@@ -69,8 +69,8 @@ func TestGenerateDockerfile_MinimalHasBaseAndCleanup(t *testing.T) {
 }
 
 func TestGenerateDockerfile_AllSelectedModules(t *testing.T) {
-	cfg := makeConfig(func(c *core.DevcontainerConfig) {
-		c.Dockerfile.Modules = []core.SelectedModule{
+	cfg := makeConfig(func(c *types.DevcontainerConfig) {
+		c.Dockerfile.Modules = []types.SelectedModule{
 			{ID: "java-temurin"},
 			{ID: "python"},
 			{ID: "sqlite"},
@@ -93,16 +93,16 @@ func TestGenerateDockerfile_AllSelectedModules(t *testing.T) {
 }
 
 func TestGenerateDockerfile_TmuxModule(t *testing.T) {
-	cfg := makeConfig(func(c *core.DevcontainerConfig) {
-		c.Dockerfile.Modules = []core.SelectedModule{{ID: "tmux"}}
+	cfg := makeConfig(func(c *types.DevcontainerConfig) {
+		c.Dockerfile.Modules = []types.SelectedModule{{ID: "tmux"}}
 	})
 	df := mustGenerateDockerfile(t, cfg)
 	assertContainsStr(t, df, "RUN apt-get update && apt-get install -y tmux", "tmux")
 }
 
 func TestGenerateDockerfile_PythonWithUvByDefault(t *testing.T) {
-	cfg := makeConfig(func(c *core.DevcontainerConfig) {
-		c.Dockerfile.Modules = []core.SelectedModule{{ID: "python"}}
+	cfg := makeConfig(func(c *types.DevcontainerConfig) {
+		c.Dockerfile.Modules = []types.SelectedModule{{ID: "python"}}
 	})
 	df := mustGenerateDockerfile(t, cfg)
 	assertContainsStr(t, df, "astral.sh/uv/install.sh", "python default")
@@ -111,8 +111,8 @@ func TestGenerateDockerfile_PythonWithUvByDefault(t *testing.T) {
 }
 
 func TestGenerateDockerfile_PythonWithoutUv(t *testing.T) {
-	cfg := makeConfig(func(c *core.DevcontainerConfig) {
-		c.Dockerfile.Modules = []core.SelectedModule{
+	cfg := makeConfig(func(c *types.DevcontainerConfig) {
+		c.Dockerfile.Modules = []types.SelectedModule{
 			{ID: "python", Options: map[string]any{"uv": false}},
 		}
 	})
@@ -121,8 +121,8 @@ func TestGenerateDockerfile_PythonWithoutUv(t *testing.T) {
 }
 
 func TestGenerateDockerfile_BunShellInit(t *testing.T) {
-	cfg := makeConfig(func(c *core.DevcontainerConfig) {
-		c.Dockerfile.Modules = []core.SelectedModule{{ID: "bun"}}
+	cfg := makeConfig(func(c *types.DevcontainerConfig) {
+		c.Dockerfile.Modules = []types.SelectedModule{{ID: "bun"}}
 	})
 	df := mustGenerateDockerfile(t, cfg)
 	assertContainsStr(t, df, "bun.sh/install", "bun")
@@ -131,8 +131,8 @@ func TestGenerateDockerfile_BunShellInit(t *testing.T) {
 }
 
 func TestGenerateDockerfile_PnpmAutoAddNodejs(t *testing.T) {
-	cfg := makeConfig(func(c *core.DevcontainerConfig) {
-		c.Dockerfile.Modules = []core.SelectedModule{{ID: "pnpm"}}
+	cfg := makeConfig(func(c *types.DevcontainerConfig) {
+		c.Dockerfile.Modules = []types.SelectedModule{{ID: "pnpm"}}
 	})
 	df := mustGenerateDockerfile(t, cfg)
 	assertContainsStr(t, df, "nvm install", "pnpm pulls nodejs")
@@ -140,8 +140,8 @@ func TestGenerateDockerfile_PnpmAutoAddNodejs(t *testing.T) {
 }
 
 func TestGenerateDockerfile_NodejsFnmManager(t *testing.T) {
-	cfg := makeConfig(func(c *core.DevcontainerConfig) {
-		c.Dockerfile.Modules = []core.SelectedModule{
+	cfg := makeConfig(func(c *types.DevcontainerConfig) {
+		c.Dockerfile.Modules = []types.SelectedModule{
 			{ID: "nodejs", Options: map[string]any{"manager": "fnm"}},
 		}
 	})
@@ -152,8 +152,8 @@ func TestGenerateDockerfile_NodejsFnmManager(t *testing.T) {
 }
 
 func TestGenerateDockerfile_NodejsFnmSpecificVersion(t *testing.T) {
-	cfg := makeConfig(func(c *core.DevcontainerConfig) {
-		c.Dockerfile.Modules = []core.SelectedModule{
+	cfg := makeConfig(func(c *types.DevcontainerConfig) {
+		c.Dockerfile.Modules = []types.SelectedModule{
 			{ID: "nodejs", Options: map[string]any{"manager": "fnm", "version": "22"}},
 		}
 	})
@@ -162,9 +162,9 @@ func TestGenerateDockerfile_NodejsFnmSpecificVersion(t *testing.T) {
 }
 
 func TestGenerateDockerfile_RemoteModeReturnsEmpty(t *testing.T) {
-	cfg := makeConfig(func(c *core.DevcontainerConfig) {
-		c.Mode = core.BuildModeRemote
-		c.Remote = &core.RemoteConfig{Variant: "python"}
+	cfg := makeConfig(func(c *types.DevcontainerConfig) {
+		c.Mode = types.BuildModeRemote
+		c.Remote = &types.RemoteConfig{Variant: "python"}
 	})
 	out, err := domain.GenerateDockerfile(cfg)
 	if err != nil {
@@ -176,7 +176,7 @@ func TestGenerateDockerfile_RemoteModeReturnsEmpty(t *testing.T) {
 }
 
 func TestGenerateCompose_ValidYAMLWithExpectedServices(t *testing.T) {
-	cfg := makeConfig(func(c *core.DevcontainerConfig) {
+	cfg := makeConfig(func(c *types.DevcontainerConfig) {
 		c.Compose.Services = []any{"mongo", "tunnel"}
 		c.Compose.Subnet = "10.0.0.0/24"
 	})
@@ -204,7 +204,7 @@ func TestGenerateCompose_ValidYAMLWithExpectedServices(t *testing.T) {
 }
 
 func TestGenerateCompose_DependsOnEnabledDBOnly(t *testing.T) {
-	cfg := makeConfig(func(c *core.DevcontainerConfig) {
+	cfg := makeConfig(func(c *types.DevcontainerConfig) {
 		c.Compose.Services = []any{"mongo"}
 		c.Compose.Subnet = "172.25.0.0/24"
 	})
@@ -226,7 +226,7 @@ func TestGenerateCompose_DependsOnEnabledDBOnly(t *testing.T) {
 }
 
 func TestGenerateCompose_NoDependsOnWithoutDB(t *testing.T) {
-	cfg := makeConfig(func(c *core.DevcontainerConfig) {
+	cfg := makeConfig(func(c *types.DevcontainerConfig) {
 		c.Compose.Services = []any{}
 		c.Compose.Subnet = "172.25.0.0/24"
 	})
@@ -243,7 +243,7 @@ func TestGenerateCompose_NoDependsOnWithoutDB(t *testing.T) {
 }
 
 func TestGenerateCompose_StaticIPFromSubnet(t *testing.T) {
-	cfg := makeConfig(func(c *core.DevcontainerConfig) {
+	cfg := makeConfig(func(c *types.DevcontainerConfig) {
 		c.Compose.Services = []any{}
 		c.Compose.Subnet = "172.25.0.0/28"
 	})
@@ -312,10 +312,10 @@ func TestGenerateCompose_NetworkNamedAfterWorkspace(t *testing.T) {
 }
 
 func TestGenerateCompose_RemoteModeOmitsBuild(t *testing.T) {
-	cfg := makeConfig(func(c *core.DevcontainerConfig) {
-		c.Mode = core.BuildModeRemote
+	cfg := makeConfig(func(c *types.DevcontainerConfig) {
+		c.Mode = types.BuildModeRemote
 		c.Image = "ghcr.io/joacohbc/devcontainer-node-java-temurin:latest"
-		c.Remote = &core.RemoteConfig{Variant: "node-java-temurin"}
+		c.Remote = &types.RemoteConfig{Variant: "node-java-temurin"}
 	})
 	yml := mustGenerateCompose(t, cfg)
 	var parsed map[string]any
@@ -333,10 +333,10 @@ func TestGenerateCompose_RemoteModeOmitsBuild(t *testing.T) {
 }
 
 func TestGenerateCompose_RemoteModeWithDBService(t *testing.T) {
-	cfg := makeConfig(func(c *core.DevcontainerConfig) {
-		c.Mode = core.BuildModeRemote
+	cfg := makeConfig(func(c *types.DevcontainerConfig) {
+		c.Mode = types.BuildModeRemote
 		c.Image = "ghcr.io/joacohbc/devcontainer-ssh:latest"
-		c.Remote = &core.RemoteConfig{Variant: "ssh"}
+		c.Remote = &types.RemoteConfig{Variant: "ssh"}
 		c.Compose.Services = []any{"mongo"}
 		c.Compose.Subnet = "172.25.0.0/24"
 	})
@@ -375,8 +375,8 @@ func TestResolveRemoteImage_DefaultRegistry(t *testing.T) {
 }
 
 func TestGenerateCompose_FingerprintUsedAsImageName(t *testing.T) {
-	cfg := makeConfig(func(c *core.DevcontainerConfig) {
-		c.Mode = core.BuildModeLocalCached
+	cfg := makeConfig(func(c *types.DevcontainerConfig) {
+		c.Mode = types.BuildModeLocalCached
 		c.Fingerprint = "abc123def4567890abc123def4567890"
 		c.Image = "should-not-be-used:tag"
 	})
@@ -396,7 +396,7 @@ func TestGenerateCompose_FingerprintUsedAsImageName(t *testing.T) {
 }
 
 func TestGenerateEnv_IncludesEnvVars(t *testing.T) {
-	cfg := makeConfig(func(c *core.DevcontainerConfig) {
+	cfg := makeConfig(func(c *types.DevcontainerConfig) {
 		c.Env = map[string]string{"TUNNEL_TOKEN": "abc"}
 		c.Compose.Services = []any{}
 		c.Compose.Subnet = "10.0.0.0/8"
@@ -407,7 +407,7 @@ func TestGenerateEnv_IncludesEnvVars(t *testing.T) {
 }
 
 func TestGenerateEnv_DerivesIPFromDockerSubnetOverride(t *testing.T) {
-	cfg := makeConfig(func(c *core.DevcontainerConfig) {
+	cfg := makeConfig(func(c *types.DevcontainerConfig) {
 		c.Env = map[string]string{"DOCKER_SUBNET": "172.26.0.0/24"}
 		c.Compose.Services = []any{}
 		c.Compose.Subnet = "172.25.0.0/28"
@@ -418,7 +418,7 @@ func TestGenerateEnv_DerivesIPFromDockerSubnetOverride(t *testing.T) {
 }
 
 func TestGenerateEnv_WritesBothSubnetAndIP(t *testing.T) {
-	cfg := makeConfig(func(c *core.DevcontainerConfig) {
+	cfg := makeConfig(func(c *types.DevcontainerConfig) {
 		c.Compose.Services = []any{}
 		c.Compose.Subnet = "172.25.0.0/28"
 	})
@@ -428,8 +428,8 @@ func TestGenerateEnv_WritesBothSubnetAndIP(t *testing.T) {
 }
 
 func TestGenerateDockerfile_ClaudeCode(t *testing.T) {
-	cfg := makeConfig(func(c *core.DevcontainerConfig) {
-		c.Dockerfile.Modules = []core.SelectedModule{{ID: "claude-code"}}
+	cfg := makeConfig(func(c *types.DevcontainerConfig) {
+		c.Dockerfile.Modules = []types.SelectedModule{{ID: "claude-code"}}
 	})
 	df := mustGenerateDockerfile(t, cfg)
 	assertContainsStr(t, df, "install-claude-code.sh", "claude-code script")
@@ -437,16 +437,16 @@ func TestGenerateDockerfile_ClaudeCode(t *testing.T) {
 }
 
 func TestGenerateDockerfile_Opencode(t *testing.T) {
-	cfg := makeConfig(func(c *core.DevcontainerConfig) {
-		c.Dockerfile.Modules = []core.SelectedModule{{ID: "opencode"}}
+	cfg := makeConfig(func(c *types.DevcontainerConfig) {
+		c.Dockerfile.Modules = []types.SelectedModule{{ID: "opencode"}}
 	})
 	df := mustGenerateDockerfile(t, cfg)
 	assertContainsStr(t, df, "install-opencode.sh", "opencode script")
 }
 
 func TestGenerateDockerfile_CodexCli(t *testing.T) {
-	cfg := makeConfig(func(c *core.DevcontainerConfig) {
-		c.Dockerfile.Modules = []core.SelectedModule{{ID: "codex-cli"}}
+	cfg := makeConfig(func(c *types.DevcontainerConfig) {
+		c.Dockerfile.Modules = []types.SelectedModule{{ID: "codex-cli"}}
 	})
 	df := mustGenerateDockerfile(t, cfg)
 	assertContainsStr(t, df, "install-codex-cli.sh", "codex-cli script")
@@ -455,16 +455,16 @@ func TestGenerateDockerfile_CodexCli(t *testing.T) {
 }
 
 func TestGenerateDockerfile_AntigravityCli(t *testing.T) {
-	cfg := makeConfig(func(c *core.DevcontainerConfig) {
-		c.Dockerfile.Modules = []core.SelectedModule{{ID: "antigravity-cli"}}
+	cfg := makeConfig(func(c *types.DevcontainerConfig) {
+		c.Dockerfile.Modules = []types.SelectedModule{{ID: "antigravity-cli"}}
 	})
 	df := mustGenerateDockerfile(t, cfg)
 	assertContainsStr(t, df, "install-antigravity.sh", "antigravity-cli script")
 }
 
 func TestGenerateDockerfile_CopilotCli(t *testing.T) {
-	cfg := makeConfig(func(c *core.DevcontainerConfig) {
-		c.Dockerfile.Modules = []core.SelectedModule{{ID: "copilot-cli"}}
+	cfg := makeConfig(func(c *types.DevcontainerConfig) {
+		c.Dockerfile.Modules = []types.SelectedModule{{ID: "copilot-cli"}}
 	})
 	df := mustGenerateDockerfile(t, cfg)
 	assertContainsStr(t, df, "install-copilot.sh", "copilot-cli script")
