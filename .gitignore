@@ -10,3 +10,5 @@ cli/Dockerfile.*
 cli/docker-compose.*
 cli/devcontainer.config.*
 cli/dist/
+.dc_*
+devcontainer.config.json
