@@ -70,6 +70,17 @@ importable from outside the module.
 | `internal/core/` | Pure data shared across layers: `types.go` (`DevcontainerConfig`, `ComposeService`, `BuildMode`, `SCHEMA_VERSION`, `RemoteVariants`, `VariantLabels`, `BuildModes`), `labels.go` (Docker label constants + helpers), `registry.go` (catalogue of modules/services). No I/O, no command-specific logic. |
 | `internal/modules/` | The catalogue itself — one file per installable thing: `dockerfile/` (image layers) and `compose/` (services), plus shared render helpers (`helpers.go`, `shell_init.go`). |
 
+**Why `cmd/devcontainer-cli/main.go` and not `cli/main.go`:** `cli/` is the
+module root — it holds `go.mod` and the release/installer artifacts
+(`.goreleaser.yaml`, `install.sh`, …), not Go source for the binary. The
+idiomatic Go layout puts each binary's entry point under `cmd/<binary-name>/`,
+where the directory name *is* the produced binary (`devcontainer-cli`); this
+keeps the root clean and leaves room for additional binaries (`cmd/foo/`,
+`cmd/bar/`) without collisions. It also enforces the layering rule: all reusable
+code lives in `internal/` (unimportable from outside the module), and `main.go`
+is a thin `package main` that only *wires* those internal pieces together — no
+business logic to misplace at the root.
+
 Import paths name the layer: `internal/core`, `internal/domain`,
 `internal/infra/docker`, `internal/commands`.
 
