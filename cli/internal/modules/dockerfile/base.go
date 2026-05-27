@@ -46,6 +46,7 @@ RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
     gnupg \
     lsb-release \
     acl \
+	jq \
     git \
     wget \
     unzip \

@@ -141,7 +141,7 @@ Detalles de la configuración del túnel en [CLOUDFLARE_TUNNEL.md](CLOUDFLARE_TU
   * **Tmux:** tmux (módulo `tmux`).
   * **Clientes de DB en el devcontainer:** `psql`, `redis-tools`, `mongosh` (módulo `dbclients`, seleccionables individualmente).
   * **GitHub CLI:** `gh` + `jq` (módulo `github-cli`, incluido por defecto).
-  * **AI CLIs (opcional, módulo `ai-clis`):** scripts de instalación embebidos para Claude Code, OpenCode, Codex CLI, Antigravity CLI y GitHub Copilot CLI.
+  * **AI CLIs (opcionales, módulos `claude-code`, `opencode`, `codex-cli`, `antigravity-cli`, `copilot-cli`):** scripts de instalación embebidos seleccionables de forma independiente.
 * **Herramientas base:** `git`, `nano`, `wget`, `curl`, `unzip`, `ca-certificates` — siempre presentes.
 * **Terminal Mejorada:** ZSH preconfigurado con frameworks y plugins útiles.
 

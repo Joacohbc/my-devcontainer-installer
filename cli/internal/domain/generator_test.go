@@ -427,39 +427,45 @@ func TestGenerateEnv_WritesBothSubnetAndIP(t *testing.T) {
 	assertContainsStr(t, env, "DEVCONTAINER_IP=172.25.0.14", "env ip")
 }
 
-func TestGenerateDockerfile_AiClisDefaultsAllTools(t *testing.T) {
+func TestGenerateDockerfile_ClaudeCode(t *testing.T) {
 	cfg := makeConfig(func(c *core.DevcontainerConfig) {
-		c.Dockerfile.Modules = []core.SelectedModule{{ID: "ai-clis"}}
+		c.Dockerfile.Modules = []core.SelectedModule{{ID: "claude-code"}}
 	})
 	df := mustGenerateDockerfile(t, cfg)
-	assertContainsStr(t, df, "install-claude-code.sh", "ai-clis defaults")
-	assertContainsStr(t, df, "install-opencode.sh", "ai-clis defaults")
-	assertContainsStr(t, df, "install-codex-cli.sh", "ai-clis defaults")
-	assertContainsStr(t, df, "install-antigravity.sh", "ai-clis defaults")
-	assertContainsStr(t, df, "install-copilot.sh", "ai-clis defaults")
-	assertContainsStr(t, df, "/home/devuser/post-script/", "ai-clis post-script dir")
-	assertContainsStr(t, df, "chmod +x /home/devuser/post-script/*.sh", "ai-clis chmod")
+	assertContainsStr(t, df, "install-claude-code.sh", "claude-code script")
+	assertContainsStr(t, df, "/home/devuser/post-script/", "post-script dir")
 }
 
-func TestGenerateDockerfile_AiClisSubset(t *testing.T) {
+func TestGenerateDockerfile_Opencode(t *testing.T) {
 	cfg := makeConfig(func(c *core.DevcontainerConfig) {
-		c.Dockerfile.Modules = []core.SelectedModule{
-			{ID: "ai-clis", Options: map[string]any{"tools": []any{"claude-code"}}},
-		}
+		c.Dockerfile.Modules = []core.SelectedModule{{ID: "opencode"}}
 	})
 	df := mustGenerateDockerfile(t, cfg)
-	assertContainsStr(t, df, "install-claude-code.sh", "ai-clis subset")
-	assertNotContainsStr(t, df, "install-opencode.sh", "ai-clis subset")
-	assertNotContainsStr(t, df, "install-codex-cli.sh", "ai-clis subset")
-	assertNotContainsStr(t, df, "install-antigravity.sh", "ai-clis subset")
-	assertNotContainsStr(t, df, "install-copilot.sh", "ai-clis subset")
+	assertContainsStr(t, df, "install-opencode.sh", "opencode script")
 }
 
-func TestGenerateDockerfile_AiClisPullsPnpmAndGithubCli(t *testing.T) {
+func TestGenerateDockerfile_CodexCli(t *testing.T) {
 	cfg := makeConfig(func(c *core.DevcontainerConfig) {
-		c.Dockerfile.Modules = []core.SelectedModule{{ID: "ai-clis"}}
+		c.Dockerfile.Modules = []core.SelectedModule{{ID: "codex-cli"}}
 	})
 	df := mustGenerateDockerfile(t, cfg)
-	assertContainsStr(t, df, "get.pnpm.io/install.sh", "ai-clis requires pnpm")
-	assertContainsStr(t, df, "cli.github.com/packages", "ai-clis requires github-cli")
+	assertContainsStr(t, df, "install-codex-cli.sh", "codex-cli script")
+	// codex-cli requires nodejs
+	assertContainsStr(t, df, "nvm install --lts", "codex-cli requires nodejs")
+}
+
+func TestGenerateDockerfile_AntigravityCli(t *testing.T) {
+	cfg := makeConfig(func(c *core.DevcontainerConfig) {
+		c.Dockerfile.Modules = []core.SelectedModule{{ID: "antigravity-cli"}}
+	})
+	df := mustGenerateDockerfile(t, cfg)
+	assertContainsStr(t, df, "install-antigravity.sh", "antigravity-cli script")
+}
+
+func TestGenerateDockerfile_CopilotCli(t *testing.T) {
+	cfg := makeConfig(func(c *core.DevcontainerConfig) {
+		c.Dockerfile.Modules = []core.SelectedModule{{ID: "copilot-cli"}}
+	})
+	df := mustGenerateDockerfile(t, cfg)
+	assertContainsStr(t, df, "install-copilot.sh", "copilot-cli script")
 }

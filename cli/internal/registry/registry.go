@@ -18,7 +18,11 @@ var DockerfileModules = []*dockerfile.DockerfileModuleSpec{
 	dockerfile.NodejsModule,
 	dockerfile.PnpmModule,
 	dockerfile.BunModule,
-	dockerfile.AiClisModule,
+	dockerfile.ClaudeCodeModule,
+	dockerfile.OpencodeModule,
+	dockerfile.CodexCliModule,
+	dockerfile.AntigravityCliModule,
+	dockerfile.CopilotCliModule,
 	dockerfile.TmuxModule,
 	dockerfile.CleanupModule,
 }
