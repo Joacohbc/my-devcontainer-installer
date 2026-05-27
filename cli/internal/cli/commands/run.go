@@ -29,6 +29,12 @@ func newRunCommand() *cobra.Command {
 	cmd.Flags().Int("port", 0, "Expose container port 22 on host port n")
 	cmd.Flags().String("registry", "", "Registry prefix override")
 	addInteractiveFlag(cmd)
+
+	// Dynamic completions
+	_ = cmd.RegisterFlagCompletionFunc("variant", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		return types.RemoteVariants, cobra.ShellCompDirectiveNoFileComp
+	})
+
 	return cmd
 }
 

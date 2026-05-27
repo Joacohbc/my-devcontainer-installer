@@ -10,6 +10,7 @@ import (
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/prompt"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/sshhelp"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/catalog"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/assets"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
@@ -55,6 +56,30 @@ func addGenerateFlags(cmd *cobra.Command) {
 	f.Bool("build", false, "Run 'docker compose build/pull' after generating")
 	f.Bool("no-build", false, "Skip the build/pull step after generating")
 	f.BoolP("version", "v", false, "Print the CLI version")
+
+	// Dynamic completions
+	_ = cmd.RegisterFlagCompletionFunc("mode", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		return []string{"local-cached", "remote"}, cobra.ShellCompDirectiveNoFileComp
+	})
+	_ = cmd.RegisterFlagCompletionFunc("variant", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		return types.RemoteVariants, cobra.ShellCompDirectiveNoFileComp
+	})
+	_ = cmd.RegisterFlagCompletionFunc("with", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		var moduleIDs []string
+		for _, m := range catalog.DockerfileModules {
+			moduleIDs = append(moduleIDs, m.ID)
+		}
+		return completeCSV(toComplete, moduleIDs), cobra.ShellCompDirectiveNoFileComp
+	})
+	completeServiceFunc := func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		var serviceIDs []string
+		for _, s := range catalog.ComposeServices {
+			serviceIDs = append(serviceIDs, s.ID)
+		}
+		return completeCSV(toComplete, serviceIDs), cobra.ShellCompDirectiveNoFileComp
+	}
+	_ = cmd.RegisterFlagCompletionFunc("service", completeServiceFunc)
+	_ = cmd.RegisterFlagCompletionFunc("services", completeServiceFunc)
 }
 
 type genFlags struct {

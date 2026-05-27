@@ -1,6 +1,8 @@
 package commands
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -208,6 +210,99 @@ func TestIsAllowedHost(t *testing.T) {
 	for _, h := range []string{"evil.com", "github.com.evil.com"} {
 		if isAllowedHost(h) {
 			t.Errorf("expected %q to be denied", h)
+		}
+	}
+}
+
+func TestCompleteCSV(t *testing.T) {
+	allModules := []string{"nodejs", "python", "golang", "tmux", "bun"}
+	cases := []struct {
+		toComplete string
+		want       []string
+	}{
+		{toComplete: "no", want: []string{"nodejs"}},
+		{toComplete: "nodejs,go", want: []string{"nodejs,golang"}},
+		{toComplete: "nodejs, python, g", want: []string{"nodejs, python,golang"}},
+		{toComplete: "nodejs,python,tmux,bun,c", want: []string{}},
+	}
+	for _, c := range cases {
+		got := completeCSV(c.toComplete, allModules)
+		if len(got) != len(c.want) {
+			t.Errorf("completeCSV(%q) = %v, want %v", c.toComplete, got, c.want)
+			continue
+		}
+		for i := range got {
+			if got[i] != c.want[i] {
+				t.Errorf("completeCSV(%q)[%d] = %q, want %q", c.toComplete, i, got[i], c.want[i])
+			}
+		}
+	}
+}
+
+func TestListSshHosts_ReadsConfig(t *testing.T) {
+	tempDir := t.TempDir()
+	origHome := os.Getenv("HOME")
+	origUserProfile := os.Getenv("USERPROFILE")
+	os.Setenv("HOME", tempDir)
+	os.Setenv("USERPROFILE", tempDir)
+	defer func() {
+		os.Setenv("HOME", origHome)
+		os.Setenv("USERPROFILE", origUserProfile)
+	}()
+
+	sshDir := filepath.Join(tempDir, ".ssh")
+	if err := os.MkdirAll(sshDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	configPath := filepath.Join(sshDir, "config")
+	configContent := `
+Host web-server db-server
+    HostName 10.0.0.1
+Host cache-server
+    HostName 10.0.0.2
+Host *.wildcard
+    HostName 10.0.0.3
+`
+	if err := os.WriteFile(configPath, []byte(configContent), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	hosts := listSshHosts()
+	want := []string{"web-server", "db-server", "cache-server"}
+	if len(hosts) != len(want) {
+		t.Fatalf("listSshHosts() returned %v, want %v", hosts, want)
+	}
+	for i, h := range want {
+		if hosts[i] != h {
+			t.Errorf("hosts[%d] = %q, want %q", i, hosts[i], h)
+		}
+	}
+}
+
+func TestListComposeServices_ReadsCompose(t *testing.T) {
+	tempDir := t.TempDir()
+	composePath := filepath.Join(tempDir, "docker-compose.yml")
+	composeContent := `
+services:
+  web:
+    image: nginx
+  db:
+    image: postgres
+  redis:
+    image: redis
+`
+	if err := os.WriteFile(composePath, []byte(composeContent), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	services := listComposeServices(composePath)
+	want := map[string]bool{"web": true, "db": true, "redis": true}
+	if len(services) != len(want) {
+		t.Fatalf("listComposeServices() returned %v, expected %d services", services, len(want))
+	}
+	for _, s := range services {
+		if !want[s] {
+			t.Errorf("unexpected service in completion suggestions: %s", s)
 		}
 	}
 }

@@ -61,6 +61,31 @@ func newSetupSshCommand() *cobra.Command {
 	f.StringP("compose-file", "f", "", "Compose file path (default: .dc_<workspace>/build/docker-compose.yml)")
 	f.String("user", sshdefaults.User, "SSH user inside container")
 	f.BoolP("yes", "y", false, `Assume "yes" to all prompts`)
+
+	// Dynamic completions
+	_ = cmd.RegisterFlagCompletionFunc("mode", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		return []string{"local", "windows", "remote"}, cobra.ShellCompDirectiveNoFileComp
+	})
+	_ = cmd.RegisterFlagCompletionFunc("container", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		return listContainers(), cobra.ShellCompDirectiveNoFileComp
+	})
+	_ = cmd.RegisterFlagCompletionFunc("service", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		compFile, _ := cmd.Flags().GetString("compose-file")
+		if compFile == "" {
+			cwd, _ := os.Getwd()
+			compFile = defaultComposeFile(cwd)
+		}
+		return listComposeServices(compFile), cobra.ShellCompDirectiveNoFileComp
+	})
+	_ = cmd.RegisterFlagCompletionFunc("remote", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		return listSshHosts(), cobra.ShellCompDirectiveNoFileComp
+	})
+	_ = cmd.RegisterFlagCompletionFunc("alias", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		return listSshHosts(), cobra.ShellCompDirectiveNoFileComp
+	})
+	_ = cmd.MarkFlagFilename("compose-file", "yml", "yaml")
+	_ = cmd.MarkFlagFilename("key")
+
 	return cmd
 }
 
