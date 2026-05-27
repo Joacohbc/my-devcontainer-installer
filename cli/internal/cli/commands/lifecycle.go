@@ -1,8 +1,6 @@
 package commands
 
 import (
-	"os"
-
 	"github.com/fatih/color"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
 	"github.com/spf13/cobra"
@@ -28,7 +26,10 @@ func newLifecycleCommand(verb string) *cobra.Command {
 }
 
 func runLifecycle(verb string) error {
-	cwd, _ := os.Getwd()
+	cwd, err := currentDir()
+	if err != nil {
+		return err
+	}
 	composeFile, err := resolveProjectComposeFile(cwd)
 	if err != nil {
 		return err

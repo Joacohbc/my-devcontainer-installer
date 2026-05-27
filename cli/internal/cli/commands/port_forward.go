@@ -50,7 +50,10 @@ Examples:
 		return listSshHosts(), cobra.ShellCompDirectiveNoFileComp
 	})
 	_ = cmd.RegisterFlagCompletionFunc("service", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		cwd, _ := os.Getwd()
+		cwd, err := currentDir()
+		if err != nil {
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		}
 		return listComposeServices(defaultComposeFile(cwd)), cobra.ShellCompDirectiveNoFileComp
 	})
 

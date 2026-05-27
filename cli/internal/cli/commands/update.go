@@ -78,11 +78,11 @@ func updateOne(projectDir string, config *types.DevcontainerConfig, pull, rebuil
 	return updateResult{ok: true, image: config.Image}
 }
 
-func updateAll(pull, rebuild bool) {
+func updateAll(pull, rebuild bool) error {
 	entries := domain.ListEntries()
 	if len(entries) == 0 {
 		ui.Warn("No projects recorded yet. Generate at least one project first.")
-		return
+		return nil
 	}
 	okCount, skipCount, failCount := 0, 0, 0
 	for _, e := range entries {
@@ -107,6 +107,10 @@ func updateAll(pull, rebuild bool) {
 		}
 	}
 	color.New(color.FgWhite).Printf("\n--- %d updated, %d skipped, %d failed\n", okCount, skipCount, failCount)
+	if failCount > 0 {
+		return fmt.Errorf("%d project(s) failed to update", failCount)
+	}
+	return nil
 }
 
 func runUpdateImages(cmd *cobra.Command, _ []string) error {
@@ -137,10 +141,12 @@ func runUpdateImages(cmd *cobra.Command, _ []string) error {
 	}
 
 	if all {
-		updateAll(pull, rebuild)
-		return nil
+		return updateAll(pull, rebuild)
 	}
-	cwd, _ := os.Getwd()
+	cwd, err := currentDir()
+	if err != nil {
+		return err
+	}
 	config, _ := domain.LoadConfig(cwd)
 	if config == nil {
 		return fmt.Errorf("no devcontainer.config.json found in %s. Run 'devcontainer-cli' to generate one first, or pass --all to update every recorded project", cwd)

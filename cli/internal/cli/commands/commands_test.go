@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 	"github.com/spf13/cobra"
 )
 
@@ -454,5 +456,36 @@ func TestAllCommands_HaveContainerFlag(t *testing.T) {
 		if target.Flags().Lookup("container") == nil {
 			t.Errorf("expected command %q to have --container flag", name)
 		}
+	}
+}
+
+func TestUpdateAll_NoEntriesReturnsNil(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	if err := updateAll(false, false); err != nil {
+		t.Fatalf("expected nil for empty registry, got %v", err)
+	}
+}
+
+func TestUpdateAll_ReturnsErrorWhenProjectFails(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	projectDir := t.TempDir()
+	cfg := domain.DefaultConfig(projectDir)
+	cfg.Mode = types.BuildModeRemote
+	cfg.Remote = nil // remote mode without config makes updateOne fail without Docker
+	if err := domain.SaveConfig(cfg, projectDir); err != nil {
+		t.Fatalf("SaveConfig: %v", err)
+	}
+	if err := domain.RecordEntry(domain.ImageEntry{
+		ProjectDir: projectDir,
+		Workspace:  cfg.Workspace,
+		Mode:       string(cfg.Mode),
+		Image:      cfg.Image,
+	}); err != nil {
+		t.Fatalf("RecordEntry: %v", err)
+	}
+
+	if err := updateAll(false, false); err == nil {
+		t.Fatal("expected an error when a project fails to update, got nil")
 	}
 }

@@ -2,7 +2,6 @@ package commands
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 
 	"github.com/fatih/color"
@@ -102,7 +101,10 @@ func optionDefault(o types.ModuleOption, prevOpts map[string]any) any {
 }
 
 func buildConfigFromPrompts(base *types.DevcontainerConfig) (*types.DevcontainerConfig, error) {
-	cwd, _ := os.Getwd()
+	cwd, err := currentDir()
+	if err != nil {
+		return nil, err
+	}
 
 	wsDefault := base.Workspace
 	if wsDefault == "" {

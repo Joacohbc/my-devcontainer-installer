@@ -2,7 +2,6 @@ package commands
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/fatih/color"
@@ -72,7 +71,10 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 	}
 
 	// Default project mode (like docker compose ps)
-	cwd, _ := os.Getwd()
+	cwd, err := currentDir()
+	if err != nil {
+		return err
+	}
 	var workspace string
 	if wsFlag != "" {
 		workspace = wsFlag

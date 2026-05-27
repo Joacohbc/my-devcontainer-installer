@@ -2,7 +2,6 @@ package commands
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/fatih/color"
@@ -20,7 +19,10 @@ func newCleanupTipsCommand() *cobra.Command {
 		Long:         "devcontainer-cli cleanup-tips — show docker cleanup commands for this project",
 		SilenceUsage: true,
 		RunE: func(_ *cobra.Command, _ []string) error {
-			cwd, _ := os.Getwd()
+			cwd, err := currentDir()
+			if err != nil {
+				return err
+			}
 			cfg, _ := domain.LoadConfig(cwd)
 			if cfg == nil {
 				cfg = domain.DefaultConfig(cwd)

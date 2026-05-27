@@ -89,7 +89,7 @@ func Print(workspace string) {
 		boldColor.Sprint("5) Connect:"),
 		prompt + "ssh " + sshdefaults.Alias,
 		"",
-		gray.Sprint("For remote-server access (ProxyCommand) see README.md → \"Acceso y Uso\"."),
+		gray.Sprint("For remote-server access (ProxyCommand) see the README."),
 		bar,
 		"",
 	}, "\n")

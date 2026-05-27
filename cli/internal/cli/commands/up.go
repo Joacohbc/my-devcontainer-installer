@@ -2,7 +2,6 @@ package commands
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/fatih/color"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
@@ -48,7 +47,10 @@ func runUp(cmd *cobra.Command, _ []string) error {
 		return nil
 	}
 
-	cwd, _ := os.Getwd()
+	cwd, err := currentDir()
+	if err != nil {
+		return err
+	}
 	composeFile, err := resolveProjectComposeFileWithWorkspace(cwd, wsFlag)
 	if err != nil {
 		return err
