@@ -50,6 +50,7 @@ func TestIsValidCidr_Invalid(t *testing.T) {
 		"172.25.0.0",
 		"999.0.0.0/24",
 		"foo",
+		"2001:db8::/32",
 	}
 	for _, cidr := range invalid {
 		if domain.IsValidCidr(cidr) {

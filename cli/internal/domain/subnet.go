@@ -1,52 +1,50 @@
 package domain
 
 import (
+	"encoding/binary"
 	"fmt"
+	"net/netip"
 	"strings"
 )
 
 type CidrRange struct {
-	Start uint32
-	End   uint32
-	Mask  uint32
+	Prefix netip.Prefix
 }
 
+// AddrToUint32 converts an IPv4 address to uint32.
+func AddrToUint32(addr netip.Addr) uint32 {
+	v4 := addr.As4()
+	return binary.BigEndian.Uint32(v4[:])
+}
+
+// Uint32ToAddr converts a uint32 to an IPv4 netip.Addr.
+func Uint32ToAddr(n uint32) netip.Addr {
+	var buf [4]byte
+	binary.BigEndian.PutUint32(buf[:], n)
+	return netip.AddrFrom4(buf)
+}
+
+func (r CidrRange) Start() uint32 {
+	return AddrToUint32(r.Prefix.Addr())
+}
+
+func (r CidrRange) End() uint32 {
+	bits := r.Prefix.Bits()
+	size := uint32(1) << (32 - bits)
+	return r.Start() + size - 1
+}
+
+// ParseCidr parses a CIDR string and returns a CidrRange.
 func ParseCidr(cidr string) (*CidrRange, bool) {
-	if !IsValidCidr(cidr) {
+	p, err := netip.ParsePrefix(cidr)
+	if err != nil || !p.Addr().Is4() {
 		return nil, false
 	}
-	parts := strings.SplitN(cidr, "/", 2)
-	var mask uint32
-	fmt.Sscanf(parts[1], "%d", &mask)
-	octets := strings.Split(parts[0], ".")
-	var ip uint32
-	for _, o := range octets {
-		var n uint32
-		fmt.Sscanf(o, "%d", &n)
-		ip = (ip << 8) | n
-	}
-	var maskBits uint32
-	if mask == 0 {
-		maskBits = 0
-	} else {
-		maskBits = ^uint32(0) << (32 - mask)
-	}
-	start := ip & maskBits
-	end := start | (^maskBits)
-	return &CidrRange{Start: start, End: end, Mask: mask}, true
-}
-
-func toIP(n uint32) string {
-	return fmt.Sprintf("%d.%d.%d.%d",
-		(n>>24)&0xff,
-		(n>>16)&0xff,
-		(n>>8)&0xff,
-		n&0xff,
-	)
+	return &CidrRange{Prefix: p.Masked()}, true
 }
 
 func RangesOverlap(a, b CidrRange) bool {
-	return a.Start <= b.End && b.Start <= a.End
+	return a.Prefix.Overlaps(b.Prefix)
 }
 
 func FindFreeSubnet(preferred string, usedSubnets []CidrRange) string {
@@ -99,7 +97,7 @@ func SubnetConflict(cidr string, usedSubnets []CidrRange) *CidrRange {
 }
 
 func FormatCidr(r CidrRange) string {
-	return fmt.Sprintf("%s/%d", toIP(r.Start), r.Mask)
+	return r.Prefix.String()
 }
 
 func NthHost(cidr string, n int) (string, bool) {
@@ -107,11 +105,13 @@ func NthHost(cidr string, n int) (string, bool) {
 	if !ok {
 		return "", false
 	}
-	ip := r.Start + uint32(n)
-	if ip <= r.Start || ip >= r.End {
+	start := r.Start()
+	end := r.End()
+	ip := start + uint32(n)
+	if ip <= start || ip >= end {
 		return "", false
 	}
-	return toIP(ip), true
+	return Uint32ToAddr(ip).String(), true
 }
 
 func LastHost(cidr string) (string, bool) {
@@ -119,11 +119,13 @@ func LastHost(cidr string) (string, bool) {
 	if !ok {
 		return "", false
 	}
-	ip := r.End - 1
-	if ip <= r.Start || ip >= r.End {
+	start := r.Start()
+	end := r.End()
+	ip := end - 1
+	if ip <= start || ip >= end {
 		return "", false
 	}
-	return toIP(ip), true
+	return Uint32ToAddr(ip).String(), true
 }
 
 // ListUsedSubnets queries Docker (via the injected capture func) for the CIDR

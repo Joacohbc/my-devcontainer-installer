@@ -21,6 +21,10 @@ func TestParseCidr_Invalid(t *testing.T) {
 	if ok {
 		t.Error("expected ParseCidr to fail for invalid input")
 	}
+	_, ok = domain.ParseCidr("2001:db8::/32")
+	if ok {
+		t.Error("expected ParseCidr to fail for IPv6 CIDR")
+	}
 }
 
 func TestLastHost_Slash28(t *testing.T) {
