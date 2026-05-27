@@ -44,7 +44,7 @@ install_golang() {
     GO_LATEST_VERSION=$(echo "$GO_RELEASE_PAGE" | grep -oE "go[0-9.]+\.[a-z0-9-]+\.tar\.gz" | grep $ARCH | head -n 1)
 
     # Check if a link was found
-    DEFAULT_GO_VERSION="go1.20.$ARCH.tar.gz" #Default version
+    DEFAULT_GO_VERSION="go1.25.0.$ARCH.tar.gz" #Default version
     if [[ -z "$GO_LATEST_VERSION" ]]; then
         echo "Download link for $ARCH not found. Installing default version."
         GO_LATEST_VERSION=$DEFAULT_GO_VERSION

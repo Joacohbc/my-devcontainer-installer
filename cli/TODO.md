@@ -8,12 +8,12 @@ Este documento consolida todas las oportunidades de mejora identificadas en el c
 *Estas tareas aportan mucho valor y son rápidas de implementar.*
 
 ### Nuevos Comandos Esenciales
-- [ ] Implementar `devcontainer-cli shell [-w workspace] [--user root] [-- command args...]`: Atajo para `docker exec -it <container> <shell>`. (Gap de UX masivo).
-- [ ] Implementar `devcontainer-cli logs [-w workspace] [--follow] [--tail 100] [service]`: Wrapper para `docker compose logs`.
+- [x] Implementar `devcontainer-cli shell [-w workspace] [--user root] [-- command args...]`: Atajo para `docker exec -it <container> <shell>`. (Gap de UX masivo). → `shell.go`.
+- [x] Implementar `devcontainer-cli logs [-w workspace] [--follow] [--tail 100] [service]`: Wrapper para `docker compose logs`. → `logs.go`.
 
 ### Bugs y UX Críticos
-- [ ] Arreglar `down.go`: El flag `--yes` no confirma la eliminación de volúmenes, solo salta la pregunta.
-- [ ] Arreglar `prune.go`: En modo non-interactive sin `--yes`, elimina imágenes huérfanas sin confirmación (peligroso). Debería fallar pidiendo `--yes`.
+- [ ] Decidir comportamiento de `down.go --yes`: hoy `--yes` implica borrar volúmenes (`down.go` setea `removeVolumes=true`). Falta decidir si `--yes` debería solo saltar la confirmación sin borrar volúmenes (más seguro, requiere `-v` explícito).
+- [x] Arreglar `prune.go`: En modo non-interactive sin `--yes`, elimina imágenes huérfanas sin confirmación (peligroso). Debería fallar pidiendo `--yes`. → ya falla con error en `prune.go`.
 
 ### Nuevos Módulos (Lenguajes muy demandados)
 - [ ] Añadir módulo `rust` (vía `rustup`).
@@ -23,12 +23,12 @@ Este documento consolida todas las oportunidades de mejora identificadas en el c
 
 ### Nuevos Servicios Compose (Bases de datos)
 - [ ] Añadir servicio `mysql` / `mariadb`.
-- [ ] Añadir health checks a los servicios existentes `mongo` y `redis` (Postgres ya lo tiene).
+- [ ] Añadir health checks a los servicios existentes `mongo` y `redis` (Postgres ya lo tiene). Requiere añadir campo `HealthCheck` a `ServiceDef` (`compose/types.go`).
 
 ### Refactoring Rápido
-- [ ] Eliminar `exec.Command("docker", ...)` en `setup_ssh.go` y usar la abstracción `infra/docker`.
-- [ ] Unificar `contains()` (`port_forward.go`) y `containsString()` (`setup_ssh.go`) usando `slices.Contains`.
-- [ ] Añadir soporte para completion en el shell `fish` en los scripts de instalación.
+- [x] ~~Eliminar `exec.Command("docker", ...)` en `setup_ssh.go`~~: ya no hay shell-outs a `docker` por `exec.Command`; las llamadas restantes son a `ssh`/`ssh-keygen` (fuera del alcance de `infra/docker`).
+- [x] Unificar `contains()` (`port_forward.go`) y `containsString()` (`setup_ssh.go`) usando `slices.Contains`. → ya usan `slices.Contains`/`strings.Contains` de la stdlib.
+- [x] Añadir soporte para completion en el shell `fish` en los scripts de instalación. → `install.sh` instala completion `fish` (ps1 no instala completion por diseño).
 
 ---
 
@@ -39,11 +39,11 @@ Este documento consolida todas las oportunidades de mejora identificadas en el c
 - [ ] Permitir "volver atrás" (Go Back) en el wizard interactivo (`generate_prompts.go`) en caso de que el usuario necesite modificar una selección anterior sin reiniciar todo el proceso.
 
 ### Comandos de Visibilidad y Diagnóstico
-- [ ] Implementar `devcontainer-cli status [--all]`: Muestra una tabla con todos los workspaces, su estado (Running/Stopped), modo e imagen.
+- [x] Implementar `devcontainer-cli status [--all]`: Muestra una tabla con todos los workspaces, su estado (Running/Stopped), modo e imagen. → `status.go`.
 - [ ] Implementar `devcontainer-cli doctor`: Diagnóstico de Docker, daemon, disco, configs SSH y puertos.
 
 ### Configuración de Servicios y Entornos
-- [ ] Permitir versiones configurables en servicios compose (ej. `mongo:7`, `postgres:16`).
+- [x] Permitir versiones configurables en servicios compose (ej. `mongo:7`, `postgres:16`). → `mongo`/`postgres`/`redis` exponen opción de versión.
 - [ ] Hacer configurables las credenciales hardcodeadas (`root/root`, `devuser/devpass`).
 - [ ] Hacer el puerto SSH `2222` configurable.
 - [ ] Modo `--json` para output programático (útil para `status` y `config`).
@@ -98,8 +98,8 @@ Actualmente hay buena cobertura en `domain`, pero áreas clave están en blanco:
 ---
 
 ## 🗑️ Limpieza Menor / Code Smells
-- [ ] Arreglar `update.go`: si se usa `--all` y fallan algunos proyectos, actualmente siempre devuelve exit code 0. Debería fallar si hubo errores.
-- [ ] Quitar doble llamada a `CollectRequiredCopyFiles()` en `root.go`.
-- [ ] Manejar explícitamente los errores ignorados de `os.Getwd()` en toda la aplicación.
-- [ ] Actualizar fallback de Go en `golang_utils.sh` (actualmente anclado a un obsoleto `1.20`).
-- [ ] Unificar el idioma de los mensajes en `sshhelp.go` (hay una frase en español colada).
+- [x] Arreglar `update.go`: si se usa `--all` y fallan algunos proyectos, actualmente siempre devuelve exit code 0. Debería fallar si hubo errores. → `updateAll` ahora retorna error si `failCount > 0` (con tests).
+- [x] Quitar doble llamada a `CollectRequiredCopyFiles()` en `root.go`. → se calcula una sola vez y se reutiliza.
+- [x] Manejar explícitamente los errores ignorados de `os.Getwd()` en toda la aplicación. → helper `currentDir()` que envuelve el error; call sites propagan o degradan (completions).
+- [x] Actualizar fallback de Go en `golang_utils.sh` (actualmente anclado a un obsoleto `1.20`). → fallback ahora `go1.25.0`.
+- [x] Unificar el idioma de los mensajes en `sshhelp.go` (hay una frase en español colada). → mensaje final ahora en inglés.

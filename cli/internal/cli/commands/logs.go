@@ -2,7 +2,6 @@ package commands
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
 	"github.com/spf13/cobra"
@@ -53,7 +52,10 @@ func runLogs(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	cwd, _ := os.Getwd()
+	cwd, err := currentDir()
+	if err != nil {
+		return err
+	}
 	composeFile, err := resolveProjectComposeFileWithWorkspace(cwd, wsFlag)
 	if err != nil {
 		return err

@@ -58,7 +58,10 @@ func resolveContainer(cmd *cobra.Command, wsFlag string) (string, error) {
 			return containerFlag, nil
 		}
 	}
-	cwd, _ := os.Getwd()
+	cwd, err := currentDir()
+	if err != nil {
+		return "", err
+	}
 	return resolveDevcontainerContainer(cwd, wsFlag)
 }
 

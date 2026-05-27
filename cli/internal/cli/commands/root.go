@@ -168,7 +168,10 @@ func runGenerate(cmd *cobra.Command, _ []string) error {
 
 	color.New(color.FgGreen, color.Bold).Print("\nDevContainer Dockerfile Builder\n\n")
 
-	cwd, _ := os.Getwd()
+	cwd, err := currentDir()
+	if err != nil {
+		return err
+	}
 	existing, _ := domain.LoadConfig(cwd)
 	var config *types.DevcontainerConfig
 	if existing != nil {
@@ -255,10 +258,11 @@ func runGenerate(cmd *cobra.Command, _ []string) error {
 	buildDir := paths.BuildDir
 	skipBuildArtifacts := config.Mode == types.BuildModeRemote
 
+	var copyFiles, postScriptFiles []string
 	if !skipBuildArtifacts {
-		copyFiles, _ := domain.CollectRequiredCopyFiles(config)
-		postScripts, _ := domain.CollectRequiredPostScriptFiles(config)
-		referenced := append(append([]string{}, copyFiles...), postScripts...)
+		copyFiles, _ = domain.CollectRequiredCopyFiles(config)
+		postScriptFiles, _ = domain.CollectRequiredPostScriptFiles(config)
+		referenced := append(append([]string{}, copyFiles...), postScriptFiles...)
 		if missing := assets.ValidateRequiredFiles(referenced, buildDir); len(missing) > 0 {
 			return fmt.Errorf("missing required script(s) (not embedded in binary or %s): %s", buildDir, strings.Join(missing, ", "))
 		}
@@ -268,9 +272,7 @@ func runGenerate(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
-	var copyFiles, postScriptFiles []string
 	if !skipBuildArtifacts {
-		copyFiles, _ = domain.CollectRequiredCopyFiles(config)
 		if len(copyFiles) > 0 {
 			pre := assets.Preflight(copyFiles, buildDir)
 			if len(pre.Copied) > 0 {
@@ -280,7 +282,6 @@ func runGenerate(cmd *cobra.Command, _ []string) error {
 				return fmt.Errorf("missing required scripts: %s", strings.Join(pre.Missing, ", "))
 			}
 		}
-		postScriptFiles, _ = domain.CollectRequiredPostScriptFiles(config)
 		if len(postScriptFiles) > 0 {
 			pre := assets.Preflight(postScriptFiles, buildDir)
 			if len(pre.Copied) > 0 {

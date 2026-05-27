@@ -31,7 +31,10 @@ Runs 'docker compose down -v' (containers + volumes), then deletes the generated
 }
 
 func runDestroy(cmd *cobra.Command, _ []string) error {
-	cwd, _ := os.Getwd()
+	cwd, err := currentDir()
+	if err != nil {
+		return err
+	}
 	cfg, _ := domain.LoadConfig(cwd)
 	workspace := domain.ResolveWorkspace(cwd, cfg)
 	paths := project.ProjectPaths(cwd, workspace)

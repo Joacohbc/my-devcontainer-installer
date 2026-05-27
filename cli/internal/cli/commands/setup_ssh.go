@@ -73,7 +73,10 @@ func newSetupSshCommand() *cobra.Command {
 	_ = cmd.RegisterFlagCompletionFunc("service", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		compFile, _ := cmd.Flags().GetString("compose-file")
 		if compFile == "" {
-			cwd, _ := os.Getwd()
+			cwd, err := currentDir()
+			if err != nil {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
 			compFile = defaultComposeFile(cwd)
 		}
 		return listComposeServices(compFile), cobra.ShellCompDirectiveNoFileComp
@@ -102,9 +105,12 @@ func defaultComposeFile(cwd string) string {
 	return fmt.Sprintf(".dc_%s/build/docker-compose.yml", ws)
 }
 
-func collectSetupSshFlags(cmd *cobra.Command) *setupSshFlags {
+func collectSetupSshFlags(cmd *cobra.Command) (*setupSshFlags, error) {
 	f := cmd.Flags()
-	cwd, _ := os.Getwd()
+	cwd, err := currentDir()
+	if err != nil {
+		return nil, err
+	}
 	g := &setupSshFlags{}
 	g.remote, _ = f.GetString("remote")
 	g.alias, _ = f.GetString("alias")
@@ -130,7 +136,7 @@ func collectSetupSshFlags(cmd *cobra.Command) *setupSshFlags {
 	if g.remote != "" && !f.Changed("mode") {
 		g.mode = "remote"
 	}
-	return g
+	return g, nil
 }
 
 func which(bin string) bool {
@@ -196,7 +202,10 @@ func resolveTargetService(f *setupSshFlags) (composeServiceInfo, error) {
 	if f.containerExplicit && f.serviceExplicit {
 		return composeServiceInfo{service: f.service, container: f.container}, nil
 	}
-	cwd, _ := os.Getwd()
+	cwd, err := currentDir()
+	if err != nil {
+		return composeServiceInfo{}, err
+	}
 	composePath := filepath.Join(cwd, f.composeFile)
 	services := readComposeServices(composePath)
 	if services == nil {
@@ -295,7 +304,10 @@ func ensureStack(f *setupSshFlags, mode string) error {
 		return nil
 	}
 	ui.Warn(fmt.Sprintf("Container '%s' not running.", f.container))
-	cwd, _ := os.Getwd()
+	cwd, err := currentDir()
+	if err != nil {
+		return err
+	}
 	composePath := filepath.Join(cwd, f.composeFile)
 	if _, err := os.Stat(composePath); err != nil {
 		return fmt.Errorf("compose file not found: %s\nRun 'devcontainer-cli' first to generate it, or pass -f <path> to specify a different compose file", composePath)
@@ -634,18 +646,21 @@ func testConnection(alias string) {
 	ui.Warn(fmt.Sprintf("SSH test inconclusive. Try manually:  ssh %s", alias))
 }
 
-func deriveWorkspace(containerName string) string {
-	cwd, _ := os.Getwd()
+func deriveWorkspace(containerName string) (string, error) {
+	cwd, err := currentDir()
+	if err != nil {
+		return "", err
+	}
 	if cfg, _ := domain.LoadConfig(cwd); cfg != nil && cfg.Workspace != "" {
-		return cfg.Workspace
+		return cfg.Workspace, nil
 	}
 	if containerName != "" {
 		re := regexp.MustCompile("^(.+)-" + regexp.QuoteMeta(sshdefaults.ServiceName) + "$")
 		if m := re.FindStringSubmatch(containerName); m != nil {
-			return m[1]
+			return m[1], nil
 		}
 	}
-	return domain.SanitizeDockerName(filepath.Base(cwd), "devcontainer")
+	return domain.SanitizeDockerName(filepath.Base(cwd), "devcontainer"), nil
 }
 
 func applyWorkspaceDefaults(f *setupSshFlags, workspace string) {
@@ -668,7 +683,10 @@ func applyWorkspaceDefaults(f *setupSshFlags, workspace string) {
 }
 
 func runSetupSsh(cmd *cobra.Command, _ []string) error {
-	f := collectSetupSshFlags(cmd)
+	f, err := collectSetupSshFlags(cmd)
+	if err != nil {
+		return err
+	}
 	mode := detectMode(f)
 	if err := checkPrereqs(mode); err != nil {
 		return err
@@ -685,7 +703,10 @@ func runSetupSsh(cmd *cobra.Command, _ []string) error {
 		resolvedContainer = target.container
 	}
 
-	workspace := deriveWorkspace(resolvedContainer)
+	workspace, err := deriveWorkspace(resolvedContainer)
+	if err != nil {
+		return err
+	}
 	applyWorkspaceDefaults(f, workspace)
 
 	if !f.aliasExplicit && !f.assumeYes {
