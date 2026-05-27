@@ -9,7 +9,6 @@ import (
 var DockerfileModules = []*dockerfile.DockerfileModuleSpec{
 	dockerfile.BaseModule,
 	dockerfile.GithubCliModule,
-	dockerfile.DodModule,
 	dockerfile.JavaTemurinModule,
 	dockerfile.JavaOpenjdkModule,
 	dockerfile.PythonModule,
@@ -27,7 +26,6 @@ var DockerfileModules = []*dockerfile.DockerfileModuleSpec{
 // ComposeServices is the ordered catalogue of all compose services.
 var ComposeServices = []*compose.ServiceSpec{
 	compose.DevcontainerService,
-	compose.DindEngineService,
 	compose.MongoService,
 	compose.RedisService,
 	compose.PostgresService,

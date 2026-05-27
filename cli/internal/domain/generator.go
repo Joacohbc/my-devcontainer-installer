@@ -136,11 +136,6 @@ func resolveEnabledServices(config *core.DevcontainerConfig) enabledServicesResu
 		}
 	}
 
-	devOpts := optionsByID["devcontainer"]
-	if socketMode, _ := devOpts["dockerSocket"].(string); socketMode == "dind" {
-		enabled[compose.DindEngineHost] = true
-	}
-
 	enabledIDs := make([]string, 0, len(enabled))
 	for id := range enabled {
 		enabledIDs = append(enabledIDs, id)
@@ -155,16 +150,11 @@ func GenerateCompose(config *core.DevcontainerConfig) (string, error) {
 
 	workspace := config.Workspace
 	networkName := workspace + "-network"
-	engineNetworkName := workspace + "-engine-network"
-	usesEngineNetwork := false
 
 	mapNetwork := func(n string) string {
 		switch n {
 		case "local-network":
 			return networkName
-		case compose.DindEngineNetwork:
-			usesEngineNetwork = true
-			return engineNetworkName
 		default:
 			return n
 		}
@@ -280,12 +270,6 @@ func GenerateCompose(config *core.DevcontainerConfig) (string, error) {
 			},
 		},
 		Labels: copyLabels(labels),
-	}
-	if usesEngineNetwork {
-		networks[engineNetworkName] = &compose.NetworkDef{
-			Driver: "bridge",
-			Labels: copyLabels(labels),
-		}
 	}
 
 	doc := compose.ComposeDoc{

@@ -14,7 +14,6 @@ import (
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/project"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/prompt"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/sshinstructions"
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/modules/compose"
 	"github.com/spf13/cobra"
 )
 
@@ -44,7 +43,7 @@ func addGenerateFlags(cmd *cobra.Command) {
 	f.String("mode", "", "Build mode: local-cached (default), remote")
 	f.String("variant", "", "Remote image variant (e.g. ssh, nodejs, python)")
 	f.String("registry", "", "Container registry prefix for remote images (overrides global)")
-	f.String("with", "", "Comma-separated dockerfile modules (e.g. nodejs,golang,dod)")
+	f.String("with", "", "Comma-separated dockerfile modules (e.g. nodejs,golang,tmux)")
 	f.String("service", "", "Comma-separated compose services (e.g. mongo,postgres,tunnel)")
 	f.String("services", "", "Alias for --service")
 	f.String("image", "", "Image name (default: derived from fingerprint for local-cached)")
@@ -206,10 +205,6 @@ func runGenerate(cmd *cobra.Command, _ []string) error {
 				return fmt.Errorf("subnet %s overlaps with existing Docker network %s. Set subnet to %s in devcontainer.config.json or remove the conflicting network", config.Compose.Subnet, domain.FormatCidr(*clash), free)
 			}
 		}
-	}
-
-	if err := checkDockerSocket(config, flags.interactive); err != nil {
-		return err
 	}
 
 	conflicts := domain.FindConflicts(config, docker.IsDockerAvailable(), captureFunc())
@@ -388,31 +383,6 @@ func runGenerate(cmd *cobra.Command, _ []string) error {
 		domain.RecordProject(cwd, config, "")
 		color.New(color.FgGreen, color.Bold).Print("\nDone.\n\n")
 		sshinstructions.Print(config.Workspace)
-	}
-	return nil
-}
-
-func checkDockerSocket(config *core.DevcontainerConfig, interactive bool) error {
-	for _, s := range config.Compose.Services {
-		if serviceIDOf(s) != "devcontainer" {
-			continue
-		}
-		opts := serviceOptionsOf(config.Compose.Services, "devcontainer")
-		if mode, _ := opts["dockerSocket"].(string); mode == string(compose.DockerSocketSocket) {
-			if _, err := os.Stat(compose.HostDockerSocket); err != nil {
-				msg := fmt.Sprintf("Docker access mode 'socket' is selected but %s does not exist on this host. Docker would create an empty directory there on 'up' and docker commands inside the container would fail. Start the Docker daemon, or pick the 'dind'/'none' access mode.", compose.HostDockerSocket)
-				color.Yellow("\nWarning: %s", msg)
-				if interactive {
-					ok, perr := prompt.Confirm("Continue anyway?", false)
-					if perr != nil {
-						return perr
-					}
-					if !ok {
-						return fmt.Errorf("aborted: host Docker socket not found")
-					}
-				}
-			}
-		}
 	}
 	return nil
 }

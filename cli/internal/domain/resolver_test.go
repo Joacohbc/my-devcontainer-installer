@@ -53,7 +53,7 @@ func TestResolveDockerfileModules_UnknownModuleErrors(t *testing.T) {
 func TestResolveDockerfileModules_CategoryOrder(t *testing.T) {
 	resolved, err := domain.ResolveDockerfileModules([]core.SelectedModule{
 		{ID: "java-temurin"},
-		{ID: "dod"},
+		{ID: "github-cli"},
 		{ID: "nodejs"},
 	})
 	if err != nil {

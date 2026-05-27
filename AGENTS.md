@@ -35,7 +35,7 @@ Applies to:
 
 - `internal/modules/dockerfile/*.go` — Dockerfile modules (base, nodejs, python,
   java_temurin, java_openjdk, golang, bun, pnpm, sqlite, dbclients, github_cli,
-  dod, ai_clis, tmux, cleanup, shell_init).
+  ai_clis, tmux, cleanup, shell_init).
 - `internal/modules/compose/*.go` — compose services (devcontainer, dind_engine,
   mongo, redis, postgres, tunnel).
 - `internal/core/registry.go` — the module/service registry.
@@ -299,8 +299,8 @@ three plus `BuildModes` and tests.
 2. **Full-image `--with` list** — `docker-image.yml` job `build-base` passes one
    id per Dockerfile module **except** `base`/`cleanup` (auto-applied) and
    `java-openjdk` (mutually exclusive with `java-temurin`; the full image uses
-   `java-temurin`). Compose-only modules (`postgres`, `redis`, `mongo`, `tunnel`,
-   `dind`) never go in `--with`. Add a module → append its id here.
+   `java-temurin`). Compose-only modules (`postgres`, `redis`, `mongo`, `tunnel`)
+   never go in `--with`. Add a module → append its id here.
 3. **Release-asset naming** `devcontainer-cli-<triplet>[.exe]` — shared by
    `cli/.goreleaser.yaml`, `getTargetTriplet()` in `commands/upgrade_cli.go`,
    `cli/install.sh` and `cli/install.ps1`. Change one → change all four.
@@ -308,13 +308,7 @@ three plus `BuildModes` and tests.
    `windows-x64`. (`amd64`→`x64`; `arm64` stays `arm64`, including native
    `darwin-arm64` — there is no Rosetta fallback.)
 4. **Build modes** — see above.
-5. **`dockerSocket`** (`none`/`socket`/`dind`) — the mode is the single source of
-   truth for the dind engine. `docker-dind` is `internal` + auto-provisioned;
-   the engine image is pinned (`docker:NN-dind-rootless`, `privileged`); it sits
-   on a dedicated `*-engine-network` joined only by the devcontainer and the
-   engine. Never auto-mount the host socket — only `socket` mode does, as a
-   warned opt-in. Matching asserts in `generator_test.go`.
-6. **Fingerprint** (`local-cached`) — SHA-256 of normalized Dockerfile +
+5. **Fingerprint** (`local-cached`) — SHA-256 of normalized Dockerfile +
    copyFile contents + sorted module ids, first 12 chars → `image =
    devcontainer-cli/<fp12>:latest`. Derived from the **Dockerfile**, not the
    compose, so YAML key ordering doesn't affect image sharing.

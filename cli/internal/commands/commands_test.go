@@ -166,8 +166,8 @@ func TestGetTargetTriplet(t *testing.T) {
 }
 
 func TestSplitCSV(t *testing.T) {
-	got := splitCSV("nodejs, golang ,, dod")
-	want := []string{"nodejs", "golang", "dod"}
+	got := splitCSV("nodejs, golang ,, tmux")
+	want := []string{"nodejs", "golang", "tmux"}
 	if len(got) != len(want) {
 		t.Fatalf("got %v, want %v", got, want)
 	}

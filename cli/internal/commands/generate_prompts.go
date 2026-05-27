@@ -189,7 +189,7 @@ func buildConfigFromPrompts(base *core.DevcontainerConfig) (*core.DevcontainerCo
 
 	var services []any
 
-	// Always-on services may still expose options (e.g. devcontainer's dockerSocket).
+	// Always-on services may still expose options.
 	for _, svc := range registry.ComposeServices {
 		if !svc.Always || len(svc.Options) == 0 {
 			continue

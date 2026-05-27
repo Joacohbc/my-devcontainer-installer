@@ -71,7 +71,6 @@ func TestGenerateDockerfile_MinimalHasBaseAndCleanup(t *testing.T) {
 func TestGenerateDockerfile_AllSelectedModules(t *testing.T) {
 	cfg := makeConfig(func(c *core.DevcontainerConfig) {
 		c.Dockerfile.Modules = []core.SelectedModule{
-			{ID: "dod"},
 			{ID: "java-temurin"},
 			{ID: "python"},
 			{ID: "sqlite"},
@@ -83,7 +82,6 @@ func TestGenerateDockerfile_AllSelectedModules(t *testing.T) {
 		}
 	})
 	df := mustGenerateDockerfile(t, cfg)
-	assertContainsStr(t, df, "docker-ce-cli", "full dockerfile")
 	assertContainsStr(t, df, "temurin-17-jdk", "full dockerfile")
 	assertContainsStr(t, df, "python3-pip", "full dockerfile")
 	assertContainsStr(t, df, "sqlite3", "full dockerfile")
@@ -265,7 +263,7 @@ func TestGenerateCompose_StaticIPFromSubnet(t *testing.T) {
 	}
 }
 
-func TestGenerateCompose_NoDockerSocketByDefault(t *testing.T) {
+func TestGenerateCompose_DevcontainerHasNoDockerAccess(t *testing.T) {
 	cfg := makeConfig()
 	yml := mustGenerateCompose(t, cfg)
 	var parsed map[string]any
@@ -277,178 +275,11 @@ func TestGenerateCompose_NoDockerSocketByDefault(t *testing.T) {
 	volumes, _ := devSvc["volumes"].([]any)
 	for _, v := range volumes {
 		if strings.Contains(v.(string), "docker.sock") {
-			t.Error("docker.sock must not be mounted by default")
+			t.Error("docker.sock must never be mounted")
 		}
 	}
 	if devSvc["environment"] != nil {
-		t.Errorf("expected no environment in default mode, got %v", devSvc["environment"])
-	}
-}
-
-func TestGenerateCompose_DindModeAutoProvisions(t *testing.T) {
-	cfg := makeConfig(func(c *core.DevcontainerConfig) {
-		c.Compose.Services = []any{
-			map[string]any{"id": "devcontainer", "options": map[string]any{"dockerSocket": "dind"}},
-			map[string]any{"id": "postgres", "options": map[string]any{}},
-		}
-		c.Compose.Subnet = "172.25.0.0/24"
-	})
-	yml := mustGenerateCompose(t, cfg)
-	var parsed map[string]any
-	if err := yaml.Unmarshal([]byte(yml), &parsed); err != nil {
-		t.Fatalf("invalid YAML: %v\n%s", err, yml)
-	}
-	services := parsed["services"].(map[string]any)
-	devSvc := services["devcontainer-ssh"].(map[string]any)
-
-	volumes, _ := devSvc["volumes"].([]any)
-	for _, v := range volumes {
-		if strings.Contains(v.(string), "docker.sock") {
-			t.Error("docker.sock must not be mounted in dind mode")
-		}
-	}
-
-	envList, ok := devSvc["environment"].([]any)
-	if !ok {
-		t.Fatal("expected environment list in dind mode")
-	}
-	foundDockerHost := false
-	for _, e := range envList {
-		if e.(string) == "DOCKER_HOST=tcp://docker-dind:2375" {
-			foundDockerHost = true
-		}
-	}
-	if !foundDockerHost {
-		t.Error("expected DOCKER_HOST=tcp://docker-dind:2375 in dind mode")
-	}
-
-	depsList, ok := devSvc["depends_on"].([]any)
-	if !ok {
-		t.Fatal("expected depends_on list in dind mode")
-	}
-	foundDind := false
-	for _, d := range depsList {
-		if d.(string) == "docker-dind" {
-			foundDind = true
-		}
-	}
-	if !foundDind {
-		t.Error("expected docker-dind in depends_on")
-	}
-
-	devNetworks := devSvc["networks"].(map[string]any)
-	if _, ok := devNetworks["devcontainer-network"]; !ok {
-		t.Error("expected devcontainer-network in devcontainer networks")
-	}
-	if _, ok := devNetworks["devcontainer-engine-network"]; !ok {
-		t.Error("expected devcontainer-engine-network in devcontainer networks in dind mode")
-	}
-
-	dindSvc, ok := services["docker-dind"]
-	if !ok {
-		t.Fatal("expected docker-dind service to be auto-provisioned")
-	}
-	dind := dindSvc.(map[string]any)
-	image := dind["image"].(string)
-	if !strings.Contains(image, "dind-rootless") {
-		t.Errorf("expected dind-rootless image, got %q", image)
-	}
-	if dind["privileged"] != true {
-		t.Error("expected dind service to be privileged")
-	}
-
-	dindNetworks, _ := dind["networks"].([]any)
-	foundEngineNet := false
-	for _, n := range dindNetworks {
-		if n.(string) == "devcontainer-engine-network" {
-			foundEngineNet = true
-		}
-	}
-	if !foundEngineNet {
-		t.Error("expected docker-dind to be on engine-network")
-	}
-
-	networks := parsed["networks"].(map[string]any)
-	if networks["devcontainer-engine-network"] == nil {
-		t.Error("expected devcontainer-engine-network to be declared")
-	}
-
-	pgSvc := services["postgres"].(map[string]any)
-	pgNetworks := pgSvc["networks"]
-	pgNetStr := ""
-	switch v := pgNetworks.(type) {
-	case []any:
-		for _, n := range v {
-			pgNetStr += n.(string) + ","
-		}
-	case map[string]any:
-		for k := range v {
-			pgNetStr += k + ","
-		}
-	}
-	if strings.Contains(pgNetStr, "engine-network") {
-		t.Error("postgres should not be on the engine-network")
-	}
-}
-
-func TestGenerateCompose_NoDindWithSocketNone(t *testing.T) {
-	cfg := makeConfig(func(c *core.DevcontainerConfig) {
-		c.Compose.Services = []any{
-			map[string]any{"id": "devcontainer", "options": map[string]any{"dockerSocket": "none"}},
-		}
-		c.Compose.Subnet = "172.25.0.0/24"
-	})
-	yml := mustGenerateCompose(t, cfg)
-	var parsed map[string]any
-	if err := yaml.Unmarshal([]byte(yml), &parsed); err != nil {
-		t.Fatalf("invalid YAML: %v", err)
-	}
-	services := parsed["services"].(map[string]any)
-	if services["docker-dind"] != nil {
-		t.Error("expected docker-dind NOT to be present in none mode")
-	}
-	devSvc := services["devcontainer-ssh"].(map[string]any)
-	volumes, _ := devSvc["volumes"].([]any)
-	for _, v := range volumes {
-		if strings.Contains(v.(string), "docker.sock") {
-			t.Error("docker.sock must not be mounted in none mode")
-		}
-	}
-	if devSvc["environment"] != nil {
-		t.Error("expected no environment in none mode")
-	}
-}
-
-func TestGenerateCompose_SocketModeMountsDockerSock(t *testing.T) {
-	cfg := makeConfig(func(c *core.DevcontainerConfig) {
-		c.Compose.Services = []any{
-			map[string]any{"id": "devcontainer", "options": map[string]any{"dockerSocket": "socket"}},
-		}
-		c.Compose.Subnet = "172.25.0.0/24"
-	})
-	yml := mustGenerateCompose(t, cfg)
-	var parsed map[string]any
-	if err := yaml.Unmarshal([]byte(yml), &parsed); err != nil {
-		t.Fatalf("invalid YAML: %v", err)
-	}
-	services := parsed["services"].(map[string]any)
-	devSvc := services["devcontainer-ssh"].(map[string]any)
-	volumes, _ := devSvc["volumes"].([]any)
-	foundSocket := false
-	for _, v := range volumes {
-		if v.(string) == "/var/run/docker.sock:/var/run/docker.sock" {
-			foundSocket = true
-		}
-	}
-	if !foundSocket {
-		t.Error("expected /var/run/docker.sock to be mounted in socket mode")
-	}
-	if devSvc["environment"] != nil {
-		t.Error("expected no DOCKER_HOST in socket mode")
-	}
-	devNetworks := devSvc["networks"].(map[string]any)
-	if _, hasEngineNet := devNetworks["devcontainer-engine-network"]; hasEngineNet {
-		t.Error("expected no engine-network in socket mode")
+		t.Errorf("expected no environment on devcontainer, got %v", devSvc["environment"])
 	}
 }
 
