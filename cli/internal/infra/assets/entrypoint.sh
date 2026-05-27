@@ -34,21 +34,5 @@ else
     echo "initial root password: $INITIAL_PASSWORD"
 fi
 
-# Fix Docker socket permissions at runtime
-if [ -S /var/run/docker.sock ]; then
-    setfacl -m "g:docker:rw" /var/run/docker.sock
-    echo "Docker socket permissions updated."
-fi
-
-# Propagate DOCKER_HOST to SSH sessions. Compose `environment:` vars only reach
-# PID 1 (this script); SSH login shells start with a fresh environment, so the
-# docker CLI would otherwise fall back to the missing /var/run/docker.sock.
-# pam_env reads /etc/environment for every SSH session, shell-agnostic.
-if [ -n "$DOCKER_HOST" ]; then
-    sed -i '/^DOCKER_HOST=/d' /etc/environment 2>/dev/null || true
-    echo "DOCKER_HOST=$DOCKER_HOST" >> /etc/environment
-    echo "DOCKER_HOST propagated to SSH sessions: $DOCKER_HOST"
-fi
-
 # Start the SSH service
 /usr/sbin/sshd -D -o ListenAddress=0.0.0.0
