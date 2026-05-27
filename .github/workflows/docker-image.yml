@@ -75,7 +75,10 @@ jobs:
             org.opencontainers.image.description=Full devcontainer with all available modules
 
   # ── Job 2: Build CLI-generated devcontainer variants ──
+  # Gated on build-base: if the full image fails to build there is no point
+  # spending matrix runners on the variants.
   build-variants:
+    needs: build-base
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false

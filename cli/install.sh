@@ -46,6 +46,29 @@ tmp_path="${binary_path}.download"
 info "Downloading $asset ($VERSION)"
 curl -fSL --progress-bar -o "$tmp_path" "$url" || err "download failed: $url"
 
+# Verify the published sha256 before trusting the binary. The release ships a
+# per-asset <asset>.sha256 (goreleaser checksum.split); refuse to install if it
+# is missing or does not match.
+sum_url="${url}.sha256"
+sum_path="${tmp_path}.sha256"
+info "Verifying checksum"
+curl -fSL -o "$sum_path" "$sum_url" || { rm -f "$tmp_path"; err "checksum download failed: $sum_url"; }
+expected=$(awk '{print $1}' "$sum_path" | head -n1)
+[ -n "$expected" ] || { rm -f "$tmp_path" "$sum_path"; err "empty or invalid checksum file"; }
+if command -v sha256sum >/dev/null 2>&1; then
+  actual=$(sha256sum "$tmp_path" | awk '{print $1}')
+elif command -v shasum >/dev/null 2>&1; then
+  actual=$(shasum -a 256 "$tmp_path" | awk '{print $1}')
+else
+  rm -f "$tmp_path" "$sum_path"
+  err "no sha256 tool found (need sha256sum or shasum)"
+fi
+rm -f "$sum_path"
+if [ "$expected" != "$actual" ]; then
+  rm -f "$tmp_path"
+  err "checksum mismatch: expected $expected, got $actual"
+fi
+
 mv -f "$tmp_path" "$binary_path"
 chmod +x "$binary_path"
 

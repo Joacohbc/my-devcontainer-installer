@@ -14,6 +14,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
@@ -168,13 +169,16 @@ func checkURL(raw string) (*url.URL, error) {
 	return u, nil
 }
 
-func httpGet(rawURL string, withAuth bool, maxBytes int64) (int, []byte, error) {
+// newGitHubRequest builds a GET request and an HTTP client that re-validate the
+// allowlist on every redirect hop. Shared by the JSON API calls and the
+// streaming binary download so the host allowlist is enforced uniformly.
+func newGitHubRequest(rawURL string, withAuth bool) (*http.Request, *http.Client, error) {
 	if _, err := checkURL(rawURL); err != nil {
-		return 0, nil, err
+		return nil, nil, err
 	}
 	req, err := http.NewRequest(http.MethodGet, rawURL, nil)
 	if err != nil {
-		return 0, nil, err
+		return nil, nil, err
 	}
 	req.Header.Set("User-Agent", selfUpdateUA)
 	req.Header.Set("Accept", "application/vnd.github+json")
@@ -185,11 +189,17 @@ func httpGet(rawURL string, withAuth bool, maxBytes int64) (int, []byte, error) 
 	}
 	client := &http.Client{
 		CheckRedirect: func(r *http.Request, _ []*http.Request) error {
-			if _, err := checkURL(r.URL.String()); err != nil {
-				return err
-			}
-			return nil
+			_, err := checkURL(r.URL.String())
+			return err
 		},
+	}
+	return req, client, nil
+}
+
+func httpGet(rawURL string, withAuth bool, maxBytes int64) (int, []byte, error) {
+	req, client, err := newGitHubRequest(rawURL, withAuth)
+	if err != nil {
+		return 0, nil, err
 	}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -256,15 +266,83 @@ func resolveAssetURL(rel *release, triplet, ext string) (binary, checksum string
 	return bURL, cURL, nil
 }
 
+// humanBytes formats a byte count as a compact human-readable size.
+func humanBytes(n int64) string {
+	const unit = 1024
+	if n < unit {
+		return fmt.Sprintf("%d B", n)
+	}
+	div, exp := int64(unit), 0
+	for x := n / unit; x >= unit; x /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %ciB", float64(n)/float64(div), "KMGTPE"[exp])
+}
+
+// progressWriter is an io.Writer that tallies bytes copied through it and
+// renders a single-line progress indicator to out, throttled to avoid spamming.
+type progressWriter struct {
+	total      int64
+	written    int64
+	out        io.Writer
+	lastReport time.Time
+}
+
+func (p *progressWriter) Write(b []byte) (int, error) {
+	n := len(b)
+	p.written += int64(n)
+	if now := time.Now(); now.Sub(p.lastReport) >= 100*time.Millisecond {
+		p.lastReport = now
+		p.render()
+	}
+	return n, nil
+}
+
+func (p *progressWriter) render() {
+	if p.total > 0 {
+		pct := float64(p.written) / float64(p.total) * 100
+		fmt.Fprintf(p.out, "\r  downloading... %5.1f%% (%s / %s)", pct, humanBytes(p.written), humanBytes(p.total))
+		return
+	}
+	fmt.Fprintf(p.out, "\r  downloading... %s", humanBytes(p.written))
+}
+
+func (p *progressWriter) finish() {
+	p.render()
+	fmt.Fprintln(p.out)
+}
+
 func downloadToFile(rawURL, dest string) error {
-	status, body, err := httpGet(rawURL, false, maxDownloadBytes)
+	req, client, err := newGitHubRequest(rawURL, false)
 	if err != nil {
 		return err
 	}
-	if status != 200 {
-		return fmt.Errorf("download failed: HTTP %d %s", status, rawURL)
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
 	}
-	return os.WriteFile(dest, body, 0o600)
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return fmt.Errorf("download failed: HTTP %d %s", resp.StatusCode, rawURL)
+	}
+	f, err := os.OpenFile(dest, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	pw := &progressWriter{total: resp.ContentLength, out: os.Stderr}
+	limited := io.LimitReader(resp.Body, maxDownloadBytes+1)
+	written, err := io.Copy(f, io.TeeReader(limited, pw))
+	pw.finish()
+	if err != nil {
+		return err
+	}
+	if written > maxDownloadBytes {
+		return fmt.Errorf("response exceeded %d bytes", maxDownloadBytes)
+	}
+	return nil
 }
 
 func verifyChecksum(filePath, checksumURL string) error {
@@ -296,13 +374,29 @@ func replaceBinary(tmpPath string) error {
 	if err != nil {
 		return err
 	}
-	if runtime.GOOS == "windows" {
+	return swapBinary(execPath, tmpPath, runtime.GOOS == "windows")
+}
+
+// swapBinary replaces the binary at execPath with the one at tmpPath. On
+// Windows the running exe cannot be overwritten, so the original is renamed
+// aside to <exe>.old first; if the move-in of the new binary then fails, the
+// original is rolled back into place so the user is never left without a
+// working binary. On Unix the replacement is a single atomic rename, which
+// already leaves the original untouched on failure.
+func swapBinary(execPath, tmpPath string, windows bool) error {
+	if windows {
 		oldPath := execPath + ".old"
 		_ = os.Remove(oldPath)
 		if err := os.Rename(execPath, oldPath); err != nil {
 			return err
 		}
-		return os.Rename(tmpPath, execPath)
+		if err := os.Rename(tmpPath, execPath); err != nil {
+			if rbErr := os.Rename(oldPath, execPath); rbErr != nil {
+				return fmt.Errorf("update failed (%v) and rollback failed (%v); restore manually from %s", err, rbErr, oldPath)
+			}
+			return fmt.Errorf("update failed, original binary restored: %w", err)
+		}
+		return nil
 	}
 	if err := os.Chmod(tmpPath, 0o755); err != nil {
 		return err

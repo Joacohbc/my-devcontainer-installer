@@ -19,7 +19,8 @@ func newDownCommand() *cobra.Command {
 		Long: `devcontainer-cli down — stop and remove project containers
 
 Runs: docker compose -f .dc_<workspace>/build/docker-compose.yml down
-Add -v/--volumes to also remove named volumes (deletes data).`,
+Add -v/--volumes to also remove named volumes (deletes data). --yes only
+skips the volume prompt; it never deletes volumes on its own.`,
 		SilenceUsage: true,
 		RunE:         runDown,
 	}
@@ -28,6 +29,20 @@ Add -v/--volumes to also remove named volumes (deletes data).`,
 	addInteractiveFlag(cmd)
 	addContainerFlag(cmd)
 	return cmd
+}
+
+// resolveRemoveVolumes decides whether `down` should pass -v. Volumes are only
+// removed when -v/--volumes is explicit; --yes merely skips the prompt (it does
+// not opt into data deletion). The confirm callback is consulted only in
+// interactive mode without an explicit answer.
+func resolveRemoveVolumes(volumesFlag, yes, interactive bool, confirm func() (bool, error)) (bool, error) {
+	if volumesFlag {
+		return true, nil
+	}
+	if yes || !interactive {
+		return false, nil
+	}
+	return confirm()
 }
 
 func runDown(cmd *cobra.Command, _ []string) error {
@@ -62,17 +77,12 @@ func runDown(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
-	removeVolumes, _ := cmd.Flags().GetBool("volumes")
-	if !removeVolumes {
-		if yesFlag(cmd) {
-			removeVolumes = true
-		} else if interactiveFlag(cmd) {
-			ok, perr := prompt.Confirm("Also remove named volumes for '"+workspace+"'? This deletes their data.", false)
-			if perr != nil {
-				return perr
-			}
-			removeVolumes = ok
-		}
+	volumesFlag, _ := cmd.Flags().GetBool("volumes")
+	removeVolumes, err := resolveRemoveVolumes(volumesFlag, yesFlag(cmd), interactiveFlag(cmd), func() (bool, error) {
+		return prompt.Confirm("Also remove named volumes for '"+workspace+"'? This deletes their data.", false)
+	})
+	if err != nil {
+		return err
 	}
 
 	args := []string{"down"}

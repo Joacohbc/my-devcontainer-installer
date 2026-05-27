@@ -1,0 +1,88 @@
+package compose_test
+
+import (
+	"testing"
+
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/catalog"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/modules/compose"
+)
+
+func TestPostgresRender(t *testing.T) {
+	def := compose.PostgresService.Render(compose.RenderContext{})
+	if def == nil {
+		t.Fatal("expected a service definition")
+	}
+	if def.Image != "postgres:17-alpine" {
+		t.Errorf("default image = %q, want postgres:17-alpine", def.Image)
+	}
+	if def.ContainerName != "postgres" {
+		t.Errorf("ContainerName = %q, want postgres", def.ContainerName)
+	}
+	env, ok := def.Environment.(map[string]string)
+	if !ok || env["POSTGRES_DB"] != "devdb" {
+		t.Errorf("expected POSTGRES_DB=devdb, got %+v", def.Environment)
+	}
+
+	custom := compose.PostgresService.Render(compose.RenderContext{Options: map[string]any{"version": "16-alpine"}})
+	if custom.Image != "postgres:16-alpine" {
+		t.Errorf("custom image = %q, want postgres:16-alpine", custom.Image)
+	}
+}
+
+func TestRedisRender(t *testing.T) {
+	def := compose.RedisService.Render(compose.RenderContext{})
+	if def.Image != "redis:7.4-alpine" {
+		t.Errorf("default image = %q, want redis:7.4-alpine", def.Image)
+	}
+	custom := compose.RedisService.Render(compose.RenderContext{Options: map[string]any{"version": "8.0-alpine"}})
+	if custom.Image != "redis:8.0-alpine" {
+		t.Errorf("custom image = %q, want redis:8.0-alpine", custom.Image)
+	}
+}
+
+func TestDevcontainerRender_DependsOnEnabledDatabases(t *testing.T) {
+	def := compose.DevcontainerService.Render(compose.RenderContext{
+		ImageName:         "myimg:local",
+		EnabledServiceIDs: []string{"devcontainer", "postgres", "redis", "tmux"},
+	})
+	if def.Image != "myimg:local" {
+		t.Errorf("Image = %q, want myimg:local", def.Image)
+	}
+	want := map[string]bool{"postgres": true, "redis": true}
+	if len(def.DependsOn) != len(want) {
+		t.Fatalf("DependsOn = %v, want %v", def.DependsOn, want)
+	}
+	for _, d := range def.DependsOn {
+		if !want[d] {
+			t.Errorf("unexpected depends_on entry %q", d)
+		}
+	}
+}
+
+func TestDevcontainerRender_NoDatabasesNoDependsOn(t *testing.T) {
+	def := compose.DevcontainerService.Render(compose.RenderContext{
+		ImageName:         "img",
+		EnabledServiceIDs: []string{"devcontainer"},
+	})
+	if def.DependsOn != nil {
+		t.Errorf("expected no depends_on without databases, got %v", def.DependsOn)
+	}
+}
+
+// Every compose service must render a definition with a container name and must
+// not panic on an empty render context.
+func TestAllComposeServicesRender(t *testing.T) {
+	for _, s := range catalog.ComposeServices {
+		if s.Render == nil {
+			continue
+		}
+		def := s.Render(compose.RenderContext{})
+		if def == nil {
+			t.Errorf("service %q rendered nil", s.ID)
+			continue
+		}
+		if def.ContainerName == "" {
+			t.Errorf("service %q rendered without a container name", s.ID)
+		}
+	}
+}
