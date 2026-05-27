@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -492,7 +493,7 @@ func runPortForward(cmd *cobra.Command, args []string) error {
 		}
 		aliases := getSSHAliases()
 		switch {
-		case contains(aliases, candidate):
+		case slices.Contains(aliases, candidate):
 			alias = candidate
 		case len(aliases) == 0:
 			if !interactive {
@@ -536,13 +537,4 @@ func runPortForward(cmd *cobra.Command, args []string) error {
 	printTunnelPlan([]plannedTunnel{tunnel})
 	color.Green("Press Ctrl+C to terminate the port forwarding session.\n")
 	return runTunnels([]plannedTunnel{tunnel})
-}
-
-func contains(slice []string, s string) bool {
-	for _, v := range slice {
-		if v == s {
-			return true
-		}
-	}
-	return false
 }

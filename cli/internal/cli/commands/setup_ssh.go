@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"strings"
 	"time"
 
@@ -453,10 +454,9 @@ func installKey(f *setupSshFlags, mode string) (installResult, error) {
 }
 
 func dockerExecStdin(input []byte, user, container, script string) error {
-	c := exec.Command("docker", "exec", "-i", "-u", user, container, "sh", "-c", script)
-	c.Stdin = bytes.NewReader(input)
-	c.Stdout, c.Stderr = os.Stdout, os.Stderr
-	if err := c.Run(); err != nil {
+	args := []string{"exec", "-i", "-u", user, container, "sh", "-c", script}
+	status, err := docker.DockerExecStdin(input, args)
+	if err != nil || status != 0 {
 		return fmt.Errorf("docker exec key install failed")
 	}
 	return nil
@@ -487,7 +487,7 @@ func aliasOfHostLine(line string) []string {
 
 func hasAliasBlock(content, alias string) bool {
 	for _, line := range strings.Split(content, "\n") {
-		if containsString(aliasOfHostLine(line), alias) {
+		if slices.Contains(aliasOfHostLine(line), alias) {
 			return true
 		}
 	}
@@ -502,7 +502,7 @@ func stripAliasBlock(content, alias string) string {
 		isHostLine := len(hosts) > 0
 		if skip {
 			if isHostLine {
-				if containsString(hosts, alias) {
+				if slices.Contains(hosts, alias) {
 					continue
 				}
 				skip = false
@@ -510,7 +510,7 @@ func stripAliasBlock(content, alias string) string {
 			}
 			continue
 		}
-		if isHostLine && containsString(hosts, alias) {
+		if isHostLine && slices.Contains(hosts, alias) {
 			skip = true
 			continue
 		}
@@ -527,7 +527,7 @@ func extractAliasBlock(content, alias string) string {
 		isHostLine := len(hosts) > 0
 		if printing {
 			if isHostLine {
-				if !containsString(hosts, alias) {
+				if !slices.Contains(hosts, alias) {
 					break
 				}
 				out = append(out, line)
@@ -536,7 +536,7 @@ func extractAliasBlock(content, alias string) string {
 			out = append(out, line)
 			continue
 		}
-		if isHostLine && containsString(hosts, alias) {
+		if isHostLine && slices.Contains(hosts, alias) {
 			printing = true
 			out = append(out, line)
 		}
@@ -728,13 +728,4 @@ func runSetupSsh(cmd *cobra.Command, _ []string) error {
 func fileExists(p string) bool {
 	_, err := os.Stat(p)
 	return err == nil
-}
-
-func containsString(slice []string, s string) bool {
-	for _, v := range slice {
-		if v == s {
-			return true
-		}
-	}
-	return false
 }

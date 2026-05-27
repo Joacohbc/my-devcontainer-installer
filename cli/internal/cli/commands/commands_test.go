@@ -13,7 +13,8 @@ func TestNewRootCommand_RegistersAllSubcommands(t *testing.T) {
 	want := []string{
 		"setup-ssh", "port-forward", "run", "down", "destroy",
 		"start", "stop", "restart", "prune", "update",
-		"upgrade-cli", "config", "cleanup-tips",
+		"upgrade-cli", "config", "cleanup-tips", "shell", "logs", "copy",
+		"up", "status", "ls",
 	}
 	have := map[string]bool{}
 	for _, c := range root.Commands() {
@@ -303,6 +304,155 @@ services:
 	for _, s := range services {
 		if !want[s] {
 			t.Errorf("unexpected service in completion suggestions: %s", s)
+		}
+	}
+}
+
+func TestShellCommand_HasFlags(t *testing.T) {
+	root := NewRootCommand("test")
+	var shell *cobra.Command
+	for _, c := range root.Commands() {
+		if c.Name() == "shell" {
+			shell = c
+			break
+		}
+	}
+	if shell == nil {
+		t.Fatal("shell command not found")
+	}
+	for _, name := range []string{"workspace", "user"} {
+		if shell.Flags().Lookup(name) == nil {
+			t.Errorf("expected shell flag --%s", name)
+		}
+	}
+}
+
+func TestLogsCommand_HasFlags(t *testing.T) {
+	root := NewRootCommand("test")
+	var logs *cobra.Command
+	for _, c := range root.Commands() {
+		if c.Name() == "logs" {
+			logs = c
+			break
+		}
+	}
+	if logs == nil {
+		t.Fatal("logs command not found")
+	}
+	for _, name := range []string{"workspace", "follow", "tail"} {
+		if logs.Flags().Lookup(name) == nil {
+			t.Errorf("expected logs flag --%s", name)
+		}
+	}
+}
+
+func TestResolveProjectComposeFileWithWorkspace(t *testing.T) {
+	tempDir := t.TempDir()
+	wsDir := filepath.Join(tempDir, ".dc_my-ws", "build")
+	if err := os.MkdirAll(wsDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	compFile := filepath.Join(wsDir, "docker-compose.yml")
+	if err := os.WriteFile(compFile, []byte("services: {}"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := resolveProjectComposeFileWithWorkspace(tempDir, "my-ws")
+	if err != nil {
+		t.Fatalf("unexpected error resolving compose file: %v", err)
+	}
+	if res != compFile {
+		t.Errorf("got %q, want %q", res, compFile)
+	}
+}
+
+func TestCopyCommand_HasFlags(t *testing.T) {
+	root := NewRootCommand("test")
+	var copyCmd *cobra.Command
+	for _, c := range root.Commands() {
+		if c.Name() == "copy" {
+			copyCmd = c
+			break
+		}
+	}
+	if copyCmd == nil {
+		t.Fatal("copy command not found")
+	}
+	for _, name := range []string{"workspace"} {
+		if copyCmd.Flags().Lookup(name) == nil {
+			t.Errorf("expected copy flag --%s", name)
+		}
+	}
+}
+
+func TestUpCommand_HasFlags(t *testing.T) {
+	root := NewRootCommand("test")
+	var upCmd *cobra.Command
+	for _, c := range root.Commands() {
+		if c.Name() == "up" {
+			upCmd = c
+			break
+		}
+	}
+	if upCmd == nil {
+		t.Fatal("up command not found")
+	}
+	for _, name := range []string{"workspace", "build"} {
+		if upCmd.Flags().Lookup(name) == nil {
+			t.Errorf("expected up flag --%s", name)
+		}
+	}
+}
+
+func TestStatusCommand_Exists(t *testing.T) {
+	root := NewRootCommand("test")
+	var statusCmd *cobra.Command
+	for _, c := range root.Commands() {
+		if c.Name() == "status" {
+			statusCmd = c
+			break
+		}
+	}
+	if statusCmd == nil {
+		t.Fatal("status command not found")
+	}
+}
+
+func TestLsCommand_HasFlags(t *testing.T) {
+	root := NewRootCommand("test")
+	var lsCmd *cobra.Command
+	for _, c := range root.Commands() {
+		if c.Name() == "ls" {
+			lsCmd = c
+			break
+		}
+	}
+	if lsCmd == nil {
+		t.Fatal("ls command not found")
+	}
+	for _, name := range []string{"workspace", "all", "long"} {
+		if lsCmd.Flags().Lookup(name) == nil {
+			t.Errorf("expected ls flag --%s", name)
+		}
+	}
+}
+
+func TestAllCommands_HaveContainerFlag(t *testing.T) {
+	root := NewRootCommand("test")
+	cmds := []string{"copy", "up", "down", "update", "ls", "logs", "status", "shell"}
+	for _, name := range cmds {
+		var target *cobra.Command
+		for _, c := range root.Commands() {
+			if c.Name() == name {
+				target = c
+				break
+			}
+		}
+		if target == nil {
+			t.Fatalf("command %q not found", name)
+		}
+		if target.Flags().Lookup("container") == nil {
+			t.Errorf("expected command %q to have --container flag", name)
 		}
 	}
 }

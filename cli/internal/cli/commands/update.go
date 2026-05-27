@@ -3,6 +3,7 @@ package commands
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/fatih/color"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/ui"
@@ -33,6 +34,7 @@ Note: To update the CLI binary itself, run 'devcontainer-cli upgrade-cli'.`,
 	cmd.Flags().Bool("all", false, "Update images for every project tracked in images.json")
 	cmd.Flags().Bool("pull", false, "Always pull (no-op for local-cached without rebuild)")
 	cmd.Flags().Bool("rebuild", false, "Always rebuild (no-op for remote)")
+	addContainerFlag(cmd)
 	return cmd
 }
 
@@ -111,6 +113,28 @@ func runUpdateImages(cmd *cobra.Command, _ []string) error {
 	all, _ := cmd.Flags().GetBool("all")
 	pull, _ := cmd.Flags().GetBool("pull")
 	rebuild, _ := cmd.Flags().GetBool("rebuild")
+
+	if cmd.Flags().Changed("container") {
+		containerName, err := resolveContainer(cmd, "")
+		if err != nil {
+			return err
+		}
+		status, stdout, _, err := docker.DockerCapture([]string{"inspect", "-f", "{{.Config.Image}}", containerName})
+		if err != nil || status != 0 {
+			return fmt.Errorf("failed to inspect container '%s'", containerName)
+		}
+		image := strings.TrimSpace(stdout)
+		if image == "" {
+			return fmt.Errorf("could not resolve image for container '%s'", containerName)
+		}
+		ui.Log(fmt.Sprintf("Pulling updated image '%s' for container '%s'...", image, containerName))
+		status, err = docker.DockerInherit([]string{"pull", image})
+		if err != nil || status != 0 {
+			return fmt.Errorf("failed to pull image '%s'", image)
+		}
+		ui.Ok("Pulled " + image)
+		return nil
+	}
 
 	if all {
 		updateAll(pull, rebuild)

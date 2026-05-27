@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/fatih/color"
@@ -26,10 +27,31 @@ Add -v/--volumes to also remove named volumes (deletes data).`,
 	cmd.Flags().BoolP("volumes", "v", false, "Also remove named volumes (docker compose down -v)")
 	addYesFlag(cmd)
 	addInteractiveFlag(cmd)
+	addContainerFlag(cmd)
 	return cmd
 }
 
 func runDown(cmd *cobra.Command, _ []string) error {
+	wsFlag, _ := cmd.Flags().GetString("workspace")
+
+	if cmd.Flags().Changed("container") {
+		containerName, err := resolveContainer(cmd, wsFlag)
+		if err != nil {
+			return err
+		}
+		color.Yellow("\nStopping and removing container '%s'...\n", containerName)
+		_, _ = docker.DockerInherit([]string{"stop", containerName})
+		status, err := docker.DockerInherit([]string{"rm", containerName})
+		if err != nil {
+			return err
+		}
+		if status != 0 {
+			return fmt.Errorf("docker rm failed")
+		}
+		color.New(color.FgGreen, color.Bold).Print("\nDone.\n\n")
+		return nil
+	}
+
 	cwd, _ := os.Getwd()
 	cfg, _ := domain.LoadConfig(cwd)
 	workspace := domain.ResolveWorkspace(cwd, cfg)
@@ -39,12 +61,16 @@ func runDown(cmd *cobra.Command, _ []string) error {
 	}
 
 	removeVolumes, _ := cmd.Flags().GetBool("volumes")
-	if !removeVolumes && !yesFlag(cmd) && interactiveFlag(cmd) {
-		ok, perr := prompt.Confirm("Also remove named volumes for '"+workspace+"'? This deletes their data.", false)
-		if perr != nil {
-			return perr
+	if !removeVolumes {
+		if yesFlag(cmd) {
+			removeVolumes = true
+		} else if interactiveFlag(cmd) {
+			ok, perr := prompt.Confirm("Also remove named volumes for '"+workspace+"'? This deletes their data.", false)
+			if perr != nil {
+				return perr
+			}
+			removeVolumes = ok
 		}
-		removeVolumes = ok
 	}
 
 	args := []string{"down"}

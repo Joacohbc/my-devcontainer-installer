@@ -1,6 +1,7 @@
 package docker
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"os/exec"
@@ -138,4 +139,28 @@ func (r *DefaultRunner) Run(args []string, stdio string, cwd string, env map[str
 		return 1, "", runErr.Error()
 	}
 	return 0, string(outBytes), ""
+}
+
+func DockerExecStdin(input []byte, args []string) (int, error) {
+	if err := EnsureDocker(); err != nil {
+		return 1, err
+	}
+	if _, ok := defaultRunner.(*DefaultRunner); ok {
+		fullArgs := append([]string{"docker"}, args...)
+		cmd := exec.Command(fullArgs[0], fullArgs[1:]...)
+		cmd.Stdin = bytes.NewReader(input)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if err := cmd.Run(); err != nil {
+			if exitErr, ok := err.(*exec.ExitError); ok {
+				return exitErr.ExitCode(), nil
+			}
+			return 1, err
+		}
+		return 0, nil
+	}
+	// Mock fallback for testing
+	fullArgs := append([]string{"docker"}, args...)
+	status, _, _ := defaultRunner.Run(fullArgs, "pipe", "", nil)
+	return status, nil
 }

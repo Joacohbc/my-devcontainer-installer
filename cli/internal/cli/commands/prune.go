@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"fmt"
 	"os"
 	"strings"
 
@@ -97,7 +98,10 @@ func runPrune(cmd *cobra.Command, _ []string) error {
 	}
 	println()
 
-	if !yesFlag(cmd) && interactiveFlag(cmd) {
+	if !yesFlag(cmd) {
+		if !interactiveFlag(cmd) {
+			return fmt.Errorf("cannot prune images in non-interactive mode without --yes")
+		}
 		proceed, err := prompt.Confirm("Remove these images?", false)
 		if err != nil {
 			return err

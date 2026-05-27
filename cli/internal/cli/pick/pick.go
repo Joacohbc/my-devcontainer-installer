@@ -20,6 +20,7 @@ type Container struct {
 	Status  string
 	State   string
 	Managed bool
+	Ports   string
 }
 
 // ContainerWorkspace returns the workspace prefix of a devcontainer-ssh
@@ -38,6 +39,7 @@ type dockerPSLine struct {
 	Status string `json:"Status"`
 	State  string `json:"State"`
 	Labels string `json:"Labels"`
+	Ports  string `json:"Ports"`
 }
 
 func parsePSLines(stdout string) []dockerPSLine {
@@ -69,7 +71,7 @@ func ListManaged() []Container {
 	}
 	var out []Container
 	for _, l := range parsePSLines(stdout) {
-		out = append(out, Container{Name: l.Names, Image: l.Image, Status: l.Status, State: l.State, Managed: true})
+		out = append(out, Container{Name: l.Names, Image: l.Image, Status: l.Status, State: l.State, Managed: true, Ports: l.Ports})
 	}
 	return out
 }
@@ -91,7 +93,7 @@ func ListAll() []Container {
 				break
 			}
 		}
-		out = append(out, Container{Name: l.Names, Image: l.Image, Status: l.Status, State: l.State, Managed: managed})
+		out = append(out, Container{Name: l.Names, Image: l.Image, Status: l.Status, State: l.State, Managed: managed, Ports: l.Ports})
 	}
 	return out
 }
