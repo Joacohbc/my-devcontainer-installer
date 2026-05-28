@@ -12,7 +12,7 @@ Este documento consolida todas las oportunidades de mejora identificadas en el c
 - [x] Implementar `devcontainer-cli logs [-w workspace] [--follow] [--tail 100] [service]`: Wrapper para `docker compose logs`. → `logs.go`.
 
 ### Bugs y UX Críticos
-- [ ] Decidir comportamiento de `down.go --yes`: hoy `--yes` implica borrar volúmenes (`down.go` setea `removeVolumes=true`). Falta decidir si `--yes` debería solo saltar la confirmación sin borrar volúmenes (más seguro, requiere `-v` explícito).
+- [x] Decidir comportamiento de `down.go --yes`: hoy `--yes` implica borrar volúmenes (`down.go` setea `removeVolumes=true`). Falta decidir si `--yes` debería solo saltar la confirmación sin borrar volúmenes (más seguro, requiere `-v` explícito). → `--yes` ahora solo salta el prompt; los volúmenes se borran únicamente con `-v/--volumes` explícito (`resolveRemoveVolumes`).
 - [x] Arreglar `prune.go`: En modo non-interactive sin `--yes`, elimina imágenes huérfanas sin confirmación (peligroso). Debería fallar pidiendo `--yes`. → ya falla con error en `prune.go`.
 
 ### Nuevos Módulos (Lenguajes muy demandados)
@@ -54,9 +54,9 @@ Este documento consolida todas las oportunidades de mejora identificadas en el c
 - [ ] Implementar *Presets* (ej. `--preset fullstack-node` que seleccione node, postgres, redis automáticamente).
 
 ### Instaladores y Seguridad
-- [ ] Añadir verificación de checksums (`.sha256`) en los scripts `install.sh` e `install.ps1`.
-- [ ] Añadir indicador de progreso durante la descarga de binarios en `upgrade-cli`.
-- [ ] Añadir mecanismo de rollback en `upgrade-cli` en caso de fallos.
+- [x] Añadir verificación de checksums (`.sha256`) en los scripts `install.sh` e `install.ps1`. → ambos descargan y verifican `<asset>.sha256` antes de instalar; abortan si falta o no coincide.
+- [x] Añadir indicador de progreso durante la descarga de binarios en `upgrade-cli`. → descarga en streaming con `progressWriter` (porcentaje + bytes a stderr).
+- [x] Añadir mecanismo de rollback en `upgrade-cli` en caso de fallos. → `swapBinary` restaura el binario original si el reemplazo falla (path Windows con rollback de `<exe>.old`).
 
 ---
 
@@ -79,20 +79,20 @@ Este documento consolida todas las oportunidades de mejora identificadas en el c
 Actualmente hay buena cobertura en `domain`, pero áreas clave están en blanco:
 
 ### Infraestructura (Crítico)
-- [ ] Tests para `infra/assets/assets.go` (`Preflight`, `ValidateRequiredFiles`, etc.).
-- [ ] Tests para `infra/sshdefaults/sshdefaults.go` (lógica de bloques SSH config).
-- [ ] Tests faltantes en `infra/docker/docker.go` (funciones `DockerCapture`, `DockerCompose`).
+- [x] Tests para `infra/assets/assets.go` (`Preflight`, `ValidateRequiredFiles`, etc.). → `assets_test.go`.
+- [x] Tests para `infra/sshdefaults/sshdefaults.go` (lógica de bloques SSH config). → `sshdefaults_test.go`.
+- [x] Tests faltantes en `infra/docker/docker.go` (funciones `DockerCapture`, `DockerCompose`). → `docker_test.go` (mock por args para separar la sonda `version`).
 
 ### Domain (Edge Cases y Helpers)
-- [ ] Tests para `domain/config.go` (migraciones y I/O de configs de proyecto).
-- [ ] Tests para `domain/docker_conflicts.go` (Detección de conflictos, mock de CaptureFunc).
-- [ ] Tests unitarios directos para los métodos `Render()` de los módulos Dockerfile y Compose (actualmente solo testeados integración-style).
-- [ ] Fuzz tests para validadores (`ValidateWorkspaceName`, `ValidateBaseImage`).
+- [x] Tests para `domain/config.go` (migraciones y I/O de configs de proyecto). → `config_test.go` (round-trip, migración de modos legacy, JSON inválido).
+- [x] Tests para `domain/docker_conflicts.go` (Detección de conflictos, mock de CaptureFunc). → `docker_conflicts_test.go`.
+- [x] Tests unitarios directos para los métodos `Render()` de los módulos Dockerfile y Compose (actualmente solo testeados integración-style). → `modules/dockerfile/render_test.go` y `modules/compose/render_test.go`.
+- [x] Fuzz tests para validadores. → `validators_fuzz_test.go` (las funciones reales son `SanitizeDockerName`/`IsValidDockerName`/`IsValidImageName`/`IsValidCidr`; `ValidateWorkspaceName`/`ValidateBaseImage` no existen).
 
 ### CLI y UI
-- [ ] Tests para lógica de parsing en `cli/pick/pick.go` (parsePSLines, ContainerWorkspace).
-- [ ] Integrar runners Windows/macOS en `.github/workflows/cli-tests.yml`.
-- [ ] Evitar que los jobs de variant build en CI comiencen si el base build falla.
+- [x] Tests para lógica de parsing en `cli/pick/pick.go` (parsePSLines, ContainerWorkspace). → `pick_test.go`.
+- [x] Integrar runners Windows/macOS en `.github/workflows/cli-tests.yml`. → job `test` con matriz `ubuntu/windows/macos`; `lint` (gofmt+vet) queda en Linux.
+- [x] Evitar que los jobs de variant build en CI comiencen si el base build falla. → `build-variants` con `needs: build-base`.
 
 ---
 

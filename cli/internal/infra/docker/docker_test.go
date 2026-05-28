@@ -109,3 +109,93 @@ func TestEnsureDocker_returnsErrorWhenUnavailable(t *testing.T) {
 		t.Error("expected error when docker unavailable, got nil")
 	}
 }
+
+// argMockRunner answers `docker version` (the availability probe) and any other
+// command independently, so a test can keep docker "available" while making the
+// real command succeed or fail.
+type argMockRunner struct {
+	versionStatus int
+	otherStatus   int
+	otherStdout   string
+	lastArgs      []string
+}
+
+func (m *argMockRunner) Run(args []string, stdio string, cwd string, env map[string]string) (int, string, string) {
+	m.lastArgs = args
+	if len(args) >= 2 && args[1] == "version" {
+		return m.versionStatus, "27.0.0", ""
+	}
+	return m.otherStatus, m.otherStdout, ""
+}
+
+func useRunner(t *testing.T, r docker.Runner) {
+	docker.SetRunner(r)
+	docker.ResetDockerCache()
+	t.Cleanup(func() {
+		docker.ResetRunner()
+		docker.ResetDockerCache()
+	})
+}
+
+func TestDockerCapture_returnsRunnerOutput(t *testing.T) {
+	mock := &argMockRunner{versionStatus: 0, otherStatus: 0, otherStdout: "container-a\n"}
+	useRunner(t, mock)
+
+	status, stdout, _, err := docker.DockerCapture([]string{"ps", "-a"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if status != 0 || stdout != "container-a\n" {
+		t.Errorf("DockerCapture = (%d, %q), want (0, %q)", status, stdout, "container-a\n")
+	}
+	if len(mock.lastArgs) == 0 || mock.lastArgs[0] != "docker" || mock.lastArgs[1] != "ps" {
+		t.Errorf("runner received unexpected args: %v", mock.lastArgs)
+	}
+}
+
+func TestDockerCapture_errorsWhenDockerUnavailable(t *testing.T) {
+	useRunner(t, &argMockRunner{versionStatus: 1})
+
+	if _, _, _, err := docker.DockerCapture([]string{"ps"}); err == nil {
+		t.Error("expected error when docker unavailable")
+	}
+}
+
+func TestDockerCompose_buildsArgs(t *testing.T) {
+	mock := &argMockRunner{versionStatus: 0, otherStatus: 0}
+	useRunner(t, mock)
+
+	status, err := docker.DockerCompose("/tmp/dc.yml", []string{"up", "-d"}, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if status != 0 {
+		t.Errorf("status = %d, want 0", status)
+	}
+	want := []string{"docker", "compose", "-f", "/tmp/dc.yml", "up", "-d"}
+	if len(mock.lastArgs) != len(want) {
+		t.Fatalf("args = %v, want %v", mock.lastArgs, want)
+	}
+	for i := range want {
+		if mock.lastArgs[i] != want[i] {
+			t.Errorf("arg[%d] = %q, want %q", i, mock.lastArgs[i], want[i])
+		}
+	}
+}
+
+func TestDockerComposeOrThrow_nilOnSuccess(t *testing.T) {
+	useRunner(t, &argMockRunner{versionStatus: 0, otherStatus: 0})
+
+	if err := docker.DockerComposeOrThrow("/tmp/dc.yml", []string{"down"}, nil); err != nil {
+		t.Errorf("expected nil on success, got %v", err)
+	}
+}
+
+func TestDockerComposeOrThrow_errorOnNonZeroExit(t *testing.T) {
+	// Docker is available (version exits 0) but the compose command exits 5.
+	useRunner(t, &argMockRunner{versionStatus: 0, otherStatus: 5})
+
+	if err := docker.DockerComposeOrThrow("/tmp/dc.yml", []string{"down"}, nil); err == nil {
+		t.Error("expected error when compose exits non-zero")
+	}
+}
