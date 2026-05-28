@@ -15,6 +15,10 @@ type GlobalConfig struct {
 const DefaultRegistry = "ghcr.io/joacohbc/"
 
 func GlobalConfigDir() string {
+	// Read XDG_CONFIG_HOME at call time so tests can override it with os.Setenv.
+	if xdgConfigHome := os.Getenv("XDG_CONFIG_HOME"); xdgConfigHome != "" {
+		return filepath.Join(xdgConfigHome, "devcontainer-cli")
+	}
 	if runtime.GOOS == "windows" {
 		appdata := os.Getenv("APPDATA")
 		if appdata != "" {
@@ -22,13 +26,8 @@ func GlobalConfigDir() string {
 		}
 		return filepath.Join(os.Getenv("USERPROFILE"), "AppData", "Roaming", "devcontainer-cli")
 	}
-	// Read XDG_CONFIG_HOME at call time so tests can override it with os.Setenv.
-	xdgConfigHome := os.Getenv("XDG_CONFIG_HOME")
-	if xdgConfigHome == "" {
-		home, _ := os.UserHomeDir()
-		xdgConfigHome = filepath.Join(home, ".config")
-	}
-	return filepath.Join(xdgConfigHome, "devcontainer-cli")
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".config", "devcontainer-cli")
 }
 
 func GlobalConfigPath() string {

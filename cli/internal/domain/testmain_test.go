@@ -16,6 +16,7 @@ func TestMain(m *testing.M) {
 	}
 	defer os.RemoveAll(tmp)
 	os.Setenv("XDG_CONFIG_HOME", tmp) //nolint:errcheck
+	os.Setenv("APPDATA", tmp)         //nolint:errcheck
 	os.Exit(m.Run())
 }
 
@@ -30,5 +31,6 @@ func withTempXDGDir(t *testing.T, fn func()) {
 	}
 	t.Cleanup(func() { os.RemoveAll(tmp) })
 	t.Setenv("XDG_CONFIG_HOME", tmp)
+	t.Setenv("APPDATA", tmp)
 	fn()
 }

@@ -460,14 +460,18 @@ func TestAllCommands_HaveContainerFlag(t *testing.T) {
 }
 
 func TestUpdateAll_NoEntriesReturnsNil(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	tmpDir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmpDir)
+	t.Setenv("APPDATA", tmpDir)
 	if err := updateAll(false, false); err != nil {
 		t.Fatalf("expected nil for empty registry, got %v", err)
 	}
 }
 
 func TestUpdateAll_ReturnsErrorWhenProjectFails(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	tmpDir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmpDir)
+	t.Setenv("APPDATA", tmpDir)
 
 	projectDir := t.TempDir()
 	cfg := domain.DefaultConfig(projectDir)
