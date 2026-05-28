@@ -1,7 +1,8 @@
 ---
 name: code-design
 description: Use this agent to write or refactor code following the design directives (self-documenting code, correct naming, no deep nesting, composition over inheritance, dependency injection, no premature optimization, no over-abstraction, pragmatism over paradigms). Invoke it whenever a task involves producing or restructuring code that must adhere to these standards.
-tools: Read, Edit, Write, Grep, Glob, Bash
+tools:
+  - "*"
 model: inherit
 ---
 
