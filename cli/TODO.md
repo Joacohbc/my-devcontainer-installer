@@ -53,6 +53,10 @@ Este documento consolida todas las oportunidades de mejora identificadas en el c
 - [ ] Implementar export/import de config (`config export > file.yml`, `config import file.yml`).
 - [ ] Implementar *Presets* (ej. `--preset fullstack-node` que seleccione node, postgres, redis automáticamente).
 
+### Estilización, Temas y Logging
+- [ ] Configurar temas visuales y estilización consistente de la interfaz de la CLI usando [lipgloss](https://github.com/charmbracelet/lipgloss).
+- [ ] Implementar la creación de logs estructurados y un sistema de logging avanzado con [log](https://github.com/charmbracelet/log) para facilitar la depuración y el diagnóstico de la CLI.
+
 ### Instaladores y Seguridad
 - [x] Añadir verificación de checksums (`.sha256`) en los scripts `install.sh` e `install.ps1`. → ambos descargan y verifican `<asset>.sha256` antes de instalar; abortan si falta o no coincide.
 - [x] Añadir indicador de progreso durante la descarga de binarios en `upgrade-cli`. → descarga en streaming con `progressWriter` (porcentaje + bytes a stderr).
