@@ -5,35 +5,11 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/adrg/xdg"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 )
 
-func withTempConfigDir(t *testing.T, fn func()) {
-	t.Helper()
-	tmp, err := os.MkdirTemp("", "dc-cli-global-config-test-")
-	if err != nil {
-		t.Fatalf("failed to create temp dir: %v", err)
-	}
-	t.Cleanup(func() { os.RemoveAll(tmp) })
-
-	prev, hasPrev := os.LookupEnv("XDG_CONFIG_HOME")
-	os.Setenv("XDG_CONFIG_HOME", tmp)
-	xdg.Reload()
-	t.Cleanup(func() {
-		if hasPrev {
-			os.Setenv("XDG_CONFIG_HOME", prev)
-		} else {
-			os.Unsetenv("XDG_CONFIG_HOME")
-		}
-		xdg.Reload()
-	})
-
-	fn()
-}
-
 func TestLoadGlobalConfig_returnsDefaultWhenMissing(t *testing.T) {
-	withTempConfigDir(t, func() {
+	withTempXDGDir(t, func() {
 		cfg := domain.LoadGlobalConfig()
 		if cfg.Registry != "" {
 			t.Errorf("expected empty registry, got %q", cfg.Registry)
@@ -42,7 +18,7 @@ func TestLoadGlobalConfig_returnsDefaultWhenMissing(t *testing.T) {
 }
 
 func TestSaveAndLoadGlobalConfig_roundtrips(t *testing.T) {
-	withTempConfigDir(t, func() {
+	withTempXDGDir(t, func() {
 		original := domain.GlobalConfig{Registry: "ghcr.io/example/"}
 		if err := domain.SaveGlobalConfig(original); err != nil {
 			t.Fatalf("SaveGlobalConfig failed: %v", err)
@@ -56,7 +32,7 @@ func TestSaveAndLoadGlobalConfig_roundtrips(t *testing.T) {
 }
 
 func TestSaveGlobalConfig_createsDirectoryIfMissing(t *testing.T) {
-	withTempConfigDir(t, func() {
+	withTempXDGDir(t, func() {
 		cfg := domain.GlobalConfig{Registry: "example.io/"}
 		if err := domain.SaveGlobalConfig(cfg); err != nil {
 			t.Fatalf("SaveGlobalConfig failed: %v", err)
@@ -70,7 +46,7 @@ func TestSaveGlobalConfig_createsDirectoryIfMissing(t *testing.T) {
 }
 
 func TestGlobalConfigPath_isInsideConfigDir(t *testing.T) {
-	withTempConfigDir(t, func() {
+	withTempXDGDir(t, func() {
 		dir := domain.GlobalConfigDir()
 		path := domain.GlobalConfigPath()
 		expected := filepath.Join(dir, "config.json")
@@ -81,7 +57,7 @@ func TestGlobalConfigPath_isInsideConfigDir(t *testing.T) {
 }
 
 func TestResolveRegistry_flagOverrideTakesPriority(t *testing.T) {
-	withTempConfigDir(t, func() {
+	withTempXDGDir(t, func() {
 		_ = domain.SaveGlobalConfig(domain.GlobalConfig{Registry: "global.io/"})
 		result := domain.ResolveRegistry("flag-override.io", "per-project.io")
 		if result != "flag-override.io/" {
@@ -91,7 +67,7 @@ func TestResolveRegistry_flagOverrideTakesPriority(t *testing.T) {
 }
 
 func TestResolveRegistry_perProjectFallsBackFromFlag(t *testing.T) {
-	withTempConfigDir(t, func() {
+	withTempXDGDir(t, func() {
 		_ = domain.SaveGlobalConfig(domain.GlobalConfig{Registry: "global.io/"})
 		result := domain.ResolveRegistry("", "per-project.io")
 		if result != "per-project.io/" {
@@ -101,7 +77,7 @@ func TestResolveRegistry_perProjectFallsBackFromFlag(t *testing.T) {
 }
 
 func TestResolveRegistry_globalConfigFallback(t *testing.T) {
-	withTempConfigDir(t, func() {
+	withTempXDGDir(t, func() {
 		_ = domain.SaveGlobalConfig(domain.GlobalConfig{Registry: "global.io"})
 		result := domain.ResolveRegistry("", "")
 		if result != "global.io/" {
@@ -111,7 +87,7 @@ func TestResolveRegistry_globalConfigFallback(t *testing.T) {
 }
 
 func TestResolveRegistry_defaultWhenNothingSet(t *testing.T) {
-	withTempConfigDir(t, func() {
+	withTempXDGDir(t, func() {
 		result := domain.ResolveRegistry("", "")
 		if result != domain.DefaultRegistry {
 			t.Errorf("expected default registry %q, got %q", domain.DefaultRegistry, result)
@@ -120,7 +96,7 @@ func TestResolveRegistry_defaultWhenNothingSet(t *testing.T) {
 }
 
 func TestResolveRegistry_appendsTrailingSlash(t *testing.T) {
-	withTempConfigDir(t, func() {
+	withTempXDGDir(t, func() {
 		result := domain.ResolveRegistry("example.io/prefix", "")
 		if result != "example.io/prefix/" {
 			t.Errorf("expected trailing slash appended, got %q", result)

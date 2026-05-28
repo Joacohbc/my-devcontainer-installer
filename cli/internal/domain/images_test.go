@@ -1,35 +1,10 @@
 package domain_test
 
 import (
-	"os"
 	"testing"
 
-	"github.com/adrg/xdg"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 )
-
-func withTempRegistryDir(t *testing.T, fn func()) {
-	t.Helper()
-	tmp, err := os.MkdirTemp("", "dc-cli-registry-test-")
-	if err != nil {
-		t.Fatalf("failed to create temp dir: %v", err)
-	}
-	t.Cleanup(func() { os.RemoveAll(tmp) })
-
-	prev, hasPrev := os.LookupEnv("XDG_CONFIG_HOME")
-	os.Setenv("XDG_CONFIG_HOME", tmp)
-	xdg.Reload()
-	t.Cleanup(func() {
-		if hasPrev {
-			os.Setenv("XDG_CONFIG_HOME", prev)
-		} else {
-			os.Unsetenv("XDG_CONFIG_HOME")
-		}
-		xdg.Reload()
-	})
-
-	fn()
-}
 
 func TestComputeFingerprint_sameContentProducesSameResult(t *testing.T) {
 	fp1 := domain.ComputeFingerprint("FROM ubuntu:24.04\nRUN apt-get update", nil, []string{"base"})
@@ -108,7 +83,7 @@ func TestFingerprintTag_shortFingerprintUsedWhole(t *testing.T) {
 }
 
 func TestRecordEntry_addsNewEntry(t *testing.T) {
-	withTempRegistryDir(t, func() {
+	withTempXDGDir(t, func() {
 		entry := domain.ImageEntry{
 			ProjectDir:  "/home/user/myproject",
 			Workspace:   "myproject",
@@ -133,7 +108,7 @@ func TestRecordEntry_addsNewEntry(t *testing.T) {
 }
 
 func TestRecordEntry_updatesExistingEntryByProjectDir(t *testing.T) {
-	withTempRegistryDir(t, func() {
+	withTempXDGDir(t, func() {
 		first := domain.ImageEntry{
 			ProjectDir:  "/home/user/myproject",
 			Workspace:   "myproject",
@@ -166,7 +141,7 @@ func TestRecordEntry_updatesExistingEntryByProjectDir(t *testing.T) {
 }
 
 func TestFindByFingerprint_returnsMatchingEntry(t *testing.T) {
-	withTempRegistryDir(t, func() {
+	withTempXDGDir(t, func() {
 		entry := domain.ImageEntry{
 			ProjectDir:  "/home/user/proj",
 			Workspace:   "proj",
@@ -189,7 +164,7 @@ func TestFindByFingerprint_returnsMatchingEntry(t *testing.T) {
 }
 
 func TestFindByFingerprint_returnsNilWhenMissing(t *testing.T) {
-	withTempRegistryDir(t, func() {
+	withTempXDGDir(t, func() {
 		found := domain.FindByFingerprint("doesnotexist")
 		if found != nil {
 			t.Errorf("expected nil, got entry %+v", found)
@@ -198,7 +173,7 @@ func TestFindByFingerprint_returnsNilWhenMissing(t *testing.T) {
 }
 
 func TestRemoveEntry_removesExistingEntry(t *testing.T) {
-	withTempRegistryDir(t, func() {
+	withTempXDGDir(t, func() {
 		entry := domain.ImageEntry{
 			ProjectDir:  "/home/user/proj",
 			Workspace:   "proj",
@@ -222,7 +197,7 @@ func TestRemoveEntry_removesExistingEntry(t *testing.T) {
 }
 
 func TestRemoveEntry_returnsFalseWhenNotFound(t *testing.T) {
-	withTempRegistryDir(t, func() {
+	withTempXDGDir(t, func() {
 		removed := domain.RemoveEntry("/nonexistent/path")
 		if removed {
 			t.Error("expected RemoveEntry to return false for nonexistent entry")
