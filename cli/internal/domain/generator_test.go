@@ -79,6 +79,8 @@ func TestGenerateDockerfile_AllSelectedModules(t *testing.T) {
 			{ID: "nodejs"},
 			{ID: "bun"},
 			{ID: "tmux"},
+			{ID: "php"},
+			{ID: "rust"},
 		}
 	})
 	df := mustGenerateDockerfile(t, cfg)
@@ -90,6 +92,8 @@ func TestGenerateDockerfile_AllSelectedModules(t *testing.T) {
 	assertContainsStr(t, df, "nvm install --lts", "full dockerfile")
 	assertContainsStr(t, df, "bun.sh/install", "full dockerfile")
 	assertContainsStr(t, df, "tmux", "full dockerfile")
+	assertContainsStr(t, df, "ppa:ondrej/php", "full dockerfile")
+	assertContainsStr(t, df, "rustup.rs", "full dockerfile")
 }
 
 func TestGenerateDockerfile_TmuxModule(t *testing.T) {
@@ -200,6 +204,9 @@ func TestGenerateCompose_ValidYAMLWithExpectedServices(t *testing.T) {
 	}
 	if services["postgres"] != nil {
 		t.Error("expected postgres to be absent")
+	}
+	if services["mysql"] != nil {
+		t.Error("expected mysql to be absent")
 	}
 }
 

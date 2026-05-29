@@ -7,7 +7,7 @@ var DevcontainerService = &ServiceSpec{
 	Label:  SSHServiceName + " (main)",
 	Always: true,
 	Render: func(ctx RenderContext) *ServiceDef {
-		dbServices := []string{"mongo", "redis", "postgres"}
+		dbServices := []string{"mongo", "redis", "postgres", "mysql"}
 		depends := []string{}
 		for _, id := range ctx.EnabledServiceIDs {
 			for _, db := range dbServices {

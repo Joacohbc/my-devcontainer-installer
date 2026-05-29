@@ -74,6 +74,40 @@ func TestPythonModuleRender(t *testing.T) {
 	}
 }
 
+func TestPhpModuleRender(t *testing.T) {
+	defaultOut := dockerfile.PhpModule.Render(nil)
+	if !strings.Contains(defaultOut, "php-cli") {
+		t.Errorf("expected php-cli package to be installed:\n%s", defaultOut)
+	}
+	if !strings.Contains(defaultOut, "php-fpm") {
+		t.Errorf("expected php-fpm package to be installed:\n%s", defaultOut)
+	}
+	if !strings.Contains(defaultOut, "getcomposer.org/installer") {
+		t.Errorf("expected composer to be installed by default:\n%s", defaultOut)
+	}
+
+	noComposer := dockerfile.PhpModule.Render(map[string]any{"composer": false})
+	if !strings.Contains(noComposer, "php-cli") {
+		t.Errorf("expected php-cli package to be installed:\n%s", noComposer)
+	}
+	if strings.Contains(noComposer, "getcomposer.org/installer") {
+		t.Errorf("expected composer NOT to be installed when composer=false:\n%s", noComposer)
+	}
+}
+
+func TestRustModuleRender(t *testing.T) {
+	out := dockerfile.RustModule.Render(nil)
+	if !strings.Contains(out, "rustup.rs") {
+		t.Errorf("expected rustup.rs install script:\n%s", out)
+	}
+	if !strings.Contains(out, "build-essential") {
+		t.Errorf("expected build-essential dependencies:\n%s", out)
+	}
+	if !strings.Contains(out, ".rust_init.sh") {
+		t.Errorf("expected rust shell init script:\n%s", out)
+	}
+}
+
 // Every Dockerfile module must render a non-empty fragment with default options
 // and must not panic on a nil options map.
 func TestAllDockerfileModulesRenderNonEmpty(t *testing.T) {

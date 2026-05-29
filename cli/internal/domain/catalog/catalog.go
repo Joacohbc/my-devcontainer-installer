@@ -14,6 +14,8 @@ var DockerfileModules = []*dockerfile.ModuleSpec{
 	dockerfile.PythonModule,
 	dockerfile.SqliteModule,
 	dockerfile.GolangModule,
+	dockerfile.PhpModule,
+	dockerfile.RustModule,
 	dockerfile.DbclientsModule,
 	dockerfile.NodejsModule,
 	dockerfile.PnpmModule,
@@ -33,6 +35,7 @@ var ComposeServices = []*compose.ServiceSpec{
 	compose.MongoService,
 	compose.RedisService,
 	compose.PostgresService,
+	compose.MysqlService,
 	compose.TunnelService,
 }
 

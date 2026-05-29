@@ -57,7 +57,7 @@ jobs:
         run: |
           ./cli/devcontainer-cli --no-interactive --force \
             --workspace devcontainer \
-            --with java-temurin,python,go,sqlite,dbclients,bun,claude-code,opencode,codex-cli,antigravity-cli,copilot-cli,pnpm,nodejs,github-cli,tmux \
+            --with java-temurin,python,go,sqlite,dbclients,bun,claude-code,opencode,codex-cli,antigravity-cli,copilot-cli,pnpm,nodejs,github-cli,tmux,php,rust \
             --image ghcr.io/${{ env.REPO_OWNER }}/devcontainer-ssh:latest \
             --no-build
 
