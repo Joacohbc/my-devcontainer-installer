@@ -5,9 +5,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/fatih/color"
 	"github.com/goccy/go-yaml"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/prompt"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/ui"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 	"github.com/spf13/cobra"
@@ -62,7 +62,7 @@ func runConfigImport(cmd *cobra.Command, args []string) error {
 				return err
 			}
 			if !ok {
-				color.Yellow("Cancelled.")
+				ui.Cancelled()
 				return nil
 			}
 		}

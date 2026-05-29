@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/fatih/color"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/ui"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/spf13/cobra"
 )
@@ -57,7 +57,7 @@ func runConfigRegistry(cmd *cobra.Command, args []string) error {
 		}
 		fmt.Println(effective)
 		if cfg.Registry == "" {
-			color.New(color.FgWhite).Println("(default — not yet customized)")
+			fmt.Println(ui.Subtle("(default — not yet customized)"))
 		}
 		return nil
 	}
@@ -68,7 +68,7 @@ func runConfigRegistry(cmd *cobra.Command, args []string) error {
 		if err := domain.SaveGlobalConfig(cfg); err != nil {
 			return err
 		}
-		color.Green("✓ Unset registry (will use default: %s).", domain.DefaultRegistry)
+		ui.Green("✓ Unset registry (will use default: %s).", domain.DefaultRegistry)
 		return nil
 	}
 
@@ -77,7 +77,7 @@ func runConfigRegistry(cmd *cobra.Command, args []string) error {
 	if err := domain.SaveGlobalConfig(cfg); err != nil {
 		return err
 	}
-	color.Green("✓ Set registry = %s (in %s)", cfg.Registry, domain.GlobalConfigPath())
+	ui.Green("✓ Set registry = %s (in %s)", cfg.Registry, domain.GlobalConfigPath())
 	return nil
 }
 
@@ -112,7 +112,7 @@ func newConfigStringDefaultCommand(name, description string) *cobra.Command {
 				}
 				fmt.Println(effective)
 				if *valPtr == "" {
-					color.New(color.FgWhite).Println("(default — not yet customized)")
+					fmt.Println(ui.Subtle("(default — not yet customized)"))
 				}
 				return nil
 			}
@@ -122,7 +122,7 @@ func newConfigStringDefaultCommand(name, description string) *cobra.Command {
 				if err := domain.SaveGlobalConfig(cfg); err != nil {
 					return err
 				}
-				color.Green("✓ Unset %s (will use default: %s).", name, fallback)
+				ui.Green("✓ Unset %s (will use default: %s).", name, fallback)
 				return nil
 			}
 
@@ -130,7 +130,7 @@ func newConfigStringDefaultCommand(name, description string) *cobra.Command {
 			if err := domain.SaveGlobalConfig(cfg); err != nil {
 				return err
 			}
-			color.Green("✓ Set %s = %s (in %s)", name, *valPtr, domain.GlobalConfigPath())
+			ui.Green("✓ Set %s = %s (in %s)", name, *valPtr, domain.GlobalConfigPath())
 			return nil
 		},
 	}
@@ -166,7 +166,7 @@ func newConfigIntDefaultCommand(name, description string) *cobra.Command {
 				}
 				fmt.Println(effective)
 				if *valPtr == 0 {
-					color.New(color.FgWhite).Println("(default — not yet customized)")
+					fmt.Println(ui.Subtle("(default — not yet customized)"))
 				}
 				return nil
 			}
@@ -176,7 +176,7 @@ func newConfigIntDefaultCommand(name, description string) *cobra.Command {
 				if err := domain.SaveGlobalConfig(cfg); err != nil {
 					return err
 				}
-				color.Green("✓ Unset %s (will use default: %d).", name, fallback)
+				ui.Green("✓ Unset %s (will use default: %d).", name, fallback)
 				return nil
 			}
 
@@ -189,7 +189,7 @@ func newConfigIntDefaultCommand(name, description string) *cobra.Command {
 			if err := domain.SaveGlobalConfig(cfg); err != nil {
 				return err
 			}
-			color.Green("✓ Set %s = %d (in %s)", name, *valPtr, domain.GlobalConfigPath())
+			ui.Green("✓ Set %s = %d (in %s)", name, *valPtr, domain.GlobalConfigPath())
 			return nil
 		},
 	}

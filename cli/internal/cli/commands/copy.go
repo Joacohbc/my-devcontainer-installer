@@ -5,7 +5,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/fatih/color"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/ui"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
 	"github.com/spf13/cobra"
 )
@@ -53,7 +53,7 @@ func runCopy(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("container '%s' is not running. Run 'devcontainer-cli' or 'devcontainer-cli start' first", containerName)
 	}
 
-	color.Yellow("\nCopying '%s' to '%s' in container '%s'...\n", localPath, containerPath, containerName)
+	ui.Yellow("\nCopying '%s' to '%s' in container '%s'...", localPath, containerPath, containerName)
 
 	exitCode, err := docker.DockerInherit([]string{"cp", localPath, containerName + ":" + containerPath})
 	if err != nil {
@@ -63,7 +63,7 @@ func runCopy(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("copy failed with exit code %d", exitCode)
 	}
 
-	color.New(color.FgGreen, color.Bold).Print("\nSuccessfully copied.\n\n")
+	fmt.Print(ui.StyleSuccess.Bold(true).Render("\nSuccessfully copied.") + "\n\n")
 	return nil
 }
 

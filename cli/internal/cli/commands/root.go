@@ -7,10 +7,10 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/log"
-	"github.com/fatih/color"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/logger"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/prompt"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/sshhelp"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/ui"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/catalog"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
@@ -205,7 +205,8 @@ func runGenerate(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
-	color.New(color.FgGreen, color.Bold).Print("\nDevContainer Dockerfile Builder\n\n")
+	ui.Header("\nDevContainer Dockerfile Builder")
+	fmt.Println()
 
 	cwd, err := currentDir()
 	if err != nil {
@@ -276,9 +277,9 @@ func runGenerate(cmd *cobra.Command, _ []string) error {
 
 	conflicts := domain.FindConflicts(config, docker.IsDockerAvailable(), captureFunc())
 	if len(conflicts) > 0 {
-		color.Yellow("\nDocker name conflicts detected:")
+		ui.Yellow("\nDocker name conflicts detected:")
 		for _, c := range conflicts {
-			color.Yellow("   - %s '%s' already exists (project: %s)", c.Kind, c.Name, c.Owner)
+			ui.Yellow("   - %s '%s' already exists (project: %s)", c.Kind, c.Name, c.Owner)
 		}
 		if flags.interactive {
 			ok, perr := prompt.Confirm("Continue anyway?", false)
@@ -360,17 +361,17 @@ func runGenerate(cmd *cobra.Command, _ []string) error {
 	}
 
 	if dockerfileContent == "" {
-		color.New(color.FgWhite).Printf("Skipped Dockerfile (mode=%s).\n", config.Mode)
+		fmt.Printf(ui.Subtle("Skipped Dockerfile (mode=%s).\n"), config.Mode)
 	} else {
 		ow, oerr := maybeOverwrite(paths.DockerfilePath, "Dockerfile", flags.interactive, flags.force)
 		if oerr != nil {
 			return oerr
 		}
 		if !ow {
-			color.Yellow("Skipped Dockerfile.")
+			ui.Yellow("Skipped Dockerfile.")
 		} else {
 			writeOutput(paths.DockerfilePath, dockerfileContent, true)
-			color.Green("Dockerfile generated.")
+			ui.Green("Dockerfile generated.")
 		}
 	}
 
@@ -383,10 +384,10 @@ func runGenerate(cmd *cobra.Command, _ []string) error {
 		return oerr
 	}
 	if !ow {
-		color.Yellow("Skipped docker-compose.yml.")
+		ui.Yellow("Skipped docker-compose.yml.")
 	} else {
 		writeOutput(paths.ComposeFile, composeContent, true)
-		color.Green("docker-compose.yml generated.")
+		ui.Green("docker-compose.yml generated.")
 	}
 
 	if len(config.Env) > 0 || config.Compose.Subnet != "" {
@@ -402,13 +403,13 @@ func runGenerate(cmd *cobra.Command, _ []string) error {
 		} else {
 			os.WriteFile(paths.EnvPath, []byte(domain.GenerateEnv(config)), 0o644)
 		}
-		color.Green(".env written.")
+		ui.Green(".env written.")
 	}
 
 	if err := domain.SaveConfig(config, cwd); err != nil {
 		return err
 	}
-	color.Green("Saved devcontainer.config.json")
+	ui.Green("Saved devcontainer.config.json")
 
 	printLayoutMessage(config.Workspace, len(postScriptFiles) > 0)
 
@@ -417,7 +418,7 @@ func runGenerate(cmd *cobra.Command, _ []string) error {
 	if cachedImageHit && build == nil {
 		val := false
 		build = &val
-		color.Green("✓ Local-cached image is up to date — skipping build.")
+		ui.Green("✓ Local-cached image is up to date — skipping build.")
 	}
 	if build == nil && flags.interactive {
 		label := "Run 'docker compose build' now?"
@@ -438,7 +439,7 @@ func runGenerate(cmd *cobra.Command, _ []string) error {
 			banner = "\nPulling image...\n"
 			action = "pull"
 		}
-		color.Yellow(banner)
+		ui.Yellow("%s", banner)
 		status, _ := docker.DockerCompose(paths.ComposeFile, []string{action}, nil)
 		if status == 0 {
 			domain.RecordProject(cwd, config, "")
@@ -446,7 +447,7 @@ func runGenerate(cmd *cobra.Command, _ []string) error {
 		}
 	} else {
 		domain.RecordProject(cwd, config, "")
-		color.New(color.FgGreen, color.Bold).Print("\nDone.\n\n")
+		ui.Done()
 		sshhelp.Print(config.Workspace)
 	}
 	return nil
@@ -545,18 +546,17 @@ func maybeOverwrite(filePath, label string, interactive, force bool) (bool, erro
 }
 
 func printLayoutMessage(workspace string, hasPostScripts bool) {
-	gray := color.New(color.FgWhite)
-	bold := color.New(color.Bold)
-	bar := gray.Sprint(strings.Repeat("─", 64))
 	root := ".dc_" + workspace
-	fmt.Println("\n" + bar)
-	color.New(color.FgCyan, color.Bold).Printf("Generated layout under %s/\n", root)
-	fmt.Println(bar)
-	fmt.Printf("  %s        Dockerfile, docker-compose.yml, .env, helper .sh\n", bold.Sprint("build/"))
-	fmt.Printf("               %s\n", gray.Sprintf("→ docker compose -f %s/build/docker-compose.yml up -d", root))
+	fmt.Println()
+	ui.Bar()
+	ui.Header(fmt.Sprintf("Generated layout under %s/", root))
+	ui.Bar()
+	fmt.Printf("  %s        Dockerfile, docker-compose.yml, .env, helper .sh\n", ui.Bold("build/"))
+	fmt.Printf("               %s\n", ui.Subtle(fmt.Sprintf("→ docker compose -f %s/build/docker-compose.yml up -d", root)))
 	if hasPostScripts {
-		fmt.Printf("  %s  Baked into the image, run them inside the container\n", bold.Sprint("post-script"))
-		fmt.Printf("               %s\n", gray.Sprint("→ ~/post-script/<script>.sh"))
+		fmt.Printf("  %s  Baked into the image, run them inside the container\n", ui.Bold("post-script"))
+		fmt.Printf("               %s\n", ui.Subtle("→ ~/post-script/<script>.sh"))
 	}
-	fmt.Println(bar + "\n")
+	ui.Bar()
+	fmt.Println()
 }

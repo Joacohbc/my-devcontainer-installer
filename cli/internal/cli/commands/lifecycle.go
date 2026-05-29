@@ -1,7 +1,7 @@
 package commands
 
 import (
-	"github.com/fatih/color"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/ui"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
 	"github.com/spf13/cobra"
 )
@@ -34,10 +34,10 @@ func runLifecycle(verb string) error {
 	if err != nil {
 		return err
 	}
-	color.Yellow("\nRunning 'docker compose %s'...\n", verb)
+	ui.Yellow("\nRunning 'docker compose %s'...", verb)
 	if err := docker.DockerComposeOrThrow(composeFile, []string{verb}, nil); err != nil {
 		return err
 	}
-	color.New(color.FgGreen, color.Bold).Print("\nDone.\n\n")
+	ui.Done()
 	return nil
 }

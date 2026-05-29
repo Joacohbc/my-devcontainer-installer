@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/fatih/color"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/prompt"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/ui"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/sshdefaults"
@@ -105,11 +105,11 @@ func StatusLabel(c Container) string {
 	}
 	switch c.State {
 	case "running":
-		return color.GreenString(text)
+		return ui.GreenS("%s", text)
 	case "exited":
-		return color.RedString(text)
+		return ui.RedS("%s", text)
 	default:
-		return color.YellowString(text)
+		return ui.YellowS("%s", text)
 	}
 }
 
@@ -126,7 +126,7 @@ func PickManaged(message string, opts PickOptions) (Container, error) {
 	}
 	if len(containers) == 1 || opts.AssumeYes {
 		c := containers[0]
-		fmt.Println(color.CyanString("Using container: %s  %s  %s", c.Name, color.WhiteString(c.Image), StatusLabel(c)))
+		fmt.Println(ui.CyanS("Using container: %s  %s  %s", c.Name, ui.Subtle(c.Image), StatusLabel(c)))
 		return c, nil
 	}
 	if !opts.Interactive {
@@ -134,7 +134,7 @@ func PickManaged(message string, opts PickOptions) (Container, error) {
 	}
 	choices := make([]prompt.Choice, len(containers))
 	for i, c := range containers {
-		choices[i] = prompt.Choice{Value: c.Name, Label: fmt.Sprintf("%s  %s  %s", c.Name, color.WhiteString(c.Image), StatusLabel(c))}
+		choices[i] = prompt.Choice{Value: c.Name, Label: fmt.Sprintf("%s  %s  %s", c.Name, ui.Subtle(c.Image), StatusLabel(c))}
 	}
 	chosen, err := prompt.Select(message, choices, choices[0].Value)
 	if err != nil {

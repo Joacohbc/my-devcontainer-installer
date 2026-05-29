@@ -13,7 +13,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fatih/color"
 	"github.com/goccy/go-yaml"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/pick"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/prompt"
@@ -355,7 +354,7 @@ func fetchPassword(f *setupSshFlags, mode string) {
 	if last == "" {
 		ui.Warn("Could not read password from logs (maybe key already installed).")
 	} else {
-		color.New(color.FgWhite).Printf("   %s\n", last)
+		fmt.Printf(ui.Subtle("   %s\n"), last)
 	}
 }
 
@@ -579,9 +578,9 @@ func updateSshConfig(f *setupSshFlags, mode string, inst installResult) error {
 
 	if hasAliasBlock(current, f.alias) {
 		ui.Warn(fmt.Sprintf("Host '%s' already defined in %s", f.alias, configPath))
-		color.New(color.FgWhite).Println("---- existing ----")
+		fmt.Println(ui.Subtle("---- existing ----"))
 		fmt.Println(extractAliasBlock(current, f.alias))
-		color.New(color.FgWhite).Println("---- proposed ----")
+		fmt.Println(ui.Subtle("---- proposed ----"))
 		fmt.Println(newBlock)
 		replace := true
 		if !f.assumeYes {

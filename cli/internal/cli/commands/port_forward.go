@@ -11,9 +11,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/fatih/color"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/pick"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/prompt"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -251,9 +251,9 @@ func pickContainerFromList(containers []pick.Container, message string) (pick.Co
 	for i, c := range containers {
 		tag := "              "
 		if c.Managed {
-			tag = color.GreenString("(devcontainer)")
+			tag = ui.GreenS("(devcontainer)")
 		}
-		choices[i] = prompt.Choice{Value: c.Name, Label: fmt.Sprintf("%s  %s  %s  %s", c.Name, tag, color.WhiteString(c.Image), pick.StatusLabel(c))}
+		choices[i] = prompt.Choice{Value: c.Name, Label: fmt.Sprintf("%s  %s  %s  %s", c.Name, tag, ui.Subtle(c.Image), pick.StatusLabel(c))}
 	}
 	chosen, err := prompt.Select(message, choices, choices[0].Value)
 	if err != nil {
@@ -278,7 +278,7 @@ func resolveTarget(container pick.Container, aliases []string, containers []pick
 		switch {
 		case len(candidates) == 1:
 			*jumpHost = candidates[0]
-			color.Cyan("Using SSH jump host '%s'.", *jumpHost)
+			ui.Cyan("Using SSH jump host '%s'.", *jumpHost)
 		case len(candidates) > 1:
 			if !interactive {
 				return "", "", fmt.Errorf("multiple SSH jump hosts available; specify --alias")
@@ -329,7 +329,7 @@ func buildTunnelsInteractive(flagAlias string, interactive bool) ([]plannedTunne
 			if container.Managed {
 				tag = " (devcontainer)"
 			}
-			color.Cyan("Using container: %s%s", container.Name, tag)
+			ui.Cyan("Using container: %s%s", container.Name, tag)
 		} else {
 			container, err = pickContainerFromList(containers, "Select a container to forward from:")
 			if err != nil {
@@ -373,17 +373,17 @@ func buildTunnelsInteractive(flagAlias string, interactive bool) ([]plannedTunne
 }
 
 func printTunnelPlan(tunnels []plannedTunnel) {
-	color.Cyan("\nPort forwarding plan:")
+	ui.Cyan("\nPort forwarding plan:")
 	for _, t := range tunnels {
 		tag := "              "
 		if t.isDevcontainer {
-			tag = color.GreenString("(devcontainer)")
+			tag = ui.GreenS("(devcontainer)")
 		}
 		fmt.Printf("  %s  %s  %s → %s:%d  %s\n",
 			t.containerName, tag,
-			color.YellowString("localhost:%d", t.localPort),
+			ui.YellowS("localhost:%d", t.localPort),
 			t.targetHost, t.containerPort,
-			color.WhiteString("(via %s)", t.alias))
+			ui.Subtle(fmt.Sprintf("(via %s)", t.alias)))
 	}
 	fmt.Println()
 }
@@ -437,7 +437,7 @@ func runTunnels(tunnels []plannedTunnel) error {
 	if firstErr != nil {
 		return firstErr
 	}
-	color.Green("\nAll SSH tunnels closed.\n")
+	ui.Green("\nAll SSH tunnels closed.\n")
 	return nil
 }
 
@@ -464,10 +464,10 @@ func runPortForward(cmd *cobra.Command, args []string) error {
 			return cerr
 		}
 		if !ok {
-			color.Yellow("Aborted. No tunnels were opened.")
+			ui.Yellow("Aborted. No tunnels were opened.")
 			return nil
 		}
-		color.Green("Press Ctrl+C to terminate the port forwarding session.\n")
+		ui.Green("Press Ctrl+C to terminate the port forwarding session.\n")
 		return runTunnels(tunnels)
 	}
 
@@ -513,7 +513,7 @@ func runPortForward(cmd *cobra.Command, args []string) error {
 			}
 		case len(aliases) == 1:
 			alias = aliases[0]
-			color.Cyan("Using SSH alias '%s'.", alias)
+			ui.Cyan("Using SSH alias '%s'.", alias)
 		default:
 			if !interactive {
 				return fmt.Errorf("SSH alias '%s' not found in ~/.ssh/config. Specify --alias or run interactively", candidate)
@@ -538,6 +538,6 @@ func runPortForward(cmd *cobra.Command, args []string) error {
 		isDevcontainer: true,
 	}
 	printTunnelPlan([]plannedTunnel{tunnel})
-	color.Green("Press Ctrl+C to terminate the port forwarding session.\n")
+	ui.Green("Press Ctrl+C to terminate the port forwarding session.\n")
 	return runTunnels([]plannedTunnel{tunnel})
 }

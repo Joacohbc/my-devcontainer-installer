@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/fatih/color"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/ui"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 	"github.com/spf13/cobra"
@@ -38,40 +38,37 @@ func newCleanupTipsCommand() *cobra.Command {
 
 func printCleanupInstructions(config *types.DevcontainerConfig) {
 	projectID := types.ProjectID(config)
-	bold := color.New(color.Bold)
-	gray := color.New(color.FgWhite)
-	cyanBold := color.New(color.FgCyan, color.Bold)
-	bar := gray.Sprint(strings.Repeat("─", 64))
-	prompt := gray.Sprint("   $ ")
+	bar := ui.Subtle(strings.Repeat("─", 64))
+	prompt := ui.Subtle("   $ ")
 	allFilter := fmt.Sprintf(`--filter "label=%s=true"`, types.LabelManaged)
 	projFilter := fmt.Sprintf(`--filter "label=%s=%s"`, types.LabelProject, projectID)
 
 	lines := []string{
-		cyanBold.Sprint("Cleanup / update — managed by label"),
+		ui.StyleHeader.Render("Cleanup / update — managed by label"),
 		bar,
-		gray.Sprint("Every image, container, volume and network created by this CLI is tagged with:"),
-		gray.Sprintf("  %s=true", types.LabelManaged),
-		gray.Sprintf("  %s=%s", types.LabelProject, projectID),
+		ui.Subtle("Every image, container, volume and network created by this CLI is tagged with:"),
+		ui.Subtle(fmt.Sprintf("  %s=true", types.LabelManaged)),
+		ui.Subtle(fmt.Sprintf("  %s=%s", types.LabelProject, projectID)),
 		"",
-		bold.Sprint("List resources of THIS project:"),
+		ui.Bold("List resources of THIS project:"),
 		prompt + "docker ps -a " + projFilter,
 		prompt + "docker images " + projFilter,
 		prompt + "docker volume ls " + projFilter,
 		"",
-		bold.Sprint("List resources of ALL projects managed by this CLI:"),
+		ui.Bold("List resources of ALL projects managed by this CLI:"),
 		prompt + "docker ps -a " + allFilter,
 		prompt + "docker images " + allFilter,
 		"",
-		bold.Sprint("Stop + remove THIS project (containers, network, volumes):"),
+		ui.Bold("Stop + remove THIS project (containers, network, volumes):"),
 		prompt + "docker compose down -v",
 		"",
-		bold.Sprint("Purge dangling/unused images of THIS project:"),
+		ui.Bold("Purge dangling/unused images of THIS project:"),
 		prompt + "docker image prune -a " + projFilter + " -f",
 		"",
-		bold.Sprint("Purge ALL CLI-managed images (every project):"),
+		ui.Bold("Purge ALL CLI-managed images (every project):"),
 		prompt + "docker image prune -a " + allFilter + " -f",
 		"",
-		bold.Sprint("Update (rebuild without cache + recreate):"),
+		ui.Bold("Update (rebuild without cache + recreate):"),
 		prompt + "docker compose build --no-cache",
 		prompt + "docker compose up -d --force-recreate",
 		bar,

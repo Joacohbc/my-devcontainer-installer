@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/fatih/color"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/lipgloss/table"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/pick"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/ui"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/project"
@@ -41,8 +43,6 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 		containerMap[c.Name] = c
 	}
 
-	bold := color.New(color.Bold)
-
 	// If explicit container flag is provided, show status for just that container
 	if cmd.Flags().Changed("container") {
 		containerName, err := resolveContainer(cmd, wsFlag)
@@ -50,11 +50,19 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 			return err
 		}
 
-		bold.Printf("\n%-30s %-20s %-30s %-30s\n", "CONTAINER NAME", "STATUS", "PORTS", "IMAGE")
-		fmt.Println(strings.Repeat("─", 115))
+		t := table.New().
+			Border(lipgloss.NormalBorder()).
+			BorderStyle(lipgloss.NewStyle().Foreground(ui.ColorSubtle)).
+			Headers("CONTAINER NAME", "STATUS", "PORTS", "IMAGE").
+			StyleFunc(func(row, col int) lipgloss.Style {
+				if row == 0 {
+					return ui.StyleBold.Foreground(ui.ColorPrimary)
+				}
+				return lipgloss.NewStyle().Padding(0, 1)
+			})
 
 		if c, found := containerMap[containerName]; found {
-			fmt.Printf("%-30s %-20s %-30s %-30s\n\n", c.Name, pick.StatusLabel(c), c.Ports, c.Image)
+			t.Row(c.Name, pick.StatusLabel(c), c.Ports, c.Image)
 		} else {
 			// fallback: check if we can inspect it
 			status, stdout, _, err := docker.DockerCapture([]string{"inspect", "-f", "{{.State.Status}}", containerName})
@@ -62,11 +70,15 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 				state := strings.TrimSpace(stdout)
 				_, imgOut, _, _ := docker.DockerCapture([]string{"inspect", "-f", "{{.Config.Image}}", containerName})
 				image := strings.TrimSpace(imgOut)
-				fmt.Printf("%-30s %-20s %-30s %-30s\n\n", containerName, color.RedString(state), "", image)
+				t.Row(containerName, ui.RedS("%s", state), "", image)
 			} else {
-				fmt.Printf("%-30s %-20s %-30s %-30s\n\n", containerName, color.RedString("not found"), "", "")
+				t.Row(containerName, ui.RedS("not found"), "", "")
 			}
 		}
+
+		fmt.Println()
+		fmt.Println(t)
+		fmt.Println()
 		return nil
 	}
 
@@ -89,9 +101,20 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("no active project compose file found at %s. Run 'devcontainer-cli' to generate one first, or target a specific container via --container", paths.ComposeFile)
 	}
 
-	bold.Printf("\nWorkspace: %s\n\n", workspace)
-	bold.Printf("%-20s %-30s %-20s %-30s %-30s\n", "SERVICE", "CONTAINER NAME", "STATUS", "PORTS", "IMAGE")
-	fmt.Println(strings.Repeat("─", 135))
+	fmt.Println()
+	ui.Header(fmt.Sprintf("Workspace: %s", workspace))
+	fmt.Println()
+
+	t := table.New().
+		Border(lipgloss.NormalBorder()).
+		BorderStyle(lipgloss.NewStyle().Foreground(ui.ColorSubtle)).
+		Headers("SERVICE", "CONTAINER NAME", "STATUS", "PORTS", "IMAGE").
+		StyleFunc(func(row, col int) lipgloss.Style {
+			if row == 0 {
+				return ui.StyleBold.Foreground(ui.ColorPrimary)
+			}
+			return lipgloss.NewStyle().Padding(0, 1)
+		})
 
 	// Helper to prefix container name per workspace
 	prefixContainerLocal := func(workspace, base string) string {
@@ -108,7 +131,7 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 		}
 		expectedName := prefixContainerLocal(workspace, baseContainer)
 
-		statusText := color.RedString("not created")
+		statusText := ui.RedS("not created")
 		portsText := ""
 		imageText := ""
 
@@ -118,9 +141,10 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 			imageText = c.Image
 		}
 
-		fmt.Printf("%-20s %-30s %-20s %-30s %-30s\n", serviceKey, expectedName, statusText, portsText, imageText)
+		t.Row(serviceKey, expectedName, statusText, portsText, imageText)
 	}
 
+	fmt.Println(t)
 	fmt.Println()
 	return nil
 }

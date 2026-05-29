@@ -5,7 +5,6 @@ import (
 	"os"
 	"strings"
 
-	"github.com/fatih/color"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/ui"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
@@ -106,7 +105,7 @@ func updateAll(pull, rebuild bool) error {
 			failCount++
 		}
 	}
-	color.New(color.FgWhite).Printf("\n--- %d updated, %d skipped, %d failed\n", okCount, skipCount, failCount)
+	fmt.Printf(ui.Subtle("\n--- %d updated, %d skipped, %d failed\n"), okCount, skipCount, failCount)
 	if failCount > 0 {
 		return fmt.Errorf("%d project(s) failed to update", failCount)
 	}

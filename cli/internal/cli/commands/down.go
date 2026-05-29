@@ -3,8 +3,8 @@ package commands
 import (
 	"fmt"
 
-	"github.com/fatih/color"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/prompt"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/ui"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
 	"github.com/spf13/cobra"
@@ -53,7 +53,7 @@ func runDown(cmd *cobra.Command, _ []string) error {
 		if err != nil {
 			return err
 		}
-		color.Yellow("\nStopping and removing container '%s'...\n", containerName)
+		ui.Yellow("\nStopping and removing container '%s'...", containerName)
 		_, _ = docker.DockerInherit([]string{"stop", containerName})
 		status, err := docker.DockerInherit([]string{"rm", containerName})
 		if err != nil {
@@ -62,7 +62,7 @@ func runDown(cmd *cobra.Command, _ []string) error {
 		if status != 0 {
 			return fmt.Errorf("docker rm failed")
 		}
-		color.New(color.FgGreen, color.Bold).Print("\nDone.\n\n")
+		ui.Done()
 		return nil
 	}
 
@@ -94,10 +94,10 @@ func runDown(cmd *cobra.Command, _ []string) error {
 	if removeVolumes {
 		suffix = " (with volumes)"
 	}
-	color.Yellow("\nBringing down '%s'%s...\n", workspace, suffix)
+	ui.Yellow("\nBringing down '%s'%s...", workspace, suffix)
 	if err := docker.DockerComposeOrThrow(composeFile, args, nil); err != nil {
 		return err
 	}
-	color.New(color.FgGreen, color.Bold).Print("\nDone.\n\n")
+	ui.Done()
 	return nil
 }

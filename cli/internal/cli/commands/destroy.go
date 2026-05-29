@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/fatih/color"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/prompt"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/ui"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/project"
@@ -52,32 +52,32 @@ func runDestroy(cmd *cobra.Command, _ []string) error {
 			return err
 		}
 		if !proceed {
-			color.Yellow("Cancelled.")
+			ui.Cancelled()
 			return nil
 		}
 	}
 
 	if _, err := os.Stat(paths.ComposeFile); err == nil {
-		color.Yellow("\nBringing down '%s' (with volumes)...\n", workspace)
+		ui.Yellow("\nBringing down '%s' (with volumes)...", workspace)
 		if err := docker.DockerComposeOrThrow(paths.ComposeFile, []string{"down", "-v"}, nil); err != nil {
 			return err
 		}
 	} else {
-		color.New(color.FgWhite).Printf("No compose file at %s; skipping 'docker compose down'.\n", paths.ComposeFile)
+		fmt.Printf(ui.Subtle("No compose file at %s; skipping 'docker compose down'.\n"), paths.ComposeFile)
 	}
 
 	if _, err := os.Stat(paths.ProjectDir); err == nil {
 		if err := os.RemoveAll(paths.ProjectDir); err == nil {
-			color.New(color.FgWhite).Printf("Removed %s\n", paths.ProjectDir)
+			fmt.Printf(ui.Subtle("Removed %s\n"), paths.ProjectDir)
 		}
 	}
 	if _, err := os.Stat(cfgPath); err == nil {
 		if err := os.Remove(cfgPath); err == nil {
-			color.New(color.FgWhite).Printf("Removed %s\n", cfgPath)
+			fmt.Printf(ui.Subtle("Removed %s\n"), cfgPath)
 		}
 	}
 	domain.RemoveEntry(cwd)
 
-	color.New(color.FgGreen, color.Bold).Print("\nDestroyed.\n\n")
+	fmt.Print(ui.StyleSuccess.Bold(true).Render("\nDestroyed.") + "\n\n")
 	return nil
 }

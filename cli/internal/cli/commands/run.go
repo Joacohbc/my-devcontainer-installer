@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/fatih/color"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/prompt"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/ui"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
@@ -76,26 +76,26 @@ func runQuickRun(cmd *cobra.Command, _ []string) error {
 		containerName = "dc-" + variant
 	}
 
-	color.New(color.FgCyan, color.Bold).Printf("\nQuick run: %s\n\n", image)
-	gray := color.New(color.FgWhite)
-	gray.Printf("  Container : %s\n", containerName)
+	ui.Header(fmt.Sprintf("\nQuick run: %s", image))
+	fmt.Println()
+	fmt.Printf(ui.Subtle("  Container : %s\n"), containerName)
 	if volume != "" {
-		gray.Printf("  Volume    : %s → /workspace\n", volume)
+		fmt.Printf(ui.Subtle("  Volume    : %s → /workspace\n"), volume)
 	}
 	if port != 0 {
-		gray.Printf("  Port      : %d:22\n", port)
+		fmt.Printf(ui.Subtle("  Port      : %d:22\n"), port)
 	}
 	println()
 
 	_, stdout, _, _ := docker.DockerCapture([]string{"inspect", "-f", "{{.State.Status}}", containerName})
 	state := strings.TrimSpace(strings.ReplaceAll(stdout, " ", ""))
 	if state == "running" {
-		color.Green("✓ Container '%s' is already running.", containerName)
+		ui.Green("✓ Container '%s' is already running.", containerName)
 		printRunNextSteps(containerName)
 		return nil
 	}
 	if state == "exited" || state == "created" || state == "paused" {
-		color.Yellow("↻ Starting existing container '%s'...", containerName)
+		ui.Yellow("↻ Starting existing container '%s'...", containerName)
 		status, err := docker.DockerInherit([]string{"start", containerName})
 		if err != nil {
 			return err
@@ -124,7 +124,7 @@ func runQuickRun(cmd *cobra.Command, _ []string) error {
 	}
 	args = append(args, image, "sleep", "infinity")
 
-	color.Yellow("Pulling and starting container...\n")
+	ui.Yellow("Pulling and starting container...")
 	status, err := docker.DockerInherit(args)
 	if err != nil {
 		return err
@@ -139,18 +139,15 @@ func runQuickRun(cmd *cobra.Command, _ []string) error {
 }
 
 func printRunNextSteps(containerName string) {
-	gray := color.New(color.FgWhite)
-	bold := color.New(color.Bold)
-	bar := gray.Sprint(strings.Repeat("─", 64))
-	fmt.Println(bar)
-	color.New(color.FgGreen, color.Bold).Println("Container running.")
+	ui.Bar()
+	ui.Success("Container running.")
 	fmt.Println()
-	bold.Println("Next: set up SSH access")
-	gray.Printf("   $ devcontainer-cli setup-ssh --container %s\n", containerName)
+	fmt.Println(ui.Bold("Next: set up SSH access"))
+	fmt.Printf(ui.Subtle("   $ devcontainer-cli setup-ssh --container %s\n"), containerName)
 	fmt.Println()
-	bold.Println("Post-install scripts (baked into the image, run on demand):")
-	gray.Printf("   $ docker exec -it %s ls ~/post-script\n", containerName)
-	gray.Printf("   $ docker exec -it -u devuser %s bash ~/post-script/login-github-cli.sh\n", containerName)
-	fmt.Println(bar)
+	fmt.Println(ui.Bold("Post-install scripts (baked into the image, run on demand):"))
+	fmt.Printf(ui.Subtle("   $ docker exec -it %s ls ~/post-script\n"), containerName)
+	fmt.Printf(ui.Subtle("   $ docker exec -it -u devuser %s bash ~/post-script/login-github-cli.sh\n"), containerName)
+	ui.Bar()
 	fmt.Println()
 }

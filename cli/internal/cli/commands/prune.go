@@ -5,8 +5,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/fatih/color"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/prompt"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/ui"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
@@ -61,7 +61,7 @@ func runPrune(cmd *cobra.Command, _ []string) error {
 
 	localImages := listCliImages()
 	if len(localImages) == 0 {
-		color.New(color.FgWhite).Println("No devcontainer-cli/* images found locally.")
+		fmt.Println(ui.Subtle("No devcontainer-cli/* images found locally."))
 		return nil
 	}
 
@@ -86,15 +86,14 @@ func runPrune(cmd *cobra.Command, _ []string) error {
 	}
 
 	if len(toRemove) == 0 {
-		gray := color.New(color.FgWhite)
-		gray.Println("No orphan devcontainer-cli/* images found.")
-		gray.Println("Use --all to remove every devcontainer-cli/* image.")
+		fmt.Println(ui.Subtle("No orphan devcontainer-cli/* images found."))
+		fmt.Println(ui.Subtle("Use --all to remove every devcontainer-cli/* image."))
 		return nil
 	}
 
-	color.Yellow("\nImages to remove (%d):", len(toRemove))
+	ui.Yellow("\nImages to remove (%d):", len(toRemove))
 	for _, img := range toRemove {
-		color.New(color.FgWhite).Printf("  %s  (%s)\n", img.ref, img.id)
+		fmt.Printf(ui.Subtle("  %s  (%s)\n"), img.ref, img.id)
 	}
 	println()
 
@@ -107,7 +106,7 @@ func runPrune(cmd *cobra.Command, _ []string) error {
 			return err
 		}
 		if !proceed {
-			color.Yellow("Cancelled.")
+			ui.Cancelled()
 			return nil
 		}
 	}
@@ -118,14 +117,14 @@ func runPrune(cmd *cobra.Command, _ []string) error {
 		if status == 0 {
 			okCount++
 		} else {
-			color.Red("  ✗ Failed to remove %s (container may be running)", img.ref)
+			ui.Red("  ✗ Failed to remove %s (container may be running)", img.ref)
 			failCount++
 		}
 	}
 
-	msg := color.New(color.FgGreen, color.Bold).Sprintf("\nRemoved %d image(s).", okCount)
+	msg := ui.GreenS("\nRemoved %d image(s).", okCount)
 	if failCount > 0 {
-		msg += color.RedString(" %d failed.", failCount)
+		msg += " " + ui.RedS("%d failed.", failCount)
 	}
 	println(msg)
 	return nil

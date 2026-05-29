@@ -16,7 +16,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fatih/color"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -419,18 +419,17 @@ func runSelfUpdate(cmd *cobra.Command, _ []string) error {
 	check, _ := cmd.Flags().GetBool("check")
 	force, _ := cmd.Flags().GetBool("force")
 
-	gray := color.New(color.FgWhite)
-	fmt.Fprintln(os.Stderr, gray.Sprint("Note: 'devcontainer-cli update' now manages container images. Self-update lives at 'devcontainer-cli upgrade-cli'."))
+	fmt.Fprintln(os.Stderr, ui.Subtle("Note: 'devcontainer-cli update' now manages container images. Self-update lives at 'devcontainer-cli upgrade-cli'."))
 
 	current := version
-	gray.Printf("Current version: %s\n", current)
-	gray.Println("Fetching latest release...")
+	fmt.Printf(ui.Subtle("Current version: %s\n"), current)
+	fmt.Println(ui.Subtle("Fetching latest release..."))
 	rel, err := fetchLatestRelease()
 	if err != nil {
 		return err
 	}
 	latest := rel.TagName
-	gray.Printf("Latest version : %s\n", latest)
+	fmt.Printf(ui.Subtle("Latest version : %s\n"), latest)
 
 	cmp := -1
 	if current != "dev" {
@@ -439,17 +438,17 @@ func runSelfUpdate(cmd *cobra.Command, _ []string) error {
 	if check {
 		switch {
 		case cmp < 0:
-			color.Yellow("Update available: %s → %s", current, latest)
+			ui.Yellow("Update available: %s → %s", current, latest)
 		case cmp == 0:
-			color.Green("Already up to date.")
+			ui.Green("Already up to date.")
 		default:
-			gray.Println("Current version is ahead of latest release.")
+			fmt.Println(ui.Subtle("Current version is ahead of latest release."))
 		}
 		return nil
 	}
 
 	if cmp >= 0 && !force {
-		color.Green("Already up to date.")
+		ui.Green("Already up to date.")
 		return nil
 	}
 
@@ -461,7 +460,7 @@ func runSelfUpdate(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
-	gray.Printf("Downloading %s\n", binaryURL)
+	fmt.Printf(ui.Subtle("Downloading %s\n"), binaryURL)
 
 	execPath, _ := os.Executable()
 	tmpDir, err := os.MkdirTemp(filepath.Dir(execPath), ".devcontainer-cli-")
@@ -477,7 +476,7 @@ func runSelfUpdate(cmd *cobra.Command, _ []string) error {
 	if info, serr := os.Stat(tmpPath); serr != nil || info.Size() == 0 {
 		return fmt.Errorf("downloaded file is empty")
 	}
-	gray.Println("Verifying checksum...")
+	fmt.Println(ui.Subtle("Verifying checksum..."))
 	if err := verifyChecksum(tmpPath, checksumURL); err != nil {
 		return err
 	}
@@ -485,6 +484,6 @@ func runSelfUpdate(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
-	color.Green("Updated to %s. Restart any running session to use the new binary.", latest)
+	ui.Green("Updated to %s. Restart any running session to use the new binary.", latest)
 	return nil
 }

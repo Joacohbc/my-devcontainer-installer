@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/fatih/color"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/prompt"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/ui"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/catalog"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
@@ -272,7 +272,7 @@ func buildConfigFromPrompts(base *types.DevcontainerConfig) (*types.Devcontainer
 	}
 	suggestedSubnet := domain.FindFreeSubnet(preferredSubnet, usedSubnets)
 	if suggestedSubnet != preferredSubnet {
-		color.Yellow("Subnet %s overlaps with existing Docker network. Suggesting %s.", preferredSubnet, suggestedSubnet)
+		ui.Yellow("Subnet %s overlaps with existing Docker network. Suggesting %s.", preferredSubnet, suggestedSubnet)
 	}
 	subnet, err := prompt.Input("Docker network subnet (CIDR):", suggestedSubnet, func(v string) error {
 		if !domain.IsValidCidr(v) {

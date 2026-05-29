@@ -3,7 +3,7 @@ package commands
 import (
 	"fmt"
 
-	"github.com/fatih/color"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/ui"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
 	"github.com/spf13/cobra"
@@ -35,7 +35,7 @@ func runUp(cmd *cobra.Command, _ []string) error {
 		if err != nil {
 			return err
 		}
-		color.Yellow("\nStarting container '%s'...\n", containerName)
+		ui.Yellow("\nStarting container '%s'...", containerName)
 		status, err := docker.DockerInherit([]string{"start", containerName})
 		if err != nil {
 			return err
@@ -43,7 +43,7 @@ func runUp(cmd *cobra.Command, _ []string) error {
 		if status != 0 {
 			return fmt.Errorf("docker start failed")
 		}
-		color.New(color.FgGreen, color.Bold).Print("\nDone.\n\n")
+		ui.Done()
 		return nil
 	}
 
@@ -71,10 +71,10 @@ func runUp(cmd *cobra.Command, _ []string) error {
 		args = append(args, "--build")
 	}
 
-	color.Yellow("\nBringing up '%s'...\n", workspace)
+	ui.Yellow("\nBringing up '%s'...", workspace)
 	if err := docker.DockerComposeOrThrow(composeFile, args, nil); err != nil {
 		return err
 	}
-	color.New(color.FgGreen, color.Bold).Print("\nDone.\n\n")
+	ui.Done()
 	return nil
 }
