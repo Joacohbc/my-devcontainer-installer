@@ -3,9 +3,10 @@ package dockerfile
 import "github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 
 var GithubCliModule = &ModuleSpec{
-	ID:       "github-cli",
-	Label:    "GitHub CLI (gh)",
-	Category: types.CategoryInfra,
+	ID:         "github-cli",
+	Label:      "GitHub CLI (gh)",
+	Category:   types.CategoryInfra,
+	UICategory: types.UICategoryDevTools,
 	Render: func(opts map[string]any) string {
 		return `##
 ## GITHUB CLI

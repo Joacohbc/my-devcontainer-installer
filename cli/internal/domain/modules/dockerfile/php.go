@@ -7,9 +7,10 @@ import (
 )
 
 var PhpModule = &ModuleSpec{
-	ID:       "php",
-	Label:    "PHP (with Composer, Ondřej PPA, Latest version)",
-	Category: types.CategoryLang,
+	ID:         "php",
+	Label:      "PHP (with Composer, Ondřej PPA, Latest version)",
+	Category:   types.CategoryLang,
+	UICategory: types.UICategoryLanguages,
 	Options: []types.ModuleOption{
 		{
 			ID:      "composer",

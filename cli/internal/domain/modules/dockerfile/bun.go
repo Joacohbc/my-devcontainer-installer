@@ -7,9 +7,10 @@ import (
 )
 
 var BunModule = &ModuleSpec{
-	ID:       "bun",
-	Label:    "Bun",
-	Category: types.CategoryRuntime,
+	ID:         "bun",
+	Label:      "Bun",
+	Category:   types.CategoryRuntime,
+	UICategory: types.UICategoryLanguages,
 	Render: func(opts map[string]any) string {
 		return fmt.Sprintf(`##
 ## BUN

@@ -1,6 +1,12 @@
 package dockerfile
 
 func stringsFromAny(v any, def []string) []string {
+	if s, ok := v.([]string); ok {
+		if len(s) == 0 {
+			return def
+		}
+		return s
+	}
 	arr, ok := v.([]any)
 	if !ok {
 		return def

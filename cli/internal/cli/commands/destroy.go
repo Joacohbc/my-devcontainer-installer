@@ -2,13 +2,13 @@ package commands
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/prompt"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/ui"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/project"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/service"
 	"github.com/spf13/cobra"
 )
 
@@ -57,27 +57,17 @@ func runDestroy(cmd *cobra.Command, _ []string) error {
 		}
 	}
 
-	if _, err := os.Stat(paths.ComposeFile); err == nil {
-		ui.Yellow("\nBringing down '%s' (with volumes)...", workspace)
-		if err := docker.DockerComposeOrThrow(paths.ComposeFile, []string{"down", "-v"}, nil); err != nil {
-			return err
-		}
-	} else {
-		fmt.Printf(ui.Subtle("No compose file at %s; skipping 'docker compose down'.\n"), paths.ComposeFile)
+	svc := service.DestroyService{
+		Report: consoleReporter{},
+		ComposeDown: func(composeFile string) error {
+			return docker.DockerComposeOrThrow(composeFile, []string{"down", "-v"}, nil)
+		},
 	}
-
-	if _, err := os.Stat(paths.ProjectDir); err == nil {
-		if err := os.RemoveAll(paths.ProjectDir); err == nil {
-			fmt.Printf(ui.Subtle("Removed %s\n"), paths.ProjectDir)
-		}
-	}
-	if _, err := os.Stat(cfgPath); err == nil {
-		if err := os.Remove(cfgPath); err == nil {
-			fmt.Printf(ui.Subtle("Removed %s\n"), cfgPath)
-		}
-	}
-	domain.RemoveEntry(cwd)
-
-	fmt.Print(ui.StyleSuccess.Bold(true).Render("\nDestroyed.") + "\n\n")
-	return nil
+	return svc.Run(service.DestroyTarget{
+		Workspace:   workspace,
+		ComposeFile: paths.ComposeFile,
+		ProjectDir:  paths.ProjectDir,
+		ConfigPath:  cfgPath,
+		ProjectKey:  cwd,
+	})
 }

@@ -7,9 +7,10 @@ import (
 )
 
 var CopilotCliModule = &ModuleSpec{
-	ID:       "copilot-cli",
-	Label:    "GitHub Copilot CLI (standalone binary)",
-	Category: types.CategoryInfra,
+	ID:         "copilot-cli",
+	Label:      "GitHub Copilot CLI (standalone binary)",
+	Category:   types.CategoryInfra,
+	UICategory: types.UICategoryAITools,
 	PostScriptFiles: func(opts map[string]any) []string {
 		return []string{"install-copilot.sh"}
 	},

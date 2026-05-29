@@ -7,9 +7,10 @@ import (
 )
 
 var OpencodeModule = &ModuleSpec{
-	ID:       "opencode",
-	Label:    "OpenCode (opencode.ai installer)",
-	Category: types.CategoryInfra,
+	ID:         "opencode",
+	Label:      "OpenCode (opencode.ai installer)",
+	Category:   types.CategoryInfra,
+	UICategory: types.UICategoryAITools,
 	PostScriptFiles: func(opts map[string]any) []string {
 		return []string{"install-opencode.sh"}
 	},

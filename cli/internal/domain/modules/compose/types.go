@@ -5,6 +5,7 @@ import "github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 type ServiceSpec struct {
 	ID             string
 	Label          string
+	UICategory     types.UICategory
 	Always         bool
 	RequiresModule string
 	Internal       bool

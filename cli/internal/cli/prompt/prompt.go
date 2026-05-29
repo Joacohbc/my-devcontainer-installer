@@ -2,10 +2,18 @@ package prompt
 
 import (
 	"errors"
+	"time"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/huh"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/ui"
 )
 
+// hintStyle styles the navigation footer rendered under wizard steps.
+var hintStyle = lipgloss.NewStyle().Foreground(ui.ColorSubtle).Faint(true)
+
+// ErrCancelled is returned when the user aborts a prompt (esc or ctrl+c).
 var ErrCancelled = errors.New("prompt cancelled")
 
 type Choice struct {
@@ -13,8 +21,49 @@ type Choice struct {
 	Label string
 }
 
-func isAborted(err error) bool {
-	return errors.Is(err, huh.ErrUserAborted)
+// formModel runs a single one-off huh form. esc (and ctrl+c) cancel; there is
+// no back navigation — that is exclusive to the wizard Stepper.
+type formModel struct {
+	form      *huh.Form
+	cancelled bool
+}
+
+func (m *formModel) Init() tea.Cmd { return m.form.Init() }
+
+func (m *formModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if k, ok := msg.(tea.KeyMsg); ok && k.String() == "esc" {
+		m.cancelled = true
+		return m, tea.Quit
+	}
+	newForm, cmd := m.form.Update(msg)
+	m.form = newForm.(*huh.Form)
+
+	// huh does not emit tea.Quit on its own when embedded in a parent model;
+	// the container must quit once the form is completed or aborted, otherwise
+	// the program hangs after the field stops rendering.
+	if m.form.State == huh.StateCompleted || m.form.State == huh.StateAborted {
+		return m, tea.Quit
+	}
+	return m, cmd
+}
+
+func (m *formModel) View() string { return m.form.View() }
+
+// runOnce runs a one-off form and maps an abort/esc to ErrCancelled.
+func runOnce(f *huh.Form) error {
+	// Tiny delay to let the TTY driver/terminal state settle between sequential programs.
+	time.Sleep(50 * time.Millisecond)
+
+	m := &formModel{form: f}
+	finalModel, err := tea.NewProgram(m).Run()
+	if err != nil {
+		return err
+	}
+	fm := finalModel.(*formModel)
+	if fm.cancelled || fm.form.State == huh.StateAborted {
+		return ErrCancelled
+	}
+	return nil
 }
 
 func contains(slice []string, s string) bool {
@@ -38,10 +87,8 @@ func Multiselect(message string, choices []Choice, initial []string) ([]string, 
 			Options(options...).
 			Value(&result),
 	)).WithTheme(devcontainerTheme())
-	if err := f.Run(); err != nil {
-		if isAborted(err) {
-			return nil, ErrCancelled
-		}
+
+	if err := runOnce(f); err != nil {
 		return nil, err
 	}
 	return result, nil
@@ -59,10 +106,8 @@ func Select(message string, choices []Choice, initial string) (string, error) {
 			Options(options...).
 			Value(&result),
 	)).WithTheme(devcontainerTheme())
-	if err := f.Run(); err != nil {
-		if isAborted(err) {
-			return "", ErrCancelled
-		}
+
+	if err := runOnce(f); err != nil {
 		return "", err
 	}
 	return result, nil
@@ -75,10 +120,8 @@ func Input(message, initial string, validate func(string) error) (string, error)
 		field = field.Validate(validate)
 	}
 	f := huh.NewForm(huh.NewGroup(field)).WithTheme(devcontainerTheme())
-	if err := f.Run(); err != nil {
-		if isAborted(err) {
-			return "", ErrCancelled
-		}
+
+	if err := runOnce(f); err != nil {
 		return "", err
 	}
 	return result, nil
@@ -89,10 +132,8 @@ func Confirm(message string, initial bool) (bool, error) {
 	f := huh.NewForm(huh.NewGroup(
 		huh.NewConfirm().Title(message).Value(&result),
 	)).WithTheme(devcontainerTheme())
-	if err := f.Run(); err != nil {
-		if isAborted(err) {
-			return false, ErrCancelled
-		}
+
+	if err := runOnce(f); err != nil {
 		return false, err
 	}
 	return result, nil

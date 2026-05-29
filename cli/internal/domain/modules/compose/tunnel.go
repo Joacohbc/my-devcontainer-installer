@@ -3,8 +3,9 @@ package compose
 import "github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 
 var TunnelService = &ServiceSpec{
-	ID:    "tunnel",
-	Label: "Cloudflare Tunnel (cloudflared)",
+	ID:         "tunnel",
+	Label:      "Cloudflare Tunnel (cloudflared)",
+	UICategory: types.UICategoryDevTools,
 	RequiresEnv: []types.RequiredEnvVar{
 		{Name: "TUNNEL_TOKEN", Prompt: "Cloudflare Tunnel Token (TUNNEL_TOKEN)"},
 	},

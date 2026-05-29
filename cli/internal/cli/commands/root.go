@@ -17,6 +17,7 @@ import (
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/assets"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/project"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/service"
 	"github.com/spf13/cobra"
 )
 
@@ -224,7 +225,7 @@ func runGenerate(cmd *cobra.Command, _ []string) error {
 		(existing == nil && flags.interactive && len(flags.withModules) == 0 && flags.mode == "")
 
 	if needsPrompts {
-		config, err = buildConfigFromPrompts(config)
+		config, err = runGenerateWizard(config)
 		if err != nil {
 			return err
 		}
@@ -333,34 +334,25 @@ func runGenerate(cmd *cobra.Command, _ []string) error {
 		}
 	}
 
-	dockerfileContent, err := domain.GenerateDockerfile(config)
+	copyContents := map[string]string{}
+	for _, f := range append(append([]string{}, copyFiles...), postScriptFiles...) {
+		if data, rerr := os.ReadFile(filepath.Join(buildDir, f)); rerr == nil {
+			copyContents[f] = string(data)
+		}
+	}
+
+	svc := generateService()
+	plan, err := svc.Plan(config, copyContents)
 	if err != nil {
 		return err
 	}
-
-	cachedImageHit := false
-	if config.Mode == types.BuildModeLocalCached && dockerfileContent != "" {
-		copyContents := map[string]string{}
-		for _, f := range append(append([]string{}, copyFiles...), postScriptFiles...) {
-			onDisk := filepath.Join(buildDir, f)
-			if data, rerr := os.ReadFile(onDisk); rerr == nil {
-				copyContents[f] = string(data)
-			}
-		}
-		var moduleIDs []string
-		for _, m := range config.Dockerfile.Modules {
-			moduleIDs = append(moduleIDs, m.ID)
-		}
-		fp := domain.ComputeFingerprint(dockerfileContent, copyContents, moduleIDs)
-		config.Fingerprint = fp
-		config.Image = domain.FingerprintTag(fp)
-		if domain.LocalImageExists(config.Image, captureFunc()) {
-			cachedImageHit = true
-			logger.Std().Debug("cache hit", "image", config.Image, "fp", fp[:12])
-		}
+	config.Fingerprint = plan.Fingerprint
+	config.Image = plan.Image
+	if plan.CachedImageHit {
+		logger.Std().Debug("cache hit", "image", config.Image, "fp", plan.Fingerprint[:12])
 	}
 
-	if dockerfileContent == "" {
+	if plan.Dockerfile == "" {
 		fmt.Printf(ui.Subtle("Skipped Dockerfile (mode=%s).\n"), config.Mode)
 	} else {
 		ow, oerr := maybeOverwrite(paths.DockerfilePath, "Dockerfile", flags.interactive, flags.force)
@@ -370,15 +362,11 @@ func runGenerate(cmd *cobra.Command, _ []string) error {
 		if !ow {
 			ui.Yellow("Skipped Dockerfile.")
 		} else {
-			writeOutput(paths.DockerfilePath, dockerfileContent, true)
+			writeOutput(paths.DockerfilePath, plan.Dockerfile, true)
 			ui.Green("Dockerfile generated.")
 		}
 	}
 
-	composeContent, err := domain.GenerateCompose(config)
-	if err != nil {
-		return err
-	}
 	ow, oerr := maybeOverwrite(paths.ComposeFile, "docker-compose.yml", flags.interactive, flags.force)
 	if oerr != nil {
 		return oerr
@@ -386,7 +374,7 @@ func runGenerate(cmd *cobra.Command, _ []string) error {
 	if !ow {
 		ui.Yellow("Skipped docker-compose.yml.")
 	} else {
-		writeOutput(paths.ComposeFile, composeContent, true)
+		writeOutput(paths.ComposeFile, plan.Compose, true)
 		ui.Green("docker-compose.yml generated.")
 	}
 
@@ -398,10 +386,10 @@ func runGenerate(cmd *cobra.Command, _ []string) error {
 				return cerr
 			}
 			if ok {
-				os.WriteFile(paths.EnvPath, []byte(domain.GenerateEnv(config)), 0o644)
+				os.WriteFile(paths.EnvPath, []byte(plan.Env), 0o644)
 			}
 		} else {
-			os.WriteFile(paths.EnvPath, []byte(domain.GenerateEnv(config)), 0o644)
+			os.WriteFile(paths.EnvPath, []byte(plan.Env), 0o644)
 		}
 		ui.Green(".env written.")
 	}
@@ -415,9 +403,9 @@ func runGenerate(cmd *cobra.Command, _ []string) error {
 
 	isRemote := config.Mode == types.BuildModeRemote
 	build := flags.build
-	if cachedImageHit && build == nil {
-		val := false
-		build = &val
+	if plan.CachedImageHit && build == nil {
+		skip := false
+		build = &skip
 		ui.Green("✓ Local-cached image is up to date — skipping build.")
 	}
 	if build == nil && flags.interactive {
@@ -433,24 +421,28 @@ func runGenerate(cmd *cobra.Command, _ []string) error {
 	}
 
 	if build != nil && *build {
-		banner := "\nBuilding...\n"
-		action := "build"
-		if isRemote {
-			banner = "\nPulling image...\n"
-			action = "pull"
+		if berr := svc.Build(paths.ComposeFile, isRemote); berr != nil {
+			ui.Yellow("%s", berr.Error())
+			return nil
 		}
-		ui.Yellow("%s", banner)
-		status, _ := docker.DockerCompose(paths.ComposeFile, []string{action}, nil)
-		if status == 0 {
-			domain.RecordProject(cwd, config, "")
-			sshhelp.Print(config.Workspace)
-		}
-	} else {
-		domain.RecordProject(cwd, config, "")
-		ui.Done()
-		sshhelp.Print(config.Workspace)
 	}
+	domain.RecordProject(cwd, config, "")
+	if build == nil || !*build {
+		ui.Done()
+	}
+	sshhelp.Print(config.Workspace)
 	return nil
+}
+
+func generateService() service.GenerateService {
+	return service.GenerateService{
+		Report:  consoleReporter{},
+		Capture: captureFunc(),
+		Compose: func(composeFile string, args []string) int {
+			status, _ := docker.DockerCompose(composeFile, args, nil)
+			return status
+		},
+	}
 }
 
 func applyGenFlags(config *types.DevcontainerConfig, flags *genFlags) {

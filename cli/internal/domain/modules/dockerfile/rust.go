@@ -7,9 +7,10 @@ import (
 )
 
 var RustModule = &ModuleSpec{
-	ID:       "rust",
-	Label:    "Rust (rustup, latest version)",
-	Category: types.CategoryLang,
+	ID:         "rust",
+	Label:      "Rust (rustup, latest version)",
+	Category:   types.CategoryLang,
+	UICategory: types.UICategoryLanguages,
 	Render: func(opts map[string]any) string {
 		return fmt.Sprintf(`##
 ## RUST

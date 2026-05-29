@@ -2,14 +2,12 @@ package commands
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/ui"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/project"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/service"
 	"github.com/spf13/cobra"
 )
 
@@ -37,79 +35,24 @@ Note: To update the CLI binary itself, run 'devcontainer-cli upgrade-cli'.`,
 	return cmd
 }
 
-type updateResult struct {
-	ok    bool
-	image string
-}
-
-func updateOne(projectDir string, config *types.DevcontainerConfig, pull, rebuild bool) updateResult {
-	ui.Log(fmt.Sprintf("Updating '%s' (mode=%s) at %s", config.Workspace, config.Mode, projectDir))
-
-	if config.Mode == types.BuildModeRemote {
-		if config.Remote == nil {
-			ui.Warn("Remote config missing — skipping.")
-			return updateResult{ok: false, image: config.Image}
-		}
-		reg := domain.ResolveRegistry("", config.Remote.Registry)
-		image := domain.ResolveRemoteImage(config.Remote.Variant, reg)
-		status, err := docker.DockerInherit([]string{"pull", image})
-		if err != nil || status != 0 {
-			return updateResult{ok: false, image: image}
-		}
-		ui.Ok("Pulled " + image)
-		return updateResult{ok: true, image: image}
+func updateService() service.UpdateService {
+	return service.UpdateService{
+		Report: consoleReporter{},
+		Pull: func(image string) error {
+			status, err := docker.DockerInherit([]string{"pull", image})
+			if err != nil || status != 0 {
+				return fmt.Errorf("failed to pull image '%s'", image)
+			}
+			return nil
+		},
+		Compose: func(projectDir, composeFile string, args []string) error {
+			status, err := docker.DockerCompose(composeFile, args, &docker.ComposeOptions{CWD: projectDir})
+			if err != nil || status != 0 {
+				return fmt.Errorf("docker compose build failed")
+			}
+			return nil
+		},
 	}
-
-	paths := project.ProjectPaths(projectDir, config.Workspace)
-	if _, err := os.Stat(paths.ComposeFile); err != nil {
-		ui.Warn(fmt.Sprintf("No compose file at %s — skipping.", paths.ComposeFile))
-		return updateResult{ok: false, image: config.Image}
-	}
-	composeArgs := []string{"build"}
-	if !rebuild || pull {
-		composeArgs = append(composeArgs, "--pull")
-	}
-	status, err := docker.DockerCompose(paths.ComposeFile, composeArgs, &docker.ComposeOptions{CWD: projectDir})
-	if err != nil || status != 0 {
-		return updateResult{ok: false, image: config.Image}
-	}
-	ui.Ok("Rebuilt " + config.Image)
-	return updateResult{ok: true, image: config.Image}
-}
-
-func updateAll(pull, rebuild bool) error {
-	entries := domain.ListEntries()
-	if len(entries) == 0 {
-		ui.Warn("No projects recorded yet. Generate at least one project first.")
-		return nil
-	}
-	okCount, skipCount, failCount := 0, 0, 0
-	for _, e := range entries {
-		if _, err := os.Stat(e.ProjectDir); err != nil {
-			ui.Warn(fmt.Sprintf("Project directory missing: %s — removing from catalog.", e.ProjectDir))
-			domain.RemoveEntry(e.ProjectDir)
-			skipCount++
-			continue
-		}
-		cfg, _ := domain.LoadConfig(e.ProjectDir)
-		if cfg == nil {
-			ui.Warn(fmt.Sprintf("No devcontainer.config.json at %s — skipping.", e.ProjectDir))
-			skipCount++
-			continue
-		}
-		r := updateOne(e.ProjectDir, cfg, pull, rebuild)
-		if r.ok {
-			domain.RecordProject(e.ProjectDir, cfg, r.image)
-			okCount++
-		} else {
-			failCount++
-		}
-	}
-	fmt.Printf(ui.Subtle("\n--- %d updated, %d skipped, %d failed\n"), okCount, skipCount, failCount)
-	if failCount > 0 {
-		return fmt.Errorf("%d project(s) failed to update", failCount)
-	}
-	return nil
 }
 
 func runUpdateImages(cmd *cobra.Command, _ []string) error {
@@ -118,30 +61,19 @@ func runUpdateImages(cmd *cobra.Command, _ []string) error {
 	rebuild, _ := cmd.Flags().GetBool("rebuild")
 
 	if cmd.Flags().Changed("container") {
-		containerName, err := resolveContainer(cmd, "")
-		if err != nil {
-			return err
+		return updateContainerImage(cmd)
+	}
+
+	svc := updateService()
+	if all {
+		updated, skipped, failed := svc.UpdateAll(pull, rebuild)
+		fmt.Printf(ui.Subtle("\n--- %d updated, %d skipped, %d failed\n"), updated, skipped, failed)
+		if failed > 0 {
+			return fmt.Errorf("%d project(s) failed to update", failed)
 		}
-		status, stdout, _, err := docker.DockerCapture([]string{"inspect", "-f", "{{.Config.Image}}", containerName})
-		if err != nil || status != 0 {
-			return fmt.Errorf("failed to inspect container '%s'", containerName)
-		}
-		image := strings.TrimSpace(stdout)
-		if image == "" {
-			return fmt.Errorf("could not resolve image for container '%s'", containerName)
-		}
-		ui.Log(fmt.Sprintf("Pulling updated image '%s' for container '%s'...", image, containerName))
-		status, err = docker.DockerInherit([]string{"pull", image})
-		if err != nil || status != 0 {
-			return fmt.Errorf("failed to pull image '%s'", image)
-		}
-		ui.Ok("Pulled " + image)
 		return nil
 	}
 
-	if all {
-		return updateAll(pull, rebuild)
-	}
 	cwd, err := currentDir()
 	if err != nil {
 		return err
@@ -150,10 +82,32 @@ func runUpdateImages(cmd *cobra.Command, _ []string) error {
 	if config == nil {
 		return fmt.Errorf("no devcontainer.config.json found in %s. Run 'devcontainer-cli' to generate one first, or pass --all to update every recorded project", cwd)
 	}
-	r := updateOne(cwd, config, pull, rebuild)
-	if r.ok {
-		domain.RecordProject(cwd, config, r.image)
-		return nil
+	image, ok := svc.UpdateOne(cwd, config, pull, rebuild)
+	if !ok {
+		return fmt.Errorf("update failed")
 	}
-	return fmt.Errorf("update failed")
+	domain.RecordProject(cwd, config, image)
+	return nil
+}
+
+func updateContainerImage(cmd *cobra.Command) error {
+	containerName, err := resolveContainer(cmd, "")
+	if err != nil {
+		return err
+	}
+	status, stdout, _, err := docker.DockerCapture([]string{"inspect", "-f", "{{.Config.Image}}", containerName})
+	if err != nil || status != 0 {
+		return fmt.Errorf("failed to inspect container '%s'", containerName)
+	}
+	image := strings.TrimSpace(stdout)
+	if image == "" {
+		return fmt.Errorf("could not resolve image for container '%s'", containerName)
+	}
+	ui.Log(fmt.Sprintf("Pulling updated image '%s' for container '%s'...", image, containerName))
+	status, err = docker.DockerInherit([]string{"pull", image})
+	if err != nil || status != 0 {
+		return fmt.Errorf("failed to pull image '%s'", image)
+	}
+	ui.Ok("Pulled " + image)
+	return nil
 }

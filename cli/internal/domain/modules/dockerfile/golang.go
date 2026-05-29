@@ -3,10 +3,11 @@ package dockerfile
 import "github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 
 var GolangModule = &ModuleSpec{
-	ID:        "go",
-	Label:     "Go / Golang (Latest version)",
-	Category:  types.CategoryLang,
-	CopyFiles: []string{"golang_utils.sh"},
+	ID:         "go",
+	Label:      "Go / Golang (Latest version)",
+	Category:   types.CategoryLang,
+	UICategory: types.UICategoryLanguages,
+	CopyFiles:  []string{"golang_utils.sh"},
 	PostScriptFiles: func(opts map[string]any) []string {
 		return []string{"update_golang.sh", "golang_utils.sh"}
 	},

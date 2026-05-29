@@ -6,6 +6,7 @@ type ModuleSpec struct {
 	ID              string
 	Label           string
 	Category        types.DockerfileCategory
+	UICategory      types.UICategory
 	Always          bool
 	Requires        []string
 	Conflicts       []string

@@ -486,41 +486,6 @@ func TestAllCommands_HaveContainerFlag(t *testing.T) {
 	}
 }
 
-func TestUpdateAll_NoEntriesReturnsNil(t *testing.T) {
-	tmpDir := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", tmpDir)
-	t.Setenv("APPDATA", tmpDir)
-	if err := updateAll(false, false); err != nil {
-		t.Fatalf("expected nil for empty registry, got %v", err)
-	}
-}
-
-func TestUpdateAll_ReturnsErrorWhenProjectFails(t *testing.T) {
-	tmpDir := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", tmpDir)
-	t.Setenv("APPDATA", tmpDir)
-
-	projectDir := t.TempDir()
-	cfg := domain.DefaultConfig(projectDir)
-	cfg.Mode = types.BuildModeRemote
-	cfg.Remote = nil // remote mode without config makes updateOne fail without Docker
-	if err := domain.SaveConfig(cfg, projectDir); err != nil {
-		t.Fatalf("SaveConfig: %v", err)
-	}
-	if err := domain.RecordEntry(domain.ImageEntry{
-		ProjectDir: projectDir,
-		Workspace:  cfg.Workspace,
-		Mode:       string(cfg.Mode),
-		Image:      cfg.Image,
-	}); err != nil {
-		t.Fatalf("RecordEntry: %v", err)
-	}
-
-	if err := updateAll(false, false); err == nil {
-		t.Fatal("expected an error when a project fails to update, got nil")
-	}
-}
-
 func TestConfigExportImport(t *testing.T) {
 	tmpDir := t.TempDir()
 	origCfg := &types.DevcontainerConfig{

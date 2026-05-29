@@ -43,6 +43,38 @@ const (
 	CategoryCleanup DockerfileCategory = "cleanup"
 )
 
+// UICategory groups selectable modules/services for the interactive generate
+// wizard. It is purely presentation-facing and independent of the internal
+// DockerfileCategory used by the generator. A single source of truth lives on
+// each ModuleSpec/ServiceSpec; the catalog groups by reading it.
+type UICategory string
+
+const (
+	UICategoryAITools   UICategory = "ai-tools"
+	UICategoryLanguages UICategory = "languages"
+	UICategoryDatabases UICategory = "databases"
+	UICategoryDevTools  UICategory = "dev-tools"
+	UICategoryClients   UICategory = "clients"
+)
+
+// UICategoryOrder fixes the display order of categories in the wizard.
+var UICategoryOrder = []UICategory{
+	UICategoryAITools,
+	UICategoryLanguages,
+	UICategoryDatabases,
+	UICategoryDevTools,
+	UICategoryClients,
+}
+
+// UICategoryLabels maps each category to its user-facing (Spanish) label.
+var UICategoryLabels = map[UICategory]string{
+	UICategoryAITools:   "IA Tools",
+	UICategoryLanguages: "Lenguajes",
+	UICategoryDatabases: "Bases de datos",
+	UICategoryDevTools:  "Dev Tools",
+	UICategoryClients:   "Clientes",
+}
+
 type RequiredEnvVar struct {
 	Name    string `json:"name" yaml:"name"`
 	Prompt  string `json:"prompt" yaml:"prompt"`

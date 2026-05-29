@@ -7,9 +7,10 @@ import (
 )
 
 var ClaudeCodeModule = &ModuleSpec{
-	ID:       "claude-code",
-	Label:    "Claude Code (native standalone installer)",
-	Category: types.CategoryInfra,
+	ID:         "claude-code",
+	Label:      "Claude Code (native standalone installer)",
+	Category:   types.CategoryInfra,
+	UICategory: types.UICategoryAITools,
 	PostScriptFiles: func(opts map[string]any) []string {
 		return []string{"install-claude-code.sh"}
 	},

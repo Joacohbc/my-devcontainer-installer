@@ -7,9 +7,10 @@ import (
 )
 
 var MongoService = &ServiceSpec{
-	ID:      "mongo",
-	Label:   "MongoDB",
-	Volumes: []string{"mongo_data"},
+	ID:         "mongo",
+	Label:      "MongoDB",
+	UICategory: types.UICategoryDatabases,
+	Volumes:    []string{"mongo_data"},
 	Options: []types.ModuleOption{
 		{
 			ID:    "version",

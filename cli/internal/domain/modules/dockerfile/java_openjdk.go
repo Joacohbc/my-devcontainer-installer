@@ -8,16 +8,18 @@ import (
 )
 
 var JavaOpenjdkModule = &ModuleSpec{
-	ID:        "java-openjdk",
-	Label:     "Java — OpenJDK (Ubuntu repos) + Maven",
-	Category:  types.CategoryLang,
-	Conflicts: []string{"java-temurin"},
+	ID:         "java-openjdk",
+	Label:      "Java — OpenJDK (Ubuntu repos) + Maven",
+	Category:   types.CategoryLang,
+	UICategory: types.UICategoryLanguages,
+	Conflicts:  []string{"java-temurin"},
 	Options: []types.ModuleOption{
 		{
 			ID:    "versions",
 			Label: "JDK versions",
 			Type:  types.ModuleOptionMultiselect,
 			Choices: []types.ModuleOptionChoice{
+				{Value: "none", Label: "none (No JDK versions)"},
 				{Value: "11", Label: "openjdk-11-jdk"},
 				{Value: "17", Label: "openjdk-17-jdk"},
 				{Value: "21", Label: "openjdk-21-jdk"},
@@ -41,10 +43,15 @@ var JavaOpenjdkModule = &ModuleSpec{
 		}
 		pkgs := make([]string, 0, len(versions)+1)
 		for _, v := range versions {
-			pkgs = append(pkgs, fmt.Sprintf("openjdk-%s-jdk", v))
+			if v != "none" {
+				pkgs = append(pkgs, fmt.Sprintf("openjdk-%s-jdk", v))
+			}
 		}
 		if maven {
 			pkgs = append(pkgs, "maven")
+		}
+		if len(pkgs) == 0 {
+			return ""
 		}
 		return fmt.Sprintf(`##
 ## JAVA (OpenJDK)

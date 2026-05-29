@@ -8,15 +8,17 @@ import (
 )
 
 var DbclientsModule = &ModuleSpec{
-	ID:       "dbclients",
-	Label:    "Database clients (psql, redis-cli, mongosh)",
-	Category: types.CategoryDB,
+	ID:         "dbclients",
+	Label:      "Database clients (psql, redis-cli, mongosh)",
+	Category:   types.CategoryDB,
+	UICategory: types.UICategoryClients,
 	Options: []types.ModuleOption{
 		{
 			ID:    "clients",
 			Label: "Which clients",
 			Type:  types.ModuleOptionMultiselect,
 			Choices: []types.ModuleOptionChoice{
+				{Value: "none", Label: "none (No database clients)"},
 				{Value: "postgres", Label: "postgresql-client"},
 				{Value: "redis", Label: "redis-tools"},
 				{Value: "mongo", Label: "mongodb-mongosh"},
@@ -32,30 +34,33 @@ var DbclientsModule = &ModuleSpec{
 		}
 
 		pkgs := []string{}
-		if clientSet["postgres"] {
-			pkgs = append(pkgs, "postgresql-client")
-		}
-		if clientSet["redis"] {
-			pkgs = append(pkgs, "redis-tools")
-		}
+		if !clientSet["none"] {
+			if clientSet["postgres"] {
+				pkgs = append(pkgs, "postgresql-client")
+			}
+			if clientSet["redis"] {
+				pkgs = append(pkgs, "redis-tools")
+			}
 
-		mongoSetup := ""
-		if clientSet["mongo"] {
-			mongoSetup = `RUN curl -fsSL https://www.mongodb.org/static/pgp/server-8.0.asc | gpg --dearmor -o /etc/apt/keyrings/mongodb-server-8.0.gpg && \
+			mongoSetup := ""
+			if clientSet["mongo"] {
+				mongoSetup = `RUN curl -fsSL https://www.mongodb.org/static/pgp/server-8.0.asc | gpg --dearmor -o /etc/apt/keyrings/mongodb-server-8.0.gpg && \
     echo "deb [ arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/mongodb-server-8.0.gpg ] https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/8.0 multiverse" | tee /etc/apt/sources.list.d/mongodb-org-8.0.list
 `
-			pkgs = append(pkgs, "mongodb-mongosh")
-		}
+				pkgs = append(pkgs, "mongodb-mongosh")
+			}
 
-		if len(pkgs) == 0 {
-			return ""
-		}
+			if len(pkgs) == 0 {
+				return ""
+			}
 
-		return fmt.Sprintf(`##
+			return fmt.Sprintf(`##
 ## DATABASE CLIENTS
 ##
 %sRUN apt-get update && apt-get install -y \
     %s
 `, mongoSetup, strings.Join(pkgs, " \\\n    "))
+		}
+		return ""
 	},
 }

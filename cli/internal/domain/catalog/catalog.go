@@ -3,6 +3,7 @@ package catalog
 import (
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/modules/compose"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/modules/dockerfile"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 )
 
 // DockerfileModules is the ordered catalogue of all Dockerfile layer modules.
@@ -85,6 +86,49 @@ func AlwaysOnServices() []*compose.ServiceSpec {
 	for _, s := range ComposeServices {
 		if s.Always {
 			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// CategorizedEntry is a user-selectable module or service grouped under a UI
+// category for the interactive wizard. IsService distinguishes a compose
+// service from a Dockerfile module so the wizard can route the selection.
+type CategorizedEntry struct {
+	ID        string
+	Label     string
+	IsService bool
+}
+
+// SelectableByCategory groups every user-selectable Dockerfile module and
+// compose service by its UICategory. Always-on modules (base/cleanup),
+// always-on/internal services (devcontainer), and any entry without a
+// UICategory are excluded. Entries keep their catalogue order within a group.
+func SelectableByCategory() map[types.UICategory][]CategorizedEntry {
+	out := map[types.UICategory][]CategorizedEntry{}
+	for _, m := range DockerfileModules {
+		if m.Always || m.UICategory == "" {
+			continue
+		}
+		out[m.UICategory] = append(out[m.UICategory], CategorizedEntry{ID: m.ID, Label: m.Label})
+	}
+	for _, s := range ComposeServices {
+		if s.Always || s.Internal || s.UICategory == "" {
+			continue
+		}
+		out[s.UICategory] = append(out[s.UICategory], CategorizedEntry{ID: s.ID, Label: s.Label, IsService: true})
+	}
+	return out
+}
+
+// CategoriesInOrder returns the UI categories that contain at least one
+// selectable entry, in the canonical display order (types.UICategoryOrder).
+func CategoriesInOrder() []types.UICategory {
+	grouped := SelectableByCategory()
+	var out []types.UICategory
+	for _, c := range types.UICategoryOrder {
+		if len(grouped[c]) > 0 {
+			out = append(out, c)
 		}
 	}
 	return out
