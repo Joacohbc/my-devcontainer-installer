@@ -67,6 +67,57 @@ func TestLoadConfig_MigratesLegacyModes(t *testing.T) {
 	}
 }
 
+func TestLoadConfig_MigratesLegacyDbclients(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+		want []string
+	}{
+		{
+			name: "explicit clients",
+			body: `{"mode":"local-cached","image":"x:local","workspace":"ws","dockerfile":{"modules":[{"id":"dbclients","options":{"clients":["postgres","mysql"]}}]}}`,
+			want: []string{"postgres-client", "mysql-client"},
+		},
+		{
+			name: "missing clients option defaults to psql/redis/mongo",
+			body: `{"mode":"local-cached","image":"x:local","workspace":"ws","dockerfile":{"modules":[{"id":"dbclients"}]}}`,
+			want: []string{"postgres-client", "redis-client", "mongo-client"},
+		},
+		{
+			name: "none selected drops the module",
+			body: `{"mode":"local-cached","image":"x:local","workspace":"ws","dockerfile":{"modules":[{"id":"dbclients","options":{"clients":["none"]}}]}}`,
+			want: []string{},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			if err := os.WriteFile(filepath.Join(dir, types.ConfigFile), []byte(tc.body), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			cfg, err := domain.LoadConfig(dir)
+			if err != nil {
+				t.Fatalf("LoadConfig: %v", err)
+			}
+			var got []string
+			for _, m := range cfg.Dockerfile.Modules {
+				got = append(got, m.ID)
+				if m.ID == "dbclients" {
+					t.Errorf("legacy dbclients module survived migration")
+				}
+			}
+			if len(got) != len(tc.want) {
+				t.Fatalf("modules = %v, want %v", got, tc.want)
+			}
+			for i, id := range tc.want {
+				if got[i] != id {
+					t.Errorf("module[%d] = %q, want %q", i, got[i], id)
+				}
+			}
+		})
+	}
+}
+
 func TestLoadConfig_KeepsRemoteMode(t *testing.T) {
 	dir := t.TempDir()
 	body := `{"mode":"remote","image":"x:local","workspace":"ws"}`

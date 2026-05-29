@@ -36,7 +36,7 @@ func TestSelectableByCategoryMapping(t *testing.T) {
 		types.UICategoryLanguages: {"java-temurin", "java-openjdk", "python", "go", "php", "rust", "nodejs", "pnpm", "bun"},
 		types.UICategoryDatabases: {"sqlite", "mongo", "redis", "postgres", "mysql"},
 		types.UICategoryDevTools:  {"github-cli", "tmux", "tunnel"},
-		types.UICategoryClients:   {"dbclients"},
+		types.UICategoryClients:   {"postgres-client", "redis-client", "mysql-client", "mongo-client"},
 	}
 
 	for cat, wantIDs := range want {

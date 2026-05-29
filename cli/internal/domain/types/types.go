@@ -72,7 +72,7 @@ var UICategoryLabels = map[UICategory]string{
 	UICategoryLanguages: "Lenguajes",
 	UICategoryDatabases: "Bases de datos",
 	UICategoryDevTools:  "Dev Tools",
-	UICategoryClients:   "Clientes",
+	UICategoryClients:   "Clientes de bases de datos",
 }
 
 type RequiredEnvVar struct {

@@ -37,7 +37,59 @@ func LoadConfig(cwd string) (*types.DevcontainerConfig, error) {
 		cfg.Mode = types.BuildModeLocalCached
 	}
 
+	cfg.Dockerfile.Modules = migrateDbclients(cfg.Dockerfile.Modules)
+
 	return &cfg, nil
+}
+
+// dbclientLegacyIDs maps the legacy "dbclients" module's per-client option
+// values to the individual client modules that replaced it.
+var dbclientLegacyIDs = map[string]string{
+	"postgres": "postgres-client",
+	"redis":    "redis-client",
+	"mongo":    "mongo-client",
+	"mysql":    "mysql-client",
+}
+
+// migrateDbclients expands the legacy combined "dbclients" module (a single
+// module carrying a "clients" multiselect) into the individual per-client
+// modules so configs written before the split keep working.
+func migrateDbclients(modules []types.SelectedModule) []types.SelectedModule {
+	out := make([]types.SelectedModule, 0, len(modules))
+	for _, m := range modules {
+		if m.ID != "dbclients" {
+			out = append(out, m)
+			continue
+		}
+		clients := stringSliceFromAny(m.Options["clients"])
+		if len(clients) == 0 {
+			clients = []string{"postgres", "redis", "mongo"}
+		}
+		for _, c := range clients {
+			if id, ok := dbclientLegacyIDs[c]; ok {
+				out = append(out, types.SelectedModule{ID: id, Options: map[string]any{}})
+			}
+		}
+	}
+	return out
+}
+
+// stringSliceFromAny coerces a JSON-decoded option value ([]any of strings or
+// []string) into a []string, dropping non-string entries.
+func stringSliceFromAny(v any) []string {
+	switch s := v.(type) {
+	case []string:
+		return s
+	case []any:
+		out := make([]string, 0, len(s))
+		for _, x := range s {
+			if str, ok := x.(string); ok {
+				out = append(out, str)
+			}
+		}
+		return out
+	}
+	return nil
 }
 
 func SaveConfig(config *types.DevcontainerConfig, cwd string) error {

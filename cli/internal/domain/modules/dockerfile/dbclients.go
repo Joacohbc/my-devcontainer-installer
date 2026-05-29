@@ -2,65 +2,63 @@ package dockerfile
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 )
 
-var DbclientsModule = &ModuleSpec{
-	ID:         "dbclients",
-	Label:      "Database clients (psql, redis-cli, mongosh)",
-	Category:   types.CategoryDB,
-	UICategory: types.UICategoryClients,
-	Options: []types.ModuleOption{
-		{
-			ID:    "clients",
-			Label: "Which clients",
-			Type:  types.ModuleOptionMultiselect,
-			Choices: []types.ModuleOptionChoice{
-				{Value: "none", Label: "none (No database clients)"},
-				{Value: "postgres", Label: "postgresql-client"},
-				{Value: "redis", Label: "redis-tools"},
-				{Value: "mongo", Label: "mongodb-mongosh"},
-			},
-			Default: []string{"postgres", "redis", "mongo"},
-		},
-	},
-	Render: func(opts map[string]any) string {
-		clients := stringsFromAny(opts["clients"], []string{"postgres", "redis", "mongo"})
-		clientSet := make(map[string]bool, len(clients))
-		for _, c := range clients {
-			clientSet[c] = true
-		}
-
-		pkgs := []string{}
-		if !clientSet["none"] {
-			if clientSet["postgres"] {
-				pkgs = append(pkgs, "postgresql-client")
-			}
-			if clientSet["redis"] {
-				pkgs = append(pkgs, "redis-tools")
-			}
-
-			mongoSetup := ""
-			if clientSet["mongo"] {
-				mongoSetup = `RUN curl -fsSL https://www.mongodb.org/static/pgp/server-8.0.asc | gpg --dearmor -o /etc/apt/keyrings/mongodb-server-8.0.gpg && \
-    echo "deb [ arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/mongodb-server-8.0.gpg ] https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/8.0 multiverse" | tee /etc/apt/sources.list.d/mongodb-org-8.0.list
-`
-				pkgs = append(pkgs, "mongodb-mongosh")
-			}
-
-			if len(pkgs) == 0 {
-				return ""
-			}
-
+// aptClientModule builds a ModuleSpec for a database client installed from apt.
+// Each client is its own selectable module under the "clients" UI category so
+// they can be picked individually in the wizard. setup is optional extra RUN
+// lines (e.g. adding a vendor apt repo) emitted before the install.
+func aptClientModule(id, label, title, setup, pkg string) *ModuleSpec {
+	return &ModuleSpec{
+		ID:         id,
+		Label:      label,
+		Category:   types.CategoryDB,
+		UICategory: types.UICategoryClients,
+		Render: func(opts map[string]any) string {
 			return fmt.Sprintf(`##
-## DATABASE CLIENTS
+## %s
 ##
 %sRUN apt-get update && apt-get install -y \
     %s
-`, mongoSetup, strings.Join(pkgs, " \\\n    "))
-		}
-		return ""
-	},
+`, title, setup, pkg)
+		},
+	}
 }
+
+var PostgresClientModule = aptClientModule(
+	"postgres-client",
+	"PostgreSQL client (psql)",
+	"POSTGRESQL CLIENT",
+	"",
+	"postgresql-client",
+)
+
+var RedisClientModule = aptClientModule(
+	"redis-client",
+	"Redis client (redis-cli)",
+	"REDIS CLIENT",
+	"",
+	"redis-tools",
+)
+
+var MysqlClientModule = aptClientModule(
+	"mysql-client",
+	"MySQL client (mysql)",
+	"MYSQL CLIENT",
+	"",
+	"default-mysql-client",
+)
+
+const mongoClientSetup = `RUN curl -fsSL https://www.mongodb.org/static/pgp/server-8.0.asc | gpg --dearmor -o /etc/apt/keyrings/mongodb-server-8.0.gpg && \
+    echo "deb [ arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/mongodb-server-8.0.gpg ] https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/8.0 multiverse" | tee /etc/apt/sources.list.d/mongodb-org-8.0.list
+`
+
+var MongoClientModule = aptClientModule(
+	"mongo-client",
+	"MongoDB client (mongosh)",
+	"MONGODB CLIENT",
+	mongoClientSetup,
+	"mongodb-mongosh",
+)

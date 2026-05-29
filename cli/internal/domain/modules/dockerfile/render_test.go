@@ -108,6 +108,29 @@ func TestRustModuleRender(t *testing.T) {
 	}
 }
 
+func TestDatabaseClientModulesRender(t *testing.T) {
+	cases := []struct {
+		name   string
+		module *dockerfile.ModuleSpec
+		want   []string
+	}{
+		{"postgres", dockerfile.PostgresClientModule, []string{"POSTGRESQL CLIENT", "postgresql-client"}},
+		{"redis", dockerfile.RedisClientModule, []string{"REDIS CLIENT", "redis-tools"}},
+		{"mysql", dockerfile.MysqlClientModule, []string{"MYSQL CLIENT", "default-mysql-client"}},
+		{"mongo", dockerfile.MongoClientModule, []string{"MONGODB CLIENT", "mongodb-mongosh", "repo.mongodb.org"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			out := tc.module.Render(nil)
+			for _, w := range tc.want {
+				if !strings.Contains(out, w) {
+					t.Errorf("expected output to contain %q:\n%s", w, out)
+				}
+			}
+		})
+	}
+}
+
 // Every Dockerfile module must render a non-empty fragment with default options
 // and must not panic on a nil options map.
 func TestAllDockerfileModulesRenderNonEmpty(t *testing.T) {
