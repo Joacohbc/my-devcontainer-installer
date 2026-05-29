@@ -55,7 +55,7 @@ func newSetupSshCommand() *cobra.Command {
 	f.String("remote", "", "Configure remote-server access (ProxyCommand mode): USER@HOST")
 	f.String("alias", sshdefaults.Alias, "SSH alias to register")
 	f.String("key", "", "Private key path (default: ~/.ssh/"+sshdefaults.KeyName+")")
-	f.String("port", fmt.Sprintf("%d", sshdefaults.WindowsPort), "Port for Windows mode")
+	f.String("port", fmt.Sprintf("%d", domain.ResolveSSHHostPort()), "Port for Windows mode")
 	f.String("mode", "", "Force mode: local | windows | remote")
 	f.String("container", sshdefaults.ServiceName, "Container name (auto-detected from compose if omitted)")
 	f.String("service", sshdefaults.ServiceName, "Compose service name (auto-detected if omitted)")

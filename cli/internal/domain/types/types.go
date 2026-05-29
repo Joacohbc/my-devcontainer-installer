@@ -16,6 +16,7 @@ const (
 )
 
 const PostScriptDir = "/home/devuser/post-script"
+const DefaultSSHHostPort = 2222
 
 type ModuleOptionChoice struct {
 	Value string `json:"value"`
@@ -43,14 +44,14 @@ const (
 )
 
 type RequiredEnvVar struct {
-	Name    string `json:"name"`
-	Prompt  string `json:"prompt"`
-	Default string `json:"default,omitempty"`
+	Name    string `json:"name" yaml:"name"`
+	Prompt  string `json:"prompt" yaml:"prompt"`
+	Default string `json:"default,omitempty" yaml:"default,omitempty"`
 }
 
 type SelectedModule struct {
-	ID      string         `json:"id"`
-	Options map[string]any `json:"options,omitempty"`
+	ID      string         `json:"id" yaml:"id"`
+	Options map[string]any `json:"options,omitempty" yaml:"options,omitempty"`
 }
 
 type BuildMode string
@@ -102,28 +103,28 @@ func ParseVariant(v string) (string, error) {
 }
 
 type RemoteConfig struct {
-	Variant  string `json:"variant"`
-	Registry string `json:"registry,omitempty"`
+	Variant  string `json:"variant" yaml:"variant"`
+	Registry string `json:"registry,omitempty" yaml:"registry,omitempty"`
 }
 
 type DockerfileConfig struct {
-	Modules []SelectedModule `json:"modules"`
+	Modules []SelectedModule `json:"modules" yaml:"modules"`
 }
 
 type ComposeConfig struct {
-	Services []any  `json:"services"`
-	Subnet   string `json:"subnet,omitempty"`
+	Services []any  `json:"services" yaml:"services"`
+	Subnet   string `json:"subnet,omitempty" yaml:"subnet,omitempty"`
 }
 
 type DevcontainerConfig struct {
-	Mode        BuildMode         `json:"mode"`
-	Image       string            `json:"image"`
-	Workspace   string            `json:"workspace"`
-	Dockerfile  DockerfileConfig  `json:"dockerfile"`
-	Compose     ComposeConfig     `json:"compose"`
-	Env         map[string]string `json:"env"`
-	Remote      *RemoteConfig     `json:"remote,omitempty"`
-	Fingerprint string            `json:"fingerprint,omitempty"`
+	Mode        BuildMode         `json:"mode" yaml:"mode"`
+	Image       string            `json:"image" yaml:"image"`
+	Workspace   string            `json:"workspace" yaml:"workspace"`
+	Dockerfile  DockerfileConfig  `json:"dockerfile" yaml:"dockerfile"`
+	Compose     ComposeConfig     `json:"compose" yaml:"compose"`
+	Env         map[string]string `json:"env" yaml:"env"`
+	Remote      *RemoteConfig     `json:"remote,omitempty" yaml:"remote,omitempty"`
+	Fingerprint string            `json:"fingerprint,omitempty" yaml:"fingerprint,omitempty"`
 }
 
 const ConfigFile = "devcontainer.config.json"

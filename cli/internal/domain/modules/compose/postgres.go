@@ -28,12 +28,20 @@ var PostgresService = &ServiceSpec{
 		if version == "" {
 			version = "17-alpine"
 		}
+		user := ctx.DefaultDBUser
+		if user == "" {
+			user = "devuser"
+		}
+		pass := ctx.DefaultDBPassword
+		if pass == "" {
+			pass = "devpass"
+		}
 		return &ServiceDef{
 			Image:         fmt.Sprintf("postgres:%s", version),
 			ContainerName: "postgres",
 			Environment: map[string]string{
-				"POSTGRES_USER":     "devuser",
-				"POSTGRES_PASSWORD": "devpass",
+				"POSTGRES_USER":     user,
+				"POSTGRES_PASSWORD": pass,
 				"POSTGRES_DB":       "devdb",
 			},
 			Volumes:  []string{"postgres_data:/var/lib/postgresql/data"},

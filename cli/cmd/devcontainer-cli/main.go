@@ -8,6 +8,7 @@ import (
 	"syscall"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/commands"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/logger"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/prompt"
 )
 
@@ -40,6 +41,6 @@ func handleError(err error) {
 		fmt.Fprintln(os.Stderr, "\nCancelled.")
 		os.Exit(130)
 	}
-	fmt.Fprintf(os.Stderr, "Error: %s\n", err.Error())
+	logger.Std().Error(err.Error())
 	os.Exit(1)
 }

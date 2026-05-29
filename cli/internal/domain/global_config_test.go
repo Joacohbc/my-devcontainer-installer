@@ -103,3 +103,76 @@ func TestResolveRegistry_appendsTrailingSlash(t *testing.T) {
 		}
 	})
 }
+
+func TestResolveDBCredentials(t *testing.T) {
+	// Case 1: Empty / no config
+	withTempXDGDir(t, func() {
+		user, pass := domain.ResolveDBCredentials()
+		if user != "devuser" || pass != "devpass" {
+			t.Errorf("expected devuser/devpass, got %s/%s", user, pass)
+		}
+	})
+
+	// Case 2: Config without defaults
+	withTempXDGDir(t, func() {
+		_ = domain.SaveGlobalConfig(domain.GlobalConfig{Registry: "global.io/"})
+		user, pass := domain.ResolveDBCredentials()
+		if user != "devuser" || pass != "devpass" {
+			t.Errorf("expected devuser/devpass, got %s/%s", user, pass)
+		}
+	})
+
+	// Case 3: Partial config (only user)
+	withTempXDGDir(t, func() {
+		_ = domain.SaveGlobalConfig(domain.GlobalConfig{
+			Defaults: &domain.Defaults{DBUser: "alice"},
+		})
+		user, pass := domain.ResolveDBCredentials()
+		if user != "alice" || pass != "devpass" {
+			t.Errorf("expected alice/devpass, got %s/%s", user, pass)
+		}
+	})
+
+	// Case 4: Full config
+	withTempXDGDir(t, func() {
+		_ = domain.SaveGlobalConfig(domain.GlobalConfig{
+			Defaults: &domain.Defaults{DBUser: "alice", DBPassword: "password123"},
+		})
+		user, pass := domain.ResolveDBCredentials()
+		if user != "alice" || pass != "password123" {
+			t.Errorf("expected alice/password123, got %s/%s", user, pass)
+		}
+	})
+}
+
+func TestResolveSSHHostPort(t *testing.T) {
+	// Case 1: Empty / no config
+	withTempXDGDir(t, func() {
+		port := domain.ResolveSSHHostPort()
+		if port != 2222 {
+			t.Errorf("expected port 2222, got %d", port)
+		}
+	})
+
+	// Case 2: Config with ssh-port set to 0 or empty
+	withTempXDGDir(t, func() {
+		_ = domain.SaveGlobalConfig(domain.GlobalConfig{
+			Defaults: &domain.Defaults{SSHHostPort: 0},
+		})
+		port := domain.ResolveSSHHostPort()
+		if port != 2222 {
+			t.Errorf("expected port 2222, got %d", port)
+		}
+	})
+
+	// Case 3: Config with custom port
+	withTempXDGDir(t, func() {
+		_ = domain.SaveGlobalConfig(domain.GlobalConfig{
+			Defaults: &domain.Defaults{SSHHostPort: 3333},
+		})
+		port := domain.ResolveSSHHostPort()
+		if port != 3333 {
+			t.Errorf("expected port 3333, got %d", port)
+		}
+	})
+}

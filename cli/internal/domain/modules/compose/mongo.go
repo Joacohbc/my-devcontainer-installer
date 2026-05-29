@@ -28,12 +28,20 @@ var MongoService = &ServiceSpec{
 		if version == "" {
 			version = "8.0"
 		}
+		user := ctx.DefaultDBUser
+		if user == "" {
+			user = "devuser"
+		}
+		pass := ctx.DefaultDBPassword
+		if pass == "" {
+			pass = "devpass"
+		}
 		return &ServiceDef{
 			Image:         fmt.Sprintf("mongo:%s", version),
 			ContainerName: "mongo",
 			Environment: map[string]string{
-				"MONGO_INITDB_ROOT_USERNAME": "devuser",
-				"MONGO_INITDB_ROOT_PASSWORD": "devpass",
+				"MONGO_INITDB_ROOT_USERNAME": user,
+				"MONGO_INITDB_ROOT_PASSWORD": pass,
 			},
 			Volumes:  []string{"mongo_data:/data/db"},
 			Networks: []string{"local-network"},

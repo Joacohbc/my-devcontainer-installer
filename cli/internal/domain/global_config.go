@@ -6,10 +6,19 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 )
 
+type Defaults struct {
+	DBUser      string `json:"dbUser,omitempty"`
+	DBPassword  string `json:"dbPassword,omitempty"`
+	SSHHostPort int    `json:"sshHostPort,omitempty"`
+}
+
 type GlobalConfig struct {
-	Registry string `json:"registry,omitempty"`
+	Registry string    `json:"registry,omitempty"`
+	Defaults *Defaults `json:"defaults,omitempty"`
 }
 
 const DefaultRegistry = "ghcr.io/joacohbc/"
@@ -82,4 +91,33 @@ func ResolveRegistry(flagOverride, perProject string) string {
 		return normalizeRegistry(cfg.Registry)
 	}
 	return DefaultRegistry
+}
+
+const (
+	fallbackDBUser     = "devuser"
+	fallbackDBPassword = "devpass"
+)
+
+func ResolveDBCredentials() (user, password string) {
+	cfg := LoadGlobalConfig()
+	if cfg.Defaults == nil {
+		return fallbackDBUser, fallbackDBPassword
+	}
+	user = cfg.Defaults.DBUser
+	if user == "" {
+		user = fallbackDBUser
+	}
+	password = cfg.Defaults.DBPassword
+	if password == "" {
+		password = fallbackDBPassword
+	}
+	return user, password
+}
+
+func ResolveSSHHostPort() int {
+	cfg := LoadGlobalConfig()
+	if cfg.Defaults != nil && cfg.Defaults.SSHHostPort != 0 {
+		return cfg.Defaults.SSHHostPort
+	}
+	return types.DefaultSSHHostPort
 }

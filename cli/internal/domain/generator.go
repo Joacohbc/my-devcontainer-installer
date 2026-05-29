@@ -200,10 +200,13 @@ func GenerateCompose(config *types.DevcontainerConfig) (string, error) {
 			opts = map[string]any{}
 		}
 
+		dbUser, dbPass := ResolveDBCredentials()
 		rendered := svc.Render(compose.RenderContext{
 			ImageName:         imageNameForSvc,
 			EnabledServiceIDs: enabledIDs,
 			Options:           opts,
+			DefaultDBUser:     dbUser,
+			DefaultDBPassword: dbPass,
 		})
 		if rendered == nil {
 			continue
@@ -393,10 +396,13 @@ func PlannedComposeNames(config *types.DevcontainerConfig) (containers []string,
 		if opts == nil {
 			opts = map[string]any{}
 		}
+		dbUser, dbPass := ResolveDBCredentials()
 		rendered := svc.Render(compose.RenderContext{
 			ImageName:         config.Image,
 			EnabledServiceIDs: enabledIDs,
 			Options:           opts,
+			DefaultDBUser:     dbUser,
+			DefaultDBPassword: dbPass,
 		})
 		if rendered == nil {
 			continue

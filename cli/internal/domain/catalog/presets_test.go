@@ -1,0 +1,89 @@
+package catalog_test
+
+import (
+	"os"
+	"path/filepath"
+	"slices"
+	"testing"
+
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/catalog"
+)
+
+func TestResolveBuiltin(t *testing.T) {
+	p, ok := catalog.Resolve("fullstack-node", "")
+	if !ok {
+		t.Fatal("expected to resolve fullstack-node")
+	}
+	if p.ID != "fullstack-node" {
+		t.Errorf("expected ID fullstack-node, got %s", p.ID)
+	}
+	if p.Source != "builtin" {
+		t.Errorf("expected source builtin, got %s", p.Source)
+	}
+	if !slices.Contains(p.Modules, "nodejs") {
+		t.Errorf("expected modules to contain nodejs, got %v", p.Modules)
+	}
+}
+
+func TestResolveUnknown(t *testing.T) {
+	_, ok := catalog.Resolve("non-existent-preset-id", "")
+	if ok {
+		t.Fatal("expected not to resolve unknown preset")
+	}
+}
+
+func TestLoadUserPresetsValid(t *testing.T) {
+	dir := t.TempDir()
+	content := `id: myteam
+label: My Team
+modules: [nodejs, python]
+services: [postgres]`
+	err := os.WriteFile(filepath.Join(dir, "myteam.yml"), []byte(content), 0644)
+	if err != nil {
+		t.Fatalf("failed to write test preset file: %v", err)
+	}
+
+	presets := catalog.LoadUserPresets(dir)
+	if len(presets) != 1 {
+		t.Fatalf("expected 1 user preset, got %d", len(presets))
+	}
+	if presets[0].ID != "myteam" {
+		t.Errorf("expected ID myteam, got %s", presets[0].ID)
+	}
+}
+
+func TestLoadUserPresetsIgnoresBroken(t *testing.T) {
+	dir := t.TempDir()
+	_ = os.WriteFile(filepath.Join(dir, "broken.yml"), []byte("not: [yaml"), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "good.yml"), []byte("id: good"), 0644)
+
+	presets := catalog.LoadUserPresets(dir)
+	if len(presets) != 1 {
+		t.Fatalf("expected 1 user preset, got %d", len(presets))
+	}
+	if presets[0].ID != "good" {
+		t.Errorf("expected ID good, got %s", presets[0].ID)
+	}
+}
+
+func TestUserOverridesBuiltin(t *testing.T) {
+	dir := t.TempDir()
+	content := `id: fullstack-node
+modules: [bun]
+services: [redis]`
+	err := os.WriteFile(filepath.Join(dir, "fs.yml"), []byte(content), 0644)
+	if err != nil {
+		t.Fatalf("failed to write file: %v", err)
+	}
+
+	got, ok := catalog.Resolve("fullstack-node", dir)
+	if !ok {
+		t.Fatal("failed to resolve fullstack-node")
+	}
+	if got.Source != "user" {
+		t.Errorf("expected source to be user, got %s", got.Source)
+	}
+	if !slices.Equal(got.Modules, []string{"bun"}) {
+		t.Errorf("expected user preset to override builtin, got %v", got.Modules)
+	}
+}

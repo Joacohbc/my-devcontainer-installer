@@ -18,6 +18,8 @@ type RenderContext struct {
 	ImageName         string
 	EnabledServiceIDs []string
 	Options           map[string]any
+	DefaultDBUser     string
+	DefaultDBPassword string
 }
 
 type ComposeDoc struct {

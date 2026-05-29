@@ -5,6 +5,9 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/charmbracelet/log"
+	"github.com/goccy/go-yaml"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/logger"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 	"github.com/spf13/cobra"
@@ -58,6 +61,30 @@ func TestConfigCommand_HasRegistrySubcommand(t *testing.T) {
 	}
 	if !found {
 		t.Error("expected 'config registry' subcommand")
+	}
+}
+
+func TestConfigCommand_HasDefaultsSubcommands(t *testing.T) {
+	root := NewRootCommand("test")
+	var config *cobra.Command
+	for _, c := range root.Commands() {
+		if c.Name() == "config" {
+			config = c
+			break
+		}
+	}
+	if config == nil {
+		t.Fatal("config command not found")
+	}
+	wants := []string{"db-user", "db-password", "ssh-port"}
+	have := map[string]bool{}
+	for _, sub := range config.Commands() {
+		have[sub.Name()] = true
+	}
+	for _, name := range wants {
+		if !have[name] {
+			t.Errorf("expected config subcommand %q to be registered", name)
+		}
 	}
 }
 
@@ -491,5 +518,100 @@ func TestUpdateAll_ReturnsErrorWhenProjectFails(t *testing.T) {
 
 	if err := updateAll(false, false); err == nil {
 		t.Fatal("expected an error when a project fails to update, got nil")
+	}
+}
+
+func TestConfigExportImport(t *testing.T) {
+	tmpDir := t.TempDir()
+	origCfg := &types.DevcontainerConfig{
+		Mode:      types.BuildModeLocalCached,
+		Image:     "devcontainer-cli/test:latest",
+		Workspace: "my-test-workspace",
+		Dockerfile: types.DockerfileConfig{
+			Modules: []types.SelectedModule{
+				{ID: "golang", Options: map[string]any{}},
+			},
+		},
+		Compose: types.ComposeConfig{
+			Services: []any{"postgres"},
+			Subnet:   "172.28.0.0/24",
+		},
+		Env: map[string]string{"FOO": "BAR"},
+	}
+
+	if err := domain.SaveConfig(origCfg, tmpDir); err != nil {
+		t.Fatalf("failed to save config: %v", err)
+	}
+
+	// Make sure we can load and serialize
+	loaded, err := domain.LoadConfig(tmpDir)
+	if err != nil {
+		t.Fatalf("failed to load config: %v", err)
+	}
+
+	data, err := yaml.Marshal(loaded)
+	if err != nil {
+		t.Fatalf("failed to marshal to yaml: %v", err)
+	}
+
+	var imported types.DevcontainerConfig
+	if err := yaml.Unmarshal(data, &imported); err != nil {
+		t.Fatalf("failed to unmarshal from yaml: %v", err)
+	}
+
+	if imported.Workspace != origCfg.Workspace {
+		t.Errorf("imported.Workspace = %q, want %q", imported.Workspace, origCfg.Workspace)
+	}
+	if imported.Image != origCfg.Image {
+		t.Errorf("imported.Image = %q, want %q", imported.Image, origCfg.Image)
+	}
+	if imported.Compose.Subnet != origCfg.Compose.Subnet {
+		t.Errorf("imported.Compose.Subnet = %q, want %q", imported.Compose.Subnet, origCfg.Compose.Subnet)
+	}
+}
+
+func TestPresetCommand_Exists(t *testing.T) {
+	root := NewRootCommand("test")
+	var presetCmd *cobra.Command
+	for _, c := range root.Commands() {
+		if c.Name() == "preset" {
+			presetCmd = c
+			break
+		}
+	}
+	if presetCmd == nil {
+		t.Fatal("expected 'preset' command to be registered")
+	}
+	found := false
+	for _, sub := range presetCmd.Commands() {
+		if sub.Name() == "list" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected 'preset list' subcommand")
+	}
+}
+
+func TestVerboseFlagSetsDebug(t *testing.T) {
+	orig := logger.Std().GetLevel()
+	defer logger.SetLevel(orig)
+
+	root := NewRootCommand("test")
+	root.SetArgs([]string{"--verbose", "help"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("unexpected error executing root: %v", err)
+	}
+
+	if logger.Std().GetLevel() != log.DebugLevel {
+		t.Errorf("expected log level to be debug, got %v", logger.Std().GetLevel())
+	}
+}
+
+func TestLogLevelFlagInvalid(t *testing.T) {
+	root := NewRootCommand("test")
+	root.SetArgs([]string{"--log-level", "invalid-level-name", "help"})
+	if err := root.Execute(); err == nil {
+		t.Fatal("expected error with invalid log level, got nil")
 	}
 }

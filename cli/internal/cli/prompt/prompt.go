@@ -37,7 +37,7 @@ func Multiselect(message string, choices []Choice, initial []string) ([]string, 
 			Title(message).
 			Options(options...).
 			Value(&result),
-	))
+	)).WithTheme(devcontainerTheme())
 	if err := f.Run(); err != nil {
 		if isAborted(err) {
 			return nil, ErrCancelled
@@ -58,7 +58,7 @@ func Select(message string, choices []Choice, initial string) (string, error) {
 			Title(message).
 			Options(options...).
 			Value(&result),
-	))
+	)).WithTheme(devcontainerTheme())
 	if err := f.Run(); err != nil {
 		if isAborted(err) {
 			return "", ErrCancelled
@@ -74,7 +74,7 @@ func Input(message, initial string, validate func(string) error) (string, error)
 	if validate != nil {
 		field = field.Validate(validate)
 	}
-	f := huh.NewForm(huh.NewGroup(field))
+	f := huh.NewForm(huh.NewGroup(field)).WithTheme(devcontainerTheme())
 	if err := f.Run(); err != nil {
 		if isAborted(err) {
 			return "", ErrCancelled
@@ -88,7 +88,7 @@ func Confirm(message string, initial bool) (bool, error) {
 	result := initial
 	f := huh.NewForm(huh.NewGroup(
 		huh.NewConfirm().Title(message).Value(&result),
-	))
+	)).WithTheme(devcontainerTheme())
 	if err := f.Run(); err != nil {
 		if isAborted(err) {
 			return false, ErrCancelled

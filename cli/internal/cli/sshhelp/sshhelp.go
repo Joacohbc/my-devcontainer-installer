@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/fatih/color"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/sshdefaults"
 )
 
@@ -40,17 +41,18 @@ func linuxBlock() string {
 
 func windowsBlock() string {
 	prompt := gray.Sprint("   $ ")
+	port := domain.ResolveSSHHostPort()
 	block, _ := sshdefaults.BuildConfigBlock(sshdefaults.ConfigBlockOptions{
 		Mode:     "windows",
 		Alias:    sshdefaults.Alias,
 		User:     sshdefaults.User,
 		Key:      keyPath(),
 		Hostname: "localhost",
-		Port:     fmt.Sprintf("%d", sshdefaults.WindowsPort),
+		Port:     fmt.Sprintf("%d", port),
 	})
 	return strings.Join([]string{
-		boldColor.Sprintf("4) Install key + register host (Windows / Git Bash, port %d):", sshdefaults.WindowsPort),
-		prompt + fmt.Sprintf("ssh-copy-id -p %d -i %s.pub %s@localhost", sshdefaults.WindowsPort, keyPath(), sshdefaults.User),
+		boldColor.Sprintf("4) Install key + register host (Windows / Git Bash, port %d):", port),
+		prompt + fmt.Sprintf("ssh-copy-id -p %d -i %s.pub %s@localhost", port, keyPath(), sshdefaults.User),
 		prompt + fmt.Sprintf("cat <<EOF >> ~/.ssh/config\n\n%s\nEOF", block),
 	}, "\n")
 }

@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 )
 
 const (
@@ -14,7 +16,7 @@ const (
 	ServiceName = "devcontainer-ssh"
 	Alias       = "devcontainer"
 	KeyName     = "id_devcontainer"
-	WindowsPort = 2222
+	WindowsPort = types.DefaultSSHHostPort
 	// DockerIPFormat emits one IP per line so a container on several networks
 	// does not concatenate addresses with no separator.
 	DockerIPFormat = `{{range .NetworkSettings.Networks}}{{.IPAddress}}{{"\n"}}{{end}}`

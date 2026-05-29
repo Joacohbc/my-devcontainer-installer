@@ -22,10 +22,42 @@ func TestPostgresRender(t *testing.T) {
 	if !ok || env["POSTGRES_DB"] != "devdb" {
 		t.Errorf("expected POSTGRES_DB=devdb, got %+v", def.Environment)
 	}
+	if env["POSTGRES_USER"] != "devuser" || env["POSTGRES_PASSWORD"] != "devpass" {
+		t.Errorf("expected default devuser/devpass, got %s/%s", env["POSTGRES_USER"], env["POSTGRES_PASSWORD"])
+	}
 
 	custom := compose.PostgresService.Render(compose.RenderContext{Options: map[string]any{"version": "16-alpine"}})
 	if custom.Image != "postgres:16-alpine" {
 		t.Errorf("custom image = %q, want postgres:16-alpine", custom.Image)
+	}
+
+	customCreds := compose.PostgresService.Render(compose.RenderContext{
+		DefaultDBUser:     "alice",
+		DefaultDBPassword: "password123",
+	})
+	envCustom, ok := customCreds.Environment.(map[string]string)
+	if !ok || envCustom["POSTGRES_USER"] != "alice" || envCustom["POSTGRES_PASSWORD"] != "password123" {
+		t.Errorf("expected custom alice/password123, got %s/%s", envCustom["POSTGRES_USER"], envCustom["POSTGRES_PASSWORD"])
+	}
+}
+
+func TestMongoRender(t *testing.T) {
+	def := compose.MongoService.Render(compose.RenderContext{})
+	if def == nil {
+		t.Fatal("expected a service definition")
+	}
+	env, ok := def.Environment.(map[string]string)
+	if !ok || env["MONGO_INITDB_ROOT_USERNAME"] != "devuser" || env["MONGO_INITDB_ROOT_PASSWORD"] != "devpass" {
+		t.Errorf("expected default devuser/devpass, got %+v", def.Environment)
+	}
+
+	customCreds := compose.MongoService.Render(compose.RenderContext{
+		DefaultDBUser:     "bob",
+		DefaultDBPassword: "secretpassword",
+	})
+	envCustom, ok := customCreds.Environment.(map[string]string)
+	if !ok || envCustom["MONGO_INITDB_ROOT_USERNAME"] != "bob" || envCustom["MONGO_INITDB_ROOT_PASSWORD"] != "secretpassword" {
+		t.Errorf("expected custom bob/secretpassword, got %+v", customCreds.Environment)
 	}
 }
 

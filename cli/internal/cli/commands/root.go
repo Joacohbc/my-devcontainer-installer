@@ -6,7 +6,9 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/charmbracelet/log"
 	"github.com/fatih/color"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/logger"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/prompt"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/sshhelp"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
@@ -31,7 +33,24 @@ func NewRootCommand(v string) *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE:          runGenerate,
+		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
+			verbose, _ := cmd.Flags().GetBool("verbose")
+			if verbose {
+				logger.SetLevel(log.DebugLevel)
+				return nil
+			}
+			raw, _ := cmd.Flags().GetString("log-level")
+			lvl, err := logger.ParseLevel(raw)
+			if err != nil {
+				return err
+			}
+			logger.SetLevel(lvl)
+			return nil
+		},
 	}
+	root.PersistentFlags().Bool("verbose", false, "Enable debug logging (shortcut for --log-level debug)")
+	root.PersistentFlags().String("log-level", "warn", "Log level: debug|info|warn|error")
+
 	addGenerateFlags(root)
 	for _, c := range subcommands {
 		root.AddCommand(c)
@@ -49,6 +68,7 @@ func addGenerateFlags(cmd *cobra.Command) {
 	f.String("services", "", "Alias for --service")
 	f.String("image", "", "Image name (default: derived from fingerprint for local-cached)")
 	f.String("workspace", "", "Workspace name (default: current dir name)")
+	f.String("preset", "", "Apply a preset (modules + services). See 'preset list'.")
 	f.Bool("no-interactive", false, "Fail if any value is missing instead of prompting")
 	f.Bool("non-interactive", false, "Alias for --no-interactive")
 	f.Bool("force-prompt", false, "Prompt even if config file exists")
@@ -58,6 +78,13 @@ func addGenerateFlags(cmd *cobra.Command) {
 	f.BoolP("version", "v", false, "Print the CLI version")
 
 	// Dynamic completions
+	_ = cmd.RegisterFlagCompletionFunc("preset", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		ids := make([]string, 0)
+		for _, p := range catalog.All(presetsDir()) {
+			ids = append(ids, p.ID)
+		}
+		return ids, cobra.ShellCompDirectiveNoFileComp
+	})
 	_ = cmd.RegisterFlagCompletionFunc("mode", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return []string{"local-cached", "remote"}, cobra.ShellCompDirectiveNoFileComp
 	})
@@ -82,6 +109,10 @@ func addGenerateFlags(cmd *cobra.Command) {
 	_ = cmd.RegisterFlagCompletionFunc("services", completeServiceFunc)
 }
 
+func presetsDir() string {
+	return filepath.Join(domain.GlobalConfigDir(), "presets")
+}
+
 type genFlags struct {
 	interactive bool
 	forcePrompt bool
@@ -94,6 +125,7 @@ type genFlags struct {
 	mode        string
 	variant     string
 	registry    string
+	preset      string
 }
 
 func splitCSV(s string) []string {
@@ -120,6 +152,13 @@ func parseGenFlags(cmd *cobra.Command) (*genFlags, error) {
 	g.mode, _ = f.GetString("mode")
 	g.variant, _ = f.GetString("variant")
 	g.registry, _ = f.GetString("registry")
+	g.preset, _ = f.GetString("preset")
+
+	if g.preset != "" {
+		if _, ok := catalog.Resolve(g.preset, presetsDir()); !ok {
+			return nil, fmt.Errorf("unknown preset: %s", g.preset)
+		}
+	}
 
 	if f.Changed("build") {
 		t := true
@@ -227,7 +266,7 @@ func runGenerate(cmd *cobra.Command, _ []string) error {
 		if clash := domain.SubnetConflict(config.Compose.Subnet, used); clash != nil {
 			free := domain.FindFreeSubnet(config.Compose.Subnet, used)
 			if flags.interactive {
-				color.Yellow("Subnet %s overlaps with existing Docker network %s. Using %s.", config.Compose.Subnet, domain.FormatCidr(*clash), free)
+				logger.Std().Warn("subnet overlap", "wanted", config.Compose.Subnet, "conflict", domain.FormatCidr(*clash), "using", free)
 				config.Compose.Subnet = free
 			} else {
 				return fmt.Errorf("subnet %s overlaps with existing Docker network %s. Set subnet to %s in devcontainer.config.json or remove the conflicting network", config.Compose.Subnet, domain.FormatCidr(*clash), free)
@@ -276,7 +315,7 @@ func runGenerate(cmd *cobra.Command, _ []string) error {
 		if len(copyFiles) > 0 {
 			pre := assets.Preflight(copyFiles, buildDir)
 			if len(pre.Copied) > 0 {
-				color.New(color.FgWhite).Printf("Copied build helpers → .dc_%s/build/: %s\n", config.Workspace, strings.Join(pre.Copied, ", "))
+				logger.Std().Debug("copied build helpers", "workspace", config.Workspace, "files", strings.Join(pre.Copied, ", "))
 			}
 			if len(pre.Missing) > 0 {
 				return fmt.Errorf("missing required scripts: %s", strings.Join(pre.Missing, ", "))
@@ -285,7 +324,7 @@ func runGenerate(cmd *cobra.Command, _ []string) error {
 		if len(postScriptFiles) > 0 {
 			pre := assets.Preflight(postScriptFiles, buildDir)
 			if len(pre.Copied) > 0 {
-				color.New(color.FgWhite).Printf("Copied post-install scripts → .dc_%s/build/: %s\n", config.Workspace, strings.Join(pre.Copied, ", "))
+				logger.Std().Debug("copied post-install scripts", "workspace", config.Workspace, "files", strings.Join(pre.Copied, ", "))
 			}
 			if len(pre.Missing) > 0 {
 				return fmt.Errorf("missing required post-install scripts: %s", strings.Join(pre.Missing, ", "))
@@ -316,7 +355,7 @@ func runGenerate(cmd *cobra.Command, _ []string) error {
 		config.Image = domain.FingerprintTag(fp)
 		if domain.LocalImageExists(config.Image, captureFunc()) {
 			cachedImageHit = true
-			color.New(color.FgWhite).Printf("Using cached image %s (fingerprint %s)\n", config.Image, fp[:12])
+			logger.Std().Debug("cache hit", "image", config.Image, "fp", fp[:12])
 		}
 	}
 
@@ -414,6 +453,19 @@ func runGenerate(cmd *cobra.Command, _ []string) error {
 }
 
 func applyGenFlags(config *types.DevcontainerConfig, flags *genFlags) {
+	if flags.preset != "" {
+		p, _ := catalog.Resolve(flags.preset, presetsDir())
+		if flags.withModules == nil && len(p.Modules) > 0 {
+			flags.withModules = p.Modules
+		}
+		if flags.services == nil && len(p.Services) > 0 {
+			flags.services = p.Services
+		}
+		if flags.mode == "" && p.Mode != "" {
+			flags.mode = string(p.Mode)
+		}
+	}
+
 	if flags.mode != "" {
 		config.Mode = types.BuildMode(flags.mode)
 	}
