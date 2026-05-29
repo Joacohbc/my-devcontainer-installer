@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -10,34 +11,31 @@ import (
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/commands"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/logger"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/prompt"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
 )
 
 // version is injected at build time via -ldflags "-X main.version=...".
 var version = "dev"
 
 func main() {
-	installSignalHandlers()
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	// Set the global context for infra/docker execution
+	docker.SetContext(ctx)
+
 	commands.CleanupStaleUpdate()
 	root := commands.NewRootCommand(version)
-	if err := root.Execute(); err != nil {
+	if err := root.ExecuteContext(ctx); err != nil {
 		handleError(err)
 	}
-}
-
-func installSignalHandlers() {
-	ch := make(chan os.Signal, 1)
-	signal.Notify(ch, os.Interrupt, syscall.SIGTERM)
-	go func() {
-		<-ch
-		os.Exit(130)
-	}()
 }
 
 func handleError(err error) {
 	if err == nil {
 		return
 	}
-	if errors.Is(err, prompt.ErrCancelled) {
+	if errors.Is(err, context.Canceled) || errors.Is(err, prompt.ErrCancelled) {
 		fmt.Fprintln(os.Stderr, "\nCancelled.")
 		os.Exit(130)
 	}

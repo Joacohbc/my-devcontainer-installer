@@ -1,6 +1,7 @@
 package docker_test
 
 import (
+	"context"
 	"testing"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
@@ -13,7 +14,7 @@ type mockRunner struct {
 	stderr    string
 }
 
-func (m *mockRunner) Run(args []string, stdio string, cwd string, env map[string]string) (int, string, string) {
+func (m *mockRunner) Run(ctx context.Context, args []string, stdio string, cwd string, env map[string]string) (int, string, string) {
 	m.callCount++
 	return m.status, m.stdout, m.stderr
 }
@@ -110,9 +111,6 @@ func TestEnsureDocker_returnsErrorWhenUnavailable(t *testing.T) {
 	}
 }
 
-// argMockRunner answers `docker version` (the availability probe) and any other
-// command independently, so a test can keep docker "available" while making the
-// real command succeed or fail.
 type argMockRunner struct {
 	versionStatus int
 	otherStatus   int
@@ -120,7 +118,7 @@ type argMockRunner struct {
 	lastArgs      []string
 }
 
-func (m *argMockRunner) Run(args []string, stdio string, cwd string, env map[string]string) (int, string, string) {
+func (m *argMockRunner) Run(ctx context.Context, args []string, stdio string, cwd string, env map[string]string) (int, string, string) {
 	m.lastArgs = args
 	if len(args) >= 2 && args[1] == "version" {
 		return m.versionStatus, "27.0.0", ""
@@ -192,10 +190,33 @@ func TestDockerComposeOrThrow_nilOnSuccess(t *testing.T) {
 }
 
 func TestDockerComposeOrThrow_errorOnNonZeroExit(t *testing.T) {
-	// Docker is available (version exits 0) but the compose command exits 5.
 	useRunner(t, &argMockRunner{versionStatus: 0, otherStatus: 5})
 
 	if err := docker.DockerComposeOrThrow("/tmp/dc.yml", []string{"down"}, nil); err == nil {
 		t.Error("expected error when compose exits non-zero")
+	}
+}
+
+func TestDockerGlobalContext_Cancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	docker.SetContext(ctx)
+	t.Cleanup(func() {
+		docker.SetContext(context.Background())
+	})
+
+	runner := &docker.DefaultRunner{}
+	docker.SetRunner(runner)
+	t.Cleanup(func() {
+		docker.ResetRunner()
+	})
+
+	// Cancel the context immediately
+	cancel()
+
+	// Since context is canceled, any docker command using default runner should fail immediately
+	// sleep 10 is used as a test command that would otherwise block
+	status, _, _ := runner.Run(ctx, []string{"sleep", "10"}, "pipe", "", nil)
+	if status == 0 {
+		t.Error("expected non-zero status or failure when context is canceled")
 	}
 }

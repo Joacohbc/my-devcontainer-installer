@@ -2,6 +2,7 @@ package docker
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -10,7 +11,7 @@ import (
 )
 
 type Runner interface {
-	Run(args []string, stdio string, cwd string, env map[string]string) (status int, stdout, stderr string)
+	Run(ctx context.Context, args []string, stdio string, cwd string, env map[string]string) (status int, stdout, stderr string)
 }
 
 type DefaultRunner struct{}
@@ -24,20 +25,44 @@ func ResetRunner() { defaultRunner = &DefaultRunner{} }
 var (
 	availCache *bool
 	availMu    sync.Mutex
+	globalCtx  context.Context = context.Background()
+	globalMu   sync.RWMutex
 )
 
+func SetContext(ctx context.Context) {
+	globalMu.Lock()
+	defer globalMu.Unlock()
+	globalCtx = ctx
+}
+
+func getContext() context.Context {
+	globalMu.RLock()
+	defer globalMu.RUnlock()
+	if globalCtx == nil {
+		return context.Background()
+	}
+	return globalCtx
+}
+
 func IsDockerAvailable() bool {
+	ctx := getContext()
+	if ctx.Err() != nil {
+		return false
+	}
 	availMu.Lock()
 	defer availMu.Unlock()
 	if availCache != nil {
 		return *availCache
 	}
 	status, _, _ := defaultRunner.Run(
+		ctx,
 		[]string{"docker", "version", "--format", "{{.Client.Version}}"},
 		"pipe", "", nil,
 	)
 	result := status == 0
-	availCache = &result
+	if ctx.Err() == nil {
+		availCache = &result
+	}
 	return result
 }
 
@@ -59,7 +84,7 @@ func DockerInherit(args []string) (int, error) {
 		return 1, err
 	}
 	fullArgs := append([]string{"docker"}, args...)
-	status, _, _ := defaultRunner.Run(fullArgs, "inherit", "", nil)
+	status, _, _ := defaultRunner.Run(getContext(), fullArgs, "inherit", "", nil)
 	return status, nil
 }
 
@@ -68,7 +93,7 @@ func DockerCapture(args []string) (status int, stdout, stderr string, err error)
 		return 1, "", "", err
 	}
 	fullArgs := append([]string{"docker"}, args...)
-	status, stdout, stderr = defaultRunner.Run(fullArgs, "pipe", "", nil)
+	status, stdout, stderr = defaultRunner.Run(getContext(), fullArgs, "pipe", "", nil)
 	return status, stdout, stderr, nil
 }
 
@@ -88,7 +113,7 @@ func DockerCompose(composeFile string, args []string, opts *ComposeOptions) (int
 		cwd = opts.CWD
 		env = opts.Env
 	}
-	status, _, _ := defaultRunner.Run(cmdArgs, "inherit", cwd, env)
+	status, _, _ := defaultRunner.Run(getContext(), cmdArgs, "inherit", cwd, env)
 	return status, nil
 }
 
@@ -103,11 +128,11 @@ func DockerComposeOrThrow(composeFile string, args []string, opts *ComposeOption
 	return nil
 }
 
-func (r *DefaultRunner) Run(args []string, stdio string, cwd string, env map[string]string) (status int, stdout, stderr string) {
+func (r *DefaultRunner) Run(ctx context.Context, args []string, stdio string, cwd string, env map[string]string) (status int, stdout, stderr string) {
 	if len(args) == 0 {
 		return 1, "", "no arguments provided"
 	}
-	cmd := exec.Command(args[0], args[1:]...)
+	cmd := exec.CommandContext(ctx, args[0], args[1:]...)
 	if cwd != "" {
 		cmd.Dir = cwd
 	}
@@ -145,9 +170,10 @@ func DockerExecStdin(input []byte, args []string) (int, error) {
 	if err := EnsureDocker(); err != nil {
 		return 1, err
 	}
+	ctx := getContext()
 	if _, ok := defaultRunner.(*DefaultRunner); ok {
 		fullArgs := append([]string{"docker"}, args...)
-		cmd := exec.Command(fullArgs[0], fullArgs[1:]...)
+		cmd := exec.CommandContext(ctx, fullArgs[0], fullArgs[1:]...)
 		cmd.Stdin = bytes.NewReader(input)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
@@ -161,6 +187,6 @@ func DockerExecStdin(input []byte, args []string) (int, error) {
 	}
 	// Mock fallback for testing
 	fullArgs := append([]string{"docker"}, args...)
-	status, _, _ := defaultRunner.Run(fullArgs, "pipe", "", nil)
+	status, _, _ := defaultRunner.Run(ctx, fullArgs, "pipe", "", nil)
 	return status, nil
 }
