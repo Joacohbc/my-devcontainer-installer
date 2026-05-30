@@ -34,5 +34,11 @@ else
     echo "initial root password: $INITIAL_PASSWORD"
 fi
 
+# Grant devuser full ACL access to /workspace so it owns the directory by default
+if [ -d /workspace ]; then
+    setfacl -R -m u:devuser:rwx /workspace 2>/dev/null || true
+    setfacl -d -m u:devuser:rwx /workspace 2>/dev/null || true
+fi
+
 # Start the SSH service
 /usr/sbin/sshd -D -o ListenAddress=0.0.0.0
