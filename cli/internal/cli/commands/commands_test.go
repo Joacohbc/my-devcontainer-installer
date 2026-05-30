@@ -580,3 +580,31 @@ func TestLogLevelFlagInvalid(t *testing.T) {
 		t.Fatal("expected error with invalid log level, got nil")
 	}
 }
+
+func TestMaybeUpdateGitignore_NoGitRepo(t *testing.T) {
+	dir := t.TempDir() // no .git dir
+	if err := maybeUpdateGitignore(dir, "test"); err != nil {
+		t.Fatalf("expected no error for non-git dir, got: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".gitignore")); !os.IsNotExist(err) {
+		t.Error("expected .gitignore not to be created for non-git dir")
+	}
+}
+
+func TestMaybeUpdateGitignore_AlreadyPresent(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	existing := ".dc_*/\ndevcontainer.config.json\n"
+	if err := os.WriteFile(filepath.Join(dir, ".gitignore"), []byte(existing), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := maybeUpdateGitignore(dir, "test"); err != nil {
+		t.Fatalf("expected no error when entries already present, got: %v", err)
+	}
+	data, _ := os.ReadFile(filepath.Join(dir, ".gitignore"))
+	if string(data) != existing {
+		t.Errorf(".gitignore should be unchanged; got: %q", string(data))
+	}
+}
