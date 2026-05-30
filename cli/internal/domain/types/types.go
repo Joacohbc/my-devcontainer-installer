@@ -146,6 +146,50 @@ type DockerfileConfig struct {
 type ComposeConfig struct {
 	Services []any  `json:"services" yaml:"services"`
 	Subnet   string `json:"subnet,omitempty" yaml:"subnet,omitempty"`
+	// PersistVolumes lists the optional persistence volume ids mounted into the
+	// devcontainer (a subset of PersistVolumeSpecs ids). A nil value means
+	// "unset" and is treated as all of them (the legacy default); a non-nil
+	// value — including an empty slice for "none" — is honored exactly.
+	PersistVolumes *[]string `json:"persistVolumes,omitempty" yaml:"persistVolumes,omitempty"`
+}
+
+// PersistVolumeSpec describes an optional named volume mounted into the
+// devcontainer to persist state across rebuilds. The workspace bind mount
+// (../..:/workspace) is always present and is NOT part of this set.
+type PersistVolumeSpec struct {
+	ID     string // short id stored in config (e.g. "etc")
+	Volume string // docker volume name before workspace prefixing
+	Mount  string // container path it is mounted at
+	Label  string // user-facing label for the wizard
+}
+
+// PersistVolumeSpecs is the catalog of optional persistence volumes, in display
+// order. The volume names match the historical hard-coded mounts so existing
+// projects keep the same volumes.
+var PersistVolumeSpecs = []PersistVolumeSpec{
+	{ID: "etc", Volume: "devcontainer_etc", Mount: "/etc", Label: "/etc — system configuration"},
+	{ID: "root", Volume: "devcontainer_root", Mount: "/root", Label: "/root — root home directory"},
+	{ID: "home", Volume: "devcontainer_home", Mount: "/home", Label: "/home — user home directories"},
+}
+
+// PersistVolumeSpecByID returns the spec for an id and whether it exists.
+func PersistVolumeSpecByID(id string) (PersistVolumeSpec, bool) {
+	for _, s := range PersistVolumeSpecs {
+		if s.ID == id {
+			return s, true
+		}
+	}
+	return PersistVolumeSpec{}, false
+}
+
+// DefaultPersistVolumeIDs returns every persistence volume id in display order.
+// It is the implicit selection for legacy configs that predate this option.
+func DefaultPersistVolumeIDs() []string {
+	ids := make([]string, len(PersistVolumeSpecs))
+	for i, s := range PersistVolumeSpecs {
+		ids[i] = s.ID
+	}
+	return ids
 }
 
 type DevcontainerConfig struct {

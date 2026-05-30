@@ -311,6 +311,94 @@ func TestGenerateCompose_VolumesHaveWorkspacePrefix(t *testing.T) {
 	}
 }
 
+func devcontainerVolumes(t *testing.T, yml string) []string {
+	t.Helper()
+	var parsed map[string]any
+	if err := yaml.Unmarshal([]byte(yml), &parsed); err != nil {
+		t.Fatalf("invalid YAML: %v\n%s", err, yml)
+	}
+	services := parsed["services"].(map[string]any)
+	devSvc := services["devcontainer-ssh"].(map[string]any)
+	raw, _ := devSvc["volumes"].([]any)
+	out := make([]string, len(raw))
+	for i, v := range raw {
+		out[i] = v.(string)
+	}
+	return out
+}
+
+func topLevelVolumes(t *testing.T, yml string) map[string]any {
+	t.Helper()
+	var parsed map[string]any
+	if err := yaml.Unmarshal([]byte(yml), &parsed); err != nil {
+		t.Fatalf("invalid YAML: %v\n%s", err, yml)
+	}
+	if parsed["volumes"] == nil {
+		return map[string]any{}
+	}
+	return parsed["volumes"].(map[string]any)
+}
+
+func TestGenerateCompose_PersistVolumesDefaultAll(t *testing.T) {
+	// A nil PersistVolumes (legacy/unset) mounts all three persistence volumes.
+	yml := mustGenerateCompose(t, makeConfig())
+	vols := devcontainerVolumes(t, yml)
+	for _, want := range []string{"../..:/workspace", "devcontainer_etc:/etc", "devcontainer_root:/root", "devcontainer_home:/home"} {
+		found := false
+		for _, v := range vols {
+			if v == want {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("expected devcontainer volume %q, got %v", want, vols)
+		}
+	}
+	top := topLevelVolumes(t, yml)
+	for _, v := range []string{"devcontainer_etc", "devcontainer_root", "devcontainer_home"} {
+		if top[v] == nil {
+			t.Errorf("expected top-level volume %q, got %v", v, top)
+		}
+	}
+}
+
+func TestGenerateCompose_PersistVolumesSubset(t *testing.T) {
+	cfg := makeConfig(func(c *types.DevcontainerConfig) {
+		c.Compose.PersistVolumes = &[]string{"home"}
+	})
+	yml := mustGenerateCompose(t, cfg)
+	vols := devcontainerVolumes(t, yml)
+	assertContainsStr(t, strings.Join(vols, "\n"), "../..:/workspace", "subset workspace")
+	assertContainsStr(t, strings.Join(vols, "\n"), "devcontainer_home:/home", "subset home")
+	assertNotContainsStr(t, strings.Join(vols, "\n"), "devcontainer_etc:/etc", "subset no etc")
+	assertNotContainsStr(t, strings.Join(vols, "\n"), "devcontainer_root:/root", "subset no root")
+
+	top := topLevelVolumes(t, yml)
+	if top["devcontainer_home"] == nil {
+		t.Errorf("expected top-level devcontainer_home, got %v", top)
+	}
+	if top["devcontainer_etc"] != nil || top["devcontainer_root"] != nil {
+		t.Errorf("unselected persistence volumes must not be declared, got %v", top)
+	}
+}
+
+func TestGenerateCompose_PersistVolumesNone(t *testing.T) {
+	cfg := makeConfig(func(c *types.DevcontainerConfig) {
+		c.Compose.PersistVolumes = &[]string{}
+	})
+	yml := mustGenerateCompose(t, cfg)
+	vols := devcontainerVolumes(t, yml)
+	if len(vols) != 1 || vols[0] != "../..:/workspace" {
+		t.Errorf("expected only the workspace mount, got %v", vols)
+	}
+	top := topLevelVolumes(t, yml)
+	for k := range top {
+		if strings.HasPrefix(k, "devcontainer_") {
+			t.Errorf("expected no persistence volumes declared, found %q", k)
+		}
+	}
+}
+
 func TestGenerateCompose_NetworkNamedAfterWorkspace(t *testing.T) {
 	cfg := makeConfig()
 	yml := mustGenerateCompose(t, cfg)

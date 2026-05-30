@@ -34,10 +34,63 @@ func TestNewRootCommand_RegistersAllSubcommands(t *testing.T) {
 
 func TestRootCommand_HasGenerateFlags(t *testing.T) {
 	root := NewRootCommand("test")
-	for _, name := range []string{"mode", "variant", "with", "service", "image", "workspace", "force", "build", "no-build", "version"} {
+	for _, name := range []string{"mode", "variant", "with", "service", "image", "workspace", "persist", "force", "build", "no-build", "version"} {
 		if root.Flags().Lookup(name) == nil {
 			t.Errorf("expected root flag --%s", name)
 		}
+	}
+}
+
+func TestParseGenFlags_Persist(t *testing.T) {
+	cases := []struct {
+		name    string
+		args    []string
+		wantNil bool
+		want    []string
+		wantErr bool
+	}{
+		{name: "unset", args: nil, wantNil: true},
+		{name: "all", args: []string{"--persist", "all"}, want: []string{"etc", "root", "home"}},
+		{name: "none", args: []string{"--persist", "none"}, want: []string{}},
+		{name: "empty", args: []string{"--persist", ""}, want: []string{}},
+		{name: "subset", args: []string{"--persist", "etc,home"}, want: []string{"etc", "home"}},
+		{name: "invalid", args: []string{"--persist", "etc,bogus"}, wantErr: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd := &cobra.Command{Use: "generate"}
+			addGenerateFlags(cmd)
+			if err := cmd.ParseFlags(tc.args); err != nil {
+				t.Fatalf("ParseFlags: %v", err)
+			}
+			flags, err := parseGenFlags(cmd)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("expected error for args %v", tc.args)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("parseGenFlags: %v", err)
+			}
+			if tc.wantNil {
+				if flags.persist != nil {
+					t.Errorf("expected nil persist, got %v", *flags.persist)
+				}
+				return
+			}
+			if flags.persist == nil {
+				t.Fatalf("expected non-nil persist for args %v", tc.args)
+			}
+			if len(*flags.persist) != len(tc.want) {
+				t.Fatalf("persist = %v, want %v", *flags.persist, tc.want)
+			}
+			for i := range tc.want {
+				if (*flags.persist)[i] != tc.want[i] {
+					t.Errorf("persist[%d] = %q, want %q", i, (*flags.persist)[i], tc.want[i])
+				}
+			}
+		})
 	}
 }
 

@@ -17,19 +17,16 @@ var DevcontainerService = &ServiceSpec{
 			}
 		}
 
+		volumes := append([]string{"../..:/workspace"}, ctx.PersistVolumeMounts...)
+
 		svc := &ServiceDef{
 			Image:         ctx.ImageName,
 			Build:         ".",
 			ContainerName: SSHServiceName,
 			Command:       "sleep infinity",
 			Restart:       "unless-stopped",
-			Volumes: []string{
-				"../..:/workspace",
-				"devcontainer_etc:/etc",
-				"devcontainer_root:/root",
-				"devcontainer_home:/home",
-			},
-			Networks: []string{"local-network"},
+			Volumes:       volumes,
+			Networks:      []string{"local-network"},
 		}
 
 		if len(depends) > 0 {
