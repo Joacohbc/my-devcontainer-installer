@@ -21,6 +21,7 @@ const (
 	stepKeyVariant   = "variant"
 	stepKeyImage     = "image"
 	stepKeySubnet    = "subnet"
+	stepKeyPersist   = "persist"
 )
 
 func categoryStepKey(c types.UICategory) string  { return "cat:" + string(c) }
@@ -217,8 +218,37 @@ func (w wizardContext) steps(s *prompt.State) []prompt.Step {
 		steps = append(steps, w.imageStep())
 	}
 	steps = append(steps, w.subnetStep())
+	steps = append(steps, w.persistStep())
 	steps = append(steps, w.envSteps(s)...)
 	return steps
+}
+
+// basePersistIDs is the initial persistence-volume selection for the wizard:
+// the config's stored selection, or all volumes for a fresh/legacy config.
+func basePersistIDs(base *types.DevcontainerConfig) []string {
+	if base.Compose.PersistVolumes == nil {
+		return types.DefaultPersistVolumeIDs()
+	}
+	return *base.Compose.PersistVolumes
+}
+
+func (w wizardContext) persistStep() prompt.Step {
+	return prompt.Step{Key: stepKeyPersist, Build: func(s *prompt.State) prompt.Field {
+		initial := basePersistIDs(w.base)
+		if s.Has(stepKeyPersist) {
+			initial = s.Strings(stepKeyPersist)
+		}
+		choices := make([]prompt.Choice, len(types.PersistVolumeSpecs))
+		for i, spec := range types.PersistVolumeSpecs {
+			choices[i] = prompt.Choice{Value: spec.ID, Label: spec.Label}
+		}
+		return prompt.Field{
+			Kind:    prompt.FieldMultiselect,
+			Title:   "Volúmenes persistentes a montar (Espacio para seleccionar, Enter para confirmar):",
+			Choices: choices,
+			Initial: initial,
+		}
+	}}
 }
 
 func (w wizardContext) workspaceStep() prompt.Step {
@@ -436,6 +466,16 @@ func (w wizardContext) reduce(s *prompt.State) *types.DevcontainerConfig {
 		Dockerfile: types.DockerfileConfig{Modules: modules},
 		Compose:    types.ComposeConfig{Services: services, Subnet: s.String(stepKeySubnet)},
 		Env:        env,
+	}
+
+	if s.Has(stepKeyPersist) {
+		persist := s.Strings(stepKeyPersist)
+		if persist == nil {
+			persist = []string{}
+		}
+		draft.Compose.PersistVolumes = &persist
+	} else {
+		draft.Compose.PersistVolumes = w.base.Compose.PersistVolumes
 	}
 
 	if mode == types.BuildModeRemote {

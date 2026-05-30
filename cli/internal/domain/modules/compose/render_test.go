@@ -91,6 +91,33 @@ func TestDevcontainerRender_DependsOnEnabledDatabases(t *testing.T) {
 	}
 }
 
+func TestDevcontainerRender_PersistVolumeMounts(t *testing.T) {
+	def := compose.DevcontainerService.Render(compose.RenderContext{
+		ImageName:           "img",
+		EnabledServiceIDs:   []string{"devcontainer"},
+		PersistVolumeMounts: []string{"devcontainer_etc:/etc", "devcontainer_home:/home"},
+	})
+	want := []string{"../..:/workspace", "devcontainer_etc:/etc", "devcontainer_home:/home"}
+	if len(def.Volumes) != len(want) {
+		t.Fatalf("Volumes = %v, want %v", def.Volumes, want)
+	}
+	for i, v := range want {
+		if def.Volumes[i] != v {
+			t.Errorf("Volumes[%d] = %q, want %q", i, def.Volumes[i], v)
+		}
+	}
+}
+
+func TestDevcontainerRender_NoPersistVolumesKeepsWorkspace(t *testing.T) {
+	def := compose.DevcontainerService.Render(compose.RenderContext{
+		ImageName:         "img",
+		EnabledServiceIDs: []string{"devcontainer"},
+	})
+	if len(def.Volumes) != 1 || def.Volumes[0] != "../..:/workspace" {
+		t.Errorf("expected only the workspace mount, got %v", def.Volumes)
+	}
+}
+
 func TestDevcontainerRender_NoDatabasesNoDependsOn(t *testing.T) {
 	def := compose.DevcontainerService.Render(compose.RenderContext{
 		ImageName:         "img",
