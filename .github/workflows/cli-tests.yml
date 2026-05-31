@@ -17,7 +17,9 @@ permissions:
   contents: read
 
 jobs:
-  test:
+  # Format + vet only need to run once; gofmt is sensitive to checkout line
+  # endings, so pin it to Linux.
+  lint:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -26,29 +28,46 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v6
+      - name: Setup Go
+        uses: actions/setup-go@v5
         with:
-          version: latest
+          go-version: '1.25'
+          cache-dependency-path: cli/go.sum
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
+      - name: Check formatting
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "These files are not gofmt-formatted:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: Vet
+        run: go vet ./...
+
+  # Build + test across the platforms the CLI ships for.
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: cli
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
         with:
-          node-version: 24
-          cache: 'pnpm'
-          cache-dependency-path: cli/pnpm-lock.yaml
+          go-version: '1.25'
+          cache-dependency-path: cli/go.sum
 
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+      - name: Build
+        run: go build ./...
 
-      - name: Typecheck
-        run: pnpm run typecheck
-
-      - name: Lint
-        run: pnpm run lint
-
-      - name: Run build
-        run: pnpm run build
-
-      - name: Run tests
-        run: pnpm test
+      - name: Test
+        run: go test ./...

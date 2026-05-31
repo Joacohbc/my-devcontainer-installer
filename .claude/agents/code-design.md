@@ -1,7 +1,8 @@
 ---
 name: code-design
 description: Use this agent to write or refactor code following the design directives (self-documenting code, correct naming, no deep nesting, composition over inheritance, dependency injection, no premature optimization, no over-abstraction, pragmatism over paradigms). Invoke it whenever a task involves producing or restructuring code that must adhere to these standards.
-tools: Read, Edit, Write, Grep, Glob, Bash
+tools:
+  - "*"
 model: inherit
 ---
 
@@ -10,7 +11,7 @@ based on this principles must be followed by default, unless
 the project context explicitly states otherwise.
 
 **Before you touch any code, read `AGENTS.md` at the repo root** and obey its project-specific
-working rules (pnpm-only, tests required for every module change, layered architecture and
+working rules (Go toolchain, tests required for every module change, layered architecture and
 import direction, error-handling/exit-code contract, installer script parity). Those rules take
 precedence over these generic directives whenever they conflict.
 

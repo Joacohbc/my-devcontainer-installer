@@ -19,9 +19,9 @@ La CLI hornea estos scripts dentro de la imagen según los módulos elegidos:
 sudo ~/post-script/update_golang.sh  # actualiza Go a la última estable (módulo go; requiere root, escribe en /usr/local/go)
 ```
 
-### CLIs de IA (módulo `ai-clis`)
+### CLIs de IA (módulos `claude-code`, `opencode`, `codex-cli`, `antigravity-cli`, `copilot-cli`)
 
-Si generaste el entorno con `--with ai-clis`, los instaladores quedan disponibles. Ejecutá el que necesites:
+Si generaste el entorno con alguno de los módulos de IA correspondientes, sus instaladores quedan disponibles. Ejecutá el que necesites:
 
 ```bash
 ~/post-script/install-claude-code.sh   # Claude Code (@anthropic-ai/claude-code)

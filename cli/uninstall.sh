@@ -52,6 +52,20 @@ else
   strip_rc "${ZDOTDIR:-$HOME}/.zshrc"
   strip_rc "$HOME/.bashrc"
   strip_rc "$HOME/.bash_profile"
+  strip_rc "$HOME/.profile"
+  strip_rc "${XDG_CONFIG_HOME:-$HOME/.config}/fish/config.fish"
+
+  # Clean up native fish completion
+  fish_comp="${XDG_CONFIG_HOME:-$HOME/.config}/fish/completions/devcontainer-cli.fish"
+  if [ -f "$fish_comp" ]; then
+    rm -f "$fish_comp"
+    info "Removed: $fish_comp"
+  fi
+  # Clean up completions dir if empty
+  fish_comp_dir="${XDG_CONFIG_HOME:-$HOME/.config}/fish/completions"
+  if [ -d "$fish_comp_dir" ]; then
+    rmdir "$fish_comp_dir" 2>/dev/null || true
+  fi
 fi
 
 info "Uninstalled devcontainer-cli."

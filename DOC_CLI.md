@@ -44,7 +44,7 @@ La CLI genera todo dentro de `.dc_<workspace>/` (donde `<workspace>` es el nombr
         ├── entrypoint.sh
         ├── zsh-installer.sh
         ├── golang_utils.sh           # solo con módulo `go`
-        ├── install-*.sh              # solo con módulo `ai-clis`
+        ├── install-*.sh              # solo con módulos `claude-code`, `opencode`, `codex-cli`, `antigravity-cli`, `copilot-cli`
         ├── login-github-cli.sh
         └── update_golang.sh          # solo con módulo `go`
 ```

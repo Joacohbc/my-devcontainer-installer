@@ -1,0 +1,149 @@
+// Package pick lists Docker containers managed by the CLI and lets
+// the user pick one interactively. Used by setup-ssh and port-forward.
+package pick
+
+import (
+	"encoding/json"
+	"fmt"
+	"strings"
+
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/ui"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/sshdefaults"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/service"
+)
+
+type Container struct {
+	Name    string
+	Image   string
+	Status  string
+	State   string
+	Managed bool
+	Ports   string
+}
+
+// ContainerWorkspace returns the workspace prefix of a devcontainer-ssh
+// container name, or "" if the name does not carry the service suffix.
+func ContainerWorkspace(containerName string) string {
+	suffix := "-" + sshdefaults.ServiceName
+	if strings.HasSuffix(containerName, suffix) {
+		return strings.TrimSuffix(containerName, suffix)
+	}
+	return ""
+}
+
+type dockerPSLine struct {
+	Names  string `json:"Names"`
+	Image  string `json:"Image"`
+	Status string `json:"Status"`
+	State  string `json:"State"`
+	Labels string `json:"Labels"`
+	Ports  string `json:"Ports"`
+}
+
+func parsePSLines(stdout string) []dockerPSLine {
+	var out []dockerPSLine
+	for _, line := range strings.Split(strings.TrimSpace(stdout), "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		var obj dockerPSLine
+		if err := json.Unmarshal([]byte(line), &obj); err != nil {
+			continue
+		}
+		if obj.Names == "" {
+			continue
+		}
+		out = append(out, obj)
+	}
+	return out
+}
+
+// ListManaged returns all containers carrying the CLI managed label. Docker
+// errors yield an empty list.
+func ListManaged() []Container {
+	status, stdout, _, err := docker.DockerCapture([]string{
+		"ps", "-a", "--filter", "label=" + types.LabelManaged + "=true", "--format", "{{json .}}",
+	})
+	if err != nil || status != 0 || strings.TrimSpace(stdout) == "" {
+		return nil
+	}
+	var out []Container
+	for _, l := range parsePSLines(stdout) {
+		out = append(out, Container{Name: l.Names, Image: l.Image, Status: l.Status, State: l.State, Managed: true, Ports: l.Ports})
+	}
+	return out
+}
+
+// ListAll returns running containers regardless of label, flagging which are
+// CLI-managed devcontainers.
+func ListAll() []Container {
+	status, stdout, _, err := docker.DockerCapture([]string{"ps", "--format", "{{json .}}"})
+	if err != nil || status != 0 || strings.TrimSpace(stdout) == "" {
+		return nil
+	}
+	managedLabel := types.LabelManaged + "=true"
+	var out []Container
+	for _, l := range parsePSLines(stdout) {
+		managed := false
+		for _, lab := range strings.Split(l.Labels, ",") {
+			if strings.TrimSpace(lab) == managedLabel {
+				managed = true
+				break
+			}
+		}
+		out = append(out, Container{Name: l.Names, Image: l.Image, Status: l.Status, State: l.State, Managed: managed, Ports: l.Ports})
+	}
+	return out
+}
+
+func StatusLabel(c Container) string {
+	text := c.Status
+	if text == "" {
+		text = c.State
+	}
+	switch c.State {
+	case "running":
+		return ui.GreenS("%s", text)
+	case "exited":
+		return ui.RedS("%s", text)
+	default:
+		return ui.YellowS("%s", text)
+	}
+}
+
+type PickOptions struct {
+	Interactive bool
+	AssumeYes   bool
+}
+
+// PickManaged returns the single managed container, or prompts to choose one.
+func PickManaged(message string, opts PickOptions) (Container, error) {
+	containers := ListManaged()
+	if len(containers) == 0 {
+		return Container{}, fmt.Errorf("no devcontainer-cli managed containers found. Run 'devcontainer-cli' first to create one")
+	}
+	if len(containers) == 1 || opts.AssumeYes {
+		c := containers[0]
+		fmt.Println(ui.CyanS("Using container: %s  %s  %s", c.Name, ui.Subtle(c.Image), StatusLabel(c)))
+		return c, nil
+	}
+	if !opts.Interactive {
+		return Container{}, fmt.Errorf("multiple CLI-managed containers found. Specify a container explicitly or run interactively")
+	}
+	choices := make([]service.Option, len(containers))
+	for i, c := range containers {
+		choices[i] = service.Option{Value: c.Name, Label: fmt.Sprintf("%s  %s  %s", c.Name, ui.Subtle(c.Image), StatusLabel(c))}
+	}
+	chosen, err := ui.Select(message, choices, choices[0])
+	if err != nil {
+		return Container{}, err
+	}
+	for _, c := range containers {
+		if c.Name == chosen.Value {
+			return c, nil
+		}
+	}
+	return containers[0], nil
+}

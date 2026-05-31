@@ -34,6 +34,21 @@ try {
     Info "Downloading $asset ($Version)"
     Invoke-WebRequest -Uri $url -OutFile $tmpPath -UseBasicParsing
 
+    # Verify the published sha256 before trusting the binary. The release ships
+    # a per-asset <asset>.sha256 (goreleaser checksum.split); refuse to install
+    # if it is missing or does not match.
+    $sumUrl  = "$url.sha256"
+    $sumPath = "$tmpPath.sha256"
+    Info "Verifying checksum"
+    Invoke-WebRequest -Uri $sumUrl -OutFile $sumPath -UseBasicParsing
+    $expected = ((Get-Content $sumPath -TotalCount 1) -split '\s+')[0]
+    Remove-Item -Force $sumPath -ErrorAction SilentlyContinue
+    if (-not $expected) { Fail "empty or invalid checksum file" }
+    $actual = (Get-FileHash -Path $tmpPath -Algorithm SHA256).Hash.ToLower()
+    if ($expected.ToLower() -ne $actual) {
+        Fail "checksum mismatch: expected $expected, got $actual"
+    }
+
     # On Windows you cannot overwrite a running .exe, but you can rename it.
     if (Test-Path $binaryPath) {
         $oldPath = "$binaryPath.old"
@@ -53,7 +68,7 @@ try {
     }
 
     Info "Verify: devcontainer-cli --help"
-    Info "Self-update: devcontainer-cli update"
+    Info "Self-update: devcontainer-cli upgrade-cli"
 }
 catch {
     if (Test-Path $tmpPath) { Remove-Item -Force $tmpPath -ErrorAction SilentlyContinue }

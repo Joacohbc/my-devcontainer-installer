@@ -2,621 +2,453 @@
 
 Guide for agents (human or AI) modifying this repo.
 
-## Mandatory rule: pnpm only
+The CLI lives in `cli/` and is written in **Go** (module
+`github.com/joacohbc/my-devcontainer-installer/cli`, Go 1.25), built on
+[`spf13/cobra`](https://github.com/spf13/cobra). The previous TypeScript/Node
+implementation is frozen under `cli-ts-legacy/` for reference only — do not
+modify it and do not port changes back to it.
 
-This repo uses **pnpm** exclusively. Do **not** run `npm` or `yarn` — they
-produce a conflicting lockfile and the scripts/CI assume pnpm.
+## Mandatory rule: Go toolchain only
 
-- Install: `pnpm install`
-- Test: `cd cli && pnpm test`
-- Lint: `cd cli && pnpm lint`
-- Typecheck: `cd cli && pnpm run typecheck`
-- Build: `pnpm run build` / `pnpm run build:binary`
-- Run dev: `pnpm dev`
+All commands run from the `cli/` directory:
 
-The only committed lockfile is `pnpm-lock.yaml`. If you ever see a
-`package-lock.json` or `yarn.lock`, it was added by mistake — delete it.
+- Build: `go build ./...`
+- Test: `go test ./...`
+- Vet: `go vet ./...`
+- Format check: `gofmt -l .` (must print nothing)
+- Format fix: `gofmt -w .`
+- Run dev: `go run ./cmd/devcontainer-cli [args]`
+- Release (local check): `goreleaser check` / `goreleaser release --snapshot --clean`
+
+CI (`.github/workflows/cli-tests.yml`) runs gofmt, vet, build and test on every
+push/PR touching `cli/**`. All four must pass. Keep the tree `gofmt`-clean and
+`vet`-clean; an unformatted file or a vet finding fails the build.
 
 ## Mandatory rule: module changes require tests
 
-Every time a CLI module is **added**, **modified**, or **updated**, tests in `cli/src/__tests__/` must reflect it. No code is merged without matching coverage.
+Every time a module or domain function is **added**, **modified**, or
+**updated**, the matching `_test.go` must reflect it. No code merges without
+coverage. Tests use the standard library `testing` package (table-driven where
+it fits) — no third-party test framework.
 
 Applies to:
 
-- `cli/src/modules/dockerfile/*.ts` — Dockerfile modules (base, nodejs, python, java, go, bun, pnpm, sqlite, dbclients, github-cli, dod, cleanup, etc.).
-- `cli/src/modules/compose/*.ts` — docker-compose services (devcontainer, docker-dind, mongo, redis, postgres, tunnel).
-- `cli/src/core/module-registry.ts` — module/service registry.
-- `cli/src/domain/generator.ts`, `domain/resolver.ts`, `domain/validators.ts`, `cli.ts` — generator core.
+- `internal/domain/modules/dockerfile/*.go` — Dockerfile modules (base, nodejs, python,
+  java_temurin, java_openjdk, golang, bun, pnpm, sqlite, dbclients, github_cli,
+  ai_clis, tmux, cleanup, shell_init).
+- `internal/domain/modules/compose/*.go` — compose services (devcontainer, dind_engine,
+  mongo, redis, postgres, tunnel).
+- `internal/domain/catalog/catalog.go` — the module/service catalog.
+- `internal/domain/{generator,resolver,validators,config,project,images}.go` — generator core.
+- `internal/service/*.go` — every service method that adds/changes logic needs a matching
+  case in the group's `_test.go` (Docker swapped via `docker.SetRunner`, fake
+  `Reporter`/`Prompter`).
 
-## What to validate when adding/updating a module
+### What to validate when adding/updating a module
 
-Before merging, confirm tests cover:
-
-1. **Registry**: module appears in `registry.ts` and is resolvable by id.
-2. **Generated output**: generated Dockerfile / docker-compose contains expected fragments (RUN, FROM, image, env, ports, volumes, etc.). See patterns in `generator.test.ts`.
-3. **Dependencies**: if module declares `requires` or `conflicts`, `resolver.test.ts` covers the cases.
-4. **Validation**: if it introduces new options, `validators.test.ts` covers valid and invalid inputs.
-5. **CLI flags / prompts**: if it exposes new flags or prompts, `cli.test.ts` exercises them.
-
-## Required workflow
-
-1. Module change → edit/add test in `cli/src/__tests__/`.
-2. Run local: `cd cli && pnpm test && pnpm run typecheck`.
-3. CI (`.github/workflows/cli-tests.yml`) runs on every push/PR touching `cli/**`. Must pass before merge.
+1. **Catalog**: module appears in `internal/domain/catalog/catalog.go` and is resolvable
+   by id.
+2. **Generated output**: the generated Dockerfile / compose contains the expected
+   fragments (RUN, FROM, image, env, ports, volumes…). See `domain/generator_test.go`.
+3. **Dependencies**: if the module declares `requires`/`conflicts`,
+   `domain/resolver_test.go` covers the cases.
+4. **Validation**: new options get valid/invalid cases in `domain/validators_test.go`.
+5. **CLI flags / prompts**: new flags or prompts are exercised in
+   `internal/cli/commands/commands_test.go`.
 
 ---
 
 ## Architecture overview
 
-The CLI source (`cli/src/`) is split into subdirectories by **responsibility**,
-not by feature. Each one is a layer with a single job; a layer may import from
-the layers below it but never from the layers above. When adding a file, put it
-in the directory whose responsibility it matches — not next to the command that
-happens to call it. The table below is the contract for what each directory is
-*for*; it deliberately does not inventory individual files (those change).
+`cli/` is split by **responsibility**, not by feature. A layer may import the
+layers below it, never above. Everything lives under `internal/` so nothing is
+importable from outside the module.
 
-| Directory | Why it exists / what belongs here |
+| Path | Why it exists / what belongs here |
 |---|---|
-| `src/` (root) | Process wiring only: `index.ts` (signal handlers + dispatch) and `cli.ts` (root flag parser + help). No business logic lives at the root. |
-| `src/commands/` | One file per CLI command, each exporting a `Command` object (`parse`/`help`/`run`), plus the command registry that is the single source of truth for which commands exist. A command *orchestrates* domain + infra; it holds no reusable logic of its own. |
-| `src/domain/` | Business logic: generating the Dockerfile/compose, resolving module dependencies, validating input, loading and persisting config. It decides *what* should happen; it delegates I/O and process spawning to infra rather than doing them inline. |
-| `src/infra/` | The only layer that touches the outside world: running `docker`, resolving filesystem paths, console output, interactive prompts, flag parsing. Reusable, command-agnostic plumbing. |
-| `src/core/` | Pure data shared across layers: types and constants (`types.ts`), Docker label constants, and the catalogue/registry of available modules and services. No command-specific or I/O logic. |
-| `src/modules/` | The catalogue itself — one file per installable thing: `modules/dockerfile/` (image layers) and `modules/compose/` (services), plus their shared render helpers. Each describes a single module and how to render it. |
-| `src/__tests__/` | `node:test` suites. Every change to a module above must be mirrored here (see "module changes require tests"). |
+| `cmd/devcontainer-cli/main.go` | Process wiring only: signal handlers (SIGINT/SIGTERM → exit 130), `version` var (injected via ldflags), root dispatch, error→exit-code mapping. No business logic. |
+| `internal/cli/` | User interaction layer. Contains subcommands (`cli/commands`), console output + prompts + wizard engine (`cli/ui`), container picker (`cli/pick`), and SSH next steps (`cli/sshhelp`). Commands only parse flags, drive prompts, and print — **they delegate all business logic to `internal/service` and never call `infra/docker` or `os/exec` directly.** |
+| `internal/service/` | Orchestration layer between `cli` and `{domain, infra}`. Each service owns one operation group's logic (docker/ssh/exec orchestration + domain calls) and reports/prompts only through the `service.Reporter`/`service.Prompter` interfaces. **May import `domain` and `infra`; never imports `cli`.** See the service-layer section below. |
+| `internal/domain/` | Core logic layer: generating Dockerfile/compose, resolving module dependencies, validating input, loading/persisting config, fingerprinting, subnet math, workspace name resolution. **Never imports `infra` or `cli`.** |
+| `internal/domain/types/` | Shared domain data types: config structures, constants, label calculations. No I/O, no logic. (Was `internal/core`). |
+| `internal/domain/catalog/` | The catalog of modules/services (`catalog.go`). (Was `internal/registry`). |
+| `internal/domain/modules/` | Module definitions themselves: `modules/dockerfile/` and `modules/compose/`. |
+| `internal/infra/` | I/O execution layer. Contains raw subprocess running (`infra/docker`), assets embed extraction (`infra/assets`), SSH key default setup (`infra/sshdefaults`), and low-level project file-path definitions (`infra/project`). **Never imports `domain` or `cli`.** |
 
-Import paths follow the directory: `@/core/types.js`, `@/domain/generator.js`,
-`@/infra/docker.js`, `@/commands/down.js`. The `@/*` alias maps to `src/*`
-(`cli/tsconfig.json`), so every cross-module import names the layer it comes from.
+**Why `cmd/devcontainer-cli/main.go` and not `cli/main.go`:** `cli/` is the
+module root — it holds `go.mod` and the release/installer artifacts
+(`.goreleaser.yaml`, `install.sh`, …), not Go source for the binary. The
+idiomatic Go layout puts each binary's entry point under `cmd/<binary-name>/`,
+where the directory name *is* the produced binary (`devcontainer-cli`); this
+keeps the root clean and leaves room for additional binaries (`cmd/foo/`,
+`cmd/bar/`) without collisions. It also enforces the layering rule: all reusable
+code lives in `internal/` (unimportable from outside the module), and `main.go`
+is a thin `package main` that only *wires* those internal pieces together — no
+business logic to misplace at the root.
 
-**Type placement convention:** a type used by **more than one module** lives in
-`src/core/types.ts` (e.g. `DevcontainerConfig`, `ComposeService`,
-`RequiredEnvVar`); a type used by a **single module** stays local to that file
-(e.g. each command's `XxxFlags`, extending `CommonFlags` from `@/infra/parse.js`).
+Import paths name the layer: `internal/domain/types`, `internal/domain`,
+`internal/service`, `internal/infra/docker`, `internal/cli/commands`. The allowed
+import direction is `cli → service → { domain, infra }`.
+
+**Type placement:** a type used by **more than one package** lives in
+`internal/domain/types/types.go`; a type used by a **single command** stays local to that file
+(e.g. each command's `genFlags`).
+
+### The `CaptureFunc` injection pattern (domain never imports infra)
+
+Domain functions that need to query Docker do **not** import `infra/docker`.
+Instead they take a `domain.CaptureFunc func(args []string) (status int, stdout, stderr string)`
+parameter, and the **service** passes a closure wrapping `docker.DockerCapture`
+(see `captureFunc()` / `dockerCapture()` in `internal/service/capture.go`).
+This keeps the dependency direction clean and makes domain functions trivially
+testable with a fake capture. Examples: `domain.ListUsedSubnets(capture)`,
+`domain.LocalImageExists(image, capture)`.
 
 ---
 
-## Infrastructure helper modules
+## The service layer (`internal/service`)
 
-These modules were introduced during the refactor. Always prefer them over re-implementing the same logic.
+`cli → service → { domain, infra }`. Commands are a thin shell; every operation's
+real logic lives in a service. The dependency rule: `service` may import `domain`
+and `infra`, **never `cli`** (no `cli/ui`, no `cli/pick`).
 
-### `cli/src/infra/docker.ts` — Docker execution layer
+### What goes where
 
-Centralises **all** `child_process` calls that invoke the `docker` binary.
+- **Command (`cli/commands/<name>.go`)**: parse cobra flags, resolve cwd/workspace,
+  run interactive pickers/prompts, construct the service with `ui.Console{}`, call a
+  method, print results. **No `infra/docker`, no `os/exec`** (verified: `grep -rln
+  infra/docker internal/cli/commands` is empty).
+- **Service (`service/<group>.go`)**: a `struct { Report Reporter; Prompt Prompter }`
+  (add `Prompt` only if it asks the user) plus verb methods holding the logic, calling
+  `domain.*` and `infra/docker` directly.
 
-| Export | Purpose |
-|---|---|
-| `spawner` | Mutable object wrapping `spawnSync`. Replace in tests to avoid real Docker calls. |
-| `resetDockerCache()` | Clears the availability cache — call in test `beforeEach` / `afterEach`. |
-| `isDockerAvailable()` | Cached check; returns `false` if docker is absent/daemon down. |
-| `ensureDocker()` | Throws if docker is unavailable. Call at the top of any docker-dependent handler. |
-| `dockerInherit(args)` | `docker <args>` with `stdio: 'inherit'`; returns exit code. |
-| `dockerCapture(args)` | `docker <args>` piped; returns `{ status, stdout, stderr }`. |
-| `dockerCompose(file, args, opts?)` | `docker compose -f <file> <args>`; returns exit code. |
-| `dockerComposeOrThrow(file, args, opts?)` | Same but throws on non-zero exit. |
+### The boundary interfaces (`service/connector.go`)
 
-**Rules:**
-- **Never** call `child_process.spawnSync('docker', …)` directly in any other file.
-- In tests, mock via `spawner.spawnSync = (cmd, args, opts) => { … }` and always restore in `finally`.
-- `dockerCompose` accepts an optional `env` map that is merged on top of `process.env`.
+- `service.Reporter` — output: `Info/Warn/Success/Error/Fatal/Debug`. Services emit
+  through it and never touch the terminal.
+- `service.Prompter` — input: `Ask/Confirm/Select/Multiselect`, plus
+  `Wizard(build func(*State) []Step)` for multi-step flows with esc-back navigation.
+- `service.Option`, and the declarative wizard types `Field/Step/State/FieldKind`
+  (`service/wizard.go`). The service builds `[]Step`; the **renderer** `Stepper` lives
+  in `cli/ui/stepper.go` and backs `ui.Console.Wizard`.
+- The single terminal implementation of both interfaces is `ui.Console{}` (`cli/ui`).
 
-### `cli/src/infra/project.ts` — Project path resolution
+### Service groups (one `_test.go` each, mandatory)
 
-Resolves the canonical paths for a project based on `cwd` + workspace name.
+`generate.go`+`generate_wizard.go`, `run.go`, `destroy.go`, `update.go`,
+`lifecycle.go` (up/down/start/stop/restart), `prune.go`, `inspect.go`
+(shell/logs/status/copy/ls + completions), `config.go` (config/export/import/preset),
+`ssh.go` (setup-ssh), `portforward.go`, `upgrade.go`. `service.CleanupStaleUpdate()`
+is called from `main.go` — keep that call.
 
-| Export | Purpose |
-|---|---|
-| `resolveWorkspace(cwd, config?)` | Returns `config.workspace` or `sanitizeDockerName(basename(cwd))`. |
-| `projectPaths(cwd, workspace)` | Returns `{ projectDir, buildDir, composeFile, dockerfilePath, envPath }`. |
-| `resolveProjectComposeFile(cwd)` | Resolves compose file and throws if it doesn't exist yet. |
+**Exceptions that still touch docker from `cli`:** `cli/pick` (container-picker UI) and
+the `cleanup-tips` command (pure presentation — it prints docker commands, never runs
+them).
 
-**Rules:**
-- **Never** build `.dc_<workspace>` paths manually with `path.join`. Always call `projectPaths()`.
-- `resolveWorkspace` is the single source of truth for the workspace name fallback logic.
+### Testing services
 
-### `cli/src/infra/ui.ts` — Console output
+No real Docker: swap the runner with `docker.SetRunner(fake)` + `defer
+docker.ResetRunner()` (and `docker.ResetDockerCache()`); the injected docker closures
+of the past are gone. Use fakes for `Reporter`/`Prompter`. See the shared
+`nopReporter`, `fakeRunner`, `scriptedPrompter` and `useFakeDocker` helpers in
+`internal/service/helpers_test.go`.
 
-Provides a consistent visual style for all terminal output.
+---
 
-| Export | Usage |
-|---|---|
-| `ui.log(s)` | Section header / progress step (`==> …` in bold blue). |
-| `ui.ok(s)` | Success item (`✓   …` in bold green). |
-| `ui.warn(s)` | Warning item (`!   …` in bold yellow). |
-| `ui.success(s)` | Final success banner (full bold green line). |
-| `ui.bar()` | Horizontal separator (64 gray dashes). |
+## Infrastructure helper packages
 
-**Rules:**
-- Prefer `ui.*` over bare `chalk.*` calls for structured output.
-- Direct `chalk` use is still acceptable for inline colouring within a longer string (e.g. `chalk.gray('...')`), but avoid constructing complete log lines with chalk directly.
-- Do **not** define local `log/ok/warn` helpers in subcommand files — they duplicate `ui` functionality.
+Always prefer these over re-implementing the same logic.
 
-> **Known inconsistency**: `setup-ssh.ts` defines its own `log/ok/warn` helpers locally. `update-images.ts` imports `ui` but then re-wraps calls in local aliases. When touching either file, migrate to direct `ui.*` calls.
+### `internal/infra/docker` — Docker execution layer
 
-### `cli/src/infra/parse.ts` — Flag parsing utilities
-
-Provides shared flag parsing logic and help-text formatting.
+Centralises **all** shell-outs to the `docker` binary (over `os/exec`).
 
 | Export | Purpose |
 |---|---|
-| `parseCommonFlags(argv)` | Parses `-h/--help`, `-y/--yes`, `--no-interactive`; returns `{ flags, remaining }`. |
-| `CommonFlags` | Interface: `{ help, yes, interactive }`. |
-| `helpBlock(cmd, desc, usage, flags[])` | Generates a standardised help string. |
-| `HelpFlagDoc` | Interface: `{ name, description }`. |
+| `Runner` / `SetRunner(r)` / `ResetRunner()` | Indirection over `exec.Command`; swap in tests to avoid real Docker. |
+| `ResetDockerCache()` | Clears the availability cache — call in test setup/teardown. |
+| `IsDockerAvailable()` | Cached check; `false` if docker is absent/daemon down. |
+| `EnsureDocker()` | Returns an error if docker is unavailable. Call at the top of any docker-dependent service. |
+| `DockerInherit(args)` | `docker <args>` with inherited stdio; returns `(status, error)`. |
+| `DockerCapture(args)` | `docker <args>` piped; returns `(status, stdout, stderr, error)`. |
+| `DockerCompose(file, args, opts)` | `docker compose -f <file> <args>`; returns `(status, error)`. |
+| `DockerComposeOrThrow(file, args, opts)` | Same but returns an error on non-zero exit. |
+| `DockerExecStdin(input, args)` | `docker <args>` with `input` piped to stdin; returns `(status, error)`. |
 
-**Rules:**
-- When writing a new subcommand, call `parseCommonFlags(argv)` first to extract the three standard flags, then handle command-specific flags from `remaining`.
-- Use `helpBlock()` to generate the help string so all commands share the same layout.
-- `destroy.ts` is the canonical example of this pattern; see it for reference.
+**Rule:** never call `exec.Command("docker", …)` directly anywhere else, and call
+these only from `internal/service` — `cli/commands` go through a service.
 
-`destroy.ts`, `down.ts`, `prune.ts`, and `quick-run.ts` now delegate to
-`parseCommonFlags` and declare their flag interfaces as `extends CommonFlags`
-(KTD-2 is resolved for these).
-
-> **Known inconsistencies**:
-> - `update-images.ts`, `port-forward.ts`, `setup-ssh.ts`, `self-update.ts`, `lifecycle.ts` still use hand-rolled switch/case parsers. They do not declare the full `help`/`yes`/`interactive` trio (e.g. `lifecycle` only takes `help`, `setup-ssh` uses `assumeYes` with no `interactive`), so migrating them would change their observable flag surface — do that only when intentionally reworking the command's flags.
-> - `cli.ts` accepts both `--no-interactive` and `--non-interactive` as aliases. `port-forward.ts` accepts both. New subcommands must only support `--no-interactive`.
-> - Most subcommands use raw template literals for help text instead of `helpBlock()`. When touching a file, migrate it.
-
-### `cli/src/core/labels.ts` — Docker label constants
-
-Single source of truth for Docker labels applied to all managed images and containers.
+### `internal/infra/project` — Project path resolution
 
 | Export | Purpose |
 |---|---|
-| `LABEL_NAMESPACE` | Root namespace (`dev.devcontainer-installer`). |
-| `LABEL_MANAGED` | `…managed` — marks images created by this CLI. |
-| `LABEL_PROJECT` | `…project` — project identifier derived from the image name. |
-| `LABEL_VERSION` | `…version` — schema version (`SCHEMA_VERSION`). |
-| `LABEL_QUICK_RUN` | `…quick-run` — marks containers started by `devcontainer-cli run`. |
-| `dockerfileLabelBlock(config)` | Returns the `LABEL …` Dockerfile stanza. |
-| `composeLabels(config)` | Returns a `Record<string, string>` for compose label maps. |
+| `ProjectPaths(cwd, workspace)` | `{ProjectDir, BuildDir, ComposeFile, DockerfilePath, EnvPath}` for `.dc_<workspace>/`. |
 
-### `cli/src/modules/dockerfile/shell-init.ts` — shared rc-file installer helper
+**Rule:** never build `.dc_<workspace>` paths by hand — always call `ProjectPaths`.
 
-Reusable helper for Dockerfile modules that need a tool available in **every**
-interactive shell. `emitShellInit(initFileName, lines)` writes `lines` to an
-init script in devuser's home and sources it from all `RC_FILES`
-(`.zshrc`, `.bashrc`, `.profile`).
+### `internal/cli/ui` — Console output, prompts and wizard engine
 
-**Rule:** when a runtime/tool installer needs to export `PATH`/env for devuser,
-route it through `emitShellInit` — **do not** append only to `.profile`. The
-default shell is zsh, which does not read `.profile`, so a `.profile`-only
-installer is invisible in the default shell. Used by `nodejs.ts`, `python.ts`
-(uv) and `bun.ts`. (`pnpm.ts` is exempt: its upstream installer manages rc
-files itself.)
+`ui.Log`, `ui.Ok`, `ui.Warn`, `ui.Success`, `ui.Bar` give consistent styling
+(over `fatih/color`). Prefer them over bare `color.*` calls for structured output
+lines. `cli/ui` also wraps `charmbracelet/huh` for the one-off prompts
+(`Select/Multiselect/Input/Confirm`) and the multi-step `Stepper`; user aborts map to
+`ui.ErrCancelled`, which `main()` turns into exit code 130. `ui.Console{}` implements
+`service.Reporter` and `service.Prompter`, so commands pass it into services instead of
+calling these helpers ad hoc. (There is no separate `cli/prompt` package — it was
+folded into `cli/ui`.)
 
-### `cli/src/domain/generate.ts` — generate subcommand (no-arg default)
+### `internal/infra/assets` — Embedded shell scripts
 
-Orchestrates the full generation flow: load config → interactive prompts → apply flags → validate → write Dockerfile/compose/.env → fingerprint → optional build/pull.
+The `.sh` scripts are embedded with `//go:embed *.sh` (`embed.FS`) and live
+**next to** `assets.go` in `internal/infra/assets/` — `go:embed` cannot
+reference parent directories, so the scripts must be co-located. `Preflight`,
+`AssetExists`, `ValidateRequiredFiles` and `IsGeneratedFile` materialize and
+guard them. There is no disk fallback and no separate bundling step — the embed
+is always present in the binary.
 
-- `buildConfigFromPrompts(base)` — full interactive wizard; called only when `needsPrompts` is true.
-- `applyFlags(config, flags)` — merges CLI flags onto the loaded/default config; called before validation.
-- `writeOutput(path, content, force)` — writes a file, skipping if it exists and was not auto-generated.
-- `maybeOverwrite(path, label, interactive, force)` — prompts the user when a non-generated file would be overwritten.
-- `executeBuild / executePull` — thin wrappers over `dockerCompose` for the post-generation build step.
+**Adding a new asset:** drop `internal/infra/assets/<name>.sh`, reference it
+from the relevant module's `CopyFiles`, and add a test asserting it lands in the
+generated build dir. No config file to update (unlike the old SEA flow).
 
-> **Coverage gap**: `generate.ts` has no dedicated test file. As of this writing, `applyFlags`, `writeOutput`, and `maybeOverwrite` are not unit-tested. When making changes to this file, add corresponding tests in `cli/src/__tests__/generate.test.ts`.
+### `internal/domain/types/labels.go` — Docker label constants
+
+`LabelNamespace`, `LabelManaged`, `LabelProject`, `LabelVersion`,
+`LabelQuickRun`, plus `DockerfileLabelBlock(config)` and `ComposeLabels(config)`.
+Single source of truth for labels on managed images/containers.
 
 ---
 
 ## Command authoring pattern
 
-Every command lives in `cli/src/commands/<name>.ts` and exposes both the free
-functions (`parse`/`help`/`run`, kept for tests and internal reuse) and a
-`Command` object that implements the shared interface in
-`cli/src/commands/command.ts`. Use `destroy.ts` as the canonical template:
+Each command is `internal/commands/<name>.go`. Commands **self-register** via an
+`init()` so `root.go` only has to range over the collected list:
 
+```go
+func init() { register(newDownCommand()) }
+
+func newDownCommand() *cobra.Command {
+    cmd := &cobra.Command{
+        Use:          "down",
+        Short:        "...",
+        SilenceUsage: true,
+        RunE:         runDown,
+    }
+    addYesFlag(cmd)          // -y/--yes (destructive commands)
+    addInteractiveFlag(cmd)  // --no-interactive
+    return cmd
+}
+
+func runDown(cmd *cobra.Command, _ []string) error {
+    // read flags, resolve cwd/workspace, then delegate to a service:
+    svc := service.LifecycleService{Report: ui.Console{}}
+    return svc.Down(composeFile, workspace, removeVolumes)
+}
 ```
-cli/src/commands/<name>.ts
-  ├── interface <Name>Flags { … }            // include help, interactive; add yes if destructive
-  ├── function parse<Name>Flags(argv): <Name>Flags
-  ├── function <name>Help(): string
-  ├── async function run<Name>(argv): Promise<void>
-  │     ├── const flags = parse<Name>Flags(argv)
-  │     ├── if (flags.help) { console.log(<name>Help()); return; }
-  │     └── // business logic using docker.ts, project.ts, ui.ts
-  └── export const <name>Command: Command<<Name>Flags> = {
-        name, summary, parse, help, run,   // + optional aliases / subcommands / requiredAssets
-      }
-```
 
-When registering a new command:
+- `register(c)` appends to the package-level `subcommands` slice consumed by
+  `NewRootCommand`.
+- `RunE` orchestrates flags/prompts and **delegates the real work to a service**
+  (`service.<Group>Service{Report: ui.Console{}}`). It must not import `infra/docker`
+  or `os/exec`. New logic → a service method + its `_test.go`; see the service-layer
+  section above.
+- Flag helpers live in `flags.go`: `addYesFlag`/`addInteractiveFlag` and the
+  readers `yesFlag(cmd)`/`interactiveFlag(cmd)` (interactive = NOT `--no-interactive`).
+- The default `generate` command is the **root's** `RunE` (`runGenerate` in
+  `root.go`); its flags are added by `addGenerateFlags`.
+- Subcommands with children (e.g. `config registry`) attach the child via
+  `parent.AddCommand(child)`.
+- New subcommands accept only `--no-interactive` (not `--non-interactive`); the
+  root accepts both for backwards compatibility.
 
-1. Create `cli/src/commands/<name>.ts` exporting a `Command` object.
-2. Add it to the `getCommands()` array in `cli/src/commands/registry.ts`. That
-   list is the **single source of truth**: `index.ts` dispatches from it and
-   `completion.ts` derives its completable command names from it.
-3. Add the entry to `helpText()` in `cli/src/cli.ts` (root help text).
-4. Add an entry to `COMMAND_SPECS` in `cli/src/domain/completion.ts` (see
-   "Shell completion must track commands and flags" below).
-5. Add tests in `cli/src/__tests__/<name>.test.ts` (flag parsing + help at minimum).
-
-### Shell completion must track commands and flags
-
-`cli/src/domain/completion.ts` powers `bash`/`zsh` tab-completion. **Only the
-command *names* are derived automatically** (from the registry via
-`completableCommandNames()`); everything else is **hand-maintained** and must be
-updated whenever the CLI surface changes:
-
-- **Adding/removing a command** → add/remove its entry in `COMMAND_SPECS`. A
-  command with no entry completes its name but offers no flag/positional
-  candidates.
-- **Adding/removing/renaming a flag** → update the matching `flags` array
-  (`COMMAND_SPECS[<name>].flags` for a subcommand, or `ROOT_FLAGS` for the
-  default `generate` command).
-- **A flag that takes a value** → register it in `valueFlags` (enumerated
-  candidates, e.g. `--mode`), `ROOT_VALUE_FLAGS` (root-level enumerated), or
-  `FREEFORM_VALUE_FLAGS` (free-form text, no candidates). Omitting it means the
-  flag's value slot wrongly completes to flag names.
-- **A new positional argument** → add a generator to the command's `positionals`
-  array.
-
-Keep these in sync in the **same PR** as the flag/command change, and mirror the
-change in the command's `parse<Name>Flags` and help text so the three stay
-consistent.
-
-Subcommands (e.g. `config registry`) are themselves `Command` objects listed in
-the parent's `subcommands` array; the parent's `run` delegates via
-`findCommand(subcommands, token)`.
-
-The dispatcher validates each command's `requiredAssets` (static files shipped
-under `assets/`) before calling `run`, so a missing reference fails fast. The
-default command (`generate`) additionally validates every referenced module
-script up front via `validateRequiredFiles()` before creating any files.
-
-> The old top-level re-export shims (`cli/src/down.ts`, etc.) have been removed.
-> Always import commands directly from `cli/src/commands/<name>.js`.
-
-### `setup-ssh.ts` — known outlier
-
-`setup-ssh.ts` is the largest subcommand (≈600 lines) and currently deviates from the infrastructure helpers in three ways:
-
-1. **Direct `child_process.spawnSync`**: uses raw `spawnSync('docker', …)` instead of routing through `docker.ts`. This makes Docker calls in this file **untestable** via `spawner` mocking.
-2. **Local `log/ok/warn` helpers**: duplicates `ui.ts` with its own chalk-based helpers.
-3. **Local `defaultComposeFile()` / `deriveWorkspace()`**: re-implements logic already in `project.ts` (`resolveProjectComposeFile`, `resolveWorkspace`).
-
-When modifying `setup-ssh.ts`, prefer migrating these towards the shared helpers. Until then, do not replicate these patterns in new files.
-
-### `cleanup-tips`
-
-`cleanup-tips` is a normal command in the registry (`cleanupTipsCommand` in
-`commands/cleanup-instructions.ts`). Its `run` loads the config and resolves the
-workspace itself before printing per-project instructions.
+When registering a new command, the only places to touch are: the new file
+(with its `init()`), the root help text if applicable, and a test in
+`commands_test.go`. Cobra centralises registration, help, and shell completion,
+so there is no separate `COMMAND_SPECS`/completion table to maintain — `completion`
+is Cobra-native.
 
 ### Current commands
 
-All handler files live under `cli/src/commands/`.
-
-| argv[0] | Handler file | Purpose |
+| `argv[0]` | File | Purpose |
 |---|---|---|
-| _(default)_ | `commands/generate.ts` (logic in `cli/src/domain/generate.ts`) | Generate Dockerfile + compose |
-| `setup-ssh` | `setup-ssh.ts` | Automated SSH key + config |
-| `port-forward` | `port-forward.ts` | Forward host ports into the running container |
-| `run` | `quick-run.ts` | `docker run` from remote image, no project files |
-| `down` | `down.ts` | `docker compose down [-v]` for current project |
-| `destroy` | `destroy.ts` | Compose down + delete `.dc_<ws>/` + config |
-| `start` | `lifecycle.ts` | `docker compose start` |
-| `stop` | `lifecycle.ts` | `docker compose stop` |
-| `restart` | `lifecycle.ts` | `docker compose restart` |
-| `prune` | `prune.ts` | Remove orphan `devcontainer-cli/*` images |
-| `update` | `update-images.ts` | Pull / rebuild images; `--all` for every tracked project |
-| `upgrade-cli` | `self-update.ts` | Binary self-update from GitHub release |
-| `config` | `config-cmd.ts` | Read/write global config (subcommand `registry`) |
-| `cleanup-tips` | `cleanup-instructions.ts` | Print docker cleanup commands |
-| `completion` | `completion-cmd.ts` (logic in `cli/src/domain/completion.ts`) | Print shell completion script |
+| _(default)_ | `root.go` (+ `generate_prompts.go`) | Generate Dockerfile + compose + .env |
+| `setup-ssh` | `setup_ssh.go` | Automated SSH key + config |
+| `port-forward` | `port_forward.go` | Forward host ports into the running container |
+| `run` | `run.go` | `docker run` from a remote image, no project files |
+| `down` | `down.go` | `docker compose down [-v]` |
+| `destroy` | `destroy.go` | down + delete `.dc_<ws>/` + config (confirmation) |
+| `start`/`stop`/`restart` | `lifecycle.go` | `docker compose start`/`stop`/`restart` |
+| `prune` | `prune.go` | Remove orphan `devcontainer-cli/*` images |
+| `update` | `update.go` | Pull/rebuild images; `--all`; per-mode dispatch |
+| `upgrade-cli` | `upgrade_cli.go` | Binary self-update from a GitHub release |
+| `config` | `config.go` | Read/write global config (subcommand `registry`) |
+| `cleanup-tips` | `cleanup_tips.go` | Print docker cleanup commands |
+| `completion` | _(Cobra built-in)_ | Print shell completion script |
 
 ---
 
 ## Test authoring patterns
 
-The project uses the **Node.js built-in test runner** (`node:test` + `node:assert/strict`). No Jest or Vitest.
+```go
+import "testing"
 
-### Flag parser tests (most common pattern)
-```typescript
-import { test } from 'node:test';
-import assert from 'node:assert/strict';
-import { parse<Name>Flags, <name>Help } from '@/commands/<name>.js';
-
-test('parse<Name>Flags: defaults', () => {
-  const f = parse<Name>Flags([]);
-  assert.equal(f.help, false);
-  assert.equal(f.interactive, true);
-});
-test('parse<Name>Flags: --yes', () => {
-  assert.equal(parse<Name>Flags(['--yes']).yes, true);
-  assert.equal(parse<Name>Flags(['-y']).yes, true);
-});
-test('parse<Name>Flags: --help', () => {
-  assert.equal(parse<Name>Flags(['--help']).help, true);
-});
-test('parse<Name>Flags: --no-interactive', () => {
-  assert.equal(parse<Name>Flags(['--no-interactive']).interactive, false);
-});
-test('parse<Name>Flags: unknown flag throws', () => {
-  assert.throws(() => parse<Name>Flags(['--banana']));
-});
-```
-
-### Mocking `docker.ts` in tests
-```typescript
-import { spawner, resetDockerCache } from '@/infra/docker.js';
-
-test('description', () => {
-  resetDockerCache();
-  const original = spawner.spawnSync;
-  spawner.spawnSync = (() => ({ status: 0, stdout: 'mock', stderr: '' })) as any;
-  try {
-    // ... assertions
-  } finally {
-    spawner.spawnSync = original;
-    resetDockerCache();
-  }
-});
-```
-
-### I/O tests with a temp XDG home
-```typescript
-function withTempHome<T>(fn: () => T): T {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'dc-cli-test-'));
-  const prev = process.env.XDG_CONFIG_HOME;
-  process.env.XDG_CONFIG_HOME = tmp;
-  try { return fn(); }
-  finally {
-    if (prev === undefined) delete process.env.XDG_CONFIG_HOME;
-    else process.env.XDG_CONFIG_HOME = prev;
-    fs.rmSync(tmp, { recursive: true, force: true });
-  }
+func TestParsePortMapping(t *testing.T) {
+    cases := []struct{ in string; want int /* … */ }{ /* … */ }
+    for _, c := range cases {
+        got, err := parsePortMapping(c.in, "")
+        // assert with t.Errorf / t.Fatalf
+    }
 }
 ```
 
-### Known test coverage gaps
-
-| File | Gap | Priority |
-|---|---|---|
-| `generate.ts` | No dedicated test file. `applyFlags`, `writeOutput`, `maybeOverwrite` are untested. | High |
-| `setup-ssh.ts` | Docker-calling functions untestable (direct `spawnSync`). | High (blocked by R2) |
-| `update-images.ts` | `updateOne()` and `updateAll()` untested. | Medium |
-| `port-forward.ts` | `runPortForward()` untested. | Medium |
+- **Mocking Docker:** `docker.SetRunner(fake)` + `defer docker.ResetRunner()` (and
+  `docker.ResetDockerCache()`) so no real Docker is invoked.
+- **Services:** use the shared `nopReporter`/`fakeRunner`/`scriptedPrompter` and
+  `useFakeDocker` helpers in `internal/service/helpers_test.go`.
+- **Domain functions:** pass a fake `CaptureFunc` returning canned stdout.
+- **Temp config home:** set `XDG_CONFIG_HOME` to a `t.TempDir()` and restore it.
 
 ---
 
 ## Error handling and exit-code contract
 
-- **User-facing errors**: throw `new Error('…')`. `main()` catches, prints with `chalk.red`, exits `1`.
-- **User cancellation**: throw `PromptCancelledError` (from `prompts.ts`) or call `process.exit(130)`. `main()` catches `PromptCancelledError` and exits `130`.
-- **SIGINT / SIGTERM**: handled in `installSignalHandlers()` in `index.ts`. Restores stdin raw mode before exiting `130`.
-- **Unhandled rejections**: swallowed if `err.code === 'ERR_USE_AFTER_CLOSE'` or `err.message === 'canceled'` (enquirer cancel signal).
-- Do **not** call `process.exit()` directly in subcommand handlers — throw instead so `main()` can apply consistent formatting.
-
----
+- **User-facing errors:** return an `error` from `RunE`. `main()` prints
+  `Error: <msg>` to stderr and exits `1`.
+- **User cancellation:** return `prompt.ErrCancelled` (or wrap it). `main()`
+  detects it via `errors.Is` and exits `130`.
+- **SIGINT / SIGTERM:** handled by `installSignalHandlers()` in `main.go` → exit `130`.
+- Do **not** call `os.Exit()` inside command handlers — return an error so
+  `main()` applies consistent formatting.
 
 ## Interactive vs non-interactive mode
 
-All subcommands that touch the user (prompts, confirmations) must respect an `interactive` flag:
+- `interactive == true` (default) — prompts are shown.
+- `--no-interactive` — prompts must NOT be shown; missing required data must
+  error out.
+- `-y/--yes` — destructive confirmations are skipped.
 
-- `flags.interactive = true` (default) — prompts are shown.
-- `flags.interactive = false` (via `--no-interactive`) — prompts must not be shown; missing required data must throw.
-- `flags.yes = true` (via `-y/--yes`) — destructive confirmation prompts are skipped (implies the user accepts).
+Destructive pattern:
 
-Pattern for a destructive action:
-
-```typescript
-if (!flags.yes) {
-  if (!flags.interactive) {
-    throw new Error('Pass --yes to confirm in non-interactive mode.');
-  }
-  const proceed = await confirm('actionId', 'Are you sure?', false);
-  if (!proceed) { console.log(chalk.yellow('Cancelled.')); return; }
+```go
+if !yesFlag(cmd) {
+    if !interactiveFlag(cmd) {
+        return fmt.Errorf("... pass --yes to confirm in non-interactive mode")
+    }
+    proceed, err := prompt.Confirm("Are you sure?", false)
+    if err != nil { return err }
+    if !proceed { color.Yellow("Cancelled."); return nil }
 }
 ```
 
 ---
 
-## Known technical debt
+## Build modes
 
-These are tracked inconsistencies that do not need to be fixed immediately but **must not be worsened**:
+Two `mode` values in `DevcontainerConfig` (constant `BuildModes` in
+`core/types.go`):
 
-| ID | Location | Issue |
-|---|---|---|
-| KTD-1 | `commands/setup-ssh.ts` | Uses `child_process.spawnSync` directly instead of `infra/docker.ts` |
-| KTD-2 | `update-images.ts`, `port-forward.ts`, `setup-ssh.ts`, `self-update.ts`, `lifecycle.ts` | Hand-rolled flag parsers instead of `parseCommonFlags` (resolved for `destroy`/`down`/`prune`/`quick-run`) |
-| KTD-3 | `commands/setup-ssh.ts`, `domain/generate.ts`, `commands/quick-run.ts` | Use raw chalk instead of `ui.*` |
-| KTD-4 | `commands/setup-ssh.ts` | Local `deriveWorkspace()` duplicates `resolveWorkspace()` from `infra/project.ts` |
-| KTD-5 | `commands/setup-ssh.ts` | Local `defaultComposeFile()` duplicates `projectPaths()` from `infra/project.ts` |
-| ~~KTD-6~~ | _(resolved)_ | `GENERATED_HEADER_YAML` removed; `GENERATED_HEADER` is the single header constant |
-| KTD-7 | `domain/docker-conflicts.ts` | Local `dockerAvailable()` is a no-op wrapper around `isDockerAvailable()` |
-| KTD-8 | `commands/update-images.ts` | Wraps `ui.*` in local `log/ok/warn` aliases; import placed mid-file |
+- `local-cached` (default) — full Dockerfile + compose pipeline. Computes a
+  fingerprint and sets `config.Image` to `devcontainer-cli/<fp12>:latest`.
+  Identical Dockerfiles share one daemon-level image; an existing image skips
+  the build.
+- `remote` — skips Dockerfile generation (returns nil) and rewrites the
+  devcontainer compose service to `image: ghcr.io/<owner>/devcontainer-<variant>:latest`
+  with no `build:` key. DB services are still emitted.
+
+Compat shim: `config.go` upgrades legacy `mode: custom`/`standalone` →
+`local-cached` on load.
+
+Mode is read in `domain/generator.go`, the generate flow in `root.go`
+(preflight/conflict skip + fingerprint fast-path), and `commands/update.go`
+(`local-cached` → build, `remote` → pull). Adding a mode means updating all
+three plus `BuildModes` and tests.
 
 ---
 
-## Build modes
+## Contracts that MUST stay in sync
 
-The CLI supports two `mode` values in `DevcontainerConfig`. See DOC_CLI.md → "Modos de Build" for the user-facing summary. For agents modifying this code:
+1. **Remote variants** — `core/types.go` `RemoteVariants`/`VariantLabels` ↔
+   `.github/workflows/docker-image.yml` `build-variants` matrix. Adding a variant
+   = both sides + a `generator_test.go` assertion. `ssh` is the full image from
+   `build-base` → `devcontainer-ssh:latest` (not a `build-variants` entry).
+2. **Full-image `--with` list** — `docker-image.yml` job `build-base` passes one
+   id per Dockerfile module **except** `base`/`cleanup` (auto-applied) and
+   `java-openjdk` (mutually exclusive with `java-temurin`; the full image uses
+   `java-temurin`). Compose-only modules (`postgres`, `redis`, `mongo`, `tunnel`)
+   never go in `--with`. Add a module → append its id here.
+3. **Release-asset naming** `devcontainer-cli-<triplet>[.exe]` — shared by
+   `cli/.goreleaser.yaml`, `getTargetTriplet()` in `commands/upgrade_cli.go`,
+   `cli/install.sh` and `cli/install.ps1`. Change one → change all four.
+   Triplets: `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`,
+   `windows-x64`. (`amd64`→`x64`; `arm64` stays `arm64`, including native
+   `darwin-arm64` — there is no Rosetta fallback.)
+4. **Build modes** — see above.
+5. **Fingerprint** (`local-cached`) — SHA-256 of normalized Dockerfile +
+   copyFile contents + sorted module ids, first 12 chars → `image =
+   devcontainer-cli/<fp12>:latest`. Derived from the **Dockerfile**, not the
+   compose, so YAML key ordering doesn't affect image sharing.
 
-- `mode: 'local-cached'` (default) — goes through the full Dockerfile + compose generation pipeline. Computes a fingerprint (SHA-256 of normalized Dockerfile + copyFile contents + sorted module IDs, first 12 chars) and sets `config.image` to `devcontainer-cli/<fp12>:latest`. Multiple projects with identical Dockerfiles share a single daemon-level image; if the image already exists the build is skipped.
-- `mode: 'remote'` — skips Dockerfile generation (returns `null`) and rewrites the devcontainer compose service to use `image: ghcr.io/<owner>/devcontainer-<variant>:latest` with no `build:` key. DB services are still emitted normally.
+---
 
-**Compat shim**: `config.ts` silently upgrades legacy `mode: 'custom'` or `mode: 'standalone'` values to `'local-cached'` on load. No other code needs to handle those values.
+## Release, version injection and self-update
 
-Where the mode is read:
+### Release (goreleaser)
 
-- `cli/src/domain/generator.ts` — `generateDockerfile` returns `null` for `remote`; `generateCompose` omits `build:` and sets the ghcr image for `remote`.
-- `cli/src/index.ts` — `main()` skips preflight and conflict checks for `remote`; fingerprint fast-path for `local-cached`.
-- `cli/src/commands/update-images.ts` — per-mode dispatch: `local-cached` → `docker compose build`; `remote` → `docker pull`.
-
-When adding a new mode, update **all three** files plus tests, plus the `BUILD_MODES` constant in `cli/src/core/types.ts`.
-
-## Remote image variants (must stay in sync with the workflow)
-
-The `remote` mode (and `devcontainer-cli run`) serve pre-built images published by `.github/workflows/docker-image.yml`. The variant list is duplicated:
-
-1. `cli/src/core/types.ts` → `REMOTE_VARIANTS` constant and `VARIANT_LABELS` map.
-2. `.github/workflows/docker-image.yml` → `build-variants.matrix.include[].name`.
-
-When adding a variant: update **both** locations + add a test in `generator.test.ts` (`resolveRemoteImage`). Otherwise users will be unable to select the new image via `--variant` or `devcontainer-cli run`.
-
-Exclusion: `ssh` is the full image from `build-base` (not from `build-variants`) — it maps to `devcontainer-ssh:latest`.
-
-## Global config and image registry
-
-- `cli/src/domain/global-config.ts` — reads/writes `~/.config/devcontainer-cli/config.json` (XDG; `%APPDATA%` on Windows). Stores `registry` (default `ghcr.io/joacohbc/`). Accessed via `devcontainer-cli config registry`.
-- `cli/src/domain/image-registry.ts` — reads/writes `~/.config/devcontainer-cli/images.json`. Tracks every project the CLI has generated or pulled for, enabling `devcontainer-cli update --all` and `devcontainer-cli prune`. Also contains `computeFingerprint()` used by `local-cached` mode.
-
-## Devcontainer-ssh full image `--with` list
-
-`.github/workflows/docker-image.yml` job `build-base` builds `ghcr.io/<owner>/devcontainer-ssh:latest` with **every dockerfile module**. When a new module is added under `cli/src/modules/dockerfile/`, it **must** be appended to the `--with` flag on that job (line ~70).
-
-Exclusions:
-
-- `base`, `cleanup` — applied automatically, never passed in `--with`.
-- `java-openjdk` — mutually exclusive with `java-temurin`. The full image uses `java-temurin`; do not add `java-openjdk` alongside it.
-
-Compose-only modules (`postgres`, `redis`, `mongo`, `tunnel`) do not belong in `--with` — they are services, not image layers.
-
-When adding a module: update the `--with` list in `build-base`, and consider whether it also fits any matrix entry in `build-variants`.
-
-## Version updates (Node, Java, Go, etc.)
-
-When the version installed by a module changes (e.g. Node 22 → 24, Java 17 → 21, Ubuntu 22.04 → 24.04):
-
-- Update the matching assert in `generator.test.ts` (e.g. `temurin-17-jdk` → `temurin-21-jdk`, `FROM ubuntu:22.04` → `FROM ubuntu:24.04`).
-- If the version is parameterizable, add a test for the new default and for an explicit override.
-
-## Docker access & sandboxing (`dockerSocket` modes)
-
-The devcontainer service exposes a `dockerSocket` option with three modes. The
-prompt is **gated on the `dod` Dockerfile module** (`requiresModule: 'dod'` on
-the option in `cli/src/modules/compose/devcontainer.ts`) — without the `docker`
-CLI installed, asking about Docker access is meaningless, so it is not shown and
-defaults to `none`.
-
-- `none` (default) — no Docker access.
-- `socket` — mounts the host `/var/run/docker.sock` (classic Docker-outside-of-
-  Docker). Full control of the host daemon → **root-equivalent on the host**.
-  Opt-in only; clearly labeled with a warning.
-- `dind` — **isolated rootless Docker-in-Docker** sidecar (`docker-dind`,
-  `cli/src/modules/compose/dind-engine.ts`). Workloads run against an isolated
-  daemon over `tcp://docker-dind:2375`; the host socket is never mounted. The
-  engine sits on a dedicated `*-engine-network` bridge (declared in
-  `generator.ts` only when used) joined solely by the devcontainer and the
-  engine — keep DB/other sidecars off it.
-
-The `dockerSocket` mode is the **single source of truth** for the dind engine.
-`docker-dind` is marked `internal: true`, so it is never offered in the service
-picker; instead `resolveEnabledServices` in `generator.ts` auto-provisions it
-whenever the mode is `dind`. There is no separate "enable the engine" step and
-no fallback — selecting `dind` always brings the engine.
-
-Invariants to preserve when touching these:
-- Never auto-mount the host socket: only `socket` mode mounts it, and only as an
-  explicit, warned opt-in. `generate.ts` warns (and prompts to confirm when
-  interactive) if `socket` is chosen but `/var/run/docker.sock` is missing.
-- Keep `docker-dind` `internal` and auto-provisioned from the mode — do not turn
-  it back into a separately-selectable service.
-- The dind engine image is **pinned** (`docker:NN-dind-rootless`), not `:latest`.
-- `docker-dind` is `privileged: true` (needs cgroups/overlayfs/netns); that is
-  expected — rootless contains the blast radius to a user namespace.
-
-Any change here needs matching asserts in `generator.test.ts` (wiring, network
-segmentation, socket mount, auto-provisioning).
-
-## PR checklist
-
-- [ ] New/modified module has test in `cli/src/__tests__/`.
-- [ ] `pnpm test` passes locally.
-- [ ] `pnpm run typecheck` passes.
-- [ ] Installer script change mirrored to its `.sh`/`.ps1` counterpart (see "Installer script parity").
-- [ ] CI green.
-
-## Self-contained binary (SEA assets bundling)
-
-The CLI ships as a single self-contained Node SEA binary. Shell scripts under `cli/assets/` are **embedded inside the binary** via the `node:sea` Asset API — they are not shipped alongside the binary.
-
-### Adding a new asset (shell script in `cli/assets/`)
-
-When you add a file under `cli/assets/`, you **must** also register it in `cli/sea-config.json` under the `assets` map. If you forget, `preflight()` will report it as missing at runtime when running from the SEA binary (but it will still work in `pnpm dev` because of the disk fallback — easy to miss).
-
-1. Drop the file in `cli/assets/<your-script>.sh`.
-2. Add the entry to `cli/sea-config.json`:
-   ```json
-   "assets": {
-     "...": "...",
-     "<your-script>.sh": "assets/<your-script>.sh"
-   }
-   ```
-3. Reference it from the relevant module's `copyFiles` array (e.g. `cli/src/modules/dockerfile/<module>.ts`).
-4. Rebuild: `pnpm run build:binary`. Smoke test in an empty dir to confirm the script is materialized.
-
-### How asset resolution works
-
-`cli/src/infra/preflight.ts`:
-- If `node:sea.isSea()` is true → reads the script via `sea.getAsset(name, 'utf8')` and writes it to cwd.
-- Otherwise (dev runs via `pnpm dev`, `pnpm start`) → falls back to reading from `cli/assets/` on disk.
-
-This means: **never delete the dev disk fallback** without a replacement — `pnpm dev` would break for everyone.
-
-## Self-update flow (`devcontainer-cli upgrade-cli`)
-
-The CLI has a built-in binary updater: `devcontainer-cli upgrade-cli [--check] [--force]`. Implementation lives in `cli/src/commands/self-update.ts`.
-
-> Historical note: the binary self-update used to be exposed as `devcontainer-cli update`. That command now manages container images via `cli/src/commands/update-images.ts`. Self-update was renamed to `upgrade-cli` to free up the namespace. No alias is kept.
+`cli/.goreleaser.yaml` produces one raw binary per target (no archives) named
+`devcontainer-cli-<triplet>[.exe]` plus a per-binary `<name>.sha256`
+(`checksum.split: true`). `.github/workflows/cli-release.yml` runs
+`goreleaser release` on `v*` tags. Validate locally with `goreleaser check` and
+`goreleaser release --snapshot --clean`.
 
 ### Version injection
 
-The version is injected at build time via esbuild `define: { __CLI_VERSION__ }`:
-- `cli/build.mjs` and `cli/build-sea.mjs` read `process.env.VERSION || package.json.version || 'dev'`.
-- In CI, `.github/workflows/cli-release.yml` sets `VERSION: ${{ github.ref_name }}` on the build job so the binary records the tag (e.g. `v1.2.3`).
+The version is injected at build time via
+`-ldflags "-X main.version={{ .Version }}"` (goreleaser sets `.Version` from the
+git tag). The default in `main.go` is `dev`.
 
-When bumping the CLI version, update `cli/package.json` `version` field. The release tag passed to `git tag` should match.
+### Self-update (`devcontainer-cli upgrade-cli [--check] [--force]`)
 
-### Release-asset naming contract
+In `commands/upgrade_cli.go`: `getTargetTriplet()` derives the triplet,
+`fetchLatestRelease()` hits the public GitHub API (honors `GITHUB_TOKEN` for
+rate limits), `resolveAssetURL()` matches the asset + its `.sha256`,
+`verifyChecksum()` validates with a constant-time compare, and `replaceBinary()`
+swaps the file (on Windows it renames the running exe to `.exe.old`;
+`CleanupStaleUpdate()` is called on every `main()` to delete it — keep that call).
+Only the GitHub host allowlist is fetched (`isAllowedHost`).
 
-`runSelfUpdate` downloads `devcontainer-cli-<triplet>[.exe]` from the GitHub release. Keep these in sync:
+Adding a new target: add it to the goreleaser `goos`/`goarch` (and `ignore` if
+needed), `getTargetTriplet()`, `install.sh`, `install.ps1` — all at once.
 
-- **Workflow**: `.github/workflows/cli-release.yml` matrix renames each binary to `devcontainer-cli-<triplet>${ext}` before upload.
-- **self-update.ts**: `getTargetTriplet()` returns the triplet (`linux-x64`, `linux-arm64`, `darwin-x64`, `windows-x64`) and the ext (`.exe` on Windows).
-- **install.sh / install.ps1**: download the same raw filename, no archive.
-
-If you change the artifact naming, you **must** update all four (workflow + self-update.ts + install.sh + install.ps1) at once.
-
-### Adding a new target (e.g. `darwin-arm64` native)
-
-1. Add a matrix entry in `cli-release.yml` with the new `target` value.
-2. Add the triplet to the branch logic in `getTargetTriplet()` (`cli/src/commands/self-update.ts`).
-3. Add the case to `install.sh` (the `uname_m` switch) and remove the Rosetta workaround for Apple Silicon if applicable.
-4. Bump the CLI version and tag.
-
-### Windows in-use replacement
-
-On Windows you cannot overwrite a running `.exe`, but you _can_ rename it. `replaceBinary()` renames the current binary to `<exe>.old`, then moves the downloaded file into place. `cleanupStaleUpdate()` is called on every `main()` to delete the `.old` from the previous run. **Don't remove that cleanup call** — it leaks otherwise.
-
-### Rate limits
-
-`fetchLatestRelease()` hits the public GitHub API (60 req/hour anonymous). If a user reports throttling, advise setting `GITHUB_TOKEN` — it's already honored.
-
-## Release format
-
-Release artifacts are **raw binaries** (one per target), no tar/zip. The installer scripts (`cli/install.sh`, `cli/install.ps1`) and the `upgrade-cli` subcommand both expect this format.
-
-Do not reintroduce archive packaging unless you also update both installers and `self-update.ts` consistently.
+---
 
 ## Installer script parity (sh ↔ ps1)
 
-The install/uninstall scripts ship in matched pairs — one POSIX shell (Linux/macOS), one PowerShell (Windows):
+Install/uninstall ship in matched pairs in `cli/`:
 
-- `cli/install.sh` ↔ `cli/install.ps1`
-- `cli/uninstall.sh` ↔ `cli/uninstall.ps1`
+- `install.sh` ↔ `install.ps1`
+- `uninstall.sh` ↔ `uninstall.ps1`
 
-**When you change one script in a pair, you must apply the equivalent change to its counterpart in the same PR.** Examples: a new env override (`INSTALL_DIR`, `KEEP_CONFIG`, …), changed install layout, new PATH/rc/completion handling, changed asset naming.
-
-Platform differences are expected — mirror the *behavior*, not the syntax:
+**Change one in a pair → apply the equivalent change to its counterpart in the
+same PR.** Mirror the *behavior*, not the syntax. Releases are raw binaries
+(no tar/zip); both installers download the raw `devcontainer-cli-<triplet>[.exe]`.
 
 | Concern | sh (Linux/macOS) | ps1 (Windows) |
 |---|---|---|
 | Install dir | `$HOME/.local/share/devcontainer-cli` | `$env:LOCALAPPDATA\devcontainer-cli` |
-| PATH exposure | symlink in `$BIN_DIR` + rc `export PATH` | entry in user `Path` env var |
-| Shell completion | zsh/bash files + managed rc block | not installed (no PowerShell completion yet) |
-| Opt-out flags | `SETUP_COMPLETION=0`, `KEEP_CONFIG=1` | `KEEP_CONFIG=1` |
+| PATH exposure | symlink in `$BIN_DIR` + rc `export PATH` | entry in user `Path` |
+| Completion | zsh/bash via `devcontainer-cli completion …` + managed rc block | not installed |
+| Opt-out | `SETUP_COMPLETION=0`, `KEEP_CONFIG=1` | `KEEP_CONFIG=1` |
 
-If a feature genuinely has no Windows analogue (e.g. bash/zsh completion), the ps1 side legitimately skips it — note that rather than forcing a port.
+A feature with no Windows analogue (bash/zsh completion) legitimately skips on
+the ps1 side.
+
+---
+
+## PR checklist
+
+- [ ] New/modified module, domain function, or service method has a matching `_test.go`.
+- [ ] No `infra/docker` or `os/exec` import in `internal/cli/commands` (logic belongs in a service).
+- [ ] `go test ./...` passes.
+- [ ] `go vet ./...` and `gofmt -l .` are clean.
+- [ ] Installer change mirrored to its `.sh`/`.ps1` counterpart.
+- [ ] Frozen contracts above kept in sync where touched.
+- [ ] CI green.
