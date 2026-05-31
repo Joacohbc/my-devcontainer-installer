@@ -210,4 +210,3 @@ func runPresetCopy(cmd *cobra.Command, args []string) error {
 	console.Success("Preset %q successfully copied to %q at %s", existingID, newID, presetPath)
 	return nil
 }
-
