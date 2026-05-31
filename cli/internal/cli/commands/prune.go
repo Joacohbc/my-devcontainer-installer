@@ -13,15 +13,15 @@ func init() { register(newPruneCommand()) }
 func newPruneCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "prune",
-		Short: "Remove orphan devcontainer-cli/* images",
-		Long: `devcontainer-cli prune — remove devcontainer-cli images whose projects no longer exist
+		Short: "Remove orphan devcontainer resources",
+		Long: `devcontainer-cli prune — remove devcontainer resources (images, networks, volumes) whose projects no longer exist
 
-By default removes only orphan images (project directory is gone).
-Use --all to remove every devcontainer-cli/* image regardless.`,
+By default removes only orphan resources (project directory is gone).
+Use --all to remove every devcontainer resource regardless.`,
 		SilenceUsage: true,
 		RunE:         runPrune,
 	}
-	cmd.Flags().Bool("all", false, "Remove ALL devcontainer-cli/* images, not just orphans")
+	cmd.Flags().Bool("all", false, "Remove ALL devcontainer resources, not just orphans")
 	addYesFlag(cmd)
 	addInteractiveFlag(cmd)
 	return cmd
@@ -32,28 +32,47 @@ func runPrune(cmd *cobra.Command, _ []string) error {
 
 	console := ui.Console{}
 	svc := service.PruneService{Report: console}
-	toRemove, anyExist := svc.SelectImages(all)
-	if !anyExist {
-		fmt.Println(console.Subtle("No devcontainer-cli/* images found locally."))
-		return nil
-	}
-	if len(toRemove) == 0 {
-		fmt.Println(console.Subtle("No orphan devcontainer-cli/* images found."))
-		fmt.Println(console.Subtle("Use --all to remove every devcontainer-cli/* image."))
+	toRemoveImgs, anyImgs := svc.SelectImages(all)
+	toRemoveNets, anyNets := svc.SelectNetworks(all)
+	toRemoveVols, anyVols := svc.SelectVolumes(all)
+
+	if !anyImgs && !anyNets && !anyVols {
+		fmt.Println(console.Subtle("No devcontainer resources found locally."))
 		return nil
 	}
 
-	console.Warn("\nImages to remove (%d):", len(toRemove))
-	for _, img := range toRemove {
-		fmt.Printf(console.Subtle("  %s  (%s)\n"), img.Ref, img.ID)
+	totalToRemove := len(toRemoveImgs) + len(toRemoveNets) + len(toRemoveVols)
+	if totalToRemove == 0 {
+		fmt.Println(console.Subtle("No orphan devcontainer resources found."))
+		fmt.Println(console.Subtle("Use --all to remove every devcontainer resource."))
+		return nil
+	}
+
+	if len(toRemoveImgs) > 0 {
+		console.Warn("\nImages to remove (%d):", len(toRemoveImgs))
+		for _, img := range toRemoveImgs {
+			fmt.Printf(console.Subtle("  %s  (%s)\n"), img.Ref, img.ID)
+		}
+	}
+	if len(toRemoveNets) > 0 {
+		console.Warn("\nNetworks to remove (%d):", len(toRemoveNets))
+		for _, net := range toRemoveNets {
+			fmt.Printf(console.Subtle("  %s\n"), net.Name)
+		}
+	}
+	if len(toRemoveVols) > 0 {
+		console.Warn("\nVolumes to remove (%d):", len(toRemoveVols))
+		for _, vol := range toRemoveVols {
+			fmt.Printf(console.Subtle("  %s\n"), vol.Name)
+		}
 	}
 	println()
 
 	if !yesFlag(cmd) {
 		if !interactiveFlag(cmd) {
-			return fmt.Errorf("cannot prune images in non-interactive mode without --yes")
+			return fmt.Errorf("cannot prune resources in non-interactive mode without --yes")
 		}
-		proceed, err := console.ConfirmDefault("Remove these images?", false)
+		proceed, err := console.ConfirmDefault("Remove these resources?", false)
 		if err != nil {
 			return err
 		}
@@ -63,10 +82,27 @@ func runPrune(cmd *cobra.Command, _ []string) error {
 		}
 	}
 
-	removed, failed := svc.Remove(toRemove)
-	msg := console.SuccessS("\nRemoved %d image(s).", removed)
-	if failed > 0 {
-		msg += " " + console.ErrorS("%d failed.", failed)
+	removedImgs, failedImgs := 0, 0
+	if len(toRemoveImgs) > 0 {
+		removedImgs, failedImgs = svc.Remove(toRemoveImgs)
+	}
+
+	removedNets, failedNets := 0, 0
+	if len(toRemoveNets) > 0 {
+		removedNets, failedNets = svc.RemoveNetworks(toRemoveNets)
+	}
+
+	removedVols, failedVols := 0, 0
+	if len(toRemoveVols) > 0 {
+		removedVols, failedVols = svc.RemoveVolumes(toRemoveVols)
+	}
+
+	removedTotal := removedImgs + removedNets + removedVols
+	failedTotal := failedImgs + failedNets + failedVols
+
+	msg := console.SuccessS("\nRemoved %d resource(s).", removedTotal)
+	if failedTotal > 0 {
+		msg += " " + console.ErrorS("%d failed.", failedTotal)
 	}
 	println(msg)
 	return nil

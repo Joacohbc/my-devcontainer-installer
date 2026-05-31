@@ -53,7 +53,12 @@ func (s RunService) Run(spec QuickRunSpec) error {
 		"--label", types.LabelQuickRun + "=" + spec.Variant,
 	}
 	if spec.Volume != "" {
-		_, _ = docker.DockerInherit([]string{"volume", "create", spec.Volume})
+		_, _ = docker.DockerInherit([]string{
+			"volume", "create",
+			"--label", types.LabelManaged + "=true",
+			"--label", types.LabelQuickRun + "=" + spec.Variant,
+			spec.Volume,
+		})
 		args = append(args, "-v", spec.Volume+":/workspace")
 	}
 	if spec.Port != 0 {

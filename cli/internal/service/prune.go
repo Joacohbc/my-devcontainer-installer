@@ -83,3 +83,151 @@ func (s PruneService) Remove(images []LocalImage) (removed, failed int) {
 	}
 	return removed, failed
 }
+
+// LocalNetwork is one network created by this CLI.
+type LocalNetwork struct {
+	Name    string
+	Project string
+}
+
+// LocalVolume is one volume created by this CLI.
+type LocalVolume struct {
+	Name    string
+	Project string
+}
+
+func listCliNetworks() []LocalNetwork {
+	status, stdout, _, err := docker.DockerCapture([]string{
+		"network", "ls", "--filter", "label=" + types.LabelManaged + "=true",
+		"--format", "{{.Name}}\t{{.Label \"" + types.LabelProject + "\"}}",
+	})
+	if err != nil || status != 0 || strings.TrimSpace(stdout) == "" {
+		return nil
+	}
+	var out []LocalNetwork
+	for _, line := range strings.Split(strings.TrimSpace(stdout), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		parts := strings.SplitN(line, "\t", 2)
+		if len(parts) == 0 || parts[0] == "" {
+			continue
+		}
+		proj := ""
+		if len(parts) > 1 {
+			proj = strings.TrimSpace(parts[1])
+		}
+		out = append(out, LocalNetwork{Name: strings.TrimSpace(parts[0]), Project: proj})
+	}
+	return out
+}
+
+func listCliVolumes() []LocalVolume {
+	status, stdout, _, err := docker.DockerCapture([]string{
+		"volume", "ls", "--filter", "label=" + types.LabelManaged + "=true",
+		"--format", "{{.Name}}\t{{.Label \"" + types.LabelProject + "\"}}",
+	})
+	if err != nil || status != 0 || strings.TrimSpace(stdout) == "" {
+		return nil
+	}
+	var out []LocalVolume
+	for _, line := range strings.Split(strings.TrimSpace(stdout), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		parts := strings.SplitN(line, "\t", 2)
+		if len(parts) == 0 || parts[0] == "" {
+			continue
+		}
+		proj := ""
+		if len(parts) > 1 {
+			proj = strings.TrimSpace(parts[1])
+		}
+		out = append(out, LocalVolume{Name: strings.TrimSpace(parts[0]), Project: proj})
+	}
+	return out
+}
+
+// SelectNetworks returns the networks to remove and whether any managed networks exist.
+func (s PruneService) SelectNetworks(all bool) (toRemove []LocalNetwork, anyExist bool) {
+	networks := listCliNetworks()
+	if len(networks) == 0 {
+		return nil, false
+	}
+	if all {
+		return networks, true
+	}
+
+	liveProjectIDs := map[string]bool{}
+	for _, e := range domain.ListEntries() {
+		if _, err := os.Stat(e.ProjectDir); err == nil {
+			replacer := strings.NewReplacer(":", "_", "/", "_", "@", "_")
+			projectID := replacer.Replace(e.Image)
+			liveProjectIDs[projectID] = true
+		}
+	}
+
+	for _, net := range networks {
+		if net.Project == "" || !liveProjectIDs[net.Project] {
+			toRemove = append(toRemove, net)
+		}
+	}
+	return toRemove, true
+}
+
+// SelectVolumes returns the volumes to remove and whether any managed volumes exist.
+func (s PruneService) SelectVolumes(all bool) (toRemove []LocalVolume, anyExist bool) {
+	volumes := listCliVolumes()
+	if len(volumes) == 0 {
+		return nil, false
+	}
+	if all {
+		return volumes, true
+	}
+
+	liveProjectIDs := map[string]bool{}
+	for _, e := range domain.ListEntries() {
+		if _, err := os.Stat(e.ProjectDir); err == nil {
+			replacer := strings.NewReplacer(":", "_", "/", "_", "@", "_")
+			projectID := replacer.Replace(e.Image)
+			liveProjectIDs[projectID] = true
+		}
+	}
+
+	for _, vol := range volumes {
+		if vol.Project == "" || !liveProjectIDs[vol.Project] {
+			toRemove = append(toRemove, vol)
+		}
+	}
+	return toRemove, true
+}
+
+// RemoveNetworks deletes the given networks.
+func (s PruneService) RemoveNetworks(networks []LocalNetwork) (removed, failed int) {
+	for _, net := range networks {
+		status, _ := docker.DockerInherit([]string{"network", "rm", net.Name})
+		if status == 0 {
+			removed++
+			continue
+		}
+		s.Report.Error("  ✗ Failed to remove network %s", net.Name)
+		failed++
+	}
+	return removed, failed
+}
+
+// RemoveVolumes deletes the given volumes.
+func (s PruneService) RemoveVolumes(volumes []LocalVolume) (removed, failed int) {
+	for _, vol := range volumes {
+		status, _ := docker.DockerInherit([]string{"volume", "rm", vol.Name})
+		if status == 0 {
+			removed++
+			continue
+		}
+		s.Report.Error("  ✗ Failed to remove volume %s", vol.Name)
+		failed++
+	}
+	return removed, failed
+}
