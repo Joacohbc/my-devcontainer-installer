@@ -91,7 +91,7 @@ func (m *stepModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *stepModel) View() string {
-	return m.form.View() + hintStyle.Render("esc go back") + "\n"
+	return m.form.View() + hintStyle.Render(" esc go back") + "\n"
 }
 
 // runStepForm is the real terminal renderer behind Stepper.Run.
