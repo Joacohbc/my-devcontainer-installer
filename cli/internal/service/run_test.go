@@ -10,15 +10,15 @@ func TestRunCreatesWhenAbsent(t *testing.T) {
 	defer useFakeDocker(runner)()
 
 	svc := RunService{Report: nopReporter{}}
-	err := svc.Run(QuickRunSpec{Variant: "ssh", ContainerName: "dc-ssh", Image: "ghcr.io/x/devcontainer-ssh:latest"})
+	err := svc.Run(QuickRunSpec{Variant: "nodejs", ContainerName: "dc-nodejs", Image: "ghcr.io/x/devcontainer-nodejs:latest"})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 	call := runner.callContaining("run")
-	if call == nil || !slices.Contains(call, "--name") || !slices.Contains(call, "dc-ssh") {
+	if call == nil || !slices.Contains(call, "--name") || !slices.Contains(call, "dc-nodejs") {
 		t.Fatalf("unexpected run call: %v", call)
 	}
-	if !slices.Contains(call, "ghcr.io/x/devcontainer-ssh:latest") {
+	if !slices.Contains(call, "ghcr.io/x/devcontainer-nodejs:latest") {
 		t.Errorf("run call missing image: %v", call)
 	}
 }

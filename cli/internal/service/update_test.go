@@ -66,7 +66,7 @@ func TestUpdateOneRemotePulls(t *testing.T) {
 	config := &types.DevcontainerConfig{
 		Mode:      types.BuildModeRemote,
 		Workspace: "ws",
-		Remote:    &types.RemoteConfig{Variant: "ssh"},
+		Remote:    &types.RemoteConfig{Variant: "nodejs"},
 	}
 	svc := UpdateService{Report: nopReporter{}}
 	_, ok := svc.UpdateOne(t.TempDir(), config, false, false)

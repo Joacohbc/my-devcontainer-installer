@@ -14,71 +14,8 @@ permissions:
   packages: write
 
 jobs:
-  # ── Job 1: Build the full devcontainer-ssh image (all modules) ──
-  build-base:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.25'
-          cache-dependency-path: cli/go.sum
-
-      - name: Build CLI
-        working-directory: cli
-        run: go build -o devcontainer-cli ./cmd/devcontainer-cli
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Prepare environment variables
-        run: |
-          echo "REPO_OWNER=${OWNER,,}" >>${GITHUB_ENV}
-          echo "SHORT_SHA=$(echo $GITHUB_SHA | cut -c1-7)" >> $GITHUB_ENV
-          echo "TIMESTAMP=$(date +%Y%m%d-%H%M%S)" >> $GITHUB_ENV
-        env:
-          OWNER: '${{ github.repository_owner }}'
-          GITHUB_SHA: '${{ github.sha }}'
-
-      - name: Generate full Dockerfile
-        run: |
-          ./cli/devcontainer-cli --no-interactive --force \
-            --workspace devcontainer \
-            --with java-temurin,python,go,sqlite,postgres-client,redis-client,mysql-client,mongo-client,bun,claude-code,opencode,codex-cli,antigravity-cli,copilot-cli,pnpm,nodejs,github-cli,tmux,php,rust \
-            --image ghcr.io/${{ env.REPO_OWNER }}/devcontainer-ssh:latest \
-            --no-build
-
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v7
-        with:
-          context: .dc_devcontainer/build
-          push: true
-          platforms: linux/amd64,linux/arm64
-          tags: |
-            ghcr.io/${{ env.REPO_OWNER }}/devcontainer-ssh:latest
-            ghcr.io/${{ env.REPO_OWNER }}/devcontainer-ssh:${{ env.SHORT_SHA }}-${{ env.TIMESTAMP }}
-          labels: |
-            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
-            org.opencontainers.image.description=Full devcontainer with all available modules
-
-  # ── Job 2: Build CLI-generated devcontainer variants ──
-  # Gated on build-base: if the full image fails to build there is no point
-  # spending matrix runners on the variants.
+  # ── Build CLI-generated devcontainer variants ──
   build-variants:
-    needs: build-base
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -86,37 +23,26 @@ jobs:
         include:
           - name: nodejs
             description: "Node.js only"
-            modules: nodejs,pnpm,github-cli,claude-code,opencode,codex-cli,antigravity-cli,copilot-cli,tmux
           - name: bun
             description: "Bun only"
-            modules: bun,pnpm,github-cli,claude-code,opencode,codex-cli,antigravity-cli,copilot-cli,tmux
           - name: java-temurin
             description: "Java Temurin only"
-            modules: java-temurin,github-cli,claude-code,opencode,codex-cli,antigravity-cli,copilot-cli,tmux
           - name: python
             description: "Python only"
-            modules: python,github-cli,claude-code,opencode,codex-cli,antigravity-cli,copilot-cli,tmux
           - name: go
             description: "Go only"
-            modules: go,github-cli,claude-code,opencode,codex-cli,antigravity-cli,copilot-cli,tmux
           - name: node-go
             description: "Node.js + Go"
-            modules: nodejs,pnpm,go,github-cli,claude-code,opencode,codex-cli,antigravity-cli,copilot-cli,tmux
           - name: node-python
             description: "Node.js + Python"
-            modules: nodejs,pnpm,python,github-cli,claude-code,opencode,codex-cli,antigravity-cli,copilot-cli,tmux
           - name: node-java-temurin
-            modules: nodejs,pnpm,java-temurin,github-cli,claude-code,opencode,codex-cli,antigravity-cli,copilot-cli,tmux
             description: "Node.js + Java Temurin"
           - name: bun-go
             description: "Bun + Go"
-            modules: bun,pnpm,go,github-cli,claude-code,opencode,codex-cli,antigravity-cli,copilot-cli,tmux
           - name: bun-python
             description: "Bun + Python"
-            modules: bun,pnpm,python,github-cli,claude-code,opencode,codex-cli,antigravity-cli,copilot-cli,tmux
           - name: bun-java-temurin
             description: "Bun + Java Temurin"
-            modules: bun,pnpm,java-temurin,github-cli,claude-code,opencode,codex-cli,antigravity-cli,copilot-cli,tmux
 
     steps:
       - name: Checkout code
@@ -158,7 +84,7 @@ jobs:
         run: |
           ./cli/devcontainer-cli --no-interactive --force \
             --workspace devcontainer \
-            --with ${{ matrix.modules }} \
+            --preset ${{ matrix.name }} \
             --image ghcr.io/${{ env.REPO_OWNER }}/devcontainer-${{ matrix.name }}:latest \
             --no-build
 

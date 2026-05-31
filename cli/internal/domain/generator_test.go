@@ -481,8 +481,8 @@ func TestGenerateCompose_RemoteModeOmitsBuild(t *testing.T) {
 func TestGenerateCompose_RemoteModeWithDBService(t *testing.T) {
 	cfg := makeConfig(func(c *types.DevcontainerConfig) {
 		c.Mode = types.BuildModeRemote
-		c.Image = "ghcr.io/joacohbc/devcontainer-ssh:latest"
-		c.Remote = &types.RemoteConfig{Variant: "ssh"}
+		c.Image = "ghcr.io/joacohbc/devcontainer-nodejs:latest"
+		c.Remote = &types.RemoteConfig{Variant: "nodejs"}
 		c.Compose.Services = []any{"mongo"}
 		c.Compose.Subnet = "172.25.0.0/24"
 	})
@@ -497,15 +497,15 @@ func TestGenerateCompose_RemoteModeWithDBService(t *testing.T) {
 	}
 }
 
-func TestResolveRemoteImage_SSHVariant(t *testing.T) {
-	got := domain.ResolveRemoteImage("ssh", "ghcr.io/joacohbc/")
-	want := "ghcr.io/joacohbc/devcontainer-ssh:latest"
+func TestResolveRemoteImage_NodeJSVariant(t *testing.T) {
+	got := domain.ResolveRemoteImage("nodejs", "ghcr.io/joacohbc/")
+	want := "ghcr.io/joacohbc/devcontainer-nodejs:latest"
 	if got != want {
 		t.Errorf("expected %q, got %q", want, got)
 	}
 }
 
-func TestResolveRemoteImage_NonSSHVariant(t *testing.T) {
+func TestResolveRemoteImage_NonNodeJSVariant(t *testing.T) {
 	got := domain.ResolveRemoteImage("bun", "ghcr.io/joacohbc/")
 	want := "ghcr.io/joacohbc/devcontainer-bun:latest"
 	if got != want {

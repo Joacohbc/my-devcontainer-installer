@@ -282,7 +282,7 @@ func (w wizardContext) modeStep() Step {
 
 func (w wizardContext) variantStep() Step {
 	return Step{Key: stepKeyVariant, Build: func(s *State) Field {
-		initial := "ssh"
+		initial := "nodejs"
 		if w.base.Remote != nil && w.base.Remote.Variant != "" {
 			initial = w.base.Remote.Variant
 		}

@@ -288,7 +288,7 @@ func initAndConfigure(cwd string, flags *genFlags, svc service.GenerateService) 
 		}
 	} else if flags.interactive && flags.mode == string(types.BuildModeRemote) && flags.variant == "" &&
 		(config.Remote == nil || config.Remote.Variant == "") {
-		picked, perr := console.Select("Image variant:", service.VariantChoices(), service.Option{Value: "ssh"})
+		picked, perr := console.Select("Image variant:", service.VariantChoices(), service.Option{Value: "nodejs"})
 		if perr != nil {
 			return nil, perr
 		}
@@ -508,11 +508,14 @@ func generateService() service.GenerateService {
 func applyGenFlags(config *types.DevcontainerConfig, flags *genFlags) {
 	if flags.preset != "" {
 		p, _ := catalog.Resolve(flags.preset, presetsDir())
-		if flags.withModules == nil && len(p.Modules) > 0 {
+		if flags.withModules == nil {
 			flags.withModules = p.Modules
 		}
-		if flags.services == nil && len(p.Services) > 0 {
+		if flags.services == nil {
 			flags.services = p.Services
+			if flags.services == nil {
+				flags.services = []string{}
+			}
 		}
 		if flags.mode == "" && p.Mode != "" {
 			flags.mode = string(p.Mode)
@@ -558,7 +561,7 @@ func applyGenFlags(config *types.DevcontainerConfig, flags *genFlags) {
 			variant = config.Remote.Variant
 		}
 		if variant == "" {
-			variant = "ssh"
+			variant = "nodejs"
 		}
 		perProject := ""
 		if config.Remote != nil {

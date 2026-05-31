@@ -598,3 +598,30 @@ func TestMaybeUpdateGitignore_AlreadyPresent(t *testing.T) {
 		t.Errorf(".gitignore should be unchanged; got: %q", string(data))
 	}
 }
+
+func TestApplyGenFlags_PresetWithoutServices(t *testing.T) {
+	config := &types.DevcontainerConfig{
+		Dockerfile: types.DockerfileConfig{
+			Modules: []types.SelectedModule{
+				{ID: "golang"},
+			},
+		},
+		Compose: types.ComposeConfig{
+			Services: []any{
+				types.SelectedModule{ID: "postgres"},
+			},
+		},
+	}
+	flags := &genFlags{
+		preset: "nodejs",
+	}
+
+	applyGenFlags(config, flags)
+
+	if len(config.Dockerfile.Modules) != 9 {
+		t.Errorf("expected 9 modules, got %d", len(config.Dockerfile.Modules))
+	}
+	if len(config.Compose.Services) != 0 {
+		t.Errorf("expected 0 services after applying service-less preset, got %d: %v", len(config.Compose.Services), config.Compose.Services)
+	}
+}

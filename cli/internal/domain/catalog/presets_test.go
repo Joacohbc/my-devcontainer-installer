@@ -10,12 +10,12 @@ import (
 )
 
 func TestResolveBuiltin(t *testing.T) {
-	p, ok := catalog.Resolve("fullstack-node", "")
+	p, ok := catalog.Resolve("nodejs", "")
 	if !ok {
-		t.Fatal("expected to resolve fullstack-node")
+		t.Fatal("expected to resolve nodejs")
 	}
-	if p.ID != "fullstack-node" {
-		t.Errorf("expected ID fullstack-node, got %s", p.ID)
+	if p.ID != "nodejs" {
+		t.Errorf("expected ID nodejs, got %s", p.ID)
 	}
 	if p.Source != "builtin" {
 		t.Errorf("expected source builtin, got %s", p.Source)
@@ -68,7 +68,7 @@ func TestLoadUserPresetsIgnoresBroken(t *testing.T) {
 
 func TestUserOverridesBuiltin(t *testing.T) {
 	dir := t.TempDir()
-	content := `id: fullstack-node
+	content := `id: nodejs
 modules: [bun]
 services: [redis]`
 	err := os.WriteFile(filepath.Join(dir, "fs.yml"), []byte(content), 0644)
@@ -76,9 +76,9 @@ services: [redis]`
 		t.Fatalf("failed to write file: %v", err)
 	}
 
-	got, ok := catalog.Resolve("fullstack-node", dir)
+	got, ok := catalog.Resolve("nodejs", dir)
 	if !ok {
-		t.Fatal("failed to resolve fullstack-node")
+		t.Fatal("failed to resolve nodejs")
 	}
 	if got.Source != "user" {
 		t.Errorf("expected source to be user, got %s", got.Source)

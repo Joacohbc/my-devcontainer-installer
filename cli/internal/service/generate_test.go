@@ -59,9 +59,9 @@ func TestPlanRemoteSkipsDockerfile(t *testing.T) {
 
 	config := &types.DevcontainerConfig{
 		Mode:      types.BuildModeRemote,
-		Image:     "ghcr.io/owner/devcontainer-ssh:latest",
+		Image:     "ghcr.io/owner/devcontainer-nodejs:latest",
 		Workspace: "ws",
-		Remote:    &types.RemoteConfig{Variant: "ssh"},
+		Remote:    &types.RemoteConfig{Variant: "nodejs"},
 		Env:       map[string]string{},
 	}
 	svc := GenerateService{Report: nopReporter{}}

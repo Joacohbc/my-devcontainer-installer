@@ -64,7 +64,7 @@ func runQuickRun(cmd *cobra.Command, _ []string) error {
 		}
 		var initial service.Option
 		for _, c := range choices {
-			if c.Value == "ssh" {
+			if c.Value == "nodejs" {
 				initial = c
 				break
 			}

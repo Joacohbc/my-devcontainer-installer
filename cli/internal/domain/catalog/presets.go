@@ -20,28 +20,59 @@ type Preset struct {
 
 var BuiltinPresets = []Preset{
 	{
-		ID:       "fullstack-node",
-		Label:    "Node.js full-stack (Node + Go + Postgres + Redis)",
-		Modules:  []string{"nodejs", "golang"},
-		Services: []string{"postgres", "redis"},
+		ID:      "nodejs",
+		Label:   "Node.js (pnpm, GitHub CLI, Tmux & AI Tools: Claude Code, OpenCode, Codex, Antigravity, Copilot)",
+		Modules: []string{"nodejs", "pnpm", "github-cli", "claude-code", "opencode", "codex-cli", "antigravity-cli", "copilot-cli", "tmux"},
 	},
 	{
-		ID:       "python-data",
-		Label:    "Python data (Python + Postgres)",
-		Modules:  []string{"python"},
-		Services: []string{"postgres"},
+		ID:      "bun",
+		Label:   "Bun (pnpm, GitHub CLI, Tmux & AI Tools: Claude Code, OpenCode, Codex, Antigravity, Copilot)",
+		Modules: []string{"bun", "pnpm", "github-cli", "claude-code", "opencode", "codex-cli", "antigravity-cli", "copilot-cli", "tmux"},
 	},
 	{
-		ID:       "node-mongo",
-		Label:    "Node.js + MongoDB",
-		Modules:  []string{"nodejs"},
-		Services: []string{"mongo"},
+		ID:      "java-temurin",
+		Label:   "Java Temurin (GitHub CLI, Tmux & AI Tools: Claude Code, OpenCode, Codex, Antigravity, Copilot)",
+		Modules: []string{"java-temurin", "github-cli", "claude-code", "opencode", "codex-cli", "antigravity-cli", "copilot-cli", "tmux"},
 	},
 	{
-		ID:       "go-only",
-		Label:    "Go only",
-		Modules:  []string{"golang"},
-		Services: nil,
+		ID:      "python",
+		Label:   "Python (GitHub CLI, Tmux & AI Tools: Claude Code, OpenCode, Codex, Antigravity, Copilot)",
+		Modules: []string{"python", "github-cli", "claude-code", "opencode", "codex-cli", "antigravity-cli", "copilot-cli", "tmux"},
+	},
+	{
+		ID:      "go",
+		Label:   "Go (GitHub CLI, Tmux & AI Tools: Claude Code, OpenCode, Codex, Antigravity, Copilot)",
+		Modules: []string{"go", "github-cli", "claude-code", "opencode", "codex-cli", "antigravity-cli", "copilot-cli", "tmux"},
+	},
+	{
+		ID:      "node-go",
+		Label:   "Node.js + Go (pnpm, GitHub CLI, Tmux & AI Tools: Claude Code, OpenCode, Codex, Antigravity, Copilot)",
+		Modules: []string{"nodejs", "pnpm", "go", "github-cli", "claude-code", "opencode", "codex-cli", "antigravity-cli", "copilot-cli", "tmux"},
+	},
+	{
+		ID:      "node-python",
+		Label:   "Node.js + Python (pnpm, GitHub CLI, Tmux & AI Tools: Claude Code, OpenCode, Codex, Antigravity, Copilot)",
+		Modules: []string{"nodejs", "pnpm", "python", "github-cli", "claude-code", "opencode", "codex-cli", "antigravity-cli", "copilot-cli", "tmux"},
+	},
+	{
+		ID:      "node-java-temurin",
+		Label:   "Node.js + Java Temurin (pnpm, GitHub CLI, Tmux & AI Tools: Claude Code, OpenCode, Codex, Antigravity, Copilot)",
+		Modules: []string{"nodejs", "pnpm", "java-temurin", "github-cli", "claude-code", "opencode", "codex-cli", "antigravity-cli", "copilot-cli", "tmux"},
+	},
+	{
+		ID:      "bun-go",
+		Label:   "Bun + Go (pnpm, GitHub CLI, Tmux & AI Tools: Claude Code, OpenCode, Codex, Antigravity, Copilot)",
+		Modules: []string{"bun", "pnpm", "go", "github-cli", "claude-code", "opencode", "codex-cli", "antigravity-cli", "copilot-cli", "tmux"},
+	},
+	{
+		ID:      "bun-python",
+		Label:   "Bun + Python (pnpm, GitHub CLI, Tmux & AI Tools: Claude Code, OpenCode, Codex, Antigravity, Copilot)",
+		Modules: []string{"bun", "pnpm", "python", "github-cli", "claude-code", "opencode", "codex-cli", "antigravity-cli", "copilot-cli", "tmux"},
+	},
+	{
+		ID:      "bun-java-temurin",
+		Label:   "Bun + Java Temurin (pnpm, GitHub CLI, Tmux & AI Tools: Claude Code, OpenCode, Codex, Antigravity, Copilot)",
+		Modules: []string{"bun", "pnpm", "java-temurin", "github-cli", "claude-code", "opencode", "codex-cli", "antigravity-cli", "copilot-cli", "tmux"},
 	},
 }
 

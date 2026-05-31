@@ -96,7 +96,6 @@ const (
 var BuildModes = []BuildMode{BuildModeLocalCached, BuildModeRemote}
 
 var RemoteVariants = []string{
-	"ssh",
 	"nodejs",
 	"bun",
 	"java-temurin",
@@ -111,7 +110,6 @@ var RemoteVariants = []string{
 }
 
 var VariantLabels = map[string]string{
-	"ssh":               "ssh — full image (all modules)",
 	"nodejs":            "nodejs — Node.js only",
 	"bun":               "bun — Bun only",
 	"java-temurin":      "java-temurin — Java Temurin only",
