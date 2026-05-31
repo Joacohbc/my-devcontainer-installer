@@ -31,7 +31,8 @@ func runConfigImport(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	svc := service.ConfigService{Report: ui.Console{}}
+	console := ui.Console{}
+	svc := service.ConfigService{Report: console}
 	cfg, err := svc.ParseConfigYAML(data)
 	if err != nil {
 		return err
@@ -49,12 +50,12 @@ func runConfigImport(cmd *cobra.Command, args []string) error {
 				return fmt.Errorf("devcontainer.config.json exists. Pass --force or --yes")
 			}
 		} else {
-			ok, err := ui.Confirm("devcontainer.config.json exists. Overwrite?", false)
+			ok, err := console.ConfirmDefault("devcontainer.config.json exists. Overwrite?", false)
 			if err != nil {
 				return err
 			}
 			if !ok {
-				ui.Cancelled()
+				console.Cancelled()
 				return nil
 			}
 		}

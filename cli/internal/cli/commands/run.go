@@ -44,6 +44,7 @@ func runQuickRun(cmd *cobra.Command, _ []string) error {
 	port, _ := cmd.Flags().GetInt("port")
 	registry, _ := cmd.Flags().GetString("registry")
 	interactive := interactiveFlag(cmd)
+	console := ui.Console{}
 
 	if port < 0 || port > 65535 {
 		return fmt.Errorf("invalid --port value")
@@ -68,7 +69,7 @@ func runQuickRun(cmd *cobra.Command, _ []string) error {
 				break
 			}
 		}
-		picked, err := ui.Select("Image variant:", choices, initial)
+		picked, err := console.Select("Image variant:", choices, initial)
 		if err != nil {
 			return err
 		}
@@ -82,18 +83,18 @@ func runQuickRun(cmd *cobra.Command, _ []string) error {
 		containerName = "dc-" + variant
 	}
 
-	ui.Header(fmt.Sprintf("\nQuick run: %s", image))
+	console.Header("\nQuick run: %s", image)
 	fmt.Println()
-	fmt.Printf(ui.Subtle("  Container : %s\n"), containerName)
+	fmt.Printf(console.Subtle("  Container : %s\n"), containerName)
 	if volume != "" {
-		fmt.Printf(ui.Subtle("  Volume    : %s → /workspace\n"), volume)
+		fmt.Printf(console.Subtle("  Volume    : %s → /workspace\n"), volume)
 	}
 	if port != 0 {
-		fmt.Printf(ui.Subtle("  Port      : %d:22\n"), port)
+		fmt.Printf(console.Subtle("  Port      : %d:22\n"), port)
 	}
 	println()
 
-	svc := service.RunService{Report: ui.Console{}}
+	svc := service.RunService{Report: console}
 	if err := svc.Run(service.QuickRunSpec{
 		Variant:       variant,
 		ContainerName: containerName,
@@ -105,20 +106,20 @@ func runQuickRun(cmd *cobra.Command, _ []string) error {
 	}
 
 	println()
-	printRunNextSteps(containerName)
+	printRunNextSteps(console, containerName)
 	return nil
 }
 
-func printRunNextSteps(containerName string) {
-	ui.Bar()
-	ui.Success("Container running.")
+func printRunNextSteps(console ui.Console, containerName string) {
+	console.Bar()
+	console.Success("Container running.")
 	fmt.Println()
-	fmt.Println(ui.Bold("Next: set up SSH access"))
-	fmt.Printf(ui.Subtle("   $ devcontainer-cli setup-ssh --container %s\n"), containerName)
+	fmt.Println(console.Bold("Next: set up SSH access"))
+	fmt.Printf(console.Subtle("   $ devcontainer-cli setup-ssh --container %s\n"), containerName)
 	fmt.Println()
-	fmt.Println(ui.Bold("Post-install scripts (baked into the image, run on demand):"))
-	fmt.Printf(ui.Subtle("   $ docker exec -it %s ls ~/post-script\n"), containerName)
-	fmt.Printf(ui.Subtle("   $ docker exec -it -u devuser %s bash ~/post-script/login-github-cli.sh\n"), containerName)
-	ui.Bar()
+	fmt.Println(console.Bold("Post-install scripts (baked into the image, run on demand):"))
+	fmt.Printf(console.Subtle("   $ docker exec -it %s ls ~/post-script\n"), containerName)
+	fmt.Printf(console.Subtle("   $ docker exec -it -u devuser %s bash ~/post-script/login-github-cli.sh\n"), containerName)
+	console.Bar()
 	fmt.Println()
 }

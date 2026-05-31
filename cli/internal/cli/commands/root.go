@@ -9,7 +9,6 @@ import (
 	"github.com/charmbracelet/log"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/logger"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/sshhelp"
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/ui"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/catalog"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
@@ -237,7 +236,7 @@ func runGenerate(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
-	ui.Header("\nDevContainer Dockerfile Builder")
+	console.Header("\nDevContainer Dockerfile Builder")
 	fmt.Println()
 
 	cwd, err := currentDir()
@@ -258,13 +257,13 @@ func runGenerate(cmd *cobra.Command, _ []string) error {
 		(existing == nil && flags.interactive && len(flags.withModules) == 0 && flags.mode == "")
 
 	if needsPrompts {
-		config, err = svc.Configure(config, cwd, ui.Console{})
+		config, err = svc.Configure(config, cwd, console)
 		if err != nil {
 			return err
 		}
 	} else if flags.interactive && flags.mode == string(types.BuildModeRemote) && flags.variant == "" &&
 		(config.Remote == nil || config.Remote.Variant == "") {
-		picked, perr := ui.Select("Image variant:", service.VariantChoices(), service.Option{Value: "ssh"})
+		picked, perr := console.Select("Image variant:", service.VariantChoices(), service.Option{Value: "ssh"})
 		if perr != nil {
 			return perr
 		}
@@ -311,12 +310,12 @@ func runGenerate(cmd *cobra.Command, _ []string) error {
 
 	conflicts := svc.NameConflicts(config)
 	if len(conflicts) > 0 {
-		ui.Yellow("\nDocker name conflicts detected:")
+		console.Warn("\nDocker name conflicts detected:")
 		for _, c := range conflicts {
-			ui.Yellow("   - %s '%s' already exists (project: %s)", c.Kind, c.Name, c.Owner)
+			console.Warn("   - %s '%s' already exists (project: %s)", c.Kind, c.Name, c.Owner)
 		}
 		if flags.interactive {
-			ok, perr := ui.Confirm("Continue anyway?", false)
+			ok, perr := console.ConfirmDefault("Continue anyway?", false)
 			if perr != nil {
 				return perr
 			}
@@ -385,17 +384,17 @@ func runGenerate(cmd *cobra.Command, _ []string) error {
 	}
 
 	if plan.Dockerfile == "" {
-		fmt.Printf(ui.Subtle("Skipped Dockerfile (mode=%s).\n"), config.Mode)
+		fmt.Printf(console.Subtle("Skipped Dockerfile (mode=%s).\n"), config.Mode)
 	} else {
 		ow, oerr := maybeOverwrite(paths.DockerfilePath, "Dockerfile", flags.interactive, flags.force)
 		if oerr != nil {
 			return oerr
 		}
 		if !ow {
-			ui.Yellow("Skipped Dockerfile.")
+			console.Warn("Skipped Dockerfile.")
 		} else {
 			writeOutput(paths.DockerfilePath, plan.Dockerfile, true)
-			ui.Green("Dockerfile generated.")
+			console.Success("Dockerfile generated.")
 		}
 	}
 
@@ -404,16 +403,16 @@ func runGenerate(cmd *cobra.Command, _ []string) error {
 		return oerr
 	}
 	if !ow {
-		ui.Yellow("Skipped docker-compose.yml.")
+		console.Warn("Skipped docker-compose.yml.")
 	} else {
 		writeOutput(paths.ComposeFile, plan.Compose, true)
-		ui.Green("docker-compose.yml generated.")
+		console.Success("docker-compose.yml generated.")
 	}
 
 	if len(config.Env) > 0 || config.Compose.Subnet != "" {
 		_, statErr := os.Stat(paths.EnvPath)
 		if statErr == nil && flags.interactive {
-			ok, cerr := ui.Confirm(".env exists. Overwrite?", false)
+			ok, cerr := console.ConfirmDefault(".env exists. Overwrite?", false)
 			if cerr != nil {
 				return cerr
 			}
@@ -423,13 +422,13 @@ func runGenerate(cmd *cobra.Command, _ []string) error {
 		} else {
 			os.WriteFile(paths.EnvPath, []byte(plan.Env), 0o644)
 		}
-		ui.Green(".env written.")
+		console.Success(".env written.")
 	}
 
 	if err := domain.SaveConfig(config, cwd); err != nil {
 		return err
 	}
-	ui.Green("Saved devcontainer.config.json")
+	console.Success("Saved devcontainer.config.json")
 
 	if flags.interactive {
 		if err := maybeUpdateGitignore(cwd, config.Workspace); err != nil {
@@ -444,14 +443,14 @@ func runGenerate(cmd *cobra.Command, _ []string) error {
 	if plan.CachedImageHit && build == nil {
 		skip := false
 		build = &skip
-		ui.Green("✓ Local-cached image is up to date — skipping build.")
+		console.Success("✓ Local-cached image is up to date — skipping build.")
 	}
 	if build == nil && flags.interactive {
 		label := "Run 'docker compose build' now?"
 		if isRemote {
 			label = "Run 'docker compose pull' now?"
 		}
-		ans, cerr := ui.Confirm(label, true)
+		ans, cerr := console.ConfirmDefault(label, true)
 		if cerr != nil {
 			return cerr
 		}
@@ -460,20 +459,20 @@ func runGenerate(cmd *cobra.Command, _ []string) error {
 
 	if build != nil && *build {
 		if berr := svc.Build(paths.ComposeFile, isRemote); berr != nil {
-			ui.Yellow("%s", berr.Error())
+			console.Warn("%s", berr.Error())
 			return nil
 		}
 	}
 	domain.RecordProject(cwd, config, "")
 	if build == nil || !*build {
-		ui.Done()
+		console.Done()
 	}
 	sshhelp.Print(config.Workspace)
 	return nil
 }
 
 func generateService() service.GenerateService {
-	return service.GenerateService{Report: ui.Console{}}
+	return service.GenerateService{Report: console}
 }
 
 func applyGenFlags(config *types.DevcontainerConfig, flags *genFlags) {
@@ -568,7 +567,7 @@ func maybeOverwrite(filePath, label string, interactive, force bool) (bool, erro
 	if !interactive {
 		return false, fmt.Errorf("%s exists and is not auto-generated. Use --force or remove it", label)
 	}
-	return ui.Confirm(fmt.Sprintf("%s exists and was not generated by this CLI. Overwrite?", label), false)
+	return console.ConfirmDefault(fmt.Sprintf("%s exists and was not generated by this CLI. Overwrite?", label), false)
 }
 
 // gitignoreEntries are the patterns added when the user accepts the gitignore prompt.
@@ -605,12 +604,12 @@ func maybeUpdateGitignore(cwd, workspace string) error {
 
 	_ = workspace // workspace is available if we want per-workspace entries later
 	fmt.Println()
-	ui.Warn("Git repo detected. The following patterns are not in .gitignore:")
+	console.Warn("Git repo detected. The following patterns are not in .gitignore:")
 	for _, e := range missing {
-		fmt.Printf("  %s\n", ui.Subtle(e))
+		fmt.Printf("  %s\n", console.Subtle(e))
 	}
 
-	ok, err := ui.Confirm("Add them to .gitignore?", true)
+	ok, err := console.ConfirmDefault("Add them to .gitignore?", true)
 	if err != nil {
 		return err
 	}
@@ -627,22 +626,22 @@ func maybeUpdateGitignore(cwd, workspace string) error {
 	if _, err := f.WriteString(block); err != nil {
 		return fmt.Errorf("could not write .gitignore: %w", err)
 	}
-	ui.Green(".gitignore updated.")
+	console.Success(".gitignore updated.")
 	return nil
 }
 
 func printLayoutMessage(workspace string, hasPostScripts bool) {
 	root := ".dc_" + workspace
 	fmt.Println()
-	ui.Bar()
-	ui.Header(fmt.Sprintf("Generated layout under %s/", root))
-	ui.Bar()
-	fmt.Printf("  %s        Dockerfile, docker-compose.yml, .env, helper .sh\n", ui.Bold("build/"))
-	fmt.Printf("               %s\n", ui.Subtle(fmt.Sprintf("→ docker compose -f %s/build/docker-compose.yml up -d", root)))
+	console.Bar()
+	console.Header("Generated layout under %s/", root)
+	console.Bar()
+	fmt.Printf("  %s        Dockerfile, docker-compose.yml, .env, helper .sh\n", console.Bold("build/"))
+	fmt.Printf("               %s\n", console.Subtle(fmt.Sprintf("→ docker compose -f %s/build/docker-compose.yml up -d", root)))
 	if hasPostScripts {
-		fmt.Printf("  %s  Baked into the image, run them inside the container\n", ui.Bold("post-script"))
-		fmt.Printf("               %s\n", ui.Subtle("→ ~/post-script/<script>.sh"))
+		fmt.Printf("  %s  Baked into the image, run them inside the container\n", console.Bold("post-script"))
+		fmt.Printf("               %s\n", console.Subtle("→ ~/post-script/<script>.sh"))
 	}
-	ui.Bar()
+	console.Bar()
 	fmt.Println()
 }

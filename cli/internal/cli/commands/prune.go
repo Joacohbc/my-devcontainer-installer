@@ -30,21 +30,22 @@ Use --all to remove every devcontainer-cli/* image regardless.`,
 func runPrune(cmd *cobra.Command, _ []string) error {
 	all, _ := cmd.Flags().GetBool("all")
 
-	svc := service.PruneService{Report: ui.Console{}}
+	console := ui.Console{}
+	svc := service.PruneService{Report: console}
 	toRemove, anyExist := svc.SelectImages(all)
 	if !anyExist {
-		fmt.Println(ui.Subtle("No devcontainer-cli/* images found locally."))
+		fmt.Println(console.Subtle("No devcontainer-cli/* images found locally."))
 		return nil
 	}
 	if len(toRemove) == 0 {
-		fmt.Println(ui.Subtle("No orphan devcontainer-cli/* images found."))
-		fmt.Println(ui.Subtle("Use --all to remove every devcontainer-cli/* image."))
+		fmt.Println(console.Subtle("No orphan devcontainer-cli/* images found."))
+		fmt.Println(console.Subtle("Use --all to remove every devcontainer-cli/* image."))
 		return nil
 	}
 
-	ui.Yellow("\nImages to remove (%d):", len(toRemove))
+	console.Warn("\nImages to remove (%d):", len(toRemove))
 	for _, img := range toRemove {
-		fmt.Printf(ui.Subtle("  %s  (%s)\n"), img.Ref, img.ID)
+		fmt.Printf(console.Subtle("  %s  (%s)\n"), img.Ref, img.ID)
 	}
 	println()
 
@@ -52,20 +53,20 @@ func runPrune(cmd *cobra.Command, _ []string) error {
 		if !interactiveFlag(cmd) {
 			return fmt.Errorf("cannot prune images in non-interactive mode without --yes")
 		}
-		proceed, err := ui.Confirm("Remove these images?", false)
+		proceed, err := console.ConfirmDefault("Remove these images?", false)
 		if err != nil {
 			return err
 		}
 		if !proceed {
-			ui.Cancelled()
+			console.Cancelled()
 			return nil
 		}
 	}
 
 	removed, failed := svc.Remove(toRemove)
-	msg := ui.GreenS("\nRemoved %d image(s).", removed)
+	msg := console.SuccessS("\nRemoved %d image(s).", removed)
 	if failed > 0 {
-		msg += " " + ui.RedS("%d failed.", failed)
+		msg += " " + console.ErrorS("%d failed.", failed)
 	}
 	println(msg)
 	return nil

@@ -44,7 +44,8 @@ func resolveRemoveVolumes(volumesFlag, yes, interactive bool, confirm func() (bo
 
 func runDown(cmd *cobra.Command, _ []string) error {
 	wsFlag, _ := cmd.Flags().GetString("workspace")
-	svc := service.LifecycleService{Report: ui.Console{}}
+	console := ui.Console{}
+	svc := service.LifecycleService{Report: console}
 
 	if cmd.Flags().Changed("container") {
 		containerName, err := resolveContainer(cmd, wsFlag)
@@ -54,7 +55,7 @@ func runDown(cmd *cobra.Command, _ []string) error {
 		if err := svc.RemoveContainer(containerName); err != nil {
 			return err
 		}
-		ui.Done()
+		console.Done()
 		return nil
 	}
 
@@ -71,7 +72,7 @@ func runDown(cmd *cobra.Command, _ []string) error {
 
 	volumesFlag, _ := cmd.Flags().GetBool("volumes")
 	removeVolumes, err := resolveRemoveVolumes(volumesFlag, yesFlag(cmd), interactiveFlag(cmd), func() (bool, error) {
-		return ui.Confirm("Also remove named volumes for '"+workspace+"'? This deletes their data.", false)
+		return console.ConfirmDefault("Also remove named volumes for '"+workspace+"'? This deletes their data.", false)
 	})
 	if err != nil {
 		return err
@@ -80,6 +81,6 @@ func runDown(cmd *cobra.Command, _ []string) error {
 	if err := svc.Down(composeFile, workspace, removeVolumes); err != nil {
 		return err
 	}
-	ui.Done()
+	console.Done()
 	return nil
 }

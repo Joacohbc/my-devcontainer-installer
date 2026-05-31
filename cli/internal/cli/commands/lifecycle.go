@@ -34,10 +34,11 @@ func runLifecycle(verb string) error {
 	if err != nil {
 		return err
 	}
-	svc := service.LifecycleService{Report: ui.Console{}}
+	console := ui.Console{}
+	svc := service.LifecycleService{Report: console}
 	if err := svc.Compose(composeFile, verb); err != nil {
 		return err
 	}
-	ui.Done()
+	console.Done()
 	return nil
 }

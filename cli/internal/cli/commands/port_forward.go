@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/pick"
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/ui"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/service"
 	"github.com/spf13/cobra"
 )
@@ -240,11 +239,11 @@ func pickContainerFromList(containers []pick.Container, message string) (pick.Co
 	for i, c := range containers {
 		tag := "              "
 		if c.Managed {
-			tag = ui.GreenS("(devcontainer)")
+			tag = console.SuccessS("(devcontainer)")
 		}
-		choices[i] = service.Option{Value: c.Name, Label: fmt.Sprintf("%s  %s  %s  %s", c.Name, tag, ui.Subtle(c.Image), pick.StatusLabel(c))}
+		choices[i] = service.Option{Value: c.Name, Label: fmt.Sprintf("%s  %s  %s  %s", c.Name, tag, console.Subtle(c.Image), pick.StatusLabel(c))}
 	}
-	chosen, err := ui.Select(message, choices, choices[0])
+	chosen, err := console.Select(message, choices, choices[0])
 	if err != nil {
 		return pick.Container{}, err
 	}
@@ -267,7 +266,7 @@ func resolveTarget(container pick.Container, aliases []string, containers []pick
 		switch {
 		case len(candidates) == 1:
 			*jumpHost = candidates[0]
-			ui.Cyan("Using SSH jump host '%s'.", *jumpHost)
+			console.Info("Using SSH jump host '%s'.", *jumpHost)
 		case len(candidates) > 1:
 			if !interactive {
 				return "", "", fmt.Errorf("multiple SSH jump hosts available; specify --alias")
@@ -276,7 +275,7 @@ func resolveTarget(container pick.Container, aliases []string, containers []pick
 			for i, a := range candidates {
 				choices[i] = service.Option{Value: a, Label: a}
 			}
-			sel, serr := ui.Select("Select the devcontainer SSH host to tunnel through:", choices, choices[0])
+			sel, serr := console.Select("Select the devcontainer SSH host to tunnel through:", choices, choices[0])
 			if serr != nil {
 				return "", "", serr
 			}
@@ -285,7 +284,7 @@ func resolveTarget(container pick.Container, aliases []string, containers []pick
 			if !interactive {
 				return "", "", fmt.Errorf("no devcontainer SSH alias found to tunnel through '%s'. Run 'setup-ssh' first or specify --alias", container.Name)
 			}
-			in, ierr := ui.Input(fmt.Sprintf("No devcontainer SSH alias found to reach '%s'. Enter SSH alias to tunnel through:", container.Name), "", func(v string) error {
+			in, ierr := console.AskDefault(fmt.Sprintf("No devcontainer SSH alias found to reach '%s'. Enter SSH alias to tunnel through:", container.Name), "", func(v string) error {
 				if strings.TrimSpace(v) == "" {
 					return fmt.Errorf("SSH alias cannot be empty")
 				}
@@ -318,7 +317,7 @@ func buildTunnelsInteractive(flagAlias string, interactive bool) ([]service.Tunn
 			if container.Managed {
 				tag = " (devcontainer)"
 			}
-			ui.Cyan("Using container: %s%s", container.Name, tag)
+			console.Info("Using container: %s%s", container.Name, tag)
 		} else {
 			container, err = pickContainerFromList(containers, "Select a container to forward from:")
 			if err != nil {
@@ -331,7 +330,7 @@ func buildTunnelsInteractive(flagAlias string, interactive bool) ([]service.Tunn
 			return nil, terr
 		}
 
-		portsStr, ierr := ui.Input(fmt.Sprintf("Ports to forward from '%s' (e.g. 3000, 8080:80):", container.Name), "", func(v string) error {
+		portsStr, ierr := console.AskDefault(fmt.Sprintf("Ports to forward from '%s' (e.g. 3000, 8080:80):", container.Name), "", func(v string) error {
 			_, e := parsePortsList(v)
 			return e
 		})
@@ -350,7 +349,7 @@ func buildTunnelsInteractive(flagAlias string, interactive bool) ([]service.Tunn
 			})
 		}
 
-		more, merr := ui.Confirm("Add ports from another container?", false)
+		more, merr := console.ConfirmDefault("Add ports from another container?", false)
 		if merr != nil {
 			return nil, merr
 		}
@@ -362,17 +361,17 @@ func buildTunnelsInteractive(flagAlias string, interactive bool) ([]service.Tunn
 }
 
 func printTunnelPlan(tunnels []service.Tunnel) {
-	ui.Cyan("\nPort forwarding plan:")
+	console.Info("\nPort forwarding plan:")
 	for _, t := range tunnels {
 		tag := "              "
 		if t.IsDevcontainer {
-			tag = ui.GreenS("(devcontainer)")
+			tag = console.SuccessS("(devcontainer)")
 		}
 		fmt.Printf("  %s  %s  %s → %s:%d  %s\n",
 			t.ContainerName, tag,
-			ui.YellowS("localhost:%d", t.LocalPort),
+			console.WarnS("localhost:%d", t.LocalPort),
 			t.TargetHost, t.ContainerPort,
-			ui.Subtle(fmt.Sprintf("(via %s)", t.Alias)))
+			console.Subtle(fmt.Sprintf("(via %s)", t.Alias)))
 	}
 	fmt.Println()
 }
@@ -395,16 +394,16 @@ func runPortForward(cmd *cobra.Command, args []string) error {
 			return err
 		}
 		printTunnelPlan(tunnels)
-		ok, cerr := ui.Confirm(fmt.Sprintf("Open %d tunnel(s) now?", len(tunnels)), true)
+		ok, cerr := console.ConfirmDefault(fmt.Sprintf("Open %d tunnel(s) now?", len(tunnels)), true)
 		if cerr != nil {
 			return cerr
 		}
 		if !ok {
-			ui.Yellow("Aborted. No tunnels were opened.")
+			console.Warn("Aborted. No tunnels were opened.")
 			return nil
 		}
-		ui.Green("Press Ctrl+C to terminate the port forwarding session.\n")
-		return service.PortForwardService{Report: ui.Console{}}.OpenTunnels(tunnels)
+		console.Success("Press Ctrl+C to terminate the port forwarding session.\n")
+		return service.PortForwardService{Report: console}.OpenTunnels(tunnels)
 	}
 
 	if portMapping == "" {
@@ -438,7 +437,7 @@ func runPortForward(cmd *cobra.Command, args []string) error {
 			if !interactive {
 				return fmt.Errorf("no SSH aliases found in config. Run 'setup-ssh' first or specify --alias")
 			}
-			alias, err = ui.Input(fmt.Sprintf("No SSH alias found for '%s'. Enter alias manually:", container.Name), candidate, func(v string) error {
+			alias, err = console.AskDefault(fmt.Sprintf("No SSH alias found for '%s'. Enter alias manually:", container.Name), candidate, func(v string) error {
 				if strings.TrimSpace(v) == "" {
 					return fmt.Errorf("SSH alias cannot be empty")
 				}
@@ -449,7 +448,7 @@ func runPortForward(cmd *cobra.Command, args []string) error {
 			}
 		case len(aliases) == 1:
 			alias = aliases[0]
-			ui.Cyan("Using SSH alias '%s'.", alias)
+			console.Info("Using SSH alias '%s'.", alias)
 		default:
 			if !interactive {
 				return fmt.Errorf("SSH alias '%s' not found in ~/.ssh/config. Specify --alias or run interactively", candidate)
@@ -458,7 +457,7 @@ func runPortForward(cmd *cobra.Command, args []string) error {
 			for i, a := range aliases {
 				choices[i] = service.Option{Value: a, Label: a}
 			}
-			chosen, serr := ui.Select(fmt.Sprintf("Select SSH alias for container '%s':", container.Name), choices, choices[0])
+			chosen, serr := console.Select(fmt.Sprintf("Select SSH alias for container '%s':", container.Name), choices, choices[0])
 			if serr != nil {
 				return serr
 			}
@@ -475,6 +474,6 @@ func runPortForward(cmd *cobra.Command, args []string) error {
 		IsDevcontainer: true,
 	}
 	printTunnelPlan([]service.Tunnel{tunnel})
-	ui.Green("Press Ctrl+C to terminate the port forwarding session.\n")
-	return service.PortForwardService{Report: ui.Console{}}.OpenTunnels([]service.Tunnel{tunnel})
+	console.Success("Press Ctrl+C to terminate the port forwarding session.\n")
+	return service.PortForwardService{Report: console}.OpenTunnels([]service.Tunnel{tunnel})
 }

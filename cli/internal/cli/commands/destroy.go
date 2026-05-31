@@ -38,11 +38,12 @@ func runDestroy(cmd *cobra.Command, _ []string) error {
 	paths := project.ProjectPaths(cwd, workspace)
 	cfgPath := domain.ConfigPath(cwd)
 
+	console := ui.Console{}
 	if !yesFlag(cmd) {
 		if !interactiveFlag(cmd) {
 			return fmt.Errorf("destroy is irreversible; pass --yes to confirm in non-interactive mode")
 		}
-		proceed, err := ui.Confirm(
+		proceed, err := console.ConfirmDefault(
 			fmt.Sprintf("Destroy '%s'? Removes containers, volumes, .dc_%s/ and devcontainer.config.json.", workspace, workspace),
 			false,
 		)
@@ -50,12 +51,12 @@ func runDestroy(cmd *cobra.Command, _ []string) error {
 			return err
 		}
 		if !proceed {
-			ui.Cancelled()
+			console.Cancelled()
 			return nil
 		}
 	}
 
-	svc := service.DestroyService{Report: ui.Console{}}
+	svc := service.DestroyService{Report: console}
 	return svc.Run(service.DestroyTarget{
 		Workspace:   workspace,
 		ComposeFile: paths.ComposeFile,

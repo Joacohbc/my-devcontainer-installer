@@ -34,8 +34,16 @@ func (Console) Ask(prompt string) (string, error) {
 	return Input(prompt, "", nil)
 }
 
+func (Console) AskDefault(prompt string, initial string, validate func(string) error) (string, error) {
+	return Input(prompt, initial, validate)
+}
+
 func (Console) Confirm(prompt string) (bool, error) {
 	return Confirm(prompt, false)
+}
+
+func (Console) ConfirmDefault(prompt string, initial bool) (bool, error) {
+	return Confirm(prompt, initial)
 }
 
 func (Console) Multiselect(prompt string, choices []sv.Option, initial []sv.Option) ([]sv.Option, error) {
@@ -48,4 +56,52 @@ func (Console) Select(prompt string, choices []sv.Option, initial sv.Option) (sv
 
 func (Console) Wizard(build func(*sv.State) []sv.Step) (*sv.State, error) {
 	return NewStepper(build).Run()
+}
+
+func (Console) Done() {
+	Done()
+}
+
+func (Console) Cancelled() {
+	Cancelled()
+}
+
+func (Console) Header(format string, args ...any) {
+	Header(fmt.Sprintf(format, args...))
+}
+
+func (Console) Bar() {
+	Bar()
+}
+
+func (Console) Bold(s string) string {
+	return Bold(s)
+}
+
+func (Console) Subtle(s string) string {
+	return Subtle(s)
+}
+
+func (Console) SuccessS(format string, args ...any) string {
+	return GreenS(format, args...)
+}
+
+func (Console) WarnS(format string, args ...any) string {
+	return YellowS(format, args...)
+}
+
+func (Console) ErrorS(format string, args ...any) string {
+	return RedS(format, args...)
+}
+
+func (Console) InfoS(format string, args ...any) string {
+	return CyanS(format, args...)
+}
+
+func (Console) Ok(s string) {
+	Ok(s)
+}
+
+func (Console) Log(s string) {
+	Log(s)
 }

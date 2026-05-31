@@ -1,14 +1,16 @@
-// Package commands wires every CLI subcommand into a Cobra command tree. Each
-// command file registers itself via register() in an init() func, so the
-// package compiles even while individual commands are still being added.
 package commands
 
 import (
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/ui"
 	"github.com/spf13/cobra"
 )
 
 // version is the CLI version, injected by NewRootCommand at startup.
 var version = "dev"
+
+// console is the package-wide Console instance used by commands to interact
+// with the terminal, style output, and prompt users.
+var console = ui.Console{}
 
 // subcommands collects every registered subcommand. Command files append to it
 // from their init() func.

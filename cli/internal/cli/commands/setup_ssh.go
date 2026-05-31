@@ -12,7 +12,6 @@ import (
 
 	"github.com/goccy/go-yaml"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/pick"
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/ui"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/sshdefaults"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/service"
@@ -135,7 +134,7 @@ func collectSetupSshFlags(cmd *cobra.Command) (*setupSshFlags, error) {
 }
 
 func which(bin string) bool {
-	return service.SshService{Report: ui.Console{}}.CommandExists(bin)
+	return service.SshService{Report: console}.CommandExists(bin)
 }
 
 type composeServiceInfo struct {
@@ -245,7 +244,7 @@ func resolveTargetService(f *setupSshFlags) (composeServiceInfo, error) {
 		}
 		choices[i] = service.Option{Value: key, Label: label}
 	}
-	chosen, err := ui.Select("Select SSH service:", choices, service.Option{Value: keys[0]})
+	chosen, err := console.Select("Select SSH service:", choices, service.Option{Value: keys[0]})
 	if err != nil {
 		return composeServiceInfo{}, err
 	}
@@ -277,7 +276,7 @@ func checkPrereqs(mode string) error {
 }
 
 func stackRunning(container string) bool {
-	return service.SshService{Report: ui.Console{}}.ContainerRunning(container)
+	return service.SshService{Report: console}.ContainerRunning(container)
 }
 
 func ensureStack(f *setupSshFlags, mode string) error {
@@ -285,10 +284,10 @@ func ensureStack(f *setupSshFlags, mode string) error {
 		return nil
 	}
 	if stackRunning(f.container) {
-		ui.Ok(fmt.Sprintf("Container '%s' is running.", f.container))
+		console.Ok(fmt.Sprintf("Container '%s' is running.", f.container))
 		return nil
 	}
-	ui.Warn(fmt.Sprintf("Container '%s' not running.", f.container))
+	console.Warn("Container '%s' not running.", f.container)
 	cwd, err := currentDir()
 	if err != nil {
 		return err
@@ -299,7 +298,7 @@ func ensureStack(f *setupSshFlags, mode string) error {
 	}
 	proceed := true
 	if !f.assumeYes {
-		ok, err := ui.Confirm("Start it now with docker compose up -d?", true)
+		ok, err := console.ConfirmDefault("Start it now with docker compose up -d?", true)
 		if err != nil {
 			return err
 		}
@@ -308,7 +307,7 @@ func ensureStack(f *setupSshFlags, mode string) error {
 	if !proceed {
 		return fmt.Errorf("aborting — stack must be running")
 	}
-	if err := (service.SshService{Report: ui.Console{}}).ComposeUp(f.composeFile); err != nil {
+	if err := (service.SshService{Report: console}).ComposeUp(f.composeFile); err != nil {
 		return err
 	}
 	for tries := 20; tries > 0 && !stackRunning(f.container); tries-- {
@@ -324,10 +323,10 @@ func fetchPassword(f *setupSshFlags, mode string) {
 	if mode == "remote" {
 		return
 	}
-	ui.Log("Fetching temporary password from logs...")
-	combined, ok := service.SshService{Report: ui.Console{}}.ServiceLogs(f.composeFile, f.service)
+	console.Log("Fetching temporary password from logs...")
+	combined, ok := service.SshService{Report: console}.ServiceLogs(f.composeFile, f.service)
 	if !ok {
-		ui.Warn("Could not read logs.")
+		console.Warn("Could not read logs.")
 		return
 	}
 	var last string
@@ -337,27 +336,27 @@ func fetchPassword(f *setupSshFlags, mode string) {
 		}
 	}
 	if last == "" {
-		ui.Warn("Could not read password from logs (maybe key already installed).")
+		console.Warn("Could not read password from logs (maybe key already installed).")
 	} else {
-		fmt.Printf(ui.Subtle("   %s\n"), last)
+		fmt.Printf(console.Subtle("   %s\n"), last)
 	}
 }
 
 func genKey(keyPath string) error {
 	if fileExists(keyPath) && fileExists(keyPath+".pub") {
-		ui.Ok(fmt.Sprintf("Key already exists: %s", keyPath))
+		console.Ok(fmt.Sprintf("Key already exists: %s", keyPath))
 		return nil
 	}
-	ui.Log(fmt.Sprintf("Generating ed25519 key at %s", keyPath))
-	if err := (service.SshService{Report: ui.Console{}}).GenerateKey(keyPath); err != nil {
+	console.Log(fmt.Sprintf("Generating ed25519 key at %s", keyPath))
+	if err := (service.SshService{Report: console}).GenerateKey(keyPath); err != nil {
 		return err
 	}
-	ui.Ok("Key generated.")
+	console.Ok("Key generated.")
 	return nil
 }
 
 func containerIP(container string, f *setupSshFlags) (string, error) {
-	stdout, err := service.SshService{Report: ui.Console{}}.ContainerNetworks(container)
+	stdout, err := service.SshService{Report: console}.ContainerNetworks(container)
 	if err != nil {
 		return "", err
 	}
@@ -384,14 +383,14 @@ func containerIP(container string, f *setupSshFlags) (string, error) {
 		return entries[0].ip, nil
 	}
 	if f.assumeYes {
-		ui.Warn(fmt.Sprintf("Container '%s' is on %d networks; using '%s' (%s).", container, len(entries), entries[0].network, entries[0].ip))
+		console.Warn("Container '%s' is on %d networks; using '%s' (%s).", container, len(entries), entries[0].network, entries[0].ip)
 		return entries[0].ip, nil
 	}
 	choices := make([]service.Option, len(entries))
 	for i, e := range entries {
 		choices[i] = service.Option{Value: e.ip, Label: fmt.Sprintf("%s (%s)", e.network, e.ip)}
 	}
-	sel, err := ui.Select("Container is on multiple networks. Select one:", choices, choices[0])
+	sel, err := console.Select("Container is on multiple networks. Select one:", choices, choices[0])
 	return sel.Value, err
 }
 
@@ -411,8 +410,8 @@ func installKey(f *setupSshFlags, mode string) (installResult, error) {
 		if f.remote == "" {
 			return installResult{}, fmt.Errorf("--remote USER@HOST required for remote mode")
 		}
-		ui.Log(fmt.Sprintf("Installing public key into %s via %s...", f.container, f.remote))
-		if err := (service.SshService{Report: ui.Console{}}).InstallKeyRemote(f.remote, f.user, f.container, script, pub); err != nil {
+		console.Log(fmt.Sprintf("Installing public key into %s via %s...", f.container, f.remote))
+		if err := (service.SshService{Report: console}).InstallKeyRemote(f.remote, f.user, f.container, script, pub); err != nil {
 			return installResult{}, err
 		}
 		return installResult{}, nil
@@ -426,14 +425,14 @@ func installKey(f *setupSshFlags, mode string) (installResult, error) {
 		if ip == "" {
 			return installResult{}, fmt.Errorf("could not resolve container IP")
 		}
-		ui.Log(fmt.Sprintf("Installing public key into %s (%s) via docker exec...", f.container, ip))
+		console.Log(fmt.Sprintf("Installing public key into %s (%s) via docker exec...", f.container, ip))
 		if err := dockerExecStdin(pub, f.user, f.container, script); err != nil {
 			return installResult{}, err
 		}
 		return installResult{hostname: ip}, nil
 	}
 
-	ui.Log(fmt.Sprintf("Installing public key into %s via docker exec...", f.container))
+	console.Log(fmt.Sprintf("Installing public key into %s via docker exec...", f.container))
 	if err := dockerExecStdin(pub, f.user, f.container, script); err != nil {
 		return installResult{}, err
 	}
@@ -441,7 +440,7 @@ func installKey(f *setupSshFlags, mode string) (installResult, error) {
 }
 
 func dockerExecStdin(input []byte, user, container, script string) error {
-	return service.SshService{Report: ui.Console{}}.InstallKeyLocal(input, user, container, script)
+	return service.SshService{Report: console}.InstallKeyLocal(input, user, container, script)
 }
 
 func buildConfigBlock(mode string, f *setupSshFlags, inst installResult) (string, error) {
@@ -548,25 +547,25 @@ func updateSshConfig(f *setupSshFlags, mode string, inst installResult) error {
 	current := string(currentBytes)
 
 	if hasAliasBlock(current, f.alias) {
-		ui.Warn(fmt.Sprintf("Host '%s' already defined in %s", f.alias, configPath))
-		fmt.Println(ui.Subtle("---- existing ----"))
+		console.Warn("Host '%s' already defined in %s", f.alias, configPath)
+		fmt.Println(console.Subtle("---- existing ----"))
 		fmt.Println(extractAliasBlock(current, f.alias))
-		fmt.Println(ui.Subtle("---- proposed ----"))
+		fmt.Println(console.Subtle("---- proposed ----"))
 		fmt.Println(newBlock)
 		replace := true
 		if !f.assumeYes {
-			ok, cerr := ui.Confirm(fmt.Sprintf("Replace existing block for Host '%s'?", f.alias), false)
+			ok, cerr := console.ConfirmDefault(fmt.Sprintf("Replace existing block for Host '%s'?", f.alias), false)
 			if cerr != nil {
 				return cerr
 			}
 			replace = ok
 		}
 		if !replace {
-			ui.Warn("Skipping ssh config update.")
+			console.Warn("Skipping ssh config update.")
 			return nil
 		}
 		_ = os.WriteFile(configPath+".bak", currentBytes, 0o600)
-		ui.Ok(fmt.Sprintf("Backup saved: %s.bak", configPath))
+		console.Ok(fmt.Sprintf("Backup saved: %s.bak", configPath))
 		stripped := strings.TrimRight(stripAliasBlock(current, f.alias), "\n")
 		if stripped != "" {
 			stripped += "\n\n"
@@ -574,7 +573,7 @@ func updateSshConfig(f *setupSshFlags, mode string, inst installResult) error {
 		if err := os.WriteFile(configPath, []byte(stripped+newBlock+"\n"), 0o600); err != nil {
 			return err
 		}
-		ui.Ok(fmt.Sprintf("Replaced Host '%s' in %s", f.alias, configPath))
+		console.Ok(fmt.Sprintf("Replaced Host '%s' in %s", f.alias, configPath))
 	} else {
 		body := strings.TrimRight(current, "\n")
 		if body != "" {
@@ -583,20 +582,20 @@ func updateSshConfig(f *setupSshFlags, mode string, inst installResult) error {
 		if err := os.WriteFile(configPath, []byte(body+newBlock+"\n"), 0o600); err != nil {
 			return err
 		}
-		ui.Ok(fmt.Sprintf("Appended Host '%s' to %s", f.alias, configPath))
+		console.Ok(fmt.Sprintf("Appended Host '%s' to %s", f.alias, configPath))
 	}
 	return nil
 }
 
 func testConnection(alias string) {
-	ui.Log(fmt.Sprintf("Testing ssh %s ...", alias))
-	switch (service.SshService{Report: ui.Console{}}).TestConnection(alias) {
+	console.Log(fmt.Sprintf("Testing ssh %s ...", alias))
+	switch (service.SshService{Report: console}).TestConnection(alias) {
 	case service.SSHTestOK:
-		ui.Ok(fmt.Sprintf("SSH alias '%s' works.", alias))
+		console.Ok(fmt.Sprintf("SSH alias '%s' works.", alias))
 	case service.SSHTestTimeout:
-		ui.Warn(fmt.Sprintf("SSH test timed out after 15s. Try manually:  ssh %s", alias))
+		console.Warn("SSH test timed out after 15s. Try manually:  ssh %s", alias)
 	default:
-		ui.Warn(fmt.Sprintf("SSH test inconclusive. Try manually:  ssh %s", alias))
+		console.Warn("SSH test inconclusive. Try manually:  ssh %s", alias)
 	}
 }
 
@@ -664,7 +663,7 @@ func runSetupSsh(cmd *cobra.Command, _ []string) error {
 	applyWorkspaceDefaults(f, workspace)
 
 	if !f.aliasExplicit && !f.assumeYes {
-		alias, err := ui.Input("SSH connection name (alias):", f.alias, func(v string) error {
+		alias, err := console.AskDefault("SSH connection name (alias):", f.alias, func(v string) error {
 			if strings.TrimSpace(v) == "" {
 				return fmt.Errorf("name cannot be empty")
 			}
@@ -676,9 +675,9 @@ func runSetupSsh(cmd *cobra.Command, _ []string) error {
 		f.alias = alias
 	}
 
-	ui.Log(fmt.Sprintf("Mode: %s   Workspace: %s   Alias: %s   Key: %s", mode, workspace, f.alias, f.key))
+	console.Log(fmt.Sprintf("Mode: %s   Workspace: %s   Alias: %s   Key: %s", mode, workspace, f.alias, f.key))
 	if mode != "remote" {
-		ui.Log(fmt.Sprintf("Service: %s   Container: %s   Compose: %s", f.service, f.container, f.composeFile))
+		console.Log(fmt.Sprintf("Service: %s   Container: %s   Compose: %s", f.service, f.container, f.composeFile))
 	}
 
 	if err := ensureStack(f, mode); err != nil {
@@ -696,7 +695,7 @@ func runSetupSsh(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 	testConnection(f.alias)
-	ui.Ok(fmt.Sprintf("Done. Connect with:  ssh %s", f.alias))
+	console.Ok(fmt.Sprintf("Done. Connect with:  ssh %s", f.alias))
 	return nil
 }
 
