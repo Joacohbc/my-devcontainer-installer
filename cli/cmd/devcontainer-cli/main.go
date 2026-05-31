@@ -10,8 +10,9 @@ import (
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/commands"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/logger"
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/prompt"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/ui"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/service"
 )
 
 // version is injected at build time via -ldflags "-X main.version=...".
@@ -24,7 +25,7 @@ func main() {
 	// Set the global context for infra/docker execution
 	docker.SetContext(ctx)
 
-	commands.CleanupStaleUpdate()
+	service.CleanupStaleUpdate()
 	root := commands.NewRootCommand(version)
 	if err := root.ExecuteContext(ctx); err != nil {
 		handleError(err)
@@ -35,7 +36,7 @@ func handleError(err error) {
 	if err == nil {
 		return
 	}
-	if errors.Is(err, context.Canceled) || errors.Is(err, prompt.ErrCancelled) {
+	if errors.Is(err, context.Canceled) || errors.Is(err, ui.ErrCancelled) {
 		fmt.Fprintln(os.Stderr, "\nCancelled.")
 		os.Exit(130)
 	}

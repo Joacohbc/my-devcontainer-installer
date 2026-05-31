@@ -4,7 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/catalog"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/ui"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/service"
 	"github.com/spf13/cobra"
 )
 
@@ -25,7 +26,7 @@ func newPresetListCommand() *cobra.Command {
 		Short:        "List builtin and user-defined presets",
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			for _, p := range catalog.All(presetsDir()) {
+			for _, p := range (service.ConfigService{Report: ui.Console{}}).Presets() {
 				fmt.Printf("%-20s %-10s %s\n", p.ID, p.Source, p.Label)
 				if len(p.Modules) > 0 {
 					fmt.Printf("  modules:  %s\n", strings.Join(p.Modules, ", "))

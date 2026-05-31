@@ -1,10 +1,8 @@
 package commands
 
 import (
-	"fmt"
-	"strings"
-
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/ui"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/service"
 	"github.com/spf13/cobra"
 )
 
@@ -32,31 +30,6 @@ func runShell(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Check if container is running
-	status, stdout, _, err := docker.DockerCapture([]string{"inspect", "-f", "{{.State.Status}}", containerName})
-	state := strings.TrimSpace(stdout)
-	if err != nil || status != 0 || state != "running" {
-		return fmt.Errorf("container '%s' is not running. Run 'devcontainer-cli' or 'devcontainer-cli start' first", containerName)
-	}
-
-	execArgs := []string{"exec", "-it"}
-	if userFlag != "" {
-		execArgs = append(execArgs, "-u", userFlag)
-	}
-	execArgs = append(execArgs, containerName)
-
-	if len(args) > 0 {
-		execArgs = append(execArgs, args...)
-	} else {
-		execArgs = append(execArgs, "sh", "-c", "if command -v bash >/dev/null 2>&1; then exec bash; else exec sh; fi")
-	}
-
-	exitCode, err := docker.DockerInherit(execArgs)
-	if err != nil {
-		return err
-	}
-	if exitCode != 0 {
-		return fmt.Errorf("shell session exited with code %d", exitCode)
-	}
-	return nil
+	svc := service.InspectService{Report: ui.Console{}}
+	return svc.Shell(containerName, userFlag, args)
 }

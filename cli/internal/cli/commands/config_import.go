@@ -5,11 +5,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/goccy/go-yaml"
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/prompt"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/ui"
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/service"
 	"github.com/spf13/cobra"
 )
 
@@ -32,19 +30,13 @@ func runConfigImport(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	var cfg types.DevcontainerConfig
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
-		return fmt.Errorf("invalid yaml: %w", err)
+
+	svc := service.ConfigService{Report: ui.Console{}}
+	cfg, err := svc.ParseConfigYAML(data)
+	if err != nil {
+		return err
 	}
-	if !domain.IsValidDockerName(cfg.Workspace) {
-		return fmt.Errorf("invalid workspace name: %s", cfg.Workspace)
-	}
-	if cfg.Image != "" && !domain.IsValidImageName(cfg.Image) {
-		return fmt.Errorf("invalid image name: %s", cfg.Image)
-	}
-	if cfg.Compose.Subnet != "" && !domain.IsValidCidr(cfg.Compose.Subnet) {
-		return fmt.Errorf("invalid CIDR: %s", cfg.Compose.Subnet)
-	}
+
 	cwd, err := currentDir()
 	if err != nil {
 		return err
@@ -57,7 +49,7 @@ func runConfigImport(cmd *cobra.Command, args []string) error {
 				return fmt.Errorf("devcontainer.config.json exists. Pass --force or --yes")
 			}
 		} else {
-			ok, err := prompt.Confirm("devcontainer.config.json exists. Overwrite?", false)
+			ok, err := ui.Confirm("devcontainer.config.json exists. Overwrite?", false)
 			if err != nil {
 				return err
 			}
@@ -67,7 +59,7 @@ func runConfigImport(cmd *cobra.Command, args []string) error {
 			}
 		}
 	}
-	return domain.SaveConfig(&cfg, cwd)
+	return svc.SaveProjectConfig(cwd, cfg)
 }
 
 func existingConfig(cwd string) bool {

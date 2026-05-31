@@ -3,10 +3,8 @@ package commands
 import (
 	"fmt"
 
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/prompt"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/ui"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/project"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/service"
 	"github.com/spf13/cobra"
@@ -44,7 +42,7 @@ func runDestroy(cmd *cobra.Command, _ []string) error {
 		if !interactiveFlag(cmd) {
 			return fmt.Errorf("destroy is irreversible; pass --yes to confirm in non-interactive mode")
 		}
-		proceed, err := prompt.Confirm(
+		proceed, err := ui.Confirm(
 			fmt.Sprintf("Destroy '%s'? Removes containers, volumes, .dc_%s/ and devcontainer.config.json.", workspace, workspace),
 			false,
 		)
@@ -57,12 +55,7 @@ func runDestroy(cmd *cobra.Command, _ []string) error {
 		}
 	}
 
-	svc := service.DestroyService{
-		Report: consoleReporter{},
-		ComposeDown: func(composeFile string) error {
-			return docker.DockerComposeOrThrow(composeFile, []string{"down", "-v"}, nil)
-		},
-	}
+	svc := service.DestroyService{Report: ui.Console{}}
 	return svc.Run(service.DestroyTarget{
 		Workspace:   workspace,
 		ComposeFile: paths.ComposeFile,

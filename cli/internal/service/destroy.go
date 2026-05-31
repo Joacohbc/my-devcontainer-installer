@@ -4,14 +4,14 @@ import (
 	"os"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
 )
 
 // DestroyService tears down a project: it brings the stack down with its
 // volumes and deletes the generated artifacts and config. Confirmation is the
 // caller's responsibility; this runs unconditionally.
 type DestroyService struct {
-	Report      Reporter
-	ComposeDown func(composeFile string) error
+	Report Reporter
 }
 
 // DestroyTarget names everything a destroy removes for one project.
@@ -28,7 +28,7 @@ type DestroyTarget struct {
 func (s DestroyService) Run(t DestroyTarget) error {
 	if fileExists(t.ComposeFile) {
 		s.Report.Warn("Bringing down '%s' (with volumes)...", t.Workspace)
-		if err := s.ComposeDown(t.ComposeFile); err != nil {
+		if err := docker.DockerComposeOrThrow(t.ComposeFile, []string{"down", "-v"}, nil); err != nil {
 			return err
 		}
 	} else {

@@ -5,7 +5,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/ui"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/service"
+	"github.com/spf13/cobra"
 )
 
 // listSshHosts parses ~/.ssh/config and returns all defined non-wildcard Host aliases.
@@ -38,21 +40,46 @@ func listSshHosts() []string {
 
 // listContainers queries all container names from the running Docker daemon.
 func listContainers() []string {
-	if !docker.IsDockerAvailable() {
-		return nil
-	}
-	status, stdout, _, err := docker.DockerCapture([]string{"ps", "-a", "--format", "{{.Names}}"})
-	if err != nil || status != 0 {
-		return nil
-	}
-	var names []string
-	for _, line := range strings.Split(stdout, "\n") {
-		line = strings.TrimSpace(line)
-		if line != "" {
-			names = append(names, line)
+	return service.InspectService{Report: ui.Console{}}.ContainerNames()
+}
+
+// completeContainerPath suggests paths inside the container for shell completion,
+// splitting toComplete into a directory to list and a prefix to filter by.
+func completeContainerPath(containerName, toComplete string) ([]string, cobra.ShellCompDirective) {
+	dir := "."
+	prefix := ""
+	lastSlash := strings.LastIndex(toComplete, "/")
+	if lastSlash != -1 {
+		dir = toComplete[:lastSlash]
+		if dir == "" {
+			dir = "/"
 		}
+		prefix = toComplete[lastSlash+1:]
+	} else {
+		prefix = toComplete
 	}
-	return names
+
+	entries, err := service.InspectService{Report: ui.Console{}}.ListDir(containerName, dir)
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+
+	var suggestions []string
+	for _, entry := range entries {
+		if !strings.HasPrefix(entry, prefix) {
+			continue
+		}
+		fullPath := entry
+		if lastSlash != -1 {
+			if dir == "/" {
+				fullPath = "/" + entry
+			} else {
+				fullPath = dir + "/" + entry
+			}
+		}
+		suggestions = append(suggestions, fullPath)
+	}
+	return suggestions, cobra.ShellCompDirectiveNoSpace
 }
 
 // listComposeServices retrieves defined service names from the specified compose file.

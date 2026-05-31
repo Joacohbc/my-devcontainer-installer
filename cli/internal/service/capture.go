@@ -1,4 +1,4 @@
-package commands
+package service
 
 import (
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"

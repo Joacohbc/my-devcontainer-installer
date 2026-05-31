@@ -3,17 +3,15 @@ package commands
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"slices"
 	"strconv"
 	"strings"
-	"sync"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/pick"
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/prompt"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/ui"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/service"
 	"github.com/spf13/cobra"
 )
 
@@ -69,15 +67,6 @@ type parsedMapping struct {
 type portPair struct {
 	localPort     int
 	containerPort int
-}
-
-type plannedTunnel struct {
-	localPort      int
-	containerPort  int
-	targetHost     string
-	alias          string
-	containerName  string
-	isDevcontainer bool
 }
 
 func parsePort(value, label string) (int, error) {
@@ -247,20 +236,20 @@ func jumpHostAliases(containers []pick.Container, aliases []string) []string {
 }
 
 func pickContainerFromList(containers []pick.Container, message string) (pick.Container, error) {
-	choices := make([]prompt.Choice, len(containers))
+	choices := make([]service.Option, len(containers))
 	for i, c := range containers {
 		tag := "              "
 		if c.Managed {
 			tag = ui.GreenS("(devcontainer)")
 		}
-		choices[i] = prompt.Choice{Value: c.Name, Label: fmt.Sprintf("%s  %s  %s  %s", c.Name, tag, ui.Subtle(c.Image), pick.StatusLabel(c))}
+		choices[i] = service.Option{Value: c.Name, Label: fmt.Sprintf("%s  %s  %s  %s", c.Name, tag, ui.Subtle(c.Image), pick.StatusLabel(c))}
 	}
-	chosen, err := prompt.Select(message, choices, choices[0].Value)
+	chosen, err := ui.Select(message, choices, choices[0])
 	if err != nil {
 		return pick.Container{}, err
 	}
 	for _, c := range containers {
-		if c.Name == chosen {
+		if c.Name == chosen.Value {
 			return c, nil
 		}
 	}
@@ -283,20 +272,20 @@ func resolveTarget(container pick.Container, aliases []string, containers []pick
 			if !interactive {
 				return "", "", fmt.Errorf("multiple SSH jump hosts available; specify --alias")
 			}
-			choices := make([]prompt.Choice, len(candidates))
+			choices := make([]service.Option, len(candidates))
 			for i, a := range candidates {
-				choices[i] = prompt.Choice{Value: a, Label: a}
+				choices[i] = service.Option{Value: a, Label: a}
 			}
-			sel, serr := prompt.Select("Select the devcontainer SSH host to tunnel through:", choices, candidates[0])
+			sel, serr := ui.Select("Select the devcontainer SSH host to tunnel through:", choices, choices[0])
 			if serr != nil {
 				return "", "", serr
 			}
-			*jumpHost = sel
+			*jumpHost = sel.Value
 		default:
 			if !interactive {
 				return "", "", fmt.Errorf("no devcontainer SSH alias found to tunnel through '%s'. Run 'setup-ssh' first or specify --alias", container.Name)
 			}
-			in, ierr := prompt.Input(fmt.Sprintf("No devcontainer SSH alias found to reach '%s'. Enter SSH alias to tunnel through:", container.Name), "", func(v string) error {
+			in, ierr := ui.Input(fmt.Sprintf("No devcontainer SSH alias found to reach '%s'. Enter SSH alias to tunnel through:", container.Name), "", func(v string) error {
 				if strings.TrimSpace(v) == "" {
 					return fmt.Errorf("SSH alias cannot be empty")
 				}
@@ -311,13 +300,13 @@ func resolveTarget(container pick.Container, aliases []string, containers []pick
 	return *jumpHost, container.Name, nil
 }
 
-func buildTunnelsInteractive(flagAlias string, interactive bool) ([]plannedTunnel, error) {
+func buildTunnelsInteractive(flagAlias string, interactive bool) ([]service.Tunnel, error) {
 	containers := pick.ListAll()
 	if len(containers) == 0 {
 		return nil, fmt.Errorf("no running containers found. Start a container with 'devcontainer-cli' first")
 	}
 	aliases := getSSHAliases()
-	var tunnels []plannedTunnel
+	var tunnels []service.Tunnel
 	jumpHost := flagAlias
 
 	for {
@@ -342,7 +331,7 @@ func buildTunnelsInteractive(flagAlias string, interactive bool) ([]plannedTunne
 			return nil, terr
 		}
 
-		portsStr, ierr := prompt.Input(fmt.Sprintf("Ports to forward from '%s' (e.g. 3000, 8080:80):", container.Name), "", func(v string) error {
+		portsStr, ierr := ui.Input(fmt.Sprintf("Ports to forward from '%s' (e.g. 3000, 8080:80):", container.Name), "", func(v string) error {
 			_, e := parsePortsList(v)
 			return e
 		})
@@ -351,17 +340,17 @@ func buildTunnelsInteractive(flagAlias string, interactive bool) ([]plannedTunne
 		}
 		pairs, _ := parsePortsList(portsStr)
 		for _, pair := range pairs {
-			tunnels = append(tunnels, plannedTunnel{
-				localPort:      pair.localPort,
-				containerPort:  pair.containerPort,
-				targetHost:     targetHost,
-				alias:          alias,
-				containerName:  container.Name,
-				isDevcontainer: container.Managed,
+			tunnels = append(tunnels, service.Tunnel{
+				LocalPort:      pair.localPort,
+				ContainerPort:  pair.containerPort,
+				TargetHost:     targetHost,
+				Alias:          alias,
+				ContainerName:  container.Name,
+				IsDevcontainer: container.Managed,
 			})
 		}
 
-		more, merr := prompt.Confirm("Add ports from another container?", false)
+		more, merr := ui.Confirm("Add ports from another container?", false)
 		if merr != nil {
 			return nil, merr
 		}
@@ -372,78 +361,25 @@ func buildTunnelsInteractive(flagAlias string, interactive bool) ([]plannedTunne
 	return tunnels, nil
 }
 
-func printTunnelPlan(tunnels []plannedTunnel) {
+func printTunnelPlan(tunnels []service.Tunnel) {
 	ui.Cyan("\nPort forwarding plan:")
 	for _, t := range tunnels {
 		tag := "              "
-		if t.isDevcontainer {
+		if t.IsDevcontainer {
 			tag = ui.GreenS("(devcontainer)")
 		}
 		fmt.Printf("  %s  %s  %s → %s:%d  %s\n",
-			t.containerName, tag,
-			ui.YellowS("localhost:%d", t.localPort),
-			t.targetHost, t.containerPort,
-			ui.Subtle(fmt.Sprintf("(via %s)", t.alias)))
+			t.ContainerName, tag,
+			ui.YellowS("localhost:%d", t.LocalPort),
+			t.TargetHost, t.ContainerPort,
+			ui.Subtle(fmt.Sprintf("(via %s)", t.Alias)))
 	}
 	fmt.Println()
 }
 
-func runTunnels(tunnels []plannedTunnel) error {
-	var wg sync.WaitGroup
-	var mu sync.Mutex
-	var firstErr error
-	cmds := make([]*exec.Cmd, 0, len(tunnels))
-
-	killAll := func() {
-		for _, c := range cmds {
-			if c.Process != nil {
-				_ = c.Process.Kill()
-			}
-		}
-	}
-
-	for _, t := range tunnels {
-		c := exec.Command("ssh", "-N", "-L", fmt.Sprintf("%d:%s:%d", t.localPort, t.targetHost, t.containerPort), t.alias)
-		c.Stdin = os.Stdin
-		c.Stdout = os.Stdout
-		c.Stderr = os.Stderr
-		if err := c.Start(); err != nil {
-			mu.Lock()
-			if firstErr == nil {
-				firstErr = fmt.Errorf("failed to spawn SSH process: %w", err)
-			}
-			mu.Unlock()
-			killAll()
-			continue
-		}
-		cmds = append(cmds, c)
-		tun := t
-		wg.Add(1)
-		go func(cmd *exec.Cmd) {
-			defer wg.Done()
-			err := cmd.Wait()
-			if err != nil {
-				mu.Lock()
-				if firstErr == nil {
-					firstErr = fmt.Errorf("SSH tunnel %d→%s:%d (%s) closed: %v", tun.localPort, tun.targetHost, tun.containerPort, tun.alias, err)
-				}
-				mu.Unlock()
-				killAll()
-			}
-		}(c)
-	}
-
-	wg.Wait()
-	if firstErr != nil {
-		return firstErr
-	}
-	ui.Green("\nAll SSH tunnels closed.\n")
-	return nil
-}
-
 func runPortForward(cmd *cobra.Command, args []string) error {
 	alias, _ := cmd.Flags().GetString("alias")
-	service, _ := cmd.Flags().GetString("service")
+	serviceFlag, _ := cmd.Flags().GetString("service")
 	noI, _ := cmd.Flags().GetBool("no-interactive")
 	nonI, _ := cmd.Flags().GetBool("non-interactive")
 	interactive := !(noI || nonI)
@@ -459,7 +395,7 @@ func runPortForward(cmd *cobra.Command, args []string) error {
 			return err
 		}
 		printTunnelPlan(tunnels)
-		ok, cerr := prompt.Confirm(fmt.Sprintf("Open %d tunnel(s) now?", len(tunnels)), true)
+		ok, cerr := ui.Confirm(fmt.Sprintf("Open %d tunnel(s) now?", len(tunnels)), true)
 		if cerr != nil {
 			return cerr
 		}
@@ -468,14 +404,14 @@ func runPortForward(cmd *cobra.Command, args []string) error {
 			return nil
 		}
 		ui.Green("Press Ctrl+C to terminate the port forwarding session.\n")
-		return runTunnels(tunnels)
+		return service.PortForwardService{Report: ui.Console{}}.OpenTunnels(tunnels)
 	}
 
 	if portMapping == "" {
 		return fmt.Errorf("port mapping is required in non-interactive mode")
 	}
 
-	mapping, err := parsePortMapping(portMapping, service)
+	mapping, err := parsePortMapping(portMapping, serviceFlag)
 	if err != nil {
 		return err
 	}
@@ -502,7 +438,7 @@ func runPortForward(cmd *cobra.Command, args []string) error {
 			if !interactive {
 				return fmt.Errorf("no SSH aliases found in config. Run 'setup-ssh' first or specify --alias")
 			}
-			alias, err = prompt.Input(fmt.Sprintf("No SSH alias found for '%s'. Enter alias manually:", container.Name), candidate, func(v string) error {
+			alias, err = ui.Input(fmt.Sprintf("No SSH alias found for '%s'. Enter alias manually:", container.Name), candidate, func(v string) error {
 				if strings.TrimSpace(v) == "" {
 					return fmt.Errorf("SSH alias cannot be empty")
 				}
@@ -518,26 +454,27 @@ func runPortForward(cmd *cobra.Command, args []string) error {
 			if !interactive {
 				return fmt.Errorf("SSH alias '%s' not found in ~/.ssh/config. Specify --alias or run interactively", candidate)
 			}
-			choices := make([]prompt.Choice, len(aliases))
+			choices := make([]service.Option, len(aliases))
 			for i, a := range aliases {
-				choices[i] = prompt.Choice{Value: a, Label: a}
+				choices[i] = service.Option{Value: a, Label: a}
 			}
-			alias, err = prompt.Select(fmt.Sprintf("Select SSH alias for container '%s':", container.Name), choices, aliases[0])
-			if err != nil {
-				return err
+			chosen, serr := ui.Select(fmt.Sprintf("Select SSH alias for container '%s':", container.Name), choices, choices[0])
+			if serr != nil {
+				return serr
 			}
+			alias = chosen.Value
 		}
 	}
 
-	tunnel := plannedTunnel{
-		localPort:      mapping.localPort,
-		containerPort:  mapping.containerPort,
-		targetHost:     mapping.targetHost,
-		alias:          alias,
-		containerName:  containerName,
-		isDevcontainer: true,
+	tunnel := service.Tunnel{
+		LocalPort:      mapping.localPort,
+		ContainerPort:  mapping.containerPort,
+		TargetHost:     mapping.targetHost,
+		Alias:          alias,
+		ContainerName:  containerName,
+		IsDevcontainer: true,
 	}
-	printTunnelPlan([]plannedTunnel{tunnel})
+	printTunnelPlan([]service.Tunnel{tunnel})
 	ui.Green("Press Ctrl+C to terminate the port forwarding session.\n")
-	return runTunnels([]plannedTunnel{tunnel})
+	return service.PortForwardService{Report: ui.Console{}}.OpenTunnels([]service.Tunnel{tunnel})
 }

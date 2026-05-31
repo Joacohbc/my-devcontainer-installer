@@ -1,6 +1,7 @@
 package service
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
@@ -17,10 +18,6 @@ func localCachedConfig() *types.DevcontainerConfig {
 	}
 }
 
-func captureReturning(stdout string) domain.CaptureFunc {
-	return func([]string) (int, string, string) { return 0, stdout, "" }
-}
-
 func TestPlanLocalCachedFingerprintsAndDetectsCache(t *testing.T) {
 	cases := []struct {
 		name         string
@@ -32,7 +29,10 @@ func TestPlanLocalCachedFingerprintsAndDetectsCache(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			svc := GenerateService{Report: NopReporter{}, Capture: captureReturning(c.imagesOut)}
+			restore := useFakeDocker(&fakeRunner{status: 0, stdout: c.imagesOut})
+			defer restore()
+
+			svc := GenerateService{Report: nopReporter{}}
 			plan, err := svc.Plan(localCachedConfig(), map[string]string{})
 			if err != nil {
 				t.Fatalf("Plan: %v", err)
@@ -54,6 +54,9 @@ func TestPlanLocalCachedFingerprintsAndDetectsCache(t *testing.T) {
 }
 
 func TestPlanRemoteSkipsDockerfile(t *testing.T) {
+	restore := useFakeDocker(&fakeRunner{status: 0})
+	defer restore()
+
 	config := &types.DevcontainerConfig{
 		Mode:      types.BuildModeRemote,
 		Image:     "ghcr.io/owner/devcontainer-ssh:latest",
@@ -61,7 +64,7 @@ func TestPlanRemoteSkipsDockerfile(t *testing.T) {
 		Remote:    &types.RemoteConfig{Variant: "ssh"},
 		Env:       map[string]string{},
 	}
-	svc := GenerateService{Report: NopReporter{}, Capture: captureReturning("")}
+	svc := GenerateService{Report: nopReporter{}}
 	plan, err := svc.Plan(config, map[string]string{})
 	if err != nil {
 		t.Fatalf("Plan: %v", err)
@@ -94,20 +97,18 @@ func TestBuildRunsComposeAndReportsErrors(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			var gotArgs []string
-			svc := GenerateService{
-				Report: NopReporter{},
-				Compose: func(_ string, args []string) int {
-					gotArgs = args
-					return c.status
-				},
-			}
+			runner := &fakeRunner{status: c.status}
+			restore := useFakeDocker(runner)
+			defer restore()
+
+			svc := GenerateService{Report: nopReporter{}}
 			err := svc.Build("compose.yml", c.remote)
 			if (err != nil) != c.wantErr {
 				t.Errorf("err = %v, wantErr %v", err, c.wantErr)
 			}
-			if len(gotArgs) != 1 || gotArgs[0] != c.wantArg {
-				t.Errorf("compose args = %v, want [%s]", gotArgs, c.wantArg)
+			call := runner.callContaining("compose")
+			if call == nil || !slices.Contains(call, c.wantArg) {
+				t.Errorf("compose call = %v, want it to contain %q", call, c.wantArg)
 			}
 		})
 	}

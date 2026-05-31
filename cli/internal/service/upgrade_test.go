@@ -1,4 +1,4 @@
-package commands
+package service
 
 import (
 	"bytes"
@@ -121,5 +121,68 @@ func TestSwapBinary_WindowsRollback(t *testing.T) {
 	}
 	if _, statErr := os.Stat(exec + ".old"); !os.IsNotExist(statErr) {
 		t.Error("expected .old to be consumed by rollback")
+	}
+}
+
+func TestCompareVersions(t *testing.T) {
+	cases := []struct {
+		a, b string
+		want int
+	}{
+		{"1.0.0", "1.0.1", -1},
+		{"1.2.0", "1.1.9", 1},
+		{"v1.0.0", "1.0.0", 0},
+		{"1.0.0", "1.0.0-rc1", 1},
+		{"1.0.0-rc1", "1.0.0", -1},
+		{"1.0.0-rc1", "1.0.0-rc2", -1},
+	}
+	for _, c := range cases {
+		if got := compareVersions(c.a, c.b); got != c.want {
+			t.Errorf("compareVersions(%q,%q) = %d, want %d", c.a, c.b, got, c.want)
+		}
+	}
+}
+
+func TestGetTargetTriplet(t *testing.T) {
+	triplet, _, err := getTargetTriplet()
+	if err != nil {
+		t.Skipf("unsupported platform for this test: %v", err)
+	}
+	if triplet == "" {
+		t.Error("expected a non-empty triplet")
+	}
+}
+
+func TestResolveAssetURL(t *testing.T) {
+	rel := &Release{
+		Tag: "v1.0.0",
+		Assets: []ReleaseAsset{
+			{Name: "devcontainer-cli-linux-x64", DownloadURL: "https://example.com/bin"},
+			{Name: "devcontainer-cli-linux-x64.sha256", DownloadURL: "https://example.com/sum"},
+		},
+	}
+	bin, sum, err := resolveAssetURL(rel, "linux-x64", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if bin != "https://example.com/bin" || sum != "https://example.com/sum" {
+		t.Errorf("got bin=%q sum=%q", bin, sum)
+	}
+	if _, _, err := resolveAssetURL(rel, "darwin-arm64", ""); err == nil {
+		t.Error("expected error for missing asset")
+	}
+}
+
+func TestIsAllowedHost(t *testing.T) {
+	allowed := []string{"github.com", "api.github.com", "objects.githubusercontent.com"}
+	for _, h := range allowed {
+		if !isAllowedHost(h) {
+			t.Errorf("expected %q to be allowed", h)
+		}
+	}
+	for _, h := range []string{"evil.com", "github.com.evil.com"} {
+		if isAllowedHost(h) {
+			t.Errorf("expected %q to be denied", h)
+		}
 	}
 }

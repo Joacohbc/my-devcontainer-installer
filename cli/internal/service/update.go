@@ -1,19 +1,55 @@
 package service
 
 import (
+	"fmt"
 	"os"
+	"strings"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/project"
 )
 
 // UpdateService refreshes container images for one project or every recorded
-// project. Docker access is injected so the logic is testable without Docker.
+// project. Tests swap the docker.Runner to avoid invoking real Docker.
 type UpdateService struct {
-	Report  Reporter
-	Pull    func(image string) error
-	Compose func(projectDir, composeFile string, args []string) error
+	Report Reporter
+}
+
+func pullImage(image string) error {
+	status, err := docker.DockerInherit([]string{"pull", image})
+	if err != nil || status != 0 {
+		return fmt.Errorf("failed to pull image '%s'", image)
+	}
+	return nil
+}
+
+// UpdateContainer resolves the image of a single running container and pulls
+// its latest version, returning the resolved image.
+func (s UpdateService) UpdateContainer(containerName string) (string, error) {
+	status, stdout, _, err := docker.DockerCapture([]string{"inspect", "-f", "{{.Config.Image}}", containerName})
+	if err != nil || status != 0 {
+		return "", fmt.Errorf("failed to inspect container '%s'", containerName)
+	}
+	image := strings.TrimSpace(stdout)
+	if image == "" {
+		return "", fmt.Errorf("could not resolve image for container '%s'", containerName)
+	}
+	s.Report.Info("Pulling updated image '%s' for container '%s'...", image, containerName)
+	if err := pullImage(image); err != nil {
+		return image, err
+	}
+	s.Report.Success("Pulled " + image)
+	return image, nil
+}
+
+func composeBuild(projectDir, composeFile string, args []string) error {
+	status, err := docker.DockerCompose(composeFile, args, &docker.ComposeOptions{CWD: projectDir})
+	if err != nil || status != 0 {
+		return fmt.Errorf("docker compose build failed")
+	}
+	return nil
 }
 
 // UpdateOne updates the image for a single project, returning the resolved
@@ -28,7 +64,7 @@ func (s UpdateService) UpdateOne(projectDir string, config *types.DevcontainerCo
 			return config.Image, false
 		}
 		image := domain.ResolveRemoteImage(config.Remote.Variant, domain.ResolveRegistry("", config.Remote.Registry))
-		if err := s.Pull(image); err != nil {
+		if err := pullImage(image); err != nil {
 			return image, false
 		}
 		s.Report.Success("Pulled " + image)
@@ -45,7 +81,7 @@ func (s UpdateService) UpdateOne(projectDir string, config *types.DevcontainerCo
 	if !rebuild || pull {
 		args = append(args, "--pull")
 	}
-	if err := s.Compose(projectDir, composeFile, args); err != nil {
+	if err := composeBuild(projectDir, composeFile, args); err != nil {
 		return config.Image, false
 	}
 	s.Report.Success("Rebuilt " + config.Image)

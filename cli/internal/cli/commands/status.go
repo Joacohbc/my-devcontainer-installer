@@ -9,8 +9,8 @@ import (
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/pick"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/ui"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/project"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/service"
 	"github.com/spf13/cobra"
 )
 
@@ -30,7 +30,8 @@ func newStatusCommand() *cobra.Command {
 }
 
 func runStatus(cmd *cobra.Command, _ []string) error {
-	if err := docker.EnsureDocker(); err != nil {
+	svc := service.InspectService{Report: ui.Console{}}
+	if err := svc.EnsureDocker(); err != nil {
 		return err
 	}
 
@@ -63,17 +64,10 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 
 		if c, found := containerMap[containerName]; found {
 			t.Row(c.Name, pick.StatusLabel(c), c.Ports, c.Image)
+		} else if state, serr := svc.ContainerState(containerName); serr == nil {
+			t.Row(containerName, ui.RedS("%s", state), "", svc.ContainerImage(containerName))
 		} else {
-			// fallback: check if we can inspect it
-			status, stdout, _, err := docker.DockerCapture([]string{"inspect", "-f", "{{.State.Status}}", containerName})
-			if err == nil && status == 0 {
-				state := strings.TrimSpace(stdout)
-				_, imgOut, _, _ := docker.DockerCapture([]string{"inspect", "-f", "{{.Config.Image}}", containerName})
-				image := strings.TrimSpace(imgOut)
-				t.Row(containerName, ui.RedS("%s", state), "", image)
-			} else {
-				t.Row(containerName, ui.RedS("not found"), "", "")
-			}
+			t.Row(containerName, ui.RedS("not found"), "", "")
 		}
 
 		fmt.Println()

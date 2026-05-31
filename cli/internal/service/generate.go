@@ -5,16 +5,25 @@ import (
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
 )
 
+// UsedSubnets returns the Docker subnets already in use, for conflict detection.
+func (s GenerateService) UsedSubnets() []domain.CidrRange {
+	return domain.ListUsedSubnets(captureFunc())
+}
+
+// NameConflicts returns managed-resource name clashes for the config.
+func (s GenerateService) NameConflicts(config *types.DevcontainerConfig) []domain.Conflict {
+	return domain.FindConflicts(config, docker.IsDockerAvailable(), captureFunc())
+}
+
 // GenerateService turns a resolved DevcontainerConfig into the rendered build
-// artifacts and runs the optional build/pull. It performs no console output and
-// no interactive prompting: the cli layer resolves every decision (flags,
-// wizard, confirmations) and feeds the finished config in.
+// artifacts and runs the optional build/pull. The cli layer resolves every
+// decision (flags, wizard, confirmations) and feeds the finished config in;
+// this service owns the rendering, fingerprinting and docker orchestration.
 type GenerateService struct {
-	Report  Reporter
-	Capture domain.CaptureFunc
-	Compose func(composeFile string, args []string) int
+	Report Reporter
 }
 
 // GeneratePlan is the rendered output for a config, together with the image
@@ -58,7 +67,7 @@ func (s GenerateService) Plan(config *types.DevcontainerConfig, copyContents map
 		}
 		plan.Fingerprint = domain.ComputeFingerprint(dockerfile, copyContents, moduleIDs)
 		plan.Image = domain.FingerprintTag(plan.Fingerprint)
-		plan.CachedImageHit = domain.LocalImageExists(plan.Image, s.Capture)
+		plan.CachedImageHit = domain.LocalImageExists(plan.Image, captureFunc())
 	}
 
 	return plan, nil
@@ -75,7 +84,11 @@ func (s GenerateService) Build(composeFile string, remote bool) error {
 	} else {
 		s.Report.Info("Building...")
 	}
-	if status := s.Compose(composeFile, []string{action}); status != 0 {
+	status, err := docker.DockerCompose(composeFile, []string{action}, nil)
+	if err != nil {
+		return err
+	}
+	if status != 0 {
 		return fmt.Errorf("docker compose %s failed (exit %d)", action, status)
 	}
 	return nil

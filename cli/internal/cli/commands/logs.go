@@ -1,9 +1,8 @@
 package commands
 
 import (
-	"fmt"
-
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/ui"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/service"
 	"github.com/spf13/cobra"
 )
 
@@ -27,29 +26,14 @@ func runLogs(cmd *cobra.Command, args []string) error {
 	wsFlag, _ := cmd.Flags().GetString("workspace")
 	follow, _ := cmd.Flags().GetBool("follow")
 	tail, _ := cmd.Flags().GetString("tail")
+	svc := service.InspectService{Report: ui.Console{}}
 
 	if cmd.Flags().Changed("container") {
 		containerName, err := resolveContainer(cmd, wsFlag)
 		if err != nil {
 			return err
 		}
-		dockerArgs := []string{"logs"}
-		if follow {
-			dockerArgs = append(dockerArgs, "-f")
-		}
-		if tail != "" {
-			dockerArgs = append(dockerArgs, "--tail", tail)
-		}
-		dockerArgs = append(dockerArgs, containerName)
-
-		status, err := docker.DockerInherit(dockerArgs)
-		if err != nil {
-			return err
-		}
-		if status != 0 {
-			return fmt.Errorf("docker logs failed with exit code %d", status)
-		}
-		return nil
+		return svc.ContainerLogs(containerName, follow, tail)
 	}
 
 	cwd, err := currentDir()
@@ -60,24 +44,5 @@ func runLogs(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-
-	composeArgs := []string{"logs"}
-	if follow {
-		composeArgs = append(composeArgs, "--follow")
-	}
-	if tail != "" {
-		composeArgs = append(composeArgs, "--tail", tail)
-	}
-	if len(args) > 0 {
-		composeArgs = append(composeArgs, args...)
-	}
-
-	status, err := docker.DockerCompose(composeFile, composeArgs, nil)
-	if err != nil {
-		return err
-	}
-	if status != 0 {
-		return fmt.Errorf("docker compose logs failed with exit code %d", status)
-	}
-	return nil
+	return svc.ComposeLogs(composeFile, follow, tail, args)
 }

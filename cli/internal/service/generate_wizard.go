@@ -1,10 +1,9 @@
-package commands
+package service
 
 import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/prompt"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/catalog"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
@@ -28,10 +27,10 @@ func categoryStepKey(c types.UICategory) string  { return "cat:" + string(c) }
 func optionStepKey(entryID, optID string) string { return "opt:" + entryID + ":" + optID }
 func envStepKey(name string) string              { return "env:" + name }
 
-func choicesFromOption(o types.ModuleOption) []prompt.Choice {
-	choices := make([]prompt.Choice, len(o.Choices))
+func choicesFromOption(o types.ModuleOption) []Option {
+	choices := make([]Option, len(o.Choices))
 	for i, c := range o.Choices {
-		choices[i] = prompt.Choice{Value: c.Value, Label: c.Label}
+		choices[i] = Option{Value: c.Value, Label: c.Label}
 	}
 	return choices
 }
@@ -66,7 +65,9 @@ func serviceIDOf(s any) string {
 	return ""
 }
 
-func serviceOptionsOf(services []any, id string) map[string]any {
+// ServiceOptionsOf returns the stored options for the compose service id within
+// a config's service list.
+func ServiceOptionsOf(services []any, id string) map[string]any {
 	for _, s := range services {
 		if serviceIDOf(s) != id {
 			continue
@@ -101,30 +102,26 @@ func moduleOptionsOf(modules []types.SelectedModule, id string) map[string]any {
 	return map[string]any{}
 }
 
-// optionField turns a module/service option into the wizard field to render,
-// seeding it with the previously chosen (or default) value.
-func optionField(o types.ModuleOption, initial any) prompt.Field {
+func optionField(o types.ModuleOption, initial any) Field {
 	switch o.Type {
 	case types.ModuleOptionMultiselect:
-		return prompt.Field{Kind: prompt.FieldMultiselect, Title: "  " + o.Label + ":", Choices: choicesFromOption(o), Initial: defaultStrings(initial)}
+		return Field{Kind: FieldMultiselect, Title: "  " + o.Label + ":", Choices: choicesFromOption(o), Initial: defaultStrings(initial)}
 	case types.ModuleOptionConfirm:
 		enabled := true
 		if v, ok := initial.(bool); ok {
 			enabled = v
 		}
-		return prompt.Field{Kind: prompt.FieldConfirm, Title: "  " + o.Label + "?", Initial: enabled}
+		return Field{Kind: FieldConfirm, Title: "  " + o.Label + "?", Initial: enabled}
 	case types.ModuleOptionSelect:
 		s, _ := initial.(string)
-		return prompt.Field{Kind: prompt.FieldSelect, Title: "  " + o.Label + ":", Choices: choicesFromOption(o), Initial: s}
+		return Field{Kind: FieldSelect, Title: "  " + o.Label + ":", Choices: choicesFromOption(o), Initial: s}
 	default:
 		s, _ := initial.(string)
-		return prompt.Field{Kind: prompt.FieldInput, Title: "  " + o.Label + ":", Initial: s}
+		return Field{Kind: FieldInput, Title: "  " + o.Label + ":", Initial: s}
 	}
 }
 
-// optionAnswer reads a recorded option answer back from the wizard state with
-// the type matching its option kind.
-func optionAnswer(s *prompt.State, key string, o types.ModuleOption) any {
+func optionAnswer(s *State, key string, o types.ModuleOption) any {
 	switch o.Type {
 	case types.ModuleOptionMultiselect:
 		return s.Strings(key)
@@ -135,18 +132,15 @@ func optionAnswer(s *prompt.State, key string, o types.ModuleOption) any {
 	}
 }
 
-func currentMode(s *prompt.State) types.BuildMode {
+func currentMode(s *State) types.BuildMode {
 	if mode := s.String(stepKeyMode); mode != "" {
 		return types.BuildMode(mode)
 	}
 	return types.BuildModeLocalCached
 }
 
-// categoryChoices lists the selectable entries of a UI category for the current
-// mode: Dockerfile modules are offered only in local-cached mode; services
-// whose required module is not selected are hidden.
-func categoryChoices(c types.UICategory, mode types.BuildMode, selectedModules map[string]bool) []prompt.Choice {
-	var choices []prompt.Choice
+func categoryChoices(c types.UICategory, mode types.BuildMode, selectedModules map[string]bool) []Option {
+	var choices []Option
 	for _, e := range catalog.SelectableByCategory()[c] {
 		if !e.IsService && mode != types.BuildModeLocalCached {
 			continue
@@ -156,12 +150,12 @@ func categoryChoices(c types.UICategory, mode types.BuildMode, selectedModules m
 				continue
 			}
 		}
-		choices = append(choices, prompt.Choice{Value: e.ID, Label: e.Label})
+		choices = append(choices, Option{Value: e.ID, Label: e.Label})
 	}
 	return choices
 }
 
-func selectedEntryIDs(s *prompt.State) map[string]bool {
+func selectedEntryIDs(s *State) map[string]bool {
 	set := map[string]bool{}
 	for _, c := range catalog.CategoriesInOrder() {
 		for _, id := range s.Strings(categoryStepKey(c)) {
@@ -171,7 +165,7 @@ func selectedEntryIDs(s *prompt.State) map[string]bool {
 	return set
 }
 
-func selectedModuleIDs(s *prompt.State) map[string]bool {
+func selectedModuleIDs(s *State) map[string]bool {
 	set := map[string]bool{}
 	for id := range selectedEntryIDs(s) {
 		if catalog.GetDockerfileModule(id) != nil {
@@ -204,8 +198,8 @@ type wizardContext struct {
 	suggestedSubnet string
 }
 
-func (w wizardContext) steps(s *prompt.State) []prompt.Step {
-	steps := []prompt.Step{w.workspaceStep(), w.modeStep()}
+func (w wizardContext) steps(s *State) []Step {
+	steps := []Step{w.workspaceStep(), w.modeStep()}
 
 	if currentMode(s) == types.BuildModeRemote {
 		steps = append(steps, w.variantStep())
@@ -223,8 +217,6 @@ func (w wizardContext) steps(s *prompt.State) []prompt.Step {
 	return steps
 }
 
-// basePersistIDs is the initial persistence-volume selection for the wizard:
-// the config's stored selection, or all volumes for a fresh/legacy config.
 func basePersistIDs(base *types.DevcontainerConfig) []string {
 	if base.Compose.PersistVolumes == nil {
 		return types.DefaultPersistVolumeIDs()
@@ -232,18 +224,18 @@ func basePersistIDs(base *types.DevcontainerConfig) []string {
 	return *base.Compose.PersistVolumes
 }
 
-func (w wizardContext) persistStep() prompt.Step {
-	return prompt.Step{Key: stepKeyPersist, Build: func(s *prompt.State) prompt.Field {
+func (w wizardContext) persistStep() Step {
+	return Step{Key: stepKeyPersist, Build: func(s *State) Field {
 		initial := basePersistIDs(w.base)
 		if s.Has(stepKeyPersist) {
 			initial = s.Strings(stepKeyPersist)
 		}
-		choices := make([]prompt.Choice, len(types.PersistVolumeSpecs))
+		choices := make([]Option, len(types.PersistVolumeSpecs))
 		for i, spec := range types.PersistVolumeSpecs {
-			choices[i] = prompt.Choice{Value: spec.ID, Label: spec.Label}
+			choices[i] = Option{Value: spec.ID, Label: spec.Label}
 		}
-		return prompt.Field{
-			Kind:    prompt.FieldMultiselect,
+		return Field{
+			Kind:    FieldMultiselect,
 			Title:   "Volúmenes persistentes a montar (Espacio para seleccionar, Enter para confirmar):",
 			Choices: choices,
 			Initial: initial,
@@ -251,14 +243,14 @@ func (w wizardContext) persistStep() prompt.Step {
 	}}
 }
 
-func (w wizardContext) workspaceStep() prompt.Step {
-	return prompt.Step{Key: stepKeyWorkspace, Build: func(s *prompt.State) prompt.Field {
+func (w wizardContext) workspaceStep() Step {
+	return Step{Key: stepKeyWorkspace, Build: func(s *State) Field {
 		initial := w.workspace
 		if s.Has(stepKeyWorkspace) {
 			initial = s.String(stepKeyWorkspace)
 		}
-		return prompt.Field{
-			Kind:    prompt.FieldInput,
+		return Field{
+			Kind:    FieldInput,
 			Title:   "Workspace name (used as prefix for containers, network, volumes):",
 			Initial: initial,
 			Validate: func(v string) error {
@@ -271,11 +263,11 @@ func (w wizardContext) workspaceStep() prompt.Step {
 	}}
 }
 
-func (w wizardContext) modeStep() prompt.Step {
-	return prompt.Step{Key: stepKeyMode, Build: func(s *prompt.State) prompt.Field {
-		choices := make([]prompt.Choice, len(types.BuildModes))
+func (w wizardContext) modeStep() Step {
+	return Step{Key: stepKeyMode, Build: func(s *State) Field {
+		choices := make([]Option, len(types.BuildModes))
 		for i, m := range types.BuildModes {
-			choices[i] = prompt.Choice{Value: string(m), Label: modeLabels[m]}
+			choices[i] = Option{Value: string(m), Label: modeLabels[m]}
 		}
 		initial := string(w.base.Mode)
 		if initial == "" {
@@ -284,12 +276,12 @@ func (w wizardContext) modeStep() prompt.Step {
 		if s.Has(stepKeyMode) {
 			initial = s.String(stepKeyMode)
 		}
-		return prompt.Field{Kind: prompt.FieldSelect, Title: "Build mode:", Choices: choices, Initial: initial}
+		return Field{Kind: FieldSelect, Title: "Build mode:", Choices: choices, Initial: initial}
 	}}
 }
 
-func (w wizardContext) variantStep() prompt.Step {
-	return prompt.Step{Key: stepKeyVariant, Build: func(s *prompt.State) prompt.Field {
+func (w wizardContext) variantStep() Step {
+	return Step{Key: stepKeyVariant, Build: func(s *State) Field {
 		initial := "ssh"
 		if w.base.Remote != nil && w.base.Remote.Variant != "" {
 			initial = w.base.Remote.Variant
@@ -297,24 +289,24 @@ func (w wizardContext) variantStep() prompt.Step {
 		if s.Has(stepKeyVariant) {
 			initial = s.String(stepKeyVariant)
 		}
-		return prompt.Field{Kind: prompt.FieldSelect, Title: "Image variant:", Choices: variantChoices(), Initial: initial}
+		return Field{Kind: FieldSelect, Title: "Image variant:", Choices: VariantChoices(), Initial: initial}
 	}}
 }
 
-func (w wizardContext) categorySteps(s *prompt.State) []prompt.Step {
-	var steps []prompt.Step
+func (w wizardContext) categorySteps(s *State) []Step {
+	var steps []Step
 	for _, c := range catalog.CategoriesInOrder() {
 		if len(categoryChoices(c, currentMode(s), selectedModuleIDs(s))) == 0 {
 			continue
 		}
 		category := c
-		steps = append(steps, prompt.Step{Key: categoryStepKey(category), Build: func(s *prompt.State) prompt.Field {
+		steps = append(steps, Step{Key: categoryStepKey(category), Build: func(s *State) Field {
 			initial := baseCategoryIDs(w.base, category)
 			if s.Has(categoryStepKey(category)) {
 				initial = s.Strings(categoryStepKey(category))
 			}
-			return prompt.Field{
-				Kind:    prompt.FieldMultiselect,
+			return Field{
+				Kind:    FieldMultiselect,
 				Title:   types.UICategoryLabels[category] + " (Espacio para seleccionar, Enter para confirmar):",
 				Choices: categoryChoices(category, currentMode(s), selectedModuleIDs(s)),
 				Initial: initial,
@@ -324,10 +316,10 @@ func (w wizardContext) categorySteps(s *prompt.State) []prompt.Step {
 	return steps
 }
 
-func (w wizardContext) optionSteps(s *prompt.State) []prompt.Step {
+func (w wizardContext) optionSteps(s *State) []Step {
 	selected := selectedEntryIDs(s)
 	localCached := currentMode(s) == types.BuildModeLocalCached
-	var steps []prompt.Step
+	var steps []Step
 	for _, m := range catalog.DockerfileModules {
 		if !localCached || !selected[m.ID] {
 			continue
@@ -338,17 +330,17 @@ func (w wizardContext) optionSteps(s *prompt.State) []prompt.Step {
 		if !selected[svc.ID] {
 			continue
 		}
-		steps = append(steps, w.entryOptionSteps(svc.ID, svc.Options, serviceOptionsOf(w.base.Compose.Services, svc.ID))...)
+		steps = append(steps, w.entryOptionSteps(svc.ID, svc.Options, ServiceOptionsOf(w.base.Compose.Services, svc.ID))...)
 	}
 	return steps
 }
 
-func (w wizardContext) entryOptionSteps(entryID string, options []types.ModuleOption, prevOpts map[string]any) []prompt.Step {
-	var steps []prompt.Step
+func (w wizardContext) entryOptionSteps(entryID string, options []types.ModuleOption, prevOpts map[string]any) []Step {
+	var steps []Step
 	for _, o := range options {
 		option := o
 		key := optionStepKey(entryID, option.ID)
-		steps = append(steps, prompt.Step{Key: key, Build: func(s *prompt.State) prompt.Field {
+		steps = append(steps, Step{Key: key, Build: func(s *State) Field {
 			var initial any = optionDefault(option, prevOpts)
 			if s.Has(key) {
 				initial = optionAnswer(s, key, option)
@@ -359,18 +351,18 @@ func (w wizardContext) entryOptionSteps(entryID string, options []types.ModuleOp
 	return steps
 }
 
-func (w wizardContext) remoteImageDerived(s *prompt.State) bool {
+func (w wizardContext) remoteImageDerived(s *State) bool {
 	return currentMode(s) == types.BuildModeRemote && s.String(stepKeyVariant) != ""
 }
 
-func (w wizardContext) imageStep() prompt.Step {
-	return prompt.Step{Key: stepKeyImage, Build: func(s *prompt.State) prompt.Field {
+func (w wizardContext) imageStep() Step {
+	return Step{Key: stepKeyImage, Build: func(s *State) Field {
 		initial := w.base.Image
 		if s.Has(stepKeyImage) {
 			initial = s.String(stepKeyImage)
 		}
-		return prompt.Field{
-			Kind:    prompt.FieldInput,
+		return Field{
+			Kind:    FieldInput,
 			Title:   "Image name:",
 			Initial: initial,
 			Validate: func(v string) error {
@@ -383,14 +375,14 @@ func (w wizardContext) imageStep() prompt.Step {
 	}}
 }
 
-func (w wizardContext) subnetStep() prompt.Step {
-	return prompt.Step{Key: stepKeySubnet, Build: func(s *prompt.State) prompt.Field {
+func (w wizardContext) subnetStep() Step {
+	return Step{Key: stepKeySubnet, Build: func(s *State) Field {
 		initial := w.suggestedSubnet
 		if s.Has(stepKeySubnet) {
 			initial = s.String(stepKeySubnet)
 		}
-		return prompt.Field{
-			Kind:    prompt.FieldInput,
+		return Field{
+			Kind:    FieldInput,
 			Title:   "Docker network subnet (CIDR):",
 			Initial: initial,
 			Validate: func(v string) error {
@@ -406,11 +398,11 @@ func (w wizardContext) subnetStep() prompt.Step {
 	}}
 }
 
-func (w wizardContext) envSteps(s *prompt.State) []prompt.Step {
-	var steps []prompt.Step
+func (w wizardContext) envSteps(s *State) []Step {
+	var steps []Step
 	for _, e := range domain.CollectRequiredEnvVars(w.reduce(s)) {
 		envVar := e
-		steps = append(steps, prompt.Step{Key: envStepKey(envVar.Name), Build: func(s *prompt.State) prompt.Field {
+		steps = append(steps, Step{Key: envStepKey(envVar.Name), Build: func(s *State) Field {
 			initial := w.base.Env[envVar.Name]
 			if initial == "" {
 				initial = envVar.Default
@@ -418,7 +410,7 @@ func (w wizardContext) envSteps(s *prompt.State) []prompt.Step {
 			if s.Has(envStepKey(envVar.Name)) {
 				initial = s.String(envStepKey(envVar.Name))
 			}
-			return prompt.Field{Kind: prompt.FieldInput, Title: envVar.Prompt + ":", Initial: initial}
+			return Field{Kind: FieldInput, Title: envVar.Prompt + ":", Initial: initial}
 		}})
 	}
 	return steps
@@ -427,7 +419,7 @@ func (w wizardContext) envSteps(s *prompt.State) []prompt.Step {
 // reduce folds the gathered wizard answers into a DevcontainerConfig. It is
 // called both mid-wizard (to discover required env vars from the current
 // selection) and once at the end to produce the final config.
-func (w wizardContext) reduce(s *prompt.State) *types.DevcontainerConfig {
+func (w wizardContext) reduce(s *State) *types.DevcontainerConfig {
 	mode := currentMode(s)
 	selected := selectedEntryIDs(s)
 
@@ -446,7 +438,7 @@ func (w wizardContext) reduce(s *prompt.State) *types.DevcontainerConfig {
 		if !selected[svc.ID] {
 			continue
 		}
-		services = append(services, types.SelectedModule{ID: svc.ID, Options: w.entryOptions(s, svc.ID, svc.Options, serviceOptionsOf(w.base.Compose.Services, svc.ID))})
+		services = append(services, types.SelectedModule{ID: svc.ID, Options: w.entryOptions(s, svc.ID, svc.Options, ServiceOptionsOf(w.base.Compose.Services, svc.ID))})
 	}
 
 	workspace := w.workspace
@@ -498,7 +490,7 @@ func (w wizardContext) reduce(s *prompt.State) *types.DevcontainerConfig {
 	return draft
 }
 
-func (w wizardContext) entryOptions(s *prompt.State, entryID string, options []types.ModuleOption, prevOpts map[string]any) map[string]any {
+func (w wizardContext) entryOptions(s *State, entryID string, options []types.ModuleOption, prevOpts map[string]any) map[string]any {
 	opts := map[string]any{}
 	for _, o := range options {
 		key := optionStepKey(entryID, o.ID)
@@ -511,12 +503,10 @@ func (w wizardContext) entryOptions(s *prompt.State, entryID string, options []t
 	return opts
 }
 
-func runGenerateWizard(base *types.DevcontainerConfig) (*types.DevcontainerConfig, error) {
-	cwd, err := currentDir()
-	if err != nil {
-		return nil, err
-	}
-
+// Configure runs the interactive wizard (via the Prompter) starting from base
+// and returns the resolved config. cwd seeds the default workspace name and the
+// subnet suggestion from the project location.
+func (s GenerateService) Configure(base *types.DevcontainerConfig, cwd string, prompt Prompter) (*types.DevcontainerConfig, error) {
 	workspace := base.Workspace
 	if workspace == "" {
 		workspace = domain.SanitizeDockerName(filepath.Base(cwd), "devcontainer")
@@ -535,17 +525,18 @@ func runGenerateWizard(base *types.DevcontainerConfig) (*types.DevcontainerConfi
 		suggestedSubnet: domain.FindFreeSubnet(preferredSubnet, usedSubnets),
 	}
 
-	state, err := prompt.NewStepper(ctx.steps).Run()
+	state, err := prompt.Wizard(ctx.steps)
 	if err != nil {
 		return nil, err
 	}
 	return ctx.reduce(state), nil
 }
 
-func variantChoices() []prompt.Choice {
-	choices := make([]prompt.Choice, len(types.RemoteVariants))
+// VariantChoices lists the selectable remote image variants.
+func VariantChoices() []Option {
+	choices := make([]Option, len(types.RemoteVariants))
 	for i, v := range types.RemoteVariants {
-		choices[i] = prompt.Choice{Value: v, Label: types.VariantLabels[v]}
+		choices[i] = Option{Value: v, Label: types.VariantLabels[v]}
 	}
 	return choices
 }

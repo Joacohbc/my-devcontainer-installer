@@ -7,11 +7,11 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/prompt"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/ui"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/sshdefaults"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/service"
 )
 
 type Container struct {
@@ -132,16 +132,16 @@ func PickManaged(message string, opts PickOptions) (Container, error) {
 	if !opts.Interactive {
 		return Container{}, fmt.Errorf("multiple CLI-managed containers found. Specify a container explicitly or run interactively")
 	}
-	choices := make([]prompt.Choice, len(containers))
+	choices := make([]service.Option, len(containers))
 	for i, c := range containers {
-		choices[i] = prompt.Choice{Value: c.Name, Label: fmt.Sprintf("%s  %s  %s", c.Name, ui.Subtle(c.Image), StatusLabel(c))}
+		choices[i] = service.Option{Value: c.Name, Label: fmt.Sprintf("%s  %s  %s", c.Name, ui.Subtle(c.Image), StatusLabel(c))}
 	}
-	chosen, err := prompt.Select(message, choices, choices[0].Value)
+	chosen, err := ui.Select(message, choices, choices[0])
 	if err != nil {
 		return Container{}, err
 	}
 	for _, c := range containers {
-		if c.Name == chosen {
+		if c.Name == chosen.Value {
 			return c, nil
 		}
 	}

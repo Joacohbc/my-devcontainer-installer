@@ -1,4 +1,4 @@
-package prompt
+package ui
 
 import (
 	"errors"
@@ -6,20 +6,11 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/huh"
-	"github.com/charmbracelet/lipgloss"
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/ui"
+	sv "github.com/joacohbc/my-devcontainer-installer/cli/internal/service"
 )
-
-// hintStyle styles the navigation footer rendered under wizard steps.
-var hintStyle = lipgloss.NewStyle().Foreground(ui.ColorSubtle).Faint(true)
 
 // ErrCancelled is returned when the user aborts a prompt (esc or ctrl+c).
 var ErrCancelled = errors.New("prompt cancelled")
-
-type Choice struct {
-	Value string
-	Label string
-}
 
 // formModel runs a single one-off huh form. esc (and ctrl+c) cancel; there is
 // no back navigation — that is exclusive to the wizard Stepper.
@@ -75,10 +66,16 @@ func contains(slice []string, s string) bool {
 	return false
 }
 
-func Multiselect(message string, choices []Choice, initial []string) ([]string, error) {
+func Multiselect(message string, choices []sv.Option, initial []sv.Option) ([]sv.Option, error) {
 	options := make([]huh.Option[string], len(choices))
+
+	initialStr := make([]string, len(initial))
+	for i, c := range initial {
+		initialStr[i] = c.Value
+	}
+
 	for i, c := range choices {
-		options[i] = huh.NewOption(c.Label, c.Value).Selected(contains(initial, c.Value))
+		options[i] = huh.NewOption(c.Label, c.Value).Selected(contains(initialStr, c.Value))
 	}
 	var result []string
 	f := huh.NewForm(huh.NewGroup(
@@ -91,15 +88,26 @@ func Multiselect(message string, choices []Choice, initial []string) ([]string, 
 	if err := runOnce(f); err != nil {
 		return nil, err
 	}
-	return result, nil
+
+	selected := make([]sv.Option, 0, len(result))
+	for _, r := range result {
+		for _, c := range choices {
+			if c.Value == r {
+				selected = append(selected, c)
+				break
+			}
+		}
+	}
+
+	return selected, nil
 }
 
-func Select(message string, choices []Choice, initial string) (string, error) {
+func Select(message string, choices []sv.Option, initial sv.Option) (sv.Option, error) {
 	options := make([]huh.Option[string], len(choices))
 	for i, c := range choices {
 		options[i] = huh.NewOption(c.Label, c.Value)
 	}
-	result := initial
+	result := initial.Value
 	f := huh.NewForm(huh.NewGroup(
 		huh.NewSelect[string]().
 			Title(message).
@@ -108,9 +116,14 @@ func Select(message string, choices []Choice, initial string) (string, error) {
 	)).WithTheme(devcontainerTheme())
 
 	if err := runOnce(f); err != nil {
-		return "", err
+		return sv.Option{}, err
 	}
-	return result, nil
+	for _, c := range choices {
+		if c.Value == result {
+			return c, nil
+		}
+	}
+	return sv.Option{}, nil
 }
 
 func Input(message, initial string, validate func(string) error) (string, error) {

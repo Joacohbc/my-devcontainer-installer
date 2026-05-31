@@ -1,12 +1,9 @@
 package commands
 
 import (
-	"fmt"
-
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/prompt"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/ui"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/service"
 	"github.com/spf13/cobra"
 )
 
@@ -47,20 +44,15 @@ func resolveRemoveVolumes(volumesFlag, yes, interactive bool, confirm func() (bo
 
 func runDown(cmd *cobra.Command, _ []string) error {
 	wsFlag, _ := cmd.Flags().GetString("workspace")
+	svc := service.LifecycleService{Report: ui.Console{}}
 
 	if cmd.Flags().Changed("container") {
 		containerName, err := resolveContainer(cmd, wsFlag)
 		if err != nil {
 			return err
 		}
-		ui.Yellow("\nStopping and removing container '%s'...", containerName)
-		_, _ = docker.DockerInherit([]string{"stop", containerName})
-		status, err := docker.DockerInherit([]string{"rm", containerName})
-		if err != nil {
+		if err := svc.RemoveContainer(containerName); err != nil {
 			return err
-		}
-		if status != 0 {
-			return fmt.Errorf("docker rm failed")
 		}
 		ui.Done()
 		return nil
@@ -79,23 +71,13 @@ func runDown(cmd *cobra.Command, _ []string) error {
 
 	volumesFlag, _ := cmd.Flags().GetBool("volumes")
 	removeVolumes, err := resolveRemoveVolumes(volumesFlag, yesFlag(cmd), interactiveFlag(cmd), func() (bool, error) {
-		return prompt.Confirm("Also remove named volumes for '"+workspace+"'? This deletes their data.", false)
+		return ui.Confirm("Also remove named volumes for '"+workspace+"'? This deletes their data.", false)
 	})
 	if err != nil {
 		return err
 	}
 
-	args := []string{"down"}
-	if removeVolumes {
-		args = append(args, "-v")
-	}
-
-	suffix := ""
-	if removeVolumes {
-		suffix = " (with volumes)"
-	}
-	ui.Yellow("\nBringing down '%s'%s...", workspace, suffix)
-	if err := docker.DockerComposeOrThrow(composeFile, args, nil); err != nil {
+	if err := svc.Down(composeFile, workspace, removeVolumes); err != nil {
 		return err
 	}
 	ui.Done()

@@ -4,11 +4,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/prompt"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/ui"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/service"
 	"github.com/spf13/cobra"
 )
 
@@ -58,15 +57,22 @@ func runQuickRun(cmd *cobra.Command, _ []string) error {
 		if !interactive {
 			return fmt.Errorf("--variant required in non-interactive mode")
 		}
-		choices := make([]prompt.Choice, len(types.RemoteVariants))
+		choices := make([]service.Option, len(types.RemoteVariants))
 		for i, v := range types.RemoteVariants {
-			choices[i] = prompt.Choice{Value: v, Label: types.VariantLabels[v]}
+			choices[i] = service.Option{Value: v, Label: types.VariantLabels[v]}
 		}
-		picked, err := prompt.Select("Image variant:", choices, "ssh")
+		var initial service.Option
+		for _, c := range choices {
+			if c.Value == "ssh" {
+				initial = c
+				break
+			}
+		}
+		picked, err := ui.Select("Image variant:", choices, initial)
 		if err != nil {
 			return err
 		}
-		variant = picked
+		variant = picked.Value
 	}
 
 	reg := domain.ResolveRegistry(registry, "")
@@ -87,50 +93,15 @@ func runQuickRun(cmd *cobra.Command, _ []string) error {
 	}
 	println()
 
-	_, stdout, _, _ := docker.DockerCapture([]string{"inspect", "-f", "{{.State.Status}}", containerName})
-	state := strings.TrimSpace(strings.ReplaceAll(stdout, " ", ""))
-	if state == "running" {
-		ui.Green("✓ Container '%s' is already running.", containerName)
-		printRunNextSteps(containerName)
-		return nil
-	}
-	if state == "exited" || state == "created" || state == "paused" {
-		ui.Yellow("↻ Starting existing container '%s'...", containerName)
-		status, err := docker.DockerInherit([]string{"start", containerName})
-		if err != nil {
-			return err
-		}
-		if status != 0 {
-			return fmt.Errorf("docker start failed")
-		}
-		printRunNextSteps(containerName)
-		return nil
-	}
-
-	args := []string{
-		"run", "-d",
-		"--name", containerName,
-		"--restart", "unless-stopped",
-		"-v", "/var/run/docker.sock:/var/run/docker.sock",
-		"--label", types.LabelManaged + "=true",
-		"--label", types.LabelQuickRun + "=" + variant,
-	}
-	if volume != "" {
-		_, _ = docker.DockerInherit([]string{"volume", "create", volume})
-		args = append(args, "-v", volume+":/workspace")
-	}
-	if port != 0 {
-		args = append(args, "-p", fmt.Sprintf("%d:22", port))
-	}
-	args = append(args, image, "sleep", "infinity")
-
-	ui.Yellow("Pulling and starting container...")
-	status, err := docker.DockerInherit(args)
-	if err != nil {
+	svc := service.RunService{Report: ui.Console{}}
+	if err := svc.Run(service.QuickRunSpec{
+		Variant:       variant,
+		ContainerName: containerName,
+		Image:         image,
+		Volume:        volume,
+		Port:          port,
+	}); err != nil {
 		return err
-	}
-	if status != 0 {
-		return fmt.Errorf("docker run failed")
 	}
 
 	println()

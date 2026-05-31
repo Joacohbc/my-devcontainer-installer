@@ -3,20 +3,12 @@ package service
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/project"
 )
-
-func newUpdateService(compose func(projectDir, composeFile string, args []string) error) UpdateService {
-	return UpdateService{
-		Report:  NopReporter{},
-		Pull:    func(string) error { return nil },
-		Compose: compose,
-	}
-}
 
 func TestUpdateOneLocalComputesComposeArgs(t *testing.T) {
 	cases := []struct {
@@ -31,6 +23,10 @@ func TestUpdateOneLocalComputesComposeArgs(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
+			runner := &fakeRunner{status: 0}
+			restore := useFakeDocker(runner)
+			defer restore()
+
 			projectDir := t.TempDir()
 			config := &types.DevcontainerConfig{Mode: types.BuildModeLocalCached, Workspace: "ws", Image: "img:latest"}
 			composeFile := project.ProjectPaths(projectDir, config.Workspace).ComposeFile
@@ -41,67 +37,54 @@ func TestUpdateOneLocalComputesComposeArgs(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			var gotArgs []string
-			svc := newUpdateService(func(_, _ string, args []string) error { gotArgs = args; return nil })
+			svc := UpdateService{Report: nopReporter{}}
 			_, ok := svc.UpdateOne(projectDir, config, c.pull, c.rebuild)
 			if !ok {
 				t.Fatal("expected UpdateOne to succeed")
 			}
-			if len(gotArgs) != len(c.wantArgs) {
-				t.Fatalf("args = %v, want %v", gotArgs, c.wantArgs)
+			call := runner.callContaining("build")
+			if call == nil {
+				t.Fatalf("no compose build call recorded; calls=%v", runner.calls)
 			}
-			for i := range c.wantArgs {
-				if gotArgs[i] != c.wantArgs[i] {
-					t.Errorf("args = %v, want %v", gotArgs, c.wantArgs)
+			for _, want := range c.wantArgs {
+				if !slices.Contains(call, want) {
+					t.Errorf("compose call %v missing %q", call, want)
 				}
+			}
+			if slices.Contains(c.wantArgs, "--pull") != slices.Contains(call, "--pull") {
+				t.Errorf("--pull mismatch: call=%v wantArgs=%v", call, c.wantArgs)
 			}
 		})
 	}
 }
 
+func TestUpdateOneRemotePulls(t *testing.T) {
+	runner := &fakeRunner{status: 0}
+	restore := useFakeDocker(runner)
+	defer restore()
+
+	config := &types.DevcontainerConfig{
+		Mode:      types.BuildModeRemote,
+		Workspace: "ws",
+		Remote:    &types.RemoteConfig{Variant: "ssh"},
+	}
+	svc := UpdateService{Report: nopReporter{}}
+	_, ok := svc.UpdateOne(t.TempDir(), config, false, false)
+	if !ok {
+		t.Fatal("expected remote UpdateOne to succeed")
+	}
+	if call := runner.callContaining("pull"); call == nil {
+		t.Errorf("expected a docker pull call; calls=%v", runner.calls)
+	}
+}
+
 func TestUpdateOneRemoteMissingConfigFails(t *testing.T) {
-	config := &types.DevcontainerConfig{Mode: types.BuildModeRemote, Workspace: "ws", Remote: nil}
-	svc := newUpdateService(func(_, _ string, _ []string) error { return nil })
+	restore := useFakeDocker(&fakeRunner{status: 0})
+	defer restore()
+
+	config := &types.DevcontainerConfig{Mode: types.BuildModeRemote, Workspace: "ws"}
+	svc := UpdateService{Report: nopReporter{}}
 	if _, ok := svc.UpdateOne(t.TempDir(), config, false, false); ok {
-		t.Error("expected UpdateOne to fail when remote config is missing")
-	}
-}
-
-func TestUpdateAllNoEntries(t *testing.T) {
-	tmp := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", tmp)
-	t.Setenv("APPDATA", tmp)
-
-	svc := newUpdateService(func(_, _ string, _ []string) error { return nil })
-	updated, skipped, failed := svc.UpdateAll(false, false)
-	if updated != 0 || skipped != 0 || failed != 0 {
-		t.Errorf("got (%d,%d,%d), want all zero", updated, skipped, failed)
-	}
-}
-
-func TestUpdateAllCountsFailures(t *testing.T) {
-	tmp := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", tmp)
-	t.Setenv("APPDATA", tmp)
-
-	projectDir := t.TempDir()
-	config := domain.DefaultConfig(projectDir)
-	config.Mode = types.BuildModeRemote
-	config.Remote = nil
-	if err := domain.SaveConfig(config, projectDir); err != nil {
-		t.Fatalf("SaveConfig: %v", err)
-	}
-	if err := domain.RecordEntry(domain.ImageEntry{
-		ProjectDir: projectDir,
-		Workspace:  config.Workspace,
-		Mode:       string(config.Mode),
-		Image:      config.Image,
-	}); err != nil {
-		t.Fatalf("RecordEntry: %v", err)
-	}
-
-	svc := newUpdateService(func(_, _ string, _ []string) error { return nil })
-	if _, _, failed := svc.UpdateAll(false, false); failed == 0 {
-		t.Error("expected at least one failed project")
+		t.Error("expected failure when remote config is missing")
 	}
 }

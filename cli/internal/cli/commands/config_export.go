@@ -1,11 +1,10 @@
 package commands
 
 import (
-	"fmt"
 	"os"
 
-	"github.com/goccy/go-yaml"
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/ui"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/service"
 	"github.com/spf13/cobra"
 )
 
@@ -25,15 +24,7 @@ func runConfigExport(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
-	cfg, err := domain.LoadConfig(cwd)
-	if err != nil {
-		return err
-	}
-	if cfg == nil {
-		return fmt.Errorf("no devcontainer.config.json found in %s", cwd)
-	}
-
-	data, err := yaml.Marshal(cfg)
+	data, err := service.ConfigService{Report: ui.Console{}}.ExportConfigYAML(cwd)
 	if err != nil {
 		return err
 	}

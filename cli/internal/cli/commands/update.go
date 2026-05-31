@@ -2,11 +2,9 @@ package commands
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/ui"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/service"
 	"github.com/spf13/cobra"
 )
@@ -36,23 +34,7 @@ Note: To update the CLI binary itself, run 'devcontainer-cli upgrade-cli'.`,
 }
 
 func updateService() service.UpdateService {
-	return service.UpdateService{
-		Report: consoleReporter{},
-		Pull: func(image string) error {
-			status, err := docker.DockerInherit([]string{"pull", image})
-			if err != nil || status != 0 {
-				return fmt.Errorf("failed to pull image '%s'", image)
-			}
-			return nil
-		},
-		Compose: func(projectDir, composeFile string, args []string) error {
-			status, err := docker.DockerCompose(composeFile, args, &docker.ComposeOptions{CWD: projectDir})
-			if err != nil || status != 0 {
-				return fmt.Errorf("docker compose build failed")
-			}
-			return nil
-		},
-	}
+	return service.UpdateService{Report: ui.Console{}}
 }
 
 func runUpdateImages(cmd *cobra.Command, _ []string) error {
@@ -95,19 +77,6 @@ func updateContainerImage(cmd *cobra.Command) error {
 	if err != nil {
 		return err
 	}
-	status, stdout, _, err := docker.DockerCapture([]string{"inspect", "-f", "{{.Config.Image}}", containerName})
-	if err != nil || status != 0 {
-		return fmt.Errorf("failed to inspect container '%s'", containerName)
-	}
-	image := strings.TrimSpace(stdout)
-	if image == "" {
-		return fmt.Errorf("could not resolve image for container '%s'", containerName)
-	}
-	ui.Log(fmt.Sprintf("Pulling updated image '%s' for container '%s'...", image, containerName))
-	status, err = docker.DockerInherit([]string{"pull", image})
-	if err != nil || status != 0 {
-		return fmt.Errorf("failed to pull image '%s'", image)
-	}
-	ui.Ok("Pulled " + image)
-	return nil
+	_, err = updateService().UpdateContainer(containerName)
+	return err
 }

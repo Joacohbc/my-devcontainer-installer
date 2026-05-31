@@ -40,6 +40,9 @@ Applies to:
   mongo, redis, postgres, tunnel).
 - `internal/domain/catalog/catalog.go` — the module/service catalog.
 - `internal/domain/{generator,resolver,validators,config,project,images}.go` — generator core.
+- `internal/service/*.go` — every service method that adds/changes logic needs a matching
+  case in the group's `_test.go` (Docker swapped via `docker.SetRunner`, fake
+  `Reporter`/`Prompter`).
 
 ### What to validate when adding/updating a module
 
@@ -64,7 +67,8 @@ importable from outside the module.
 | Path | Why it exists / what belongs here |
 |---|---|
 | `cmd/devcontainer-cli/main.go` | Process wiring only: signal handlers (SIGINT/SIGTERM → exit 130), `version` var (injected via ldflags), root dispatch, error→exit-code mapping. No business logic. |
-| `internal/cli/` | User interaction layer. Contains subcommands (`cli/commands`), interactive prompts (`cli/prompt`), console output (`cli/ui`), container picker (`cli/pick`), and SSH next steps (`cli/sshhelp`). |
+| `internal/cli/` | User interaction layer. Contains subcommands (`cli/commands`), console output + prompts + wizard engine (`cli/ui`), container picker (`cli/pick`), and SSH next steps (`cli/sshhelp`). Commands only parse flags, drive prompts, and print — **they delegate all business logic to `internal/service` and never call `infra/docker` or `os/exec` directly.** |
+| `internal/service/` | Orchestration layer between `cli` and `{domain, infra}`. Each service owns one operation group's logic (docker/ssh/exec orchestration + domain calls) and reports/prompts only through the `service.Reporter`/`service.Prompter` interfaces. **May import `domain` and `infra`; never imports `cli`.** See the service-layer section below. |
 | `internal/domain/` | Core logic layer: generating Dockerfile/compose, resolving module dependencies, validating input, loading/persisting config, fingerprinting, subnet math, workspace name resolution. **Never imports `infra` or `cli`.** |
 | `internal/domain/types/` | Shared domain data types: config structures, constants, label calculations. No I/O, no logic. (Was `internal/core`). |
 | `internal/domain/catalog/` | The catalog of modules/services (`catalog.go`). (Was `internal/registry`). |
@@ -83,7 +87,8 @@ is a thin `package main` that only *wires* those internal pieces together — no
 business logic to misplace at the root.
 
 Import paths name the layer: `internal/domain/types`, `internal/domain`,
-`internal/infra/docker`, `internal/cli/commands`.
+`internal/service`, `internal/infra/docker`, `internal/cli/commands`. The allowed
+import direction is `cli → service → { domain, infra }`.
 
 **Type placement:** a type used by **more than one package** lives in
 `internal/domain/types/types.go`; a type used by a **single command** stays local to that file
@@ -93,11 +98,60 @@ Import paths name the layer: `internal/domain/types`, `internal/domain`,
 
 Domain functions that need to query Docker do **not** import `infra/docker`.
 Instead they take a `domain.CaptureFunc func(args []string) (status int, stdout, stderr string)`
-parameter, and the command passes a closure wrapping `docker.DockerCapture`
-(see `captureFunc()` / `dockerCapture()` in `internal/cli/commands/docker_capture.go`).
+parameter, and the **service** passes a closure wrapping `docker.DockerCapture`
+(see `captureFunc()` / `dockerCapture()` in `internal/service/capture.go`).
 This keeps the dependency direction clean and makes domain functions trivially
 testable with a fake capture. Examples: `domain.ListUsedSubnets(capture)`,
 `domain.LocalImageExists(image, capture)`.
+
+---
+
+## The service layer (`internal/service`)
+
+`cli → service → { domain, infra }`. Commands are a thin shell; every operation's
+real logic lives in a service. The dependency rule: `service` may import `domain`
+and `infra`, **never `cli`** (no `cli/ui`, no `cli/pick`).
+
+### What goes where
+
+- **Command (`cli/commands/<name>.go`)**: parse cobra flags, resolve cwd/workspace,
+  run interactive pickers/prompts, construct the service with `ui.Console{}`, call a
+  method, print results. **No `infra/docker`, no `os/exec`** (verified: `grep -rln
+  infra/docker internal/cli/commands` is empty).
+- **Service (`service/<group>.go`)**: a `struct { Report Reporter; Prompt Prompter }`
+  (add `Prompt` only if it asks the user) plus verb methods holding the logic, calling
+  `domain.*` and `infra/docker` directly.
+
+### The boundary interfaces (`service/connector.go`)
+
+- `service.Reporter` — output: `Info/Warn/Success/Error/Fatal/Debug`. Services emit
+  through it and never touch the terminal.
+- `service.Prompter` — input: `Ask/Confirm/Select/Multiselect`, plus
+  `Wizard(build func(*State) []Step)` for multi-step flows with esc-back navigation.
+- `service.Option`, and the declarative wizard types `Field/Step/State/FieldKind`
+  (`service/wizard.go`). The service builds `[]Step`; the **renderer** `Stepper` lives
+  in `cli/ui/stepper.go` and backs `ui.Console.Wizard`.
+- The single terminal implementation of both interfaces is `ui.Console{}` (`cli/ui`).
+
+### Service groups (one `_test.go` each, mandatory)
+
+`generate.go`+`generate_wizard.go`, `run.go`, `destroy.go`, `update.go`,
+`lifecycle.go` (up/down/start/stop/restart), `prune.go`, `inspect.go`
+(shell/logs/status/copy/ls + completions), `config.go` (config/export/import/preset),
+`ssh.go` (setup-ssh), `portforward.go`, `upgrade.go`. `service.CleanupStaleUpdate()`
+is called from `main.go` — keep that call.
+
+**Exceptions that still touch docker from `cli`:** `cli/pick` (container-picker UI) and
+the `cleanup-tips` command (pure presentation — it prints docker commands, never runs
+them).
+
+### Testing services
+
+No real Docker: swap the runner with `docker.SetRunner(fake)` + `defer
+docker.ResetRunner()` (and `docker.ResetDockerCache()`); the injected docker closures
+of the past are gone. Use fakes for `Reporter`/`Prompter`. See the shared
+`nopReporter`, `fakeRunner`, `scriptedPrompter` and `useFakeDocker` helpers in
+`internal/service/helpers_test.go`.
 
 ---
 
@@ -111,16 +165,18 @@ Centralises **all** shell-outs to the `docker` binary (over `os/exec`).
 
 | Export | Purpose |
 |---|---|
-| `Runner` | Indirection over `exec.Command`; replace in tests to avoid real Docker. |
-| `ResetCache()` | Clears the availability cache — call in test setup/teardown. |
+| `Runner` / `SetRunner(r)` / `ResetRunner()` | Indirection over `exec.Command`; swap in tests to avoid real Docker. |
+| `ResetDockerCache()` | Clears the availability cache — call in test setup/teardown. |
 | `IsDockerAvailable()` | Cached check; `false` if docker is absent/daemon down. |
-| `EnsureDocker()` | Returns an error if docker is unavailable. Call at the top of any docker-dependent handler. |
-| `DockerInherit(args)` | `docker <args>` with inherited stdio; returns exit code. |
-| `DockerCapture(args)` | `docker <args>` piped; returns `(status, stdout, stderr)`. |
-| `DockerCompose(file, args, env)` | `docker compose -f <file> <args>`; returns exit code. |
-| `DockerComposeOrThrow(file, args, env)` | Same but returns an error on non-zero exit. |
+| `EnsureDocker()` | Returns an error if docker is unavailable. Call at the top of any docker-dependent service. |
+| `DockerInherit(args)` | `docker <args>` with inherited stdio; returns `(status, error)`. |
+| `DockerCapture(args)` | `docker <args>` piped; returns `(status, stdout, stderr, error)`. |
+| `DockerCompose(file, args, opts)` | `docker compose -f <file> <args>`; returns `(status, error)`. |
+| `DockerComposeOrThrow(file, args, opts)` | Same but returns an error on non-zero exit. |
+| `DockerExecStdin(input, args)` | `docker <args>` with `input` piped to stdin; returns `(status, error)`. |
 
-**Rule:** never call `exec.Command("docker", …)` directly anywhere else.
+**Rule:** never call `exec.Command("docker", …)` directly anywhere else, and call
+these only from `internal/service` — `cli/commands` go through a service.
 
 ### `internal/infra/project` — Project path resolution
 
@@ -130,18 +186,16 @@ Centralises **all** shell-outs to the `docker` binary (over `os/exec`).
 
 **Rule:** never build `.dc_<workspace>` paths by hand — always call `ProjectPaths`.
 
-### `internal/cli/ui` — Console output
+### `internal/cli/ui` — Console output, prompts and wizard engine
 
 `ui.Log`, `ui.Ok`, `ui.Warn`, `ui.Success`, `ui.Bar` give consistent styling
-(over `fatih/color`). Prefer them over bare `color.*` calls for structured
-output lines.
-
-### `internal/cli/prompt` — Interactive prompts
-
-Wraps `charmbracelet/huh` (Select/MultiSelect/Input/Confirm). User aborts
-(`huh.ErrUserAborted`) are mapped to `prompt.ErrCancelled`, which `main()`
-turns into exit code 130. `Input` seeds the result with the default so pressing
-Enter keeps it.
+(over `fatih/color`). Prefer them over bare `color.*` calls for structured output
+lines. `cli/ui` also wraps `charmbracelet/huh` for the one-off prompts
+(`Select/Multiselect/Input/Confirm`) and the multi-step `Stepper`; user aborts map to
+`ui.ErrCancelled`, which `main()` turns into exit code 130. `ui.Console{}` implements
+`service.Reporter` and `service.Prompter`, so commands pass it into services instead of
+calling these helpers ad hoc. (There is no separate `cli/prompt` package — it was
+folded into `cli/ui`.)
 
 ### `internal/infra/assets` — Embedded shell scripts
 
@@ -184,11 +238,19 @@ func newDownCommand() *cobra.Command {
     return cmd
 }
 
-func runDown(cmd *cobra.Command, _ []string) error { /* orchestration */ }
+func runDown(cmd *cobra.Command, _ []string) error {
+    // read flags, resolve cwd/workspace, then delegate to a service:
+    svc := service.LifecycleService{Report: ui.Console{}}
+    return svc.Down(composeFile, workspace, removeVolumes)
+}
 ```
 
 - `register(c)` appends to the package-level `subcommands` slice consumed by
   `NewRootCommand`.
+- `RunE` orchestrates flags/prompts and **delegates the real work to a service**
+  (`service.<Group>Service{Report: ui.Console{}}`). It must not import `infra/docker`
+  or `os/exec`. New logic → a service method + its `_test.go`; see the service-layer
+  section above.
 - Flag helpers live in `flags.go`: `addYesFlag`/`addInteractiveFlag` and the
   readers `yesFlag(cmd)`/`interactiveFlag(cmd)` (interactive = NOT `--no-interactive`).
 - The default `generate` command is the **root's** `RunE` (`runGenerate` in
@@ -238,8 +300,10 @@ func TestParsePortMapping(t *testing.T) {
 }
 ```
 
-- **Mocking Docker:** replace `docker.Runner` (and call `docker.ResetCache()`
-  before/after) so no real Docker is invoked.
+- **Mocking Docker:** `docker.SetRunner(fake)` + `defer docker.ResetRunner()` (and
+  `docker.ResetDockerCache()`) so no real Docker is invoked.
+- **Services:** use the shared `nopReporter`/`fakeRunner`/`scriptedPrompter` and
+  `useFakeDocker` helpers in `internal/service/helpers_test.go`.
 - **Domain functions:** pass a fake `CaptureFunc` returning canned stdout.
 - **Temp config home:** set `XDG_CONFIG_HOME` to a `t.TempDir()` and restore it.
 
@@ -381,7 +445,8 @@ the ps1 side.
 
 ## PR checklist
 
-- [ ] New/modified module or domain function has a matching `_test.go`.
+- [ ] New/modified module, domain function, or service method has a matching `_test.go`.
+- [ ] No `infra/docker` or `os/exec` import in `internal/cli/commands` (logic belongs in a service).
 - [ ] `go test ./...` passes.
 - [ ] `go vet ./...` and `gofmt -l .` are clean.
 - [ ] Installer change mirrored to its `.sh`/`.ps1` counterpart.

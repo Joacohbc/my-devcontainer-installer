@@ -11,6 +11,10 @@ func TestDestroyRemovesArtifactsAndDownsStack(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", tmp)
 	t.Setenv("APPDATA", tmp)
 
+	runner := &fakeRunner{status: 0}
+	restore := useFakeDocker(runner)
+	defer restore()
+
 	projectDir := filepath.Join(tmp, ".dc_ws")
 	composeFile := filepath.Join(projectDir, "build", "docker-compose.yml")
 	configPath := filepath.Join(tmp, "devcontainer.config.json")
@@ -23,11 +27,7 @@ func TestDestroyRemovesArtifactsAndDownsStack(t *testing.T) {
 		}
 	}
 
-	downedFile := ""
-	svc := DestroyService{
-		Report:      NopReporter{},
-		ComposeDown: func(composeFile string) error { downedFile = composeFile; return nil },
-	}
+	svc := DestroyService{Report: nopReporter{}}
 	err := svc.Run(DestroyTarget{
 		Workspace:   "ws",
 		ComposeFile: composeFile,
@@ -38,8 +38,8 @@ func TestDestroyRemovesArtifactsAndDownsStack(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if downedFile != composeFile {
-		t.Errorf("ComposeDown called with %q, want %q", downedFile, composeFile)
+	if call := runner.callContaining("down"); call == nil {
+		t.Errorf("expected a compose down call; calls=%v", runner.calls)
 	}
 	if fileExists(projectDir) {
 		t.Error("project dir should have been removed")
@@ -54,11 +54,11 @@ func TestDestroySkipsDownWhenNoComposeFile(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", tmp)
 	t.Setenv("APPDATA", tmp)
 
-	called := false
-	svc := DestroyService{
-		Report:      NopReporter{},
-		ComposeDown: func(string) error { called = true; return nil },
-	}
+	runner := &fakeRunner{status: 0}
+	restore := useFakeDocker(runner)
+	defer restore()
+
+	svc := DestroyService{Report: nopReporter{}}
 	err := svc.Run(DestroyTarget{
 		Workspace:   "ws",
 		ComposeFile: filepath.Join(tmp, "missing", "docker-compose.yml"),
@@ -69,7 +69,7 @@ func TestDestroySkipsDownWhenNoComposeFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if called {
-		t.Error("ComposeDown must not be called when no compose file exists")
+	if call := runner.callContaining("down"); call != nil {
+		t.Errorf("compose down must not run when no compose file exists; got %v", call)
 	}
 }

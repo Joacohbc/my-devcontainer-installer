@@ -1,11 +1,9 @@
 package commands
 
 import (
-	"fmt"
-
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/ui"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/service"
 	"github.com/spf13/cobra"
 )
 
@@ -29,19 +27,15 @@ Runs: docker compose -f .dc_<workspace>/build/docker-compose.yml up -d`,
 
 func runUp(cmd *cobra.Command, _ []string) error {
 	wsFlag, _ := cmd.Flags().GetString("workspace")
+	svc := service.LifecycleService{Report: ui.Console{}}
 
 	if cmd.Flags().Changed("container") {
 		containerName, err := resolveContainer(cmd, wsFlag)
 		if err != nil {
 			return err
 		}
-		ui.Yellow("\nStarting container '%s'...", containerName)
-		status, err := docker.DockerInherit([]string{"start", containerName})
-		if err != nil {
+		if err := svc.StartContainer(containerName); err != nil {
 			return err
-		}
-		if status != 0 {
-			return fmt.Errorf("docker start failed")
 		}
 		ui.Done()
 		return nil
@@ -65,14 +59,7 @@ func runUp(cmd *cobra.Command, _ []string) error {
 	}
 
 	build, _ := cmd.Flags().GetBool("build")
-
-	args := []string{"up", "-d"}
-	if build {
-		args = append(args, "--build")
-	}
-
-	ui.Yellow("\nBringing up '%s'...", workspace)
-	if err := docker.DockerComposeOrThrow(composeFile, args, nil); err != nil {
+	if err := svc.Up(composeFile, workspace, build); err != nil {
 		return err
 	}
 	ui.Done()

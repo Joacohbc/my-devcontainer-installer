@@ -1,11 +1,8 @@
 package commands
 
 import (
-	"bytes"
-	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -15,11 +12,10 @@ import (
 
 	"github.com/goccy/go-yaml"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/pick"
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/prompt"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/ui"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/sshdefaults"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/service"
 	"github.com/spf13/cobra"
 )
 
@@ -139,8 +135,7 @@ func collectSetupSshFlags(cmd *cobra.Command) (*setupSshFlags, error) {
 }
 
 func which(bin string) bool {
-	_, err := exec.LookPath(bin)
-	return err == nil
+	return service.SshService{Report: ui.Console{}}.CommandExists(bin)
 }
 
 type composeServiceInfo struct {
@@ -242,19 +237,19 @@ func resolveTargetService(f *setupSshFlags) (composeServiceInfo, error) {
 		first := keys[0]
 		return composeServiceInfo{service: first, container: containerOf(services[first], first)}, nil
 	}
-	choices := make([]prompt.Choice, len(keys))
+	choices := make([]service.Option, len(keys))
 	for i, key := range keys {
 		label := key
 		if services[key].ContainerName != "" {
 			label = fmt.Sprintf("%s (container: %s)", key, services[key].ContainerName)
 		}
-		choices[i] = prompt.Choice{Value: key, Label: label}
+		choices[i] = service.Option{Value: key, Label: label}
 	}
-	chosen, err := prompt.Select("Select SSH service:", choices, keys[0])
+	chosen, err := ui.Select("Select SSH service:", choices, service.Option{Value: keys[0]})
 	if err != nil {
 		return composeServiceInfo{}, err
 	}
-	return composeServiceInfo{service: chosen, container: containerOf(services[chosen], chosen)}, nil
+	return composeServiceInfo{service: chosen.Value, container: containerOf(services[chosen.Value], chosen.Value)}, nil
 }
 
 func detectMode(f *setupSshFlags) string {
@@ -282,16 +277,7 @@ func checkPrereqs(mode string) error {
 }
 
 func stackRunning(container string) bool {
-	status, stdout, _, err := docker.DockerCapture([]string{"ps", "--format", "{{.Names}}"})
-	if err != nil || status != 0 {
-		return false
-	}
-	for _, l := range strings.Split(stdout, "\n") {
-		if strings.TrimSpace(l) == container {
-			return true
-		}
-	}
-	return false
+	return service.SshService{Report: ui.Console{}}.ContainerRunning(container)
 }
 
 func ensureStack(f *setupSshFlags, mode string) error {
@@ -313,7 +299,7 @@ func ensureStack(f *setupSshFlags, mode string) error {
 	}
 	proceed := true
 	if !f.assumeYes {
-		ok, err := prompt.Confirm("Start it now with docker compose up -d?", true)
+		ok, err := ui.Confirm("Start it now with docker compose up -d?", true)
 		if err != nil {
 			return err
 		}
@@ -322,8 +308,8 @@ func ensureStack(f *setupSshFlags, mode string) error {
 	if !proceed {
 		return fmt.Errorf("aborting — stack must be running")
 	}
-	if status, _ := docker.DockerCompose(f.composeFile, []string{"up", "-d"}, nil); status != 0 {
-		return fmt.Errorf("docker compose up failed")
+	if err := (service.SshService{Report: ui.Console{}}).ComposeUp(f.composeFile); err != nil {
+		return err
 	}
 	for tries := 20; tries > 0 && !stackRunning(f.container); tries-- {
 		time.Sleep(time.Second)
@@ -339,12 +325,11 @@ func fetchPassword(f *setupSshFlags, mode string) {
 		return
 	}
 	ui.Log("Fetching temporary password from logs...")
-	status, stdout, stderr, err := docker.DockerCapture([]string{"compose", "-f", f.composeFile, "logs", f.service})
-	if err != nil || status != 0 {
+	combined, ok := service.SshService{Report: ui.Console{}}.ServiceLogs(f.composeFile, f.service)
+	if !ok {
 		ui.Warn("Could not read logs.")
 		return
 	}
-	combined := stdout + "\n" + stderr
 	var last string
 	for _, l := range strings.Split(combined, "\n") {
 		if strings.Contains(l, f.user+" password") {
@@ -364,23 +349,17 @@ func genKey(keyPath string) error {
 		return nil
 	}
 	ui.Log(fmt.Sprintf("Generating ed25519 key at %s", keyPath))
-	if err := os.MkdirAll(filepath.Dir(keyPath), 0o700); err != nil {
+	if err := (service.SshService{Report: ui.Console{}}).GenerateKey(keyPath); err != nil {
 		return err
-	}
-	c := exec.Command("ssh-keygen", "-t", "ed25519", "-f", keyPath, "-N", "", "-q")
-	c.Stdin, c.Stdout, c.Stderr = os.Stdin, os.Stdout, os.Stderr
-	if err := c.Run(); err != nil {
-		return fmt.Errorf("ssh-keygen failed")
 	}
 	ui.Ok("Key generated.")
 	return nil
 }
 
 func containerIP(container string, f *setupSshFlags) (string, error) {
-	format := `{{range $name, $net := .NetworkSettings.Networks}}{{$name}} {{$net.IPAddress}}{{"\n"}}{{end}}`
-	status, stdout, _, err := docker.DockerCapture([]string{"inspect", "-f", format, container})
-	if err != nil || status != 0 {
-		return "", fmt.Errorf("could not resolve container IP")
+	stdout, err := service.SshService{Report: ui.Console{}}.ContainerNetworks(container)
+	if err != nil {
+		return "", err
 	}
 	type entry struct{ network, ip string }
 	var entries []entry
@@ -408,11 +387,12 @@ func containerIP(container string, f *setupSshFlags) (string, error) {
 		ui.Warn(fmt.Sprintf("Container '%s' is on %d networks; using '%s' (%s).", container, len(entries), entries[0].network, entries[0].ip))
 		return entries[0].ip, nil
 	}
-	choices := make([]prompt.Choice, len(entries))
+	choices := make([]service.Option, len(entries))
 	for i, e := range entries {
-		choices[i] = prompt.Choice{Value: e.ip, Label: fmt.Sprintf("%s (%s)", e.network, e.ip)}
+		choices[i] = service.Option{Value: e.ip, Label: fmt.Sprintf("%s (%s)", e.network, e.ip)}
 	}
-	return prompt.Select("Container is on multiple networks. Select one:", choices, choices[0].Value)
+	sel, err := ui.Select("Container is on multiple networks. Select one:", choices, choices[0])
+	return sel.Value, err
 }
 
 type installResult struct {
@@ -432,12 +412,8 @@ func installKey(f *setupSshFlags, mode string) (installResult, error) {
 			return installResult{}, fmt.Errorf("--remote USER@HOST required for remote mode")
 		}
 		ui.Log(fmt.Sprintf("Installing public key into %s via %s...", f.container, f.remote))
-		remoteCmd := fmt.Sprintf("docker exec -i -u %s %s sh -c '%s'", f.user, f.container, script)
-		c := exec.Command("ssh", f.remote, remoteCmd)
-		c.Stdin = bytes.NewReader(pub)
-		c.Stdout, c.Stderr = os.Stdout, os.Stderr
-		if err := c.Run(); err != nil {
-			return installResult{}, fmt.Errorf("remote key install failed")
+		if err := (service.SshService{Report: ui.Console{}}).InstallKeyRemote(f.remote, f.user, f.container, script, pub); err != nil {
+			return installResult{}, err
 		}
 		return installResult{}, nil
 	}
@@ -465,12 +441,7 @@ func installKey(f *setupSshFlags, mode string) (installResult, error) {
 }
 
 func dockerExecStdin(input []byte, user, container, script string) error {
-	args := []string{"exec", "-i", "-u", user, container, "sh", "-c", script}
-	status, err := docker.DockerExecStdin(input, args)
-	if err != nil || status != 0 {
-		return fmt.Errorf("docker exec key install failed")
-	}
-	return nil
+	return service.SshService{Report: ui.Console{}}.InstallKeyLocal(input, user, container, script)
 }
 
 func buildConfigBlock(mode string, f *setupSshFlags, inst installResult) (string, error) {
@@ -584,7 +555,7 @@ func updateSshConfig(f *setupSshFlags, mode string, inst installResult) error {
 		fmt.Println(newBlock)
 		replace := true
 		if !f.assumeYes {
-			ok, cerr := prompt.Confirm(fmt.Sprintf("Replace existing block for Host '%s'?", f.alias), false)
+			ok, cerr := ui.Confirm(fmt.Sprintf("Replace existing block for Host '%s'?", f.alias), false)
 			if cerr != nil {
 				return cerr
 			}
@@ -619,30 +590,14 @@ func updateSshConfig(f *setupSshFlags, mode string, inst installResult) error {
 
 func testConnection(alias string) {
 	ui.Log(fmt.Sprintf("Testing ssh %s ...", alias))
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-	c := exec.CommandContext(ctx, "ssh",
-		"-o", "BatchMode=yes",
-		"-o", "StrictHostKeyChecking=accept-new",
-		"-o", "ConnectTimeout=5",
-		"-o", "ServerAliveInterval=2",
-		"-o", "ServerAliveCountMax=2",
-		alias, "echo OK",
-	)
-	out, err := c.Output()
-	if ctx.Err() == context.DeadlineExceeded {
+	switch (service.SshService{Report: ui.Console{}}).TestConnection(alias) {
+	case service.SSHTestOK:
+		ui.Ok(fmt.Sprintf("SSH alias '%s' works.", alias))
+	case service.SSHTestTimeout:
 		ui.Warn(fmt.Sprintf("SSH test timed out after 15s. Try manually:  ssh %s", alias))
-		return
+	default:
+		ui.Warn(fmt.Sprintf("SSH test inconclusive. Try manually:  ssh %s", alias))
 	}
-	if err == nil {
-		for _, l := range strings.Split(string(out), "\n") {
-			if strings.TrimSpace(l) == "OK" {
-				ui.Ok(fmt.Sprintf("SSH alias '%s' works.", alias))
-				return
-			}
-		}
-	}
-	ui.Warn(fmt.Sprintf("SSH test inconclusive. Try manually:  ssh %s", alias))
 }
 
 func deriveWorkspace(containerName string) (string, error) {
@@ -709,7 +664,7 @@ func runSetupSsh(cmd *cobra.Command, _ []string) error {
 	applyWorkspaceDefaults(f, workspace)
 
 	if !f.aliasExplicit && !f.assumeYes {
-		alias, err := prompt.Input("SSH connection name (alias):", f.alias, func(v string) error {
+		alias, err := ui.Input("SSH connection name (alias):", f.alias, func(v string) error {
 			if strings.TrimSpace(v) == "" {
 				return fmt.Errorf("name cannot be empty")
 			}
