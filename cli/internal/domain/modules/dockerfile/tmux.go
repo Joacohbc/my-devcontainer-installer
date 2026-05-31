@@ -3,7 +3,7 @@ package dockerfile
 import "github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 
 var TmuxModule = &ModuleSpec{
-	ID:         "tmux",
+	ID:         types.ModuleTmux,
 	Label:      "Tmux",
 	Category:   types.CategoryInfra,
 	UICategory: types.UICategoryDevTools,

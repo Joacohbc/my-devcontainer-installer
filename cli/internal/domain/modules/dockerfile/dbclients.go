@@ -10,7 +10,7 @@ import (
 // Each client is its own selectable module under the "clients" UI category so
 // they can be picked individually in the wizard. setup is optional extra RUN
 // lines (e.g. adding a vendor apt repo) emitted before the install.
-func aptClientModule(id, label, title, setup, pkg string) *ModuleSpec {
+func aptClientModule(id types.ModuleID, label, title, setup, pkg string) *ModuleSpec {
 	return &ModuleSpec{
 		ID:         id,
 		Label:      label,
@@ -28,7 +28,7 @@ func aptClientModule(id, label, title, setup, pkg string) *ModuleSpec {
 }
 
 var PostgresClientModule = aptClientModule(
-	"postgres-client",
+	types.ModulePostgresClient,
 	"PostgreSQL client (psql)",
 	"POSTGRESQL CLIENT",
 	"",
@@ -36,7 +36,7 @@ var PostgresClientModule = aptClientModule(
 )
 
 var RedisClientModule = aptClientModule(
-	"redis-client",
+	types.ModuleRedisClient,
 	"Redis client (redis-cli)",
 	"REDIS CLIENT",
 	"",
@@ -44,7 +44,7 @@ var RedisClientModule = aptClientModule(
 )
 
 var MysqlClientModule = aptClientModule(
-	"mysql-client",
+	types.ModuleMysqlClient,
 	"MySQL client (mysql)",
 	"MYSQL CLIENT",
 	"",
@@ -56,7 +56,7 @@ const mongoClientSetup = `RUN curl -fsSL https://www.mongodb.org/static/pgp/serv
 `
 
 var MongoClientModule = aptClientModule(
-	"mongo-client",
+	types.ModuleMongoClient,
 	"MongoDB client (mongosh)",
 	"MONGODB CLIENT",
 	mongoClientSetup,

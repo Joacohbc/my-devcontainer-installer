@@ -6,6 +6,45 @@ import (
 	"strings"
 )
 
+type ModuleID string
+
+const (
+	ModuleBase           ModuleID = "base"
+	ModuleGithubCli      ModuleID = "github-cli"
+	ModuleJavaTemurin    ModuleID = "java-temurin"
+	ModuleJavaOpenjdk    ModuleID = "java-openjdk"
+	ModulePython         ModuleID = "python"
+	ModuleSqlite         ModuleID = "sqlite"
+	ModuleGolang         ModuleID = "go"
+	ModulePhp            ModuleID = "php"
+	ModuleRust           ModuleID = "rust"
+	ModulePostgresClient ModuleID = "postgres-client"
+	ModuleRedisClient    ModuleID = "redis-client"
+	ModuleMysqlClient    ModuleID = "mysql-client"
+	ModuleMongoClient    ModuleID = "mongo-client"
+	ModuleNodejs         ModuleID = "nodejs"
+	ModulePnpm           ModuleID = "pnpm"
+	ModuleBun            ModuleID = "bun"
+	ModuleClaudeCode     ModuleID = "claude-code"
+	ModuleOpencode       ModuleID = "opencode"
+	ModuleCodexCli       ModuleID = "codex-cli"
+	ModuleAntigravityCli ModuleID = "antigravity-cli"
+	ModuleCopilotCli     ModuleID = "copilot-cli"
+	ModuleTmux           ModuleID = "tmux"
+	ModuleCleanup        ModuleID = "cleanup"
+)
+
+type ServiceID string
+
+const (
+	ServiceDevcontainer ServiceID = "devcontainer"
+	ServiceMongo        ServiceID = "mongo"
+	ServiceRedis        ServiceID = "redis"
+	ServicePostgres     ServiceID = "postgres"
+	ServiceMysql        ServiceID = "mysql"
+	ServiceTunnel       ServiceID = "tunnel"
+)
+
 type ModuleOptionType string
 
 const (
@@ -82,7 +121,7 @@ type RequiredEnvVar struct {
 }
 
 type SelectedModule struct {
-	ID      string         `json:"id" yaml:"id"`
+	ID      ModuleID       `json:"id" yaml:"id"`
 	Options map[string]any `json:"options,omitempty" yaml:"options,omitempty"`
 }
 
@@ -212,7 +251,7 @@ func NormalizeServices(services []any) []SelectedModule {
 	for _, s := range services {
 		switch v := s.(type) {
 		case string:
-			result = append(result, SelectedModule{ID: v, Options: map[string]any{}})
+			result = append(result, SelectedModule{ID: ModuleID(v), Options: map[string]any{}})
 		case map[string]any:
 			raw, err := json.Marshal(v)
 			if err != nil {

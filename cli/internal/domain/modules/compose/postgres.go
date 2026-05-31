@@ -7,7 +7,7 @@ import (
 )
 
 var PostgresService = &ServiceSpec{
-	ID:         "postgres",
+	ID:         types.ServicePostgres,
 	Label:      "PostgreSQL",
 	UICategory: types.UICategoryDatabases,
 	Volumes:    []string{"postgres_data"},

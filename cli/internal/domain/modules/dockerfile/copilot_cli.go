@@ -7,7 +7,7 @@ import (
 )
 
 var CopilotCliModule = &ModuleSpec{
-	ID:         "copilot-cli",
+	ID:         types.ModuleCopilotCli,
 	Label:      "GitHub Copilot CLI (standalone binary)",
 	Category:   types.CategoryInfra,
 	UICategory: types.UICategoryAITools,

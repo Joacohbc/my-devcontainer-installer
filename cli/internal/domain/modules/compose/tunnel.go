@@ -3,7 +3,7 @@ package compose
 import "github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 
 var TunnelService = &ServiceSpec{
-	ID:         "tunnel",
+	ID:         types.ServiceTunnel,
 	Label:      "Cloudflare Tunnel (cloudflared)",
 	UICategory: types.UICategoryDevTools,
 	RequiresEnv: []types.RequiredEnvVar{

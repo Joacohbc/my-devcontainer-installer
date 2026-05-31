@@ -1,9 +1,11 @@
 package compose
 
+import "github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
+
 const SSHServiceName = "devcontainer-ssh"
 
 var DevcontainerService = &ServiceSpec{
-	ID:     "devcontainer",
+	ID:     types.ServiceDevcontainer,
 	Label:  SSHServiceName + " (main)",
 	Always: true,
 	Render: func(ctx RenderContext) *ServiceDef {

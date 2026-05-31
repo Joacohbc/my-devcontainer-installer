@@ -7,7 +7,7 @@ import (
 )
 
 var BunModule = &ModuleSpec{
-	ID:         "bun",
+	ID:         types.ModuleBun,
 	Label:      "Bun",
 	Category:   types.CategoryRuntime,
 	UICategory: types.UICategoryLanguages,

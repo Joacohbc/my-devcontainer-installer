@@ -7,7 +7,7 @@ import (
 )
 
 var OpencodeModule = &ModuleSpec{
-	ID:         "opencode",
+	ID:         types.ModuleOpencode,
 	Label:      "OpenCode (opencode.ai installer)",
 	Category:   types.CategoryInfra,
 	UICategory: types.UICategoryAITools,

@@ -7,11 +7,11 @@ import (
 )
 
 var NodejsModule = &ModuleSpec{
-	ID:         "nodejs",
+	ID:         types.ModuleNodejs,
 	Label:      "Node.js (nvm or fnm, for devuser)",
 	Category:   types.CategoryRuntime,
 	UICategory: types.UICategoryLanguages,
-	Requires:   []string{"github-cli"},
+	Requires:   []types.ModuleID{types.ModuleGithubCli},
 	Options: []types.ModuleOption{
 		{
 			ID:    "manager",

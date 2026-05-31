@@ -3,11 +3,11 @@ package compose
 import "github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 
 type ServiceSpec struct {
-	ID             string
+	ID             types.ServiceID
 	Label          string
 	UICategory     types.UICategory
 	Always         bool
-	RequiresModule string
+	RequiresModule types.ModuleID
 	Internal       bool
 	Options        []types.ModuleOption
 	RequiresEnv    []types.RequiredEnvVar

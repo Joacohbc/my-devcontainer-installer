@@ -7,7 +7,7 @@ import (
 )
 
 var ClaudeCodeModule = &ModuleSpec{
-	ID:         "claude-code",
+	ID:         types.ModuleClaudeCode,
 	Label:      "Claude Code (native standalone installer)",
 	Category:   types.CategoryInfra,
 	UICategory: types.UICategoryAITools,

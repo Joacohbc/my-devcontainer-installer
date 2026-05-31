@@ -3,7 +3,7 @@ package dockerfile
 import "github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 
 var GithubCliModule = &ModuleSpec{
-	ID:         "github-cli",
+	ID:         types.ModuleGithubCli,
 	Label:      "GitHub CLI (gh)",
 	Category:   types.CategoryInfra,
 	UICategory: types.UICategoryDevTools,

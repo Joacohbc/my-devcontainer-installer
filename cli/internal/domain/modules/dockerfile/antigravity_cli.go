@@ -7,7 +7,7 @@ import (
 )
 
 var AntigravityCliModule = &ModuleSpec{
-	ID:         "antigravity-cli",
+	ID:         types.ModuleAntigravityCli,
 	Label:      "Antigravity CLI (native standalone installer)",
 	Category:   types.CategoryInfra,
 	UICategory: types.UICategoryAITools,

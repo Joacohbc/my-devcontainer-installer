@@ -3,7 +3,7 @@ package dockerfile
 import "github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 
 var CleanupModule = &ModuleSpec{
-	ID:        "cleanup",
+	ID:        types.ModuleCleanup,
 	Label:     "Cleanup + entrypoint + EXPOSE 22",
 	Category:  types.CategoryCleanup,
 	Always:    true,

@@ -155,17 +155,17 @@ func resolveEnabledServices(config *types.DevcontainerConfig) enabledServicesRes
 	optionsByID := make(map[string]map[string]any)
 
 	for _, s := range selected {
-		enabled[s.ID] = true
+		enabled[string(s.ID)] = true
 		opts := s.Options
 		if opts == nil {
 			opts = map[string]any{}
 		}
-		optionsByID[s.ID] = opts
+		optionsByID[string(s.ID)] = opts
 	}
 
 	for _, svc := range catalog.ComposeServices {
 		if svc.Always {
-			enabled[svc.ID] = true
+			enabled[string(svc.ID)] = true
 		}
 	}
 
@@ -207,7 +207,7 @@ func GenerateCompose(config *types.DevcontainerConfig) (string, error) {
 		declaredVolumes[v] = true
 	}
 	for _, id := range enabledIDs {
-		svc := catalog.GetComposeService(id)
+		svc := catalog.GetComposeService(types.ServiceID(id))
 		if svc == nil {
 			return "", fmt.Errorf("unknown compose service: %s", id)
 		}
@@ -220,13 +220,13 @@ func GenerateCompose(config *types.DevcontainerConfig) (string, error) {
 	services := make(map[string]*compose.ServiceDef)
 
 	for _, id := range enabledIDs {
-		svc := catalog.GetComposeService(id)
+		svc := catalog.GetComposeService(types.ServiceID(id))
 		if svc == nil {
 			return "", fmt.Errorf("unknown compose service: %s", id)
 		}
 
 		imageNameForSvc := config.Image
-		if svc.ID == "devcontainer" {
+		if svc.ID == types.ServiceDevcontainer {
 			imageNameForSvc = devcontainerImageName
 		}
 
@@ -243,7 +243,7 @@ func GenerateCompose(config *types.DevcontainerConfig) (string, error) {
 			DefaultDBUser:     dbUser,
 			DefaultDBPassword: dbPass,
 		}
-		if svc.ID == "devcontainer" {
+		if svc.ID == types.ServiceDevcontainer {
 			rc.PersistVolumeMounts = persistMounts
 		}
 		rendered := svc.Render(rc)
@@ -251,13 +251,13 @@ func GenerateCompose(config *types.DevcontainerConfig) (string, error) {
 			continue
 		}
 
-		if svc.ID == "devcontainer" && config.Mode == types.BuildModeRemote {
+		if svc.ID == types.ServiceDevcontainer && config.Mode == types.BuildModeRemote {
 			rendered.Build = ""
 		}
 
 		baseContainer := rendered.ContainerName
 		if baseContainer == "" {
-			baseContainer = svc.ID
+			baseContainer = string(svc.ID)
 		}
 		rendered.ContainerName = prefixContainer(workspace, baseContainer)
 
@@ -272,7 +272,7 @@ func GenerateCompose(config *types.DevcontainerConfig) (string, error) {
 			for i, n := range networksSlice {
 				mapped[i] = mapNetwork(n)
 			}
-			if svc.ID == "devcontainer" && devcontainerIP != "" {
+			if svc.ID == types.ServiceDevcontainer && devcontainerIP != "" {
 				netObj := make(map[string]any, len(mapped))
 				for _, n := range mapped {
 					if n == networkName {
@@ -291,8 +291,8 @@ func GenerateCompose(config *types.DevcontainerConfig) (string, error) {
 
 		rendered.Labels = copyLabels(labels)
 
-		serviceKey := svc.ID
-		if svc.ID == "devcontainer" {
+		serviceKey := string(svc.ID)
+		if svc.ID == types.ServiceDevcontainer {
 			serviceKey = compose.SSHServiceName
 		}
 		services[serviceKey] = rendered
@@ -398,7 +398,7 @@ func CollectRequiredEnvVars(config *types.DevcontainerConfig) []types.RequiredEn
 	selected := types.NormalizeServices(config.Compose.Services)
 	var out []types.RequiredEnvVar
 	for _, s := range selected {
-		svc := catalog.GetComposeService(s.ID)
+		svc := catalog.GetComposeService(types.ServiceID(s.ID))
 		if svc == nil {
 			continue
 		}
@@ -419,7 +419,7 @@ func PlannedComposeNames(config *types.DevcontainerConfig) (containers []string,
 		declaredVolumes[v] = true
 	}
 	for _, id := range enabledIDs {
-		svc := catalog.GetComposeService(id)
+		svc := catalog.GetComposeService(types.ServiceID(id))
 		if svc == nil {
 			return nil, "", nil, fmt.Errorf("unknown compose service: %s", id)
 		}
@@ -429,7 +429,7 @@ func PlannedComposeNames(config *types.DevcontainerConfig) (containers []string,
 	}
 
 	for _, id := range enabledIDs {
-		svc := catalog.GetComposeService(id)
+		svc := catalog.GetComposeService(types.ServiceID(id))
 		if svc == nil {
 			continue
 		}
@@ -450,7 +450,7 @@ func PlannedComposeNames(config *types.DevcontainerConfig) (containers []string,
 		}
 		base := rendered.ContainerName
 		if base == "" {
-			base = svc.ID
+			base = string(svc.ID)
 		}
 		containers = append(containers, prefixContainer(config.Workspace, base))
 	}

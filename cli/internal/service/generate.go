@@ -63,7 +63,7 @@ func (s GenerateService) Plan(config *types.DevcontainerConfig, copyContents map
 	if config.Mode == types.BuildModeLocalCached && dockerfile != "" {
 		moduleIDs := make([]string, 0, len(config.Dockerfile.Modules))
 		for _, m := range config.Dockerfile.Modules {
-			moduleIDs = append(moduleIDs, m.ID)
+			moduleIDs = append(moduleIDs, string(m.ID))
 		}
 		plan.Fingerprint = domain.ComputeFingerprint(dockerfile, copyContents, moduleIDs)
 		plan.Image = domain.FingerprintTag(plan.Fingerprint)

@@ -3,7 +3,7 @@ package dockerfile
 import "github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 
 var GolangModule = &ModuleSpec{
-	ID:         "go",
+	ID:         types.ModuleGolang,
 	Label:      "Go / Golang (Latest version)",
 	Category:   types.CategoryLang,
 	UICategory: types.UICategoryLanguages,

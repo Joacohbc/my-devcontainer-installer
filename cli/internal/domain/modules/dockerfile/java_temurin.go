@@ -8,11 +8,11 @@ import (
 )
 
 var JavaTemurinModule = &ModuleSpec{
-	ID:         "java-temurin",
+	ID:         types.ModuleJavaTemurin,
 	Label:      "Java — Eclipse Temurin JDK + Maven",
 	Category:   types.CategoryLang,
 	UICategory: types.UICategoryLanguages,
-	Conflicts:  []string{"java-openjdk"},
+	Conflicts:  []types.ModuleID{types.ModuleJavaOpenjdk},
 	Options: []types.ModuleOption{
 		{
 			ID:    "versions",

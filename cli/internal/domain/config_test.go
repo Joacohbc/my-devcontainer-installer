@@ -101,7 +101,7 @@ func TestLoadConfig_MigratesLegacyDbclients(t *testing.T) {
 			}
 			var got []string
 			for _, m := range cfg.Dockerfile.Modules {
-				got = append(got, m.ID)
+				got = append(got, string(m.ID))
 				if m.ID == "dbclients" {
 					t.Errorf("legacy dbclients module survived migration")
 				}

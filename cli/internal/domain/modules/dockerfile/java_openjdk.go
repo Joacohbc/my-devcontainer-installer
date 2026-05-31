@@ -8,11 +8,11 @@ import (
 )
 
 var JavaOpenjdkModule = &ModuleSpec{
-	ID:         "java-openjdk",
+	ID:         types.ModuleJavaOpenjdk,
 	Label:      "Java — OpenJDK (Ubuntu repos) + Maven",
 	Category:   types.CategoryLang,
 	UICategory: types.UICategoryLanguages,
-	Conflicts:  []string{"java-temurin"},
+	Conflicts:  []types.ModuleID{types.ModuleJavaTemurin},
 	Options: []types.ModuleOption{
 		{
 			ID:    "versions",

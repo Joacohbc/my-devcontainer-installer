@@ -7,11 +7,11 @@ import (
 )
 
 var CodexCliModule = &ModuleSpec{
-	ID:         "codex-cli",
+	ID:         types.ModuleCodexCli,
 	Label:      "Codex CLI (npx, no global install)",
 	Category:   types.CategoryInfra,
 	UICategory: types.UICategoryAITools,
-	Requires:   []string{"nodejs"},
+	Requires:   []types.ModuleID{types.ModuleNodejs},
 	PostScriptFiles: func(opts map[string]any) []string {
 		return []string{"install-codex-cli.sh"}
 	},

@@ -7,7 +7,7 @@ import (
 )
 
 var BaseModule = &ModuleSpec{
-	ID:        "base",
+	ID:        types.ModuleBase,
 	Label:     "Base (Ubuntu + SSH + zsh + sudo)",
 	Category:  types.CategoryBase,
 	Always:    true,

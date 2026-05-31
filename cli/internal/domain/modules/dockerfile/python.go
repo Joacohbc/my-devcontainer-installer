@@ -7,7 +7,7 @@ import (
 )
 
 var PythonModule = &ModuleSpec{
-	ID:         "python",
+	ID:         types.ModulePython,
 	Label:      "Python (python3 + pip, optional uv)",
 	Category:   types.CategoryLang,
 	UICategory: types.UICategoryLanguages,

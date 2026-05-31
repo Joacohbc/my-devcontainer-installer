@@ -3,7 +3,7 @@ package dockerfile
 import "github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 
 var SqliteModule = &ModuleSpec{
-	ID:         "sqlite",
+	ID:         types.ModuleSqlite,
 	Label:      "SQLite",
 	Category:   types.CategoryDB,
 	UICategory: types.UICategoryDatabases,

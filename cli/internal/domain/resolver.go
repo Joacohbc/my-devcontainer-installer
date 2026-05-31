@@ -25,7 +25,7 @@ type ResolvedModule struct {
 type ResolverError struct{ error }
 
 func ResolveDockerfileModules(selected []types.SelectedModule) ([]ResolvedModule, error) {
-	byID := make(map[string]map[string]any)
+	byID := make(map[types.ModuleID]map[string]any)
 
 	for _, m := range catalog.DockerfileModules {
 		if m.Always {
@@ -45,7 +45,7 @@ func ResolveDockerfileModules(selected []types.SelectedModule) ([]ResolvedModule
 		byID[sel.ID] = opts
 	}
 
-	stack := make([]string, 0, len(byID))
+	stack := make([]types.ModuleID, 0, len(byID))
 	for id := range byID {
 		stack = append(stack, id)
 	}

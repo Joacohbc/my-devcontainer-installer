@@ -7,7 +7,7 @@ import (
 )
 
 var RustModule = &ModuleSpec{
-	ID:         "rust",
+	ID:         types.ModuleRust,
 	Label:      "Rust (rustup, latest version)",
 	Category:   types.CategoryLang,
 	UICategory: types.UICategoryLanguages,

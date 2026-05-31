@@ -3,11 +3,11 @@ package dockerfile
 import "github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 
 var PnpmModule = &ModuleSpec{
-	ID:         "pnpm",
+	ID:         types.ModulePnpm,
 	Label:      "pnpm (for devuser)",
 	Category:   types.CategoryRuntime,
 	UICategory: types.UICategoryLanguages,
-	Requires:   []string{"nodejs"},
+	Requires:   []types.ModuleID{types.ModuleNodejs},
 	Render: func(opts map[string]any) string {
 		return `##
 ## PNPM (devuser)

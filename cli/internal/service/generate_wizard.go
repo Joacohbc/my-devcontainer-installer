@@ -56,7 +56,7 @@ func serviceIDOf(s any) string {
 	case string:
 		return v
 	case types.SelectedModule:
-		return v.ID
+		return string(v.ID)
 	case map[string]any:
 		if id, ok := v["id"].(string); ok {
 			return id
@@ -95,7 +95,7 @@ func optionDefault(o types.ModuleOption, prevOpts map[string]any) any {
 
 func moduleOptionsOf(modules []types.SelectedModule, id string) map[string]any {
 	for _, m := range modules {
-		if m.ID == id {
+		if string(m.ID) == id {
 			return m.Options
 		}
 	}
@@ -146,7 +146,7 @@ func categoryChoices(c types.UICategory, mode types.BuildMode, selectedModules m
 			continue
 		}
 		if e.IsService {
-			if svc := catalog.GetComposeService(e.ID); svc != nil && svc.RequiresModule != "" && !selectedModules[svc.RequiresModule] {
+			if svc := catalog.GetComposeService(types.ServiceID(e.ID)); svc != nil && svc.RequiresModule != "" && !selectedModules[string(svc.RequiresModule)] {
 				continue
 			}
 		}
@@ -168,7 +168,7 @@ func selectedEntryIDs(s *State) map[string]bool {
 func selectedModuleIDs(s *State) map[string]bool {
 	set := map[string]bool{}
 	for id := range selectedEntryIDs(s) {
-		if catalog.GetDockerfileModule(id) != nil {
+		if catalog.GetDockerfileModule(types.ModuleID(id)) != nil {
 			set[id] = true
 		}
 	}
@@ -179,12 +179,12 @@ func baseCategoryIDs(base *types.DevcontainerConfig, c types.UICategory) []strin
 	var ids []string
 	for _, m := range base.Dockerfile.Modules {
 		if spec := catalog.GetDockerfileModule(m.ID); spec != nil && spec.UICategory == c {
-			ids = append(ids, m.ID)
+			ids = append(ids, string(m.ID))
 		}
 	}
 	for _, s := range base.Compose.Services {
 		id := serviceIDOf(s)
-		if spec := catalog.GetComposeService(id); spec != nil && spec.UICategory == c {
+		if spec := catalog.GetComposeService(types.ServiceID(id)); spec != nil && spec.UICategory == c {
 			ids = append(ids, id)
 		}
 	}
@@ -321,16 +321,16 @@ func (w wizardContext) optionSteps(s *State) []Step {
 	localCached := currentMode(s) == types.BuildModeLocalCached
 	var steps []Step
 	for _, m := range catalog.DockerfileModules {
-		if !localCached || !selected[m.ID] {
+		if !localCached || !selected[string(m.ID)] {
 			continue
 		}
-		steps = append(steps, w.entryOptionSteps(m.ID, m.Options, moduleOptionsOf(w.base.Dockerfile.Modules, m.ID))...)
+		steps = append(steps, w.entryOptionSteps(string(m.ID), m.Options, moduleOptionsOf(w.base.Dockerfile.Modules, string(m.ID)))...)
 	}
 	for _, svc := range catalog.ComposeServices {
-		if !selected[svc.ID] {
+		if !selected[string(svc.ID)] {
 			continue
 		}
-		steps = append(steps, w.entryOptionSteps(svc.ID, svc.Options, ServiceOptionsOf(w.base.Compose.Services, svc.ID))...)
+		steps = append(steps, w.entryOptionSteps(string(svc.ID), svc.Options, ServiceOptionsOf(w.base.Compose.Services, string(svc.ID)))...)
 	}
 	return steps
 }
@@ -426,19 +426,19 @@ func (w wizardContext) reduce(s *State) *types.DevcontainerConfig {
 	var modules []types.SelectedModule
 	if mode == types.BuildModeLocalCached {
 		for _, m := range catalog.DockerfileModules {
-			if !selected[m.ID] {
+			if !selected[string(m.ID)] {
 				continue
 			}
-			modules = append(modules, types.SelectedModule{ID: m.ID, Options: w.entryOptions(s, m.ID, m.Options, moduleOptionsOf(w.base.Dockerfile.Modules, m.ID))})
+			modules = append(modules, types.SelectedModule{ID: m.ID, Options: w.entryOptions(s, string(m.ID), m.Options, moduleOptionsOf(w.base.Dockerfile.Modules, string(m.ID)))})
 		}
 	}
 
 	var services []any
 	for _, svc := range catalog.ComposeServices {
-		if !selected[svc.ID] {
+		if !selected[string(svc.ID)] {
 			continue
 		}
-		services = append(services, types.SelectedModule{ID: svc.ID, Options: w.entryOptions(s, svc.ID, svc.Options, ServiceOptionsOf(w.base.Compose.Services, svc.ID))})
+		services = append(services, types.SelectedModule{ID: types.ModuleID(svc.ID), Options: w.entryOptions(s, string(svc.ID), svc.Options, ServiceOptionsOf(w.base.Compose.Services, string(svc.ID)))})
 	}
 
 	workspace := w.workspace

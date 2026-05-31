@@ -75,14 +75,14 @@ func addGenerateFlags(cmd *cobra.Command) {
 	_ = cmd.RegisterFlagCompletionFunc(flagWith, func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		var moduleIDs []string
 		for _, m := range catalog.DockerfileModules {
-			moduleIDs = append(moduleIDs, m.ID)
+			moduleIDs = append(moduleIDs, string(m.ID))
 		}
 		return completeCSV(toComplete, moduleIDs), cobra.ShellCompDirectiveNoFileComp
 	})
 	completeServiceFunc := func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		var serviceIDs []string
 		for _, s := range catalog.ComposeServices {
-			serviceIDs = append(serviceIDs, s.ID)
+			serviceIDs = append(serviceIDs, string(s.ID))
 		}
 		return completeCSV(toComplete, serviceIDs), cobra.ShellCompDirectiveNoFileComp
 	}
@@ -533,14 +533,14 @@ func applyGenFlags(config *types.DevcontainerConfig, flags *genFlags) {
 		for _, id := range flags.withModules {
 			found := false
 			for _, m := range config.Dockerfile.Modules {
-				if m.ID == id {
+				if string(m.ID) == id {
 					modules = append(modules, m)
 					found = true
 					break
 				}
 			}
 			if !found {
-				modules = append(modules, types.SelectedModule{ID: id, Options: map[string]any{}})
+				modules = append(modules, types.SelectedModule{ID: types.ModuleID(id), Options: map[string]any{}})
 			}
 		}
 		config.Dockerfile.Modules = modules
@@ -548,7 +548,7 @@ func applyGenFlags(config *types.DevcontainerConfig, flags *genFlags) {
 	if flags.services != nil {
 		var services []any
 		for _, id := range flags.services {
-			services = append(services, types.SelectedModule{ID: id, Options: service.ServiceOptionsOf(config.Compose.Services, id)})
+			services = append(services, types.SelectedModule{ID: types.ModuleID(id), Options: service.ServiceOptionsOf(config.Compose.Services, id)})
 		}
 		config.Compose.Services = services
 	}

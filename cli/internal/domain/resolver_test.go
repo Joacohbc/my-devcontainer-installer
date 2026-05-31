@@ -108,7 +108,7 @@ func TestResolveDockerfileModules_ConflictsError(t *testing.T) {
 func moduleIDs(resolved []domain.ResolvedModule) []string {
 	ids := make([]string, len(resolved))
 	for i, r := range resolved {
-		ids[i] = r.Module.ID
+		ids[i] = string(r.Module.ID)
 	}
 	return ids
 }

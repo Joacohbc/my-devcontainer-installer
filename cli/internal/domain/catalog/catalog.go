@@ -44,7 +44,7 @@ var ComposeServices = []*compose.ServiceSpec{
 }
 
 // GetDockerfileModule returns the module with the given ID, or nil.
-func GetDockerfileModule(id string) *dockerfile.ModuleSpec {
+func GetDockerfileModule(id types.ModuleID) *dockerfile.ModuleSpec {
 	for _, m := range DockerfileModules {
 		if m.ID == id {
 			return m
@@ -54,7 +54,7 @@ func GetDockerfileModule(id string) *dockerfile.ModuleSpec {
 }
 
 // GetComposeService returns the service with the given ID, or nil.
-func GetComposeService(id string) *compose.ServiceSpec {
+func GetComposeService(id types.ServiceID) *compose.ServiceSpec {
 	for _, s := range ComposeServices {
 		if s.ID == id {
 			return s
@@ -64,8 +64,8 @@ func GetComposeService(id string) *compose.ServiceSpec {
 }
 
 // AllModuleIDs returns the IDs of all registered Dockerfile modules.
-func AllModuleIDs() []string {
-	ids := make([]string, len(DockerfileModules))
+func AllModuleIDs() []types.ModuleID {
+	ids := make([]types.ModuleID, len(DockerfileModules))
 	for i, m := range DockerfileModules {
 		ids[i] = m.ID
 	}
@@ -113,13 +113,13 @@ func SelectableByCategory() map[types.UICategory][]CategorizedEntry {
 		if m.Always || m.UICategory == "" {
 			continue
 		}
-		out[m.UICategory] = append(out[m.UICategory], CategorizedEntry{ID: m.ID, Label: m.Label})
+		out[m.UICategory] = append(out[m.UICategory], CategorizedEntry{ID: string(m.ID), Label: m.Label})
 	}
 	for _, s := range ComposeServices {
 		if s.Always || s.Internal || s.UICategory == "" {
 			continue
 		}
-		out[s.UICategory] = append(out[s.UICategory], CategorizedEntry{ID: s.ID, Label: s.Label, IsService: true})
+		out[s.UICategory] = append(out[s.UICategory], CategorizedEntry{ID: string(s.ID), Label: s.Label, IsService: true})
 	}
 	return out
 }

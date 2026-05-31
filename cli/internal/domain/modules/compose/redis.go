@@ -7,7 +7,7 @@ import (
 )
 
 var RedisService = &ServiceSpec{
-	ID:         "redis",
+	ID:         types.ServiceRedis,
 	Label:      "Redis",
 	UICategory: types.UICategoryDatabases,
 	Volumes:    []string{"redis_data"},

@@ -44,11 +44,11 @@ func LoadConfig(cwd string) (*types.DevcontainerConfig, error) {
 
 // dbclientLegacyIDs maps the legacy "dbclients" module's per-client option
 // values to the individual client modules that replaced it.
-var dbclientLegacyIDs = map[string]string{
-	"postgres": "postgres-client",
-	"redis":    "redis-client",
-	"mongo":    "mongo-client",
-	"mysql":    "mysql-client",
+var dbclientLegacyIDs = map[string]types.ModuleID{
+	"postgres": types.ModulePostgresClient,
+	"redis":    types.ModuleRedisClient,
+	"mongo":    types.ModuleMongoClient,
+	"mysql":    types.ModuleMysqlClient,
 }
 
 // migrateDbclients expands the legacy combined "dbclients" module (a single

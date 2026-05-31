@@ -7,7 +7,7 @@ import (
 )
 
 var MysqlService = &ServiceSpec{
-	ID:         "mysql",
+	ID:         types.ServiceMysql,
 	Label:      "MySQL Community Edition",
 	UICategory: types.UICategoryDatabases,
 	Volumes:    []string{"mysql_data"},
