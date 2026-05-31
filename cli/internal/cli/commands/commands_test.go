@@ -9,7 +9,9 @@ import (
 	"github.com/goccy/go-yaml"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/logger"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/catalog"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/service"
 	"github.com/spf13/cobra"
 )
 
@@ -623,5 +625,92 @@ func TestApplyGenFlags_PresetWithoutServices(t *testing.T) {
 	}
 	if len(config.Compose.Services) != 0 {
 		t.Errorf("expected 0 services after applying service-less preset, got %d: %v", len(config.Compose.Services), config.Compose.Services)
+	}
+}
+
+func TestInitAndConfigure_PresetSkipsPrompts(t *testing.T) {
+	dir := t.TempDir()
+
+	flags := &genFlags{
+		preset:      "nodejs",
+		interactive: true,
+	}
+
+	svc := service.GenerateService{}
+
+	config, err := initAndConfigure(dir, flags, svc)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(config.Dockerfile.Modules) != 9 {
+		t.Errorf("expected 9 modules from early-resolved preset, got %d", len(config.Dockerfile.Modules))
+	}
+}
+
+func TestPresetCommand_CreateAndCopy(t *testing.T) {
+	root := NewRootCommand("test")
+	var presetCmd *cobra.Command
+	for _, c := range root.Commands() {
+		if c.Name() == "preset" {
+			presetCmd = c
+			break
+		}
+	}
+	if presetCmd == nil {
+		t.Fatal("expected 'preset' command to be registered")
+	}
+
+	// Verify all subcommands exist
+	subcommands := map[string]bool{}
+	for _, sub := range presetCmd.Commands() {
+		subcommands[sub.Name()] = true
+	}
+
+	for _, name := range []string{"list", "create", "copy"} {
+		if !subcommands[name] {
+			t.Errorf("expected preset subcommand %q to exist", name)
+		}
+	}
+}
+
+func TestPresetCopy(t *testing.T) {
+	// Setup isolated XDG config home
+	tmpHome := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmpHome)
+
+	root := NewRootCommand("test")
+	// Copy 'nodejs' (builtin) to 'my-copied-nodejs' with --no-interactive
+	root.SetArgs([]string{"preset", "copy", "nodejs", "my-copied-nodejs", "--no-interactive"})
+
+	// Run command
+	if err := root.Execute(); err != nil {
+		t.Fatalf("unexpected error executing preset copy: %v", err)
+	}
+
+	// Verify the file was created and contains the copied details
+	presetsDir := filepath.Join(tmpHome, "devcontainer-cli", "presets")
+	copiedPath := filepath.Join(presetsDir, "my-copied-nodejs.yml")
+	if _, err := os.Stat(copiedPath); os.IsNotExist(err) {
+		t.Fatalf("expected copied preset file to exist at %s, but it does not", copiedPath)
+	}
+
+	data, err := os.ReadFile(copiedPath)
+	if err != nil {
+		t.Fatalf("failed to read copied preset file: %v", err)
+	}
+
+	var p catalog.Preset
+	if err := yaml.Unmarshal(data, &p); err != nil {
+		t.Fatalf("failed to unmarshal copied preset: %v", err)
+	}
+
+	if p.ID != "my-copied-nodejs" {
+		t.Errorf("expected copied preset ID to be %q, got %q", "my-copied-nodejs", p.ID)
+	}
+
+	// It should copy modules from built-in nodejs preset
+	if len(p.Modules) == 0 {
+		t.Error("expected copied preset to have modules from 'nodejs' preset")
 	}
 }

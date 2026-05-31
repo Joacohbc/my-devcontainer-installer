@@ -277,6 +277,25 @@ func initAndConfigure(cwd string, flags *genFlags, svc service.GenerateService) 
 		config = domain.DefaultConfig(cwd)
 	}
 
+	// Resolve preset early so its modules, services, and mode populate our flags
+	if flags.preset != "" {
+		p, _ := catalog.Resolve(flags.preset, presetsDir())
+		if flags.withModules == nil {
+			flags.withModules = p.Modules
+		}
+		if flags.services == nil {
+			flags.services = p.Services
+			if flags.services == nil {
+				flags.services = []string{}
+			}
+		}
+		if flags.mode == "" && p.Mode != "" {
+			flags.mode = string(p.Mode)
+		}
+		// Apply preset values to config as base/defaults early so they are pre-selected if prompts are forced
+		applyGenFlags(config, flags)
+	}
+
 	needsPrompts := flags.forcePrompt ||
 		(existing == nil && flags.interactive && len(flags.withModules) == 0 && flags.mode == "")
 
