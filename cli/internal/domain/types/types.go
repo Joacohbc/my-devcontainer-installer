@@ -31,6 +31,7 @@ const (
 	ModuleAntigravityCli ModuleID = "antigravity-cli"
 	ModuleCopilotCli     ModuleID = "copilot-cli"
 	ModuleTmux           ModuleID = "tmux"
+	ModuleDod            ModuleID = "dod"
 	ModuleCleanup        ModuleID = "cleanup"
 )
 

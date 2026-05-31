@@ -30,6 +30,7 @@ var DockerfileModules = []*dockerfile.ModuleSpec{
 	dockerfile.AntigravityCliModule,
 	dockerfile.CopilotCliModule,
 	dockerfile.TmuxModule,
+	dockerfile.DodModule,
 	dockerfile.CleanupModule,
 }
 

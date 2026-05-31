@@ -251,6 +251,19 @@ func GenerateCompose(config *types.DevcontainerConfig) (string, error) {
 			continue
 		}
 
+		if svc.ID == types.ServiceDevcontainer {
+			hasDod := false
+			for _, m := range config.Dockerfile.Modules {
+				if m.ID == types.ModuleDod {
+					hasDod = true
+					break
+				}
+			}
+			if hasDod {
+				rendered.Volumes = append(rendered.Volumes, "/var/run/docker.sock:/var/run/docker.sock")
+			}
+		}
+
 		if svc.ID == types.ServiceDevcontainer && config.Mode == types.BuildModeRemote {
 			rendered.Build = ""
 		}

@@ -110,6 +110,14 @@ func TestGenerateDockerfile_TmuxModule(t *testing.T) {
 	assertContainsStr(t, df, "RUN apt-get update && apt-get install -y tmux", "tmux")
 }
 
+func TestGenerateDockerfile_DodModule(t *testing.T) {
+	cfg := makeConfig(func(c *types.DevcontainerConfig) {
+		c.Dockerfile.Modules = []types.SelectedModule{{ID: "dod"}}
+	})
+	df := mustGenerateDockerfile(t, cfg)
+	assertContainsStr(t, df, "docker-ce-cli", "dod")
+}
+
 func TestGenerateDockerfile_PythonWithUvByDefault(t *testing.T) {
 	cfg := makeConfig(func(c *types.DevcontainerConfig) {
 		c.Dockerfile.Modules = []types.SelectedModule{{ID: "python"}}
@@ -338,6 +346,32 @@ func TestGenerateCompose_DevcontainerHasNoDockerAccess(t *testing.T) {
 	}
 	if devSvc["environment"] != nil {
 		t.Errorf("expected no environment on devcontainer, got %v", devSvc["environment"])
+	}
+}
+
+func TestGenerateCompose_DevcontainerHasDockerAccessWithDodModule(t *testing.T) {
+	cfg := makeConfig(func(c *types.DevcontainerConfig) {
+		c.Dockerfile.Modules = []types.SelectedModule{{ID: "dod"}}
+	})
+	yml := mustGenerateCompose(t, cfg)
+	var parsed map[string]any
+	if err := yaml.Unmarshal([]byte(yml), &parsed); err != nil {
+		t.Fatalf("invalid YAML: %v", err)
+	}
+	services := parsed["services"].(map[string]any)
+	devSvc := services["devcontainer-ssh"].(map[string]any)
+	volumes, _ := devSvc["volumes"].([]any)
+	hasSocket := false
+	for _, v := range volumes {
+		if strings.Contains(v.(string), "docker.sock") {
+			hasSocket = true
+			if v.(string) != "/var/run/docker.sock:/var/run/docker.sock" {
+				t.Errorf("expected socket mount '/var/run/docker.sock:/var/run/docker.sock', got %q", v)
+			}
+		}
+	}
+	if !hasSocket {
+		t.Error("expected docker.sock to be mounted when dod module is enabled")
 	}
 }
 
