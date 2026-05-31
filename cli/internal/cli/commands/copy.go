@@ -21,7 +21,7 @@ Supports real-time dynamic completion for paths inside the container.`,
 		ValidArgsFunction: runCopyCompletion,
 		RunE:              runCopy,
 	}
-	cmd.Flags().StringP("workspace", "w", "", "Workspace name")
+	addWorkspaceFlag(cmd)
 	addContainerFlag(cmd)
 	return cmd
 }
@@ -30,7 +30,7 @@ func runCopy(cmd *cobra.Command, args []string) error {
 	localPath := args[0]
 	containerPath := args[1]
 
-	wsFlag, _ := cmd.Flags().GetString("workspace")
+	wsFlag := workspaceFlag(cmd)
 	containerName, err := resolveContainer(cmd, wsFlag)
 	if err != nil {
 		return err
@@ -45,7 +45,7 @@ func runCopyCompletion(cmd *cobra.Command, args []string, toComplete string) ([]
 		return nil, cobra.ShellCompDirectiveDefault
 	}
 	if len(args) == 1 {
-		wsFlag, _ := cmd.Flags().GetString("workspace")
+		wsFlag := workspaceFlag(cmd)
 		containerName, err := resolveContainer(cmd, wsFlag)
 		if err != nil {
 			return nil, cobra.ShellCompDirectiveNoFileComp

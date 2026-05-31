@@ -19,14 +19,14 @@ Runs: docker compose -f .dc_<workspace>/build/docker-compose.yml up -d`,
 		SilenceUsage: true,
 		RunE:         runUp,
 	}
-	cmd.Flags().StringP("workspace", "w", "", "Workspace name")
+	addWorkspaceFlag(cmd)
 	cmd.Flags().Bool("build", false, "Build images before starting containers (docker compose up -d --build)")
 	addContainerFlag(cmd)
 	return cmd
 }
 
 func runUp(cmd *cobra.Command, _ []string) error {
-	wsFlag, _ := cmd.Flags().GetString("workspace")
+	wsFlag := workspaceFlag(cmd)
 	svc := service.LifecycleService{Report: ui.Console{}}
 
 	if cmd.Flags().Changed("container") {

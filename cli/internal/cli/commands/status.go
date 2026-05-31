@@ -24,7 +24,7 @@ func newStatusCommand() *cobra.Command {
 		SilenceUsage: true,
 		RunE:         runStatus,
 	}
-	cmd.Flags().StringP("workspace", "w", "", "Workspace name")
+	addWorkspaceFlag(cmd)
 	addContainerFlag(cmd)
 	return cmd
 }
@@ -35,7 +35,7 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
-	wsFlag, _ := cmd.Flags().GetString("workspace")
+	wsFlag := workspaceFlag(cmd)
 
 	// Get all containers from Docker (running and stopped)
 	allContainers := pick.ListAll()

@@ -15,7 +15,7 @@ func newLogsCommand() *cobra.Command {
 		Long:  `devcontainer-cli logs — wrapper around docker compose logs to view container logs`,
 		RunE:  runLogs,
 	}
-	cmd.Flags().StringP("workspace", "w", "", "Workspace name")
+	addWorkspaceFlag(cmd)
 	cmd.Flags().BoolP("follow", "f", false, "Follow log output")
 	cmd.Flags().String("tail", "all", "Number of lines to show from the end of the logs")
 	addContainerFlag(cmd)
@@ -23,7 +23,7 @@ func newLogsCommand() *cobra.Command {
 }
 
 func runLogs(cmd *cobra.Command, args []string) error {
-	wsFlag, _ := cmd.Flags().GetString("workspace")
+	wsFlag := workspaceFlag(cmd)
 	follow, _ := cmd.Flags().GetBool("follow")
 	tail, _ := cmd.Flags().GetString("tail")
 	svc := service.InspectService{Report: ui.Console{}}

@@ -15,14 +15,14 @@ func newShellCommand() *cobra.Command {
 		Long:  `devcontainer-cli shell — shortcut for docker exec -it <container> <shell>`,
 		RunE:  runShell,
 	}
-	cmd.Flags().StringP("workspace", "w", "", "Workspace name")
+	addWorkspaceFlag(cmd)
 	cmd.Flags().String("user", "", "User to run the command as (e.g. root)")
 	addContainerFlag(cmd)
 	return cmd
 }
 
 func runShell(cmd *cobra.Command, args []string) error {
-	wsFlag, _ := cmd.Flags().GetString("workspace")
+	wsFlag := workspaceFlag(cmd)
 	userFlag, _ := cmd.Flags().GetString("user")
 
 	containerName, err := resolveContainer(cmd, wsFlag)

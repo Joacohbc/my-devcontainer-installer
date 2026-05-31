@@ -19,7 +19,7 @@ Supports real-time dynamic completion for paths inside the container.`,
 		ValidArgsFunction: runLsCompletion,
 		RunE:              runLs,
 	}
-	cmd.Flags().StringP("workspace", "w", "", "Workspace name")
+	addWorkspaceFlag(cmd)
 	cmd.Flags().BoolP("all", "a", false, "Show hidden files (ls -a)")
 	cmd.Flags().BoolP("long", "l", false, "Use a long listing format (ls -l)")
 	addContainerFlag(cmd)
@@ -32,7 +32,7 @@ func runLs(cmd *cobra.Command, args []string) error {
 		containerPath = args[0]
 	}
 
-	wsFlag, _ := cmd.Flags().GetString("workspace")
+	wsFlag := workspaceFlag(cmd)
 	containerName, err := resolveContainer(cmd, wsFlag)
 	if err != nil {
 		return err
@@ -49,7 +49,7 @@ func runLsCompletion(cmd *cobra.Command, args []string, toComplete string) ([]st
 	if len(args) != 0 {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
-	wsFlag, _ := cmd.Flags().GetString("workspace")
+	wsFlag := workspaceFlag(cmd)
 	containerName, err := resolveContainer(cmd, wsFlag)
 	if err != nil {
 		return nil, cobra.ShellCompDirectiveNoFileComp
