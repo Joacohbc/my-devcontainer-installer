@@ -399,17 +399,29 @@ three plus `BuildModes` and tests.
 `goreleaser release` on `v*` tags. Validate locally with `goreleaser check` and
 `goreleaser release --snapshot --clean`.
 
+**Testing builds (`vt`)** — tag a release `vX.Y.Z-vt.N` (e.g. `v1.4.0-vt.1`) to
+cut a *version for testing*. The `v*` trigger already runs the release workflow
+for these, and goreleaser's `prerelease: auto` flags the SemVer pre-release
+segment so GitHub marks it a pre-release. `/releases/latest` therefore excludes
+it, and `upgrade-cli` only offers it as an opt-in (see Self-update below). The
+`vt` token is the convention `upgrade-cli` recognizes (`isTestingVersion`).
+
 ### Version injection
 
 The version is injected at build time via
 `-ldflags "-X main.version={{ .Version }}"` (goreleaser sets `.Version` from the
 git tag). The default in `main.go` is `dev`.
 
-### Self-update (`devcontainer-cli upgrade-cli [--check] [--force]`)
+### Self-update (`devcontainer-cli upgrade-cli [--check] [--force] [--testing]`)
 
-In `commands/upgrade_cli.go`: `getTargetTriplet()` derives the triplet,
-`fetchLatestRelease()` hits the public GitHub API (honors `GITHUB_TOKEN` for
-rate limits), `resolveAssetURL()` matches the asset + its `.sha256`,
+`commands/upgrade_cli.go` orchestrates; `service/upgrade.go` does the work.
+`UpgradeService.UpgradeTargets()` calls `ListReleases()` (the `/releases` list,
+honoring `GITHUB_TOKEN` for rate limits) and `pickTargets()` returns the newest
+release overall (`top`) and the newest stable (`stable`). The command defaults
+to `stable`; when `top` is a newer testing (`vt`) build it prompts (or installs
+it directly with `--testing`, or in `--no-interactive` mode falls back to
+`stable` unless `--testing` is passed). `Install()` then: `getTargetTriplet()`
+derives the triplet, `resolveAssetURL()` matches the asset + its `.sha256`,
 `verifyChecksum()` validates with a constant-time compare, and `replaceBinary()`
 swaps the file (on Windows it renames the running exe to `.exe.old`;
 `CleanupStaleUpdate()` is called on every `main()` to delete it — keep that call).
