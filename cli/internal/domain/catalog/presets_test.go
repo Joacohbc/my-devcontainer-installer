@@ -25,6 +25,22 @@ func TestResolveBuiltin(t *testing.T) {
 	}
 }
 
+func TestBasePreset(t *testing.T) {
+	p, ok := catalog.Resolve("base", "")
+	if !ok {
+		t.Fatal("expected to resolve base preset")
+	}
+	if p.Source != "builtin" {
+		t.Errorf("expected source builtin, got %s", p.Source)
+	}
+	if !slices.Contains(p.Modules, "github-cli") {
+		t.Errorf("expected base preset to contain github-cli, got %v", p.Modules)
+	}
+	if !slices.Contains(p.Modules, "tmux") {
+		t.Errorf("expected base preset to contain tmux, got %v", p.Modules)
+	}
+}
+
 func TestBuiltinPresetsExcludeAITools(t *testing.T) {
 	aiModules := []string{
 		"claude-code", "opencode", "codex-cli", "antigravity-cli", "copilot-cli",

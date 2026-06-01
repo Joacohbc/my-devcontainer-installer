@@ -20,6 +20,14 @@ type Preset struct {
 
 var BuiltinPresets = []Preset{
 	{
+		ID:    "base",
+		Label: "Base (GitHub CLI, Tmux)",
+		Modules: []string{
+			string(types.ModuleGithubCli),
+			string(types.ModuleTmux),
+		},
+	},
+	{
 		ID:    "nodejs",
 		Label: "Node.js (pnpm, GitHub CLI, Tmux)",
 		Modules: []string{
