@@ -21,7 +21,7 @@ func TestNewRootCommand_RegistersAllSubcommands(t *testing.T) {
 		"setup-ssh", "port-forward", "run", "down", "destroy",
 		"start", "stop", "restart", "prune", "update",
 		"upgrade-cli", "config", "cleanup-tips", "shell", "logs", "copy",
-		"up", "status", "ls",
+		"up", "status", "ls", "info",
 	}
 	have := map[string]bool{}
 	for _, c := range root.Commands() {
@@ -460,7 +460,7 @@ func TestLsCommand_HasFlags(t *testing.T) {
 
 func TestAllCommands_HaveContainerFlag(t *testing.T) {
 	root := NewRootCommand("test")
-	cmds := []string{"copy", "up", "down", "update", "ls", "logs", "status", "shell"}
+	cmds := []string{"copy", "update", "ls", "logs", "status", "shell", "start", "stop", "info"}
 	for _, name := range cmds {
 		var target *cobra.Command
 		for _, c := range root.Commands() {

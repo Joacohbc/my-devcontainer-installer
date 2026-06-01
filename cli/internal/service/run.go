@@ -20,8 +20,8 @@ type QuickRunSpec struct {
 	Variant       string
 	ContainerName string
 	Image         string
-	Volume        string
-	Port          int
+	Volumes       []string // docker volume specs: name:/path or /host:/container
+	Ports         []string // docker port specs: hostport:containerport
 }
 
 // Run reuses the container if it already exists (starting it when stopped),
@@ -52,17 +52,11 @@ func (s RunService) Run(spec QuickRunSpec) error {
 		"--label", types.LabelManaged + "=true",
 		"--label", types.LabelQuickRun + "=" + spec.Variant,
 	}
-	if spec.Volume != "" {
-		_, _ = docker.DockerInherit([]string{
-			"volume", "create",
-			"--label", types.LabelManaged + "=true",
-			"--label", types.LabelQuickRun + "=" + spec.Variant,
-			spec.Volume,
-		})
-		args = append(args, "-v", spec.Volume+":/workspace")
+	for _, v := range spec.Volumes {
+		args = append(args, "-v", v)
 	}
-	if spec.Port != 0 {
-		args = append(args, "-p", fmt.Sprintf("%d:22", spec.Port))
+	for _, p := range spec.Ports {
+		args = append(args, "-p", p)
 	}
 	args = append(args, spec.Image, "sleep", "infinity")
 

@@ -88,3 +88,27 @@ func TestLifecycleContainerOps(t *testing.T) {
 		t.Errorf("expected rm c1; calls=%v", runner.calls)
 	}
 }
+
+func TestLifecycleStopContainer(t *testing.T) {
+	runner := &fakeRunner{status: 0}
+	defer useFakeDocker(runner)()
+
+	svc := LifecycleService{Report: nopReporter{}}
+	if err := svc.StopContainer("c1"); err != nil {
+		t.Fatalf("StopContainer: %v", err)
+	}
+	call := runner.callContaining("stop")
+	if call == nil || !slices.Contains(call, "c1") {
+		t.Errorf("expected docker stop c1; calls=%v", runner.calls)
+	}
+}
+
+func TestLifecycleStopContainerFails(t *testing.T) {
+	runner := &fakeRunner{status: 1}
+	defer useFakeDocker(runner)()
+
+	svc := LifecycleService{Report: nopReporter{}}
+	if err := svc.StopContainer("c1"); err == nil {
+		t.Error("expected error on non-zero exit")
+	}
+}

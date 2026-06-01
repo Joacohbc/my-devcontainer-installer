@@ -338,7 +338,7 @@ func fetchPassword(f *setupSshFlags, mode string) {
 	if last == "" {
 		console.Warn("Could not read password from logs (maybe key already installed).")
 	} else {
-		fmt.Printf(console.Subtle("   %s\n"), last)
+		console.Info("   %s", last)
 	}
 }
 
@@ -548,10 +548,10 @@ func updateSshConfig(f *setupSshFlags, mode string, inst installResult) error {
 
 	if hasAliasBlock(current, f.alias) {
 		console.Warn("Host '%s' already defined in %s", f.alias, configPath)
-		fmt.Println(console.Subtle("---- existing ----"))
-		fmt.Println(extractAliasBlock(current, f.alias))
-		fmt.Println(console.Subtle("---- proposed ----"))
-		fmt.Println(newBlock)
+		console.Info("---- existing ----")
+		console.Print(extractAliasBlock(current, f.alias) + "\n")
+		console.Info("---- proposed ----")
+		console.Print(newBlock + "\n")
 		replace := true
 		if !f.assumeYes {
 			ok, cerr := console.ConfirmDefault(fmt.Sprintf("Replace existing block for Host '%s'?", f.alias), false)
@@ -696,7 +696,25 @@ func runSetupSsh(cmd *cobra.Command, _ []string) error {
 	}
 	testConnection(f.alias)
 	console.Ok(fmt.Sprintf("Done. Connect with:  ssh %s", f.alias))
+	if mode == "remote" {
+		printRemoteConnectionInstructions(f, inst)
+	}
 	return nil
+}
+
+func printRemoteConnectionInstructions(f *setupSshFlags, inst installResult) {
+	block, err := buildConfigBlock("remote", f, inst)
+	if err != nil {
+		return
+	}
+	console.NewLine()
+	console.Log("Remote connection config — to connect from a different machine, add this block to its ~/.ssh/config:")
+	console.NewLine()
+	console.Info("---")
+	console.Print(block + "\n")
+	console.Info("---")
+	console.NewLine()
+	console.Success("Then connect with:  ssh %s", f.alias)
 }
 
 func fileExists(p string) bool {

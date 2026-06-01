@@ -367,13 +367,13 @@ func printTunnelPlan(tunnels []service.Tunnel) {
 		if t.IsDevcontainer {
 			tag = console.SuccessS("(devcontainer)")
 		}
-		fmt.Printf("  %s  %s  %s → %s:%d  %s\n",
+		console.Info("  %s  %s  %s → %s:%d  %s",
 			t.ContainerName, tag,
 			console.WarnS("localhost:%d", t.LocalPort),
 			t.TargetHost, t.ContainerPort,
 			console.Subtle(fmt.Sprintf("(via %s)", t.Alias)))
 	}
-	fmt.Println()
+	console.NewLine()
 }
 
 func runPortForward(cmd *cobra.Command, args []string) error {

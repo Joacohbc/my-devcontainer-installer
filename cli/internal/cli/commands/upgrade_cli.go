@@ -1,10 +1,6 @@
 package commands
 
 import (
-	"fmt"
-	"os"
-
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/ui"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/service"
 	"github.com/spf13/cobra"
 )
@@ -31,19 +27,19 @@ func runSelfUpdate(cmd *cobra.Command, _ []string) error {
 	check, _ := cmd.Flags().GetBool("check")
 	force, _ := cmd.Flags().GetBool("force")
 
-	svc := service.UpgradeService{Report: ui.Console{}}
+	svc := service.UpgradeService{Report: console}
 
-	fmt.Fprintln(os.Stderr, ui.Subtle("Note: 'devcontainer-cli update' now manages container images. Self-update lives at 'devcontainer-cli upgrade-cli'."))
+	console.Debug("Note: 'devcontainer-cli update' now manages container images. Self-update lives at 'devcontainer-cli upgrade-cli'.")
 
 	current := version
-	fmt.Printf(ui.Subtle("Current version: %s\n"), current)
-	fmt.Println(ui.Subtle("Fetching latest release..."))
+	console.Info("Current version: %s", current)
+	console.Info("Fetching latest release...")
 	rel, err := svc.LatestRelease()
 	if err != nil {
 		return err
 	}
 	latest := rel.Tag
-	fmt.Printf(ui.Subtle("Latest version : %s\n"), latest)
+	console.Info("Latest version : %s", latest)
 
 	cmp := -1
 	if current != "dev" {
@@ -52,17 +48,17 @@ func runSelfUpdate(cmd *cobra.Command, _ []string) error {
 	if check {
 		switch {
 		case cmp < 0:
-			ui.Yellow("Update available: %s → %s", current, latest)
+			console.Warn("Update available: %s → %s", current, latest)
 		case cmp == 0:
-			ui.Green("Already up to date.")
+			console.Success("Already up to date.")
 		default:
-			fmt.Println(ui.Subtle("Current version is ahead of latest release."))
+			console.Warn("Current version is ahead of latest release.")
 		}
 		return nil
 	}
 
 	if cmp >= 0 && !force {
-		ui.Green("Already up to date.")
+		console.Success("Already up to date.")
 		return nil
 	}
 
@@ -70,6 +66,6 @@ func runSelfUpdate(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
-	ui.Green("Updated to %s. Restart any running session to use the new binary.", latest)
+	console.Success("Updated to %s. Restart any running session to use the new binary.", latest)
 	return nil
 }

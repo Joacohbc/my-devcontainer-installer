@@ -74,6 +74,10 @@ func (Console) Bar() {
 	Bar()
 }
 
+func (Console) NewLine()                { NewLine() }
+func (Console) Print(s string)          { Print(s) }
+func (Console) HeaderS(s string) string { return HeaderS(s) }
+
 func (Console) Bold(s string) string {
 	return Bold(s)
 }

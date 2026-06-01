@@ -3,7 +3,6 @@ package commands
 import (
 	"fmt"
 
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/ui"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/service"
 	"github.com/spf13/cobra"
 )
@@ -30,43 +29,42 @@ Use --all to remove every devcontainer resource regardless.`,
 func runPrune(cmd *cobra.Command, _ []string) error {
 	all, _ := cmd.Flags().GetBool("all")
 
-	console := ui.Console{}
 	svc := service.PruneService{Report: console}
 	toRemoveImgs, anyImgs := svc.SelectImages(all)
 	toRemoveNets, anyNets := svc.SelectNetworks(all)
 	toRemoveVols, anyVols := svc.SelectVolumes(all)
 
 	if !anyImgs && !anyNets && !anyVols {
-		fmt.Println(console.Subtle("No devcontainer resources found locally."))
+		console.Info("No devcontainer resources found locally.")
 		return nil
 	}
 
 	totalToRemove := len(toRemoveImgs) + len(toRemoveNets) + len(toRemoveVols)
 	if totalToRemove == 0 {
-		fmt.Println(console.Subtle("No orphan devcontainer resources found."))
-		fmt.Println(console.Subtle("Use --all to remove every devcontainer resource."))
+		console.Info("No orphan devcontainer resources found.")
+		console.Warn("Use --all to remove every devcontainer resource.")
 		return nil
 	}
 
 	if len(toRemoveImgs) > 0 {
 		console.Warn("\nImages to remove (%d):", len(toRemoveImgs))
 		for _, img := range toRemoveImgs {
-			fmt.Printf(console.Subtle("  %s  (%s)\n"), img.Ref, img.ID)
+			console.Info("  %s  (%s)", img.Ref, img.ID)
 		}
 	}
 	if len(toRemoveNets) > 0 {
 		console.Warn("\nNetworks to remove (%d):", len(toRemoveNets))
 		for _, net := range toRemoveNets {
-			fmt.Printf(console.Subtle("  %s\n"), net.Name)
+			console.Info("  %s", net.Name)
 		}
 	}
 	if len(toRemoveVols) > 0 {
 		console.Warn("\nVolumes to remove (%d):", len(toRemoveVols))
 		for _, vol := range toRemoveVols {
-			fmt.Printf(console.Subtle("  %s\n"), vol.Name)
+			console.Info("  %s", vol.Name)
 		}
 	}
-	println()
+	console.NewLine()
 
 	if !yesFlag(cmd) {
 		if !interactiveFlag(cmd) {
@@ -100,10 +98,9 @@ func runPrune(cmd *cobra.Command, _ []string) error {
 	removedTotal := removedImgs + removedNets + removedVols
 	failedTotal := failedImgs + failedNets + failedVols
 
-	msg := console.SuccessS("\nRemoved %d resource(s).", removedTotal)
+	console.Success("\nRemoved %d resource(s).", removedTotal)
 	if failedTotal > 0 {
-		msg += " " + console.ErrorS("%d failed.", failedTotal)
+		console.Error("%d failed.", failedTotal)
 	}
-	println(msg)
 	return nil
 }

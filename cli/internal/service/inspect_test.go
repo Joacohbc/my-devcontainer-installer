@@ -111,6 +111,137 @@ func TestInspectComposeLogsArgs(t *testing.T) {
 	}
 }
 
+func TestInspectContainerDetails(t *testing.T) {
+	jsonOut := `{
+		"Name": "/mycontainer",
+		"Config": {"Image": "myimage:latest"},
+		"State": {"Status": "running", "StartedAt": "2024-05-15T10:30:05.000000000Z"},
+		"Created": "2024-05-15T10:30:00.000000000Z",
+		"Mounts": [
+			{"Type": "volume", "Name": "myvol", "Source": "/var/lib/docker/volumes/myvol/_data", "Destination": "/home"},
+			{"Type": "bind", "Source": "/var/run/docker.sock", "Destination": "/var/run/docker.sock"}
+		],
+		"NetworkSettings": {
+			"Ports": {"22/tcp": [{"HostPort": "2222"}]},
+			"Networks": {"bridge": {"IPAddress": "172.17.0.2"}}
+		}
+	}`
+	runner := &fakeRunner{status: 0, stdout: jsonOut}
+	defer useFakeDocker(runner)()
+
+	svc := InspectService{Report: nopReporter{}}
+	info, err := svc.ContainerDetails("mycontainer")
+	if err != nil {
+		t.Fatalf("ContainerDetails: %v", err)
+	}
+	if info.Name != "mycontainer" {
+		t.Errorf("Name = %q, want mycontainer", info.Name)
+	}
+	if info.Image != "myimage:latest" {
+		t.Errorf("Image = %q", info.Image)
+	}
+	if info.Status != "running" {
+		t.Errorf("Status = %q", info.Status)
+	}
+	if info.Created.Year() != 2024 {
+		t.Errorf("Created year = %d", info.Created.Year())
+	}
+	if info.StartedAt.Year() != 2024 {
+		t.Errorf("StartedAt year = %d", info.StartedAt.Year())
+	}
+	if len(info.Volumes) != 2 {
+		t.Fatalf("Volumes = %v, want 2 entries", info.Volumes)
+	}
+	if len(info.Ports) != 1 || info.Ports[0] != "2222:22/tcp" {
+		t.Errorf("Ports = %v, want [2222:22/tcp]", info.Ports)
+	}
+	if len(info.IPs) != 1 || info.IPs[0] != "bridge 172.17.0.2" {
+		t.Errorf("IPs = %v, want [bridge 172.17.0.2]", info.IPs)
+	}
+}
+
+func TestInspectContainerDetailsNotFound(t *testing.T) {
+	runner := &fakeRunner{status: 1}
+	defer useFakeDocker(runner)()
+
+	svc := InspectService{Report: nopReporter{}}
+	if _, err := svc.ContainerDetails("missing"); err == nil {
+		t.Error("expected error for missing container")
+	}
+}
+
+func TestInspectContainerNetworkIPs(t *testing.T) {
+	cases := []struct {
+		name    string
+		stdout  string
+		status  int
+		wantLen int
+		wantErr bool
+	}{
+		{
+			name:    "single network",
+			stdout:  "bridge 172.17.0.2\n",
+			status:  0,
+			wantLen: 1,
+		},
+		{
+			name:    "multiple networks",
+			stdout:  "bridge 172.17.0.2\nmynet 10.0.0.5\n",
+			status:  0,
+			wantLen: 2,
+		},
+		{
+			name:    "docker error",
+			stdout:  "",
+			status:  1,
+			wantErr: true,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			runner := &fakeRunner{status: c.status, stdout: c.stdout}
+			defer useFakeDocker(runner)()
+
+			svc := InspectService{Report: nopReporter{}}
+			ips, err := svc.ContainerNetworkIPs("c1")
+			if c.wantErr {
+				if err == nil {
+					t.Error("expected error")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("ContainerNetworkIPs: %v", err)
+			}
+			if len(ips) != c.wantLen {
+				t.Fatalf("got %d entries, want %d: %v", len(ips), c.wantLen, ips)
+			}
+		})
+	}
+}
+
+func TestInspectListUsers(t *testing.T) {
+	runner := &fakeRunner{status: 0, stdout: "root\ndaemon\ndevuser\n"}
+	defer useFakeDocker(runner)()
+
+	svc := InspectService{Report: nopReporter{}}
+	users := svc.ListUsers("c1")
+	want := []string{"root", "daemon", "devuser"}
+	if !slices.Equal(users, want) {
+		t.Errorf("ListUsers = %v, want %v", users, want)
+	}
+}
+
+func TestInspectListUsersUnavailable(t *testing.T) {
+	runner := &fakeRunner{status: 1}
+	defer useFakeDocker(runner)()
+
+	svc := InspectService{Report: nopReporter{}}
+	if users := svc.ListUsers("c1"); users != nil {
+		t.Errorf("expected nil on docker error, got %v", users)
+	}
+}
+
 func TestInspectListDir(t *testing.T) {
 	runner := &fakeRunner{status: 0, stdout: "a\nb/\n\nc"}
 	defer useFakeDocker(runner)()

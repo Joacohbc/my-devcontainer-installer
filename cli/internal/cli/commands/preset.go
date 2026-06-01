@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/goccy/go-yaml"
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/ui"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/catalog"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
@@ -34,13 +33,13 @@ func newPresetListCommand() *cobra.Command {
 		Short:        "List builtin and user-defined presets",
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			for _, p := range (service.ConfigService{Report: ui.Console{}}).Presets() {
-				fmt.Printf("%-20s %-10s %s\n", p.ID, p.Source, p.Label)
+			for _, p := range (service.ConfigService{Report: console}).Presets() {
+				console.Print(fmt.Sprintf("%-20s %-10s %s\n", p.ID, p.Source, p.Label))
 				if len(p.Modules) > 0 {
-					fmt.Printf("  modules:  %s\n", strings.Join(p.Modules, ", "))
+					console.Print(fmt.Sprintf("  modules:  %s\n", strings.Join(p.Modules, ", ")))
 				}
 				if len(p.Services) > 0 {
-					fmt.Printf("  services: %s\n", strings.Join(p.Services, ", "))
+					console.Print(fmt.Sprintf("  services: %s\n", strings.Join(p.Services, ", ")))
 				}
 			}
 			return nil
