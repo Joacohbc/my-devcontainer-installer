@@ -3,9 +3,8 @@ package commands
 import (
 	"fmt"
 	"strings"
+	"time"
 
-	"github.com/charmbracelet/lipgloss"
-	"github.com/charmbracelet/lipgloss/table"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/ui"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/project"
@@ -17,9 +16,10 @@ func init() { register(newInfoCommand()) }
 
 func newInfoCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:          "info",
-		Short:        "Show name, image and IP(s) for project containers",
-		Long:         `devcontainer-cli info — display container name, image and network IPs for the active workspace`,
+		Use:   "info",
+		Short: "Show detailed info for project containers",
+		Long: `devcontainer-cli info — display name, image, status, timestamps, ports, volumes and IPs
+for the active workspace, or a specific container via --container.`,
 		SilenceUsage: true,
 		RunE:         runInfo,
 	}
@@ -41,7 +41,10 @@ func runInfo(cmd *cobra.Command, _ []string) error {
 		if err != nil {
 			return err
 		}
-		return showSingleContainerInfo(svc, containerName)
+		fmt.Println()
+		printContainerInfoBlock(svc, containerName)
+		fmt.Println()
+		return nil
 	}
 
 	cwd, err := currentDir()
@@ -67,8 +70,6 @@ func runInfo(cmd *cobra.Command, _ []string) error {
 	ui.Header(fmt.Sprintf("Workspace: %s", workspace))
 	fmt.Println()
 
-	t := newInfoTable()
-
 	prefixContainer := func(base string) string {
 		if base == workspace || strings.HasPrefix(base, workspace+"-") {
 			return base
@@ -81,41 +82,83 @@ func runInfo(cmd *cobra.Command, _ []string) error {
 		if base == "" {
 			base = serviceKey
 		}
-		name := prefixContainer(base)
-		t.Row(name, svc.ContainerImage(name), containerIPsText(svc, name))
+		printContainerInfoBlock(svc, prefixContainer(base))
+		fmt.Println()
 	}
 
-	fmt.Println(t)
-	fmt.Println()
 	return nil
 }
 
-func showSingleContainerInfo(svc service.InspectService, name string) error {
-	t := newInfoTable()
-	t.Row(name, svc.ContainerImage(name), containerIPsText(svc, name))
-	fmt.Println()
-	fmt.Println(t)
-	fmt.Println()
-	return nil
+// printContainerInfoBlock fetches and renders all details for one container.
+func printContainerInfoBlock(svc service.InspectService, name string) {
+	const keyWidth = 9
+	// total prefix width: "  " + padded-key + " : "
+	const contWidth = 2 + keyWidth + 3
+
+	keyStr := func(k string) string {
+		return ui.Subtle(fmt.Sprintf("  %-*s : ", keyWidth, k))
+	}
+	cont := strings.Repeat(" ", contWidth)
+
+	fmt.Println(ui.Bold(name))
+
+	info, err := svc.ContainerDetails(name)
+	if err != nil {
+		fmt.Println(ui.Subtle("  (not found)"))
+		return
+	}
+
+	fmt.Print(keyStr("Image"))
+	fmt.Println(info.Image)
+
+	fmt.Print(keyStr("Status"))
+	fmt.Println(infoStatusLabel(info.Status))
+
+	fmt.Print(keyStr("Created"))
+	fmt.Println(formatInfoTime(info.Created))
+
+	fmt.Print(keyStr("Started"))
+	fmt.Println(formatInfoTime(info.StartedAt))
+
+	printInfoMulti(keyStr("Ports"), cont, info.Ports)
+	printInfoMulti(keyStr("Volumes"), cont, info.Volumes)
+	printInfoMulti(keyStr("IPs"), cont, info.IPs)
 }
 
-func newInfoTable() *table.Table {
-	return table.New().
-		Border(lipgloss.NormalBorder()).
-		BorderStyle(lipgloss.NewStyle().Foreground(ui.ColorSubtle)).
-		Headers("CONTAINER NAME", "IMAGE", "IPs").
-		StyleFunc(func(row, col int) lipgloss.Style {
-			if row == 0 {
-				return ui.StyleBold.Foreground(ui.ColorPrimary)
-			}
-			return lipgloss.NewStyle().Padding(0, 1)
-		})
+// printInfoMulti prints a key followed by multiple values, continuing on new
+// lines aligned with the first value. Prints "-" when vals is empty.
+func printInfoMulti(keyStr, cont string, vals []string) {
+	if len(vals) == 0 {
+		fmt.Print(keyStr)
+		fmt.Println(ui.Subtle("-"))
+		return
+	}
+	for i, v := range vals {
+		if i == 0 {
+			fmt.Print(keyStr)
+		} else {
+			fmt.Print(cont)
+		}
+		fmt.Println(v)
+	}
 }
 
-func containerIPsText(svc service.InspectService, name string) string {
-	ips, err := svc.ContainerNetworkIPs(name)
-	if err != nil || len(ips) == 0 {
+func formatInfoTime(t time.Time) string {
+	if t.IsZero() || t.Year() <= 1 {
+		return ui.Subtle("-")
+	}
+	return t.Local().Format("02-01-2006 15:04:05")
+}
+
+func infoStatusLabel(status string) string {
+	switch status {
+	case "running":
+		return ui.GreenS("%s", status)
+	case "exited":
+		return ui.RedS("%s", status)
+	case "":
 		return ui.YellowS("-")
+	default:
+		return ui.YellowS("%s", status)
 	}
-	return strings.Join(ips, "\n")
 }

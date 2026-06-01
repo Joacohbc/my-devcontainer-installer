@@ -1,12 +1,54 @@
 package service
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
+	"time"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
 )
+
+// ContainerInfo holds the detailed fields shown by the info command.
+type ContainerInfo struct {
+	Name      string
+	Image     string
+	Status    string
+	Created   time.Time
+	StartedAt time.Time
+	IPs       []string // "network ip"
+	Ports     []string // "hostport:containerport/proto"
+	Volumes   []string // "source → destination"
+}
+
+// dockerInspectRaw is the minimal subset of `docker inspect` JSON we consume.
+type dockerInspectRaw struct {
+	Name  string `json:"Name"`
+	State struct {
+		Status    string `json:"Status"`
+		StartedAt string `json:"StartedAt"`
+	} `json:"State"`
+	Created string `json:"Created"`
+	Mounts  []struct {
+		Type        string `json:"Type"`
+		Name        string `json:"Name"`
+		Source      string `json:"Source"`
+		Destination string `json:"Destination"`
+	} `json:"Mounts"`
+	NetworkSettings struct {
+		Ports map[string][]struct {
+			HostPort string `json:"HostPort"`
+		} `json:"Ports"`
+		Networks map[string]struct {
+			IPAddress string `json:"IPAddress"`
+		} `json:"Networks"`
+	} `json:"NetworkSettings"`
+	Config struct {
+		Image string `json:"Image"`
+	} `json:"Config"`
+}
 
 // InspectService runs container-targeted operations: shell/exec, logs, copy,
 // directory listing and state queries. The cli resolves which container and
@@ -32,6 +74,51 @@ func (s InspectService) ContainerState(name string) (string, error) {
 func (s InspectService) ContainerImage(name string) string {
 	_, stdout, _, _ := docker.DockerCapture([]string{"inspect", "-f", "{{.Config.Image}}", name})
 	return strings.TrimSpace(stdout)
+}
+
+// ContainerDetails returns full container metadata from a single docker inspect call.
+func (s InspectService) ContainerDetails(name string) (*ContainerInfo, error) {
+	status, stdout, _, err := docker.DockerCapture([]string{"inspect", "--format", "{{json .}}", name})
+	if err != nil || status != 0 {
+		return nil, fmt.Errorf("container '%s' not found", name)
+	}
+	var raw dockerInspectRaw
+	if err := json.Unmarshal([]byte(strings.TrimSpace(stdout)), &raw); err != nil {
+		return nil, fmt.Errorf("failed to parse inspect output: %w", err)
+	}
+	info := &ContainerInfo{
+		Name:   strings.TrimPrefix(raw.Name, "/"),
+		Image:  raw.Config.Image,
+		Status: raw.State.Status,
+	}
+	if t, terr := time.Parse(time.RFC3339Nano, raw.Created); terr == nil {
+		info.Created = t
+	}
+	if t, terr := time.Parse(time.RFC3339Nano, raw.State.StartedAt); terr == nil && t.Year() > 1 {
+		info.StartedAt = t
+	}
+	for _, m := range raw.Mounts {
+		src := m.Source
+		if m.Type == "volume" && m.Name != "" {
+			src = m.Name
+		}
+		info.Volumes = append(info.Volumes, src+" → "+m.Destination)
+	}
+	for portProto, bindings := range raw.NetworkSettings.Ports {
+		for _, b := range bindings {
+			if b.HostPort != "" {
+				info.Ports = append(info.Ports, b.HostPort+":"+portProto)
+			}
+		}
+	}
+	sort.Strings(info.Ports)
+	for netName, net := range raw.NetworkSettings.Networks {
+		if net.IPAddress != "" {
+			info.IPs = append(info.IPs, netName+" "+net.IPAddress)
+		}
+	}
+	sort.Strings(info.IPs)
+	return info, nil
 }
 
 func (s InspectService) ensureRunning(name string) error {

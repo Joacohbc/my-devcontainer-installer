@@ -111,6 +111,65 @@ func TestInspectComposeLogsArgs(t *testing.T) {
 	}
 }
 
+func TestInspectContainerDetails(t *testing.T) {
+	jsonOut := `{
+		"Name": "/mycontainer",
+		"Config": {"Image": "myimage:latest"},
+		"State": {"Status": "running", "StartedAt": "2024-05-15T10:30:05.000000000Z"},
+		"Created": "2024-05-15T10:30:00.000000000Z",
+		"Mounts": [
+			{"Type": "volume", "Name": "myvol", "Source": "/var/lib/docker/volumes/myvol/_data", "Destination": "/home"},
+			{"Type": "bind", "Source": "/var/run/docker.sock", "Destination": "/var/run/docker.sock"}
+		],
+		"NetworkSettings": {
+			"Ports": {"22/tcp": [{"HostPort": "2222"}]},
+			"Networks": {"bridge": {"IPAddress": "172.17.0.2"}}
+		}
+	}`
+	runner := &fakeRunner{status: 0, stdout: jsonOut}
+	defer useFakeDocker(runner)()
+
+	svc := InspectService{Report: nopReporter{}}
+	info, err := svc.ContainerDetails("mycontainer")
+	if err != nil {
+		t.Fatalf("ContainerDetails: %v", err)
+	}
+	if info.Name != "mycontainer" {
+		t.Errorf("Name = %q, want mycontainer", info.Name)
+	}
+	if info.Image != "myimage:latest" {
+		t.Errorf("Image = %q", info.Image)
+	}
+	if info.Status != "running" {
+		t.Errorf("Status = %q", info.Status)
+	}
+	if info.Created.Year() != 2024 {
+		t.Errorf("Created year = %d", info.Created.Year())
+	}
+	if info.StartedAt.Year() != 2024 {
+		t.Errorf("StartedAt year = %d", info.StartedAt.Year())
+	}
+	if len(info.Volumes) != 2 {
+		t.Fatalf("Volumes = %v, want 2 entries", info.Volumes)
+	}
+	if len(info.Ports) != 1 || info.Ports[0] != "2222:22/tcp" {
+		t.Errorf("Ports = %v, want [2222:22/tcp]", info.Ports)
+	}
+	if len(info.IPs) != 1 || info.IPs[0] != "bridge 172.17.0.2" {
+		t.Errorf("IPs = %v, want [bridge 172.17.0.2]", info.IPs)
+	}
+}
+
+func TestInspectContainerDetailsNotFound(t *testing.T) {
+	runner := &fakeRunner{status: 1}
+	defer useFakeDocker(runner)()
+
+	svc := InspectService{Report: nopReporter{}}
+	if _, err := svc.ContainerDetails("missing"); err == nil {
+		t.Error("expected error for missing container")
+	}
+}
+
 func TestInspectContainerNetworkIPs(t *testing.T) {
 	cases := []struct {
 		name    string
