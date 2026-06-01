@@ -111,6 +111,56 @@ func TestInspectComposeLogsArgs(t *testing.T) {
 	}
 }
 
+func TestInspectContainerNetworkIPs(t *testing.T) {
+	cases := []struct {
+		name    string
+		stdout  string
+		status  int
+		wantLen int
+		wantErr bool
+	}{
+		{
+			name:    "single network",
+			stdout:  "bridge 172.17.0.2\n",
+			status:  0,
+			wantLen: 1,
+		},
+		{
+			name:    "multiple networks",
+			stdout:  "bridge 172.17.0.2\nmynet 10.0.0.5\n",
+			status:  0,
+			wantLen: 2,
+		},
+		{
+			name:    "docker error",
+			stdout:  "",
+			status:  1,
+			wantErr: true,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			runner := &fakeRunner{status: c.status, stdout: c.stdout}
+			defer useFakeDocker(runner)()
+
+			svc := InspectService{Report: nopReporter{}}
+			ips, err := svc.ContainerNetworkIPs("c1")
+			if c.wantErr {
+				if err == nil {
+					t.Error("expected error")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("ContainerNetworkIPs: %v", err)
+			}
+			if len(ips) != c.wantLen {
+				t.Fatalf("got %d entries, want %d: %v", len(ips), c.wantLen, ips)
+			}
+		})
+	}
+}
+
 func TestInspectListDir(t *testing.T) {
 	runner := &fakeRunner{status: 0, stdout: "a\nb/\n\nc"}
 	defer useFakeDocker(runner)()

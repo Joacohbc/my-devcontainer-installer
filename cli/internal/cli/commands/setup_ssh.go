@@ -696,7 +696,25 @@ func runSetupSsh(cmd *cobra.Command, _ []string) error {
 	}
 	testConnection(f.alias)
 	console.Ok(fmt.Sprintf("Done. Connect with:  ssh %s", f.alias))
+	if mode == "remote" {
+		printRemoteConnectionInstructions(f, inst)
+	}
 	return nil
+}
+
+func printRemoteConnectionInstructions(f *setupSshFlags, inst installResult) {
+	block, err := buildConfigBlock("remote", f, inst)
+	if err != nil {
+		return
+	}
+	fmt.Println()
+	console.Log("Remote connection config — to connect from a different machine, add this block to its ~/.ssh/config:")
+	fmt.Println()
+	fmt.Println(console.Subtle("---"))
+	fmt.Println(block)
+	fmt.Println(console.Subtle("---"))
+	fmt.Println()
+	fmt.Printf("Then connect with:  ssh %s\n", f.alias)
 }
 
 func fileExists(p string) bool {

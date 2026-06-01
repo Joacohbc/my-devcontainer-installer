@@ -21,7 +21,7 @@ func TestNewRootCommand_RegistersAllSubcommands(t *testing.T) {
 		"setup-ssh", "port-forward", "run", "down", "destroy",
 		"start", "stop", "restart", "prune", "update",
 		"upgrade-cli", "config", "cleanup-tips", "shell", "logs", "copy",
-		"up", "status", "ls",
+		"up", "status", "ls", "info",
 	}
 	have := map[string]bool{}
 	for _, c := range root.Commands() {

@@ -151,6 +151,23 @@ func (s InspectService) ComposeLogs(composeFile string, follow bool, tail string
 	return nil
 }
 
+// ContainerNetworkIPs returns lines of "network ip" for a running container,
+// or an error if the container cannot be inspected.
+func (s InspectService) ContainerNetworkIPs(name string) ([]string, error) {
+	format := `{{range $n, $net := .NetworkSettings.Networks}}{{$n}} {{$net.IPAddress}}{{"\n"}}{{end}}`
+	status, stdout, _, err := docker.DockerCapture([]string{"inspect", "-f", format, name})
+	if err != nil || status != 0 {
+		return nil, fmt.Errorf("container '%s' not found", name)
+	}
+	var result []string
+	for _, line := range strings.Split(stdout, "\n") {
+		if line = strings.TrimSpace(line); line != "" {
+			result = append(result, line)
+		}
+	}
+	return result, nil
+}
+
 // ContainerNames returns every container name known to the daemon (running or
 // stopped), or nil if docker is unavailable. Used for shell completion.
 func (s InspectService) ContainerNames() []string {
