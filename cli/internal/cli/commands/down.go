@@ -24,7 +24,6 @@ skips the volume prompt; it never deletes volumes on its own.`,
 	cmd.Flags().BoolP("volumes", "v", false, "Also remove named volumes (docker compose down -v)")
 	addYesFlag(cmd)
 	addInteractiveFlag(cmd)
-	addContainerFlag(cmd)
 	return cmd
 }
 
@@ -43,21 +42,8 @@ func resolveRemoveVolumes(volumesFlag, yes, interactive bool, confirm func() (bo
 }
 
 func runDown(cmd *cobra.Command, _ []string) error {
-	wsFlag, _ := cmd.Flags().GetString("workspace")
 	console := ui.Console{}
 	svc := service.LifecycleService{Report: console}
-
-	if cmd.Flags().Changed("container") {
-		containerName, err := resolveContainer(cmd, wsFlag)
-		if err != nil {
-			return err
-		}
-		if err := svc.RemoveContainer(containerName); err != nil {
-			return err
-		}
-		console.Done()
-		return nil
-	}
 
 	cwd, err := currentDir()
 	if err != nil {

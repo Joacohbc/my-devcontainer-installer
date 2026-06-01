@@ -460,7 +460,7 @@ func TestLsCommand_HasFlags(t *testing.T) {
 
 func TestAllCommands_HaveContainerFlag(t *testing.T) {
 	root := NewRootCommand("test")
-	cmds := []string{"copy", "up", "down", "update", "ls", "logs", "status", "shell"}
+	cmds := []string{"copy", "update", "ls", "logs", "status", "shell", "start", "stop", "info"}
 	for _, name := range cmds {
 		var target *cobra.Command
 		for _, c := range root.Commands() {

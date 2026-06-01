@@ -54,6 +54,19 @@ func (s LifecycleService) StartContainer(name string) error {
 	return nil
 }
 
+// StopContainer stops a single named container.
+func (s LifecycleService) StopContainer(name string) error {
+	s.Report.Warn("\nStopping container '%s'...", name)
+	status, err := docker.DockerInherit([]string{"stop", name})
+	if err != nil {
+		return err
+	}
+	if status != 0 {
+		return fmt.Errorf("docker stop failed")
+	}
+	return nil
+}
+
 // RemoveContainer stops then removes a single named container.
 func (s LifecycleService) RemoveContainer(name string) error {
 	s.Report.Warn("\nStopping and removing container '%s'...", name)

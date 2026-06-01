@@ -26,6 +26,7 @@ func newStatusCommand() *cobra.Command {
 	}
 	addWorkspaceFlag(cmd)
 	addContainerFlag(cmd)
+	cmd.Flags().Bool("all", false, "Show all CLI-managed containers across all workspaces")
 	return cmd
 }
 
@@ -71,6 +72,38 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 		}
 
 		fmt.Println()
+		fmt.Println(t)
+		fmt.Println()
+		return nil
+	}
+
+	// --all: show every CLI-managed container across all workspaces
+	if allFlag, _ := cmd.Flags().GetBool("all"); allFlag {
+		managed := pick.ListManaged()
+
+		fmt.Println()
+		ui.Header("All managed containers")
+		fmt.Println()
+
+		t := table.New().
+			Border(lipgloss.NormalBorder()).
+			BorderStyle(lipgloss.NewStyle().Foreground(ui.ColorSubtle)).
+			Headers("CONTAINER NAME", "STATUS", "PORTS", "IMAGE").
+			StyleFunc(func(row, col int) lipgloss.Style {
+				if row == 0 {
+					return ui.StyleBold.Foreground(ui.ColorPrimary)
+				}
+				return lipgloss.NewStyle().Padding(0, 1)
+			})
+
+		if len(managed) == 0 {
+			fmt.Println(ui.YellowS("No managed containers found."))
+			fmt.Println()
+			return nil
+		}
+		for _, c := range managed {
+			t.Row(c.Name, pick.StatusLabel(c), c.Ports, c.Image)
+		}
 		fmt.Println(t)
 		fmt.Println()
 		return nil
