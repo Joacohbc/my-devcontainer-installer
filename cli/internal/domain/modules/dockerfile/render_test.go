@@ -196,6 +196,41 @@ func TestCleanupModuleRender(t *testing.T) {
 	}
 }
 
+// Consecutive RUN steps within a module are consolidated so each renders the
+// minimum number of layers. These counts guard against regressions that would
+// re-split the install steps.
+func TestModuleRunLayerCounts(t *testing.T) {
+	cases := []struct {
+		name    string
+		module  *dockerfile.ModuleSpec
+		opts    map[string]any
+		wantRun int
+	}{
+		{"nodejs nvm", dockerfile.NodejsModule, nil, 2}, // install + shell-init
+		{"nodejs fnm", dockerfile.NodejsModule, map[string]any{"manager": "fnm"}, 2},
+		{"python with uv", dockerfile.PythonModule, map[string]any{"uv": true}, 2}, // install+uv + shell-init
+		{"python no uv", dockerfile.PythonModule, map[string]any{"uv": false}, 1},
+		{"rust", dockerfile.RustModule, nil, 2}, // install+rustup + shell-init
+		{"pnpm", dockerfile.PnpmModule, nil, 1}, // install+pnpm
+		{"bun", dockerfile.BunModule, nil, 2},   // install + shell-init
+		{"sqlite", dockerfile.SqliteModule, nil, 1},
+		{"tmux", dockerfile.TmuxModule, nil, 1},
+		{"github-cli", dockerfile.GithubCliModule, nil, 1},
+		{"dod", dockerfile.DodModule, nil, 1},
+		{"java-temurin", dockerfile.JavaTemurinModule, nil, 1},
+		{"java-openjdk", dockerfile.JavaOpenjdkModule, nil, 1},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := strings.Count(tc.module.Render(tc.opts), "RUN ")
+			if got != tc.wantRun {
+				t.Errorf("module %q rendered %d RUN layers, want %d:\n%s",
+					tc.name, got, tc.wantRun, tc.module.Render(tc.opts))
+			}
+		})
+	}
+}
+
 // Every Dockerfile module must render a non-empty fragment with default options
 // and must not panic on a nil options map.
 func TestAllDockerfileModulesRenderNonEmpty(t *testing.T) {

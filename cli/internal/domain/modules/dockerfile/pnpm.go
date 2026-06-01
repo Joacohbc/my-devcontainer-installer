@@ -16,8 +16,9 @@ var PnpmModule = &ModuleSpec{
 		return fmt.Sprintf(`##
 ## PNPM (devuser)
 ##
-RUN apt-get update && apt-get install -y --no-install-recommends libatomic1 && %s
-RUN su - devuser -c 'wget -qO- https://get.pnpm.io/install.sh | ENV="$HOME/.profile" SHELL="$(which zsh)" zsh -'
+RUN apt-get update && apt-get install -y --no-install-recommends libatomic1 && \
+    su - devuser -c 'wget -qO- https://get.pnpm.io/install.sh | ENV="$HOME/.profile" SHELL="$(which zsh)" zsh -' && \
+    %s
 `, aptCleanup())
 	},
 }
