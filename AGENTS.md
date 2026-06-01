@@ -137,7 +137,7 @@ and `infra`, **never `cli`** (no `cli/ui`, no `cli/pick`).
 
 `generate.go`+`generate_wizard.go`, `run.go`, `destroy.go`, `update.go`,
 `lifecycle.go` (up/down/start/stop/restart), `prune.go`, `inspect.go`
-(shell/logs/status/copy/ls + completions), `config.go` (config/export/import/preset),
+(shell/logs/status/copy/copy-asset/ls + completions), `config.go` (config/export/import/preset),
 `ssh.go` (setup-ssh), `portforward.go`, `upgrade.go`. `service.CleanupStaleUpdate()`
 is called from `main.go` — keep that call.
 
@@ -209,6 +209,14 @@ is always present in the binary.
 **Adding a new asset:** drop `internal/infra/assets/<name>.sh`, reference it
 from the relevant module's `CopyFiles`, and add a test asserting it lands in the
 generated build dir. No config file to update (unlike the old SEA flow).
+
+**Copyable assets (`registry.go`):** the typed `Registry []Asset` marks each
+embedded script with `Kind: KindScript`, exposing it as a runtime-copyable asset
+via `CopyableAssets()`/`CopyableNames()`/`LookupCopyable(name)`. The
+`copy --asset <name>` command (→ `InspectService.CopyAsset`) materializes the
+selected script and `docker cp`s it into `types.DevUserHome` (`/home/devuser`),
+left owned by devuser and executable. Add a new `.sh` → add a `Registry` entry
+(name, file, label) so it's selectable/completable; cover it in `registry_test.go`.
 
 ### `internal/domain/types/labels.go` — Docker label constants
 
@@ -375,6 +383,12 @@ three plus `BuildModes` and tests.
    `java-openjdk` (mutually exclusive with `java-temurin`; the full image uses
    `java-temurin`). Compose-only modules (`postgres`, `redis`, `mongo`, `tunnel`)
    never go in `--with`. Add a module → append its id here.
+2b. **Base cache image** — `docker-image.yml` job `build-base-cache` builds a
+   minimal base (no `--preset`/`--with` → always-on `base`+`cleanup` only) and
+   publishes `devcontainer-base:latest` with `cache-to: type=inline`. The
+   `build-variants` jobs `needs: build-base-cache` and `cache-from` it so the
+   byte-identical Base leading layers are reused. `devcontainer-base` is **not**
+   a `RemoteVariant` (don't add it to `types.go` or the variants matrix).
 3. **Release-asset naming** `devcontainer-cli-<triplet>[.exe]` — shared by
    `cli/.goreleaser.yaml`, `getTargetTriplet()` in `commands/upgrade_cli.go`,
    `cli/install.sh` and `cli/install.ps1`. Change one → change all four.
