@@ -131,6 +131,66 @@ func TestDatabaseClientModulesRender(t *testing.T) {
 	}
 }
 
+// standardCleanupFragments are the commands every apt install RUN must chain so
+// the package cache never lands in that layer. They mirror the single source of
+// truth in helpers.go (aptCleanupCommands) and CleanupModule's final pass.
+var standardCleanupFragments = []string{
+	"apt-get autoremove -y",
+	"apt-get autoclean",
+	"rm -rf /var/lib/apt/lists/*",
+	"rm -rf /tmp/*",
+	"rm -rf /var/tmp/*",
+}
+
+// Every module that installs apt packages must append the standardized cleanup
+// inline so the caches are purged in the same layer that created them.
+func TestAptModulesIncludeStandardCleanup(t *testing.T) {
+	cases := []struct {
+		name   string
+		module *dockerfile.ModuleSpec
+		opts   map[string]any
+	}{
+		{"base", dockerfile.BaseModule, nil},
+		{"python", dockerfile.PythonModule, nil},
+		{"tmux", dockerfile.TmuxModule, nil},
+		{"php", dockerfile.PhpModule, nil},
+		{"rust", dockerfile.RustModule, nil},
+		{"sqlite", dockerfile.SqliteModule, nil},
+		{"pnpm", dockerfile.PnpmModule, nil},
+		{"github-cli", dockerfile.GithubCliModule, nil},
+		{"dod", dockerfile.DodModule, nil},
+		{"java-temurin", dockerfile.JavaTemurinModule, nil},
+		{"java-openjdk", dockerfile.JavaOpenjdkModule, nil},
+		{"postgres-client", dockerfile.PostgresClientModule, nil},
+		{"redis-client", dockerfile.RedisClientModule, nil},
+		{"mysql-client", dockerfile.MysqlClientModule, nil},
+		{"mongo-client", dockerfile.MongoClientModule, nil},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			out := tc.module.Render(tc.opts)
+			for _, frag := range standardCleanupFragments {
+				if !strings.Contains(out, frag) {
+					t.Errorf("module %q must include cleanup fragment %q:\n%s", tc.name, frag, out)
+				}
+			}
+		})
+	}
+}
+
+// CleanupModule's final pass must keep emitting the same standardized cleanup.
+func TestCleanupModuleRender(t *testing.T) {
+	out := dockerfile.CleanupModule.Render(nil)
+	for _, frag := range standardCleanupFragments {
+		if !strings.Contains(out, frag) {
+			t.Errorf("cleanup module must include fragment %q:\n%s", frag, out)
+		}
+	}
+	if !strings.Contains(out, `ENTRYPOINT ["/entrypoint.sh"]`) {
+		t.Errorf("cleanup module must keep the entrypoint:\n%s", out)
+	}
+}
+
 // Every Dockerfile module must render a non-empty fragment with default options
 // and must not panic on a nil options map.
 func TestAllDockerfileModulesRenderNonEmpty(t *testing.T) {

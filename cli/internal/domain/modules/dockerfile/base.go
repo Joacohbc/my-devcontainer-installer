@@ -50,7 +50,8 @@ RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
     git \
     wget \
     unzip \
-    apt-transport-https
+    apt-transport-https \
+    && %s
 
 # Create devuser with sudo privileges
 RUN useradd -m -s /bin/zsh devuser && \
@@ -62,6 +63,6 @@ COPY zsh-installer.sh /tmp/zsh-installer.sh
 RUN chmod +x /tmp/zsh-installer.sh
 RUN su - devuser -c "/tmp/zsh-installer.sh"
 RUN rm /tmp/zsh-installer.sh
-`, ubuntu)
+`, ubuntu, aptCleanup())
 	},
 }

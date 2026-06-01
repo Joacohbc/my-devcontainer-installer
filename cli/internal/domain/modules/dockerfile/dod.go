@@ -1,6 +1,10 @@
 package dockerfile
 
-import "github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
+import (
+	"fmt"
+
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
+)
 
 var DodModule = &ModuleSpec{
 	ID:         types.ModuleDod,
@@ -8,7 +12,7 @@ var DodModule = &ModuleSpec{
 	Category:   types.CategoryInfra,
 	UICategory: types.UICategoryDevTools,
 	Render: func(opts map[string]any) string {
-		return `##
+		return fmt.Sprintf(`##
 ## DOCKER CLI (DoD)
 ##
 RUN apt-get update && \
@@ -19,7 +23,7 @@ RUN apt-get update && \
     echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu jammy stable" > /etc/apt/sources.list.d/docker.list && \
     apt-get update && \
     apt-get install -y docker-ce-cli && \
-    apt-get clean
-`
+    %s
+`, aptCleanup())
 	},
 }

@@ -1,6 +1,10 @@
 package dockerfile
 
-import "github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
+import (
+	"fmt"
+
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
+)
 
 var PnpmModule = &ModuleSpec{
 	ID:         types.ModulePnpm,
@@ -9,11 +13,11 @@ var PnpmModule = &ModuleSpec{
 	UICategory: types.UICategoryLanguages,
 	Requires:   []types.ModuleID{types.ModuleNodejs},
 	Render: func(opts map[string]any) string {
-		return `##
+		return fmt.Sprintf(`##
 ## PNPM (devuser)
 ##
-RUN apt-get update && apt-get install -y --no-install-recommends libatomic1 && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends libatomic1 && %s
 RUN su - devuser -c 'wget -qO- https://get.pnpm.io/install.sh | ENV="$HOME/.profile" SHELL="$(which zsh)" zsh -'
-`
+`, aptCleanup())
 	},
 }

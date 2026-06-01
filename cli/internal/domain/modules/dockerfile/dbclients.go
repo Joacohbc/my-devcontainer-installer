@@ -21,8 +21,8 @@ func aptClientModule(id types.ModuleID, label, title, setup, pkg string) *Module
 ## %s
 ##
 %sRUN apt-get update && apt-get install -y \
-    %s
-`, title, setup, pkg)
+    %s && %s
+`, title, setup, pkg, aptCleanup())
 		},
 	}
 }

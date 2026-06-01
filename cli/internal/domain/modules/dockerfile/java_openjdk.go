@@ -56,7 +56,7 @@ var JavaOpenjdkModule = &ModuleSpec{
 		return fmt.Sprintf(`##
 ## JAVA (OpenJDK)
 ##
-RUN apt-get update && apt-get install -y %s
-`, strings.Join(pkgs, " "))
+RUN apt-get update && apt-get install -y %s && %s
+`, strings.Join(pkgs, " "), aptCleanup())
 	},
 }

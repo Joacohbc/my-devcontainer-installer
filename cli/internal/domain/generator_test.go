@@ -107,7 +107,7 @@ func TestGenerateDockerfile_TmuxModule(t *testing.T) {
 		c.Dockerfile.Modules = []types.SelectedModule{{ID: "tmux"}}
 	})
 	df := mustGenerateDockerfile(t, cfg)
-	assertContainsStr(t, df, "RUN apt-get update && apt-get install -y tmux", "tmux")
+	assertContainsStr(t, df, "RUN apt-get update && apt-get install -y tmux && apt-get autoremove -y && apt-get autoclean && rm -rf /var/lib/apt/lists/*", "tmux")
 }
 
 func TestGenerateDockerfile_DodModule(t *testing.T) {

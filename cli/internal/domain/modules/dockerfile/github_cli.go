@@ -1,6 +1,10 @@
 package dockerfile
 
-import "github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
+import (
+	"fmt"
+
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
+)
 
 var GithubCliModule = &ModuleSpec{
 	ID:         types.ModuleGithubCli,
@@ -8,7 +12,7 @@ var GithubCliModule = &ModuleSpec{
 	Category:   types.CategoryInfra,
 	UICategory: types.UICategoryDevTools,
 	Render: func(opts map[string]any) string {
-		return `##
+		return fmt.Sprintf(`##
 ## GITHUB CLI
 ##
 RUN mkdir -p -m 755 /etc/apt/keyrings && \
@@ -18,7 +22,7 @@ RUN mkdir -p -m 755 /etc/apt/keyrings && \
     echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | tee /etc/apt/sources.list.d/github-cli.list > /dev/null && \
     apt-get update && \
     apt-get install -y gh && \
-    apt-get clean
-`
+    %s
+`, aptCleanup())
 	},
 }

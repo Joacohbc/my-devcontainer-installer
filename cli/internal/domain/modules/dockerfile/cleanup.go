@@ -1,6 +1,10 @@
 package dockerfile
 
-import "github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
+import (
+	"fmt"
+
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
+)
 
 var CleanupModule = &ModuleSpec{
 	ID:        types.ModuleCleanup,
@@ -12,14 +16,10 @@ var CleanupModule = &ModuleSpec{
 		return []string{"login-github-cli.sh"}
 	},
 	Render: func(opts map[string]any) string {
-		return `##
+		return fmt.Sprintf(`##
 ## CLEANUP & ENTRYPOINT
 ##
-RUN apt-get autoremove -y && \
-    apt-get autoclean && \
-    rm -rf /var/lib/apt/lists/* && \
-    rm -rf /tmp/* && \
-    rm -rf /var/tmp/*
+RUN %s
 
 RUN mkdir -p /var/run/sshd && \
     chmod 755 /var/run/sshd
@@ -30,6 +30,6 @@ COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 ENTRYPOINT ["/entrypoint.sh"]
-`
+`, aptCleanup())
 	},
 }

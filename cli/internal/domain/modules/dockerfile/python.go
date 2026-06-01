@@ -37,7 +37,7 @@ RUN su - devuser -c 'curl -LsSf https://astral.sh/uv/install.sh | sh'
 		return fmt.Sprintf(`##
 ## PYTHON
 ##
-RUN apt-get update && apt-get install -y python3 python3-pip
-%s`, uvBlock)
+RUN apt-get update && apt-get install -y python3 python3-pip && %s
+%s`, aptCleanup(), uvBlock)
 	},
 }

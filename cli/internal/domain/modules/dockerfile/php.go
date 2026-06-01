@@ -54,8 +54,9 @@ RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
        php-gd \
        php-mysql \
        php-sqlite3 \
-    && usermod -aG www-data devuser && usermod -aG devuser www-data%s`,
-			composerBlock,
+    && usermod -aG www-data devuser && usermod -aG devuser www-data \
+    && %s%s`,
+			aptCleanup(), composerBlock,
 		)
 	},
 }
