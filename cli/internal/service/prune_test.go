@@ -26,6 +26,49 @@ func TestPruneSelectAllParsesImages(t *testing.T) {
 	}
 }
 
+func TestPruneSelectAllParsesRemoteImages(t *testing.T) {
+	// Remote-mode images (ghcr.io/<owner>/devcontainer-*) carry the managed
+	// label, so the label-based filter must surface them just like local ones.
+	runner := &fakeRunner{status: 0, stdout: "ghcr.io/joacohbc/devcontainer-nodejs:latest\tID1\nghcr.io/joacohbc/devcontainer-go:latest\tID2\nnode-python:local\tID3"}
+	defer useFakeDocker(runner)()
+
+	svc := PruneService{Report: nopReporter{}}
+	images, anyExist := svc.SelectImages(true)
+	if !anyExist {
+		t.Fatal("expected anyExist=true")
+	}
+	if len(images) != 3 {
+		t.Fatalf("got %d images, want 3: %v", len(images), images)
+	}
+	if images[0].Ref != "ghcr.io/joacohbc/devcontainer-nodejs:latest" || images[0].ID != "ID1" {
+		t.Errorf("unexpected first remote image: %+v", images[0])
+	}
+}
+
+func TestPruneSelectOrphanRemoteImages(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmp)
+	t.Setenv("APPDATA", tmp)
+
+	liveDir := filepath.Join(tmp, "proj")
+	if err := os.MkdirAll(liveDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	domain.RecordProject(liveDir, &types.DevcontainerConfig{Workspace: "ws"}, "ghcr.io/joacohbc/devcontainer-nodejs:latest")
+
+	runner := &fakeRunner{status: 0, stdout: "ghcr.io/joacohbc/devcontainer-nodejs:latest\tID1\nghcr.io/joacohbc/devcontainer-go:latest\tID2"}
+	defer useFakeDocker(runner)()
+
+	svc := PruneService{Report: nopReporter{}}
+	toRemove, anyExist := svc.SelectImages(false)
+	if !anyExist {
+		t.Fatal("expected anyExist=true")
+	}
+	if len(toRemove) != 1 || toRemove[0].Ref != "ghcr.io/joacohbc/devcontainer-go:latest" {
+		t.Errorf("expected only the untracked remote image, got %v", toRemove)
+	}
+}
+
 func TestPruneSelectNoneWhenNoImages(t *testing.T) {
 	runner := &fakeRunner{status: 0, stdout: ""}
 	defer useFakeDocker(runner)()

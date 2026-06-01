@@ -13,7 +13,8 @@ const LabelQuickRun = LabelNamespace + ".quick-run"
 const SchemaVersion = "1"
 
 // ImageNamespace is the repository prefix for locally built images
-// (devcontainer-cli/<fingerprint>:latest). The prune filter must match it.
+// (devcontainer-cli/<fingerprint>:latest). Prune detects images by the
+// managed label instead, so both local and remote images are covered.
 const ImageNamespace = "devcontainer-cli"
 
 func ProjectID(config *DevcontainerConfig) string {
