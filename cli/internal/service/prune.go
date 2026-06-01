@@ -24,7 +24,7 @@ type LocalImage struct {
 
 func listCliImages() []LocalImage {
 	status, stdout, _, err := docker.DockerCapture([]string{
-		"images", "--filter", "reference=" + types.ImageNamespace + "/*",
+		"images", "--filter", "label=" + types.LabelManaged + "=true",
 		"--format", "{{.Repository}}:{{.Tag}}\t{{.ID}}",
 	})
 	if err != nil || status != 0 || strings.TrimSpace(stdout) == "" {
