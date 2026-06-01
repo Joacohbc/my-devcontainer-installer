@@ -60,9 +60,9 @@ RUN useradd -m -s /bin/zsh devuser && \
 
 # Install Zsh configuration and plugins
 COPY zsh-installer.sh /tmp/zsh-installer.sh
-RUN chmod +x /tmp/zsh-installer.sh
-RUN su - devuser -c "/tmp/zsh-installer.sh"
-RUN rm /tmp/zsh-installer.sh
+RUN chmod +x /tmp/zsh-installer.sh && \
+    su - devuser -c "/tmp/zsh-installer.sh" && \
+    rm /tmp/zsh-installer.sh
 `, ubuntu, aptCleanup())
 	},
 }

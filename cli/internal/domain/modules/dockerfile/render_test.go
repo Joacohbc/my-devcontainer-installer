@@ -17,6 +17,11 @@ func TestBaseModuleRender(t *testing.T) {
 	if !strings.Contains(out, "FROM ubuntu:22.04") {
 		t.Errorf("base should honor ubuntu option:\n%s", out)
 	}
+	// chmod + run + rm of the zsh installer must be a single consolidated RUN so
+	// the script is removed in the same layer it is used.
+	if !strings.Contains(out, "RUN chmod +x /tmp/zsh-installer.sh && \\\n    su - devuser -c \"/tmp/zsh-installer.sh\" && \\\n    rm /tmp/zsh-installer.sh") {
+		t.Errorf("zsh installer chmod/run/rm should be a single RUN:\n%s", out)
+	}
 }
 
 func TestNodejsModuleRender(t *testing.T) {
