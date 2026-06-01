@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -94,6 +95,44 @@ func TestInspectCopy(t *testing.T) {
 
 	if err := svc.Copy("c1", filepath.Join(t.TempDir(), "missing"), "/dest"); err == nil {
 		t.Error("expected error for missing local path")
+	}
+}
+
+func TestInspectCopyAsset(t *testing.T) {
+	runner := &fakeRunner{status: 0, stdout: "running"}
+	defer useFakeDocker(runner)()
+
+	svc := InspectService{Report: nopReporter{}}
+
+	// Unknown asset must fail before touching docker.
+	if err := svc.CopyAsset("c1", "not-a-real-asset", ""); err == nil {
+		t.Error("expected error for unknown asset")
+	}
+
+	if err := svc.CopyAsset("c1", "install-claude-code", ""); err != nil {
+		t.Fatalf("CopyAsset: %v", err)
+	}
+	cp := runner.callContaining("cp")
+	if cp == nil || !slices.Contains(cp, "c1:/home/devuser/install-claude-code.sh") {
+		t.Errorf("expected cp into devuser home, got %v", cp)
+	}
+	// A follow-up exec must fix ownership/permissions.
+	exec := runner.callContaining("exec")
+	if exec == nil || !strings.Contains(strings.Join(exec, " "), "chown devuser:devuser") || !strings.Contains(strings.Join(exec, " "), "chmod +x") {
+		t.Errorf("expected chown/chmod exec call, got calls %v", runner.calls)
+	}
+}
+
+func TestInspectCopyAssetCustomDest(t *testing.T) {
+	runner := &fakeRunner{status: 0, stdout: "running"}
+	defer useFakeDocker(runner)()
+
+	svc := InspectService{Report: nopReporter{}}
+	if err := svc.CopyAsset("c1", "install-opencode", "/tmp/oc.sh"); err != nil {
+		t.Fatalf("CopyAsset: %v", err)
+	}
+	if cp := runner.callContaining("cp"); cp == nil || !slices.Contains(cp, "c1:/tmp/oc.sh") {
+		t.Errorf("expected cp to custom dest, got %v", cp)
 	}
 }
 

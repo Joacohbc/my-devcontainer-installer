@@ -4,10 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
 
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/assets"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
 )
 
@@ -194,6 +197,48 @@ func (s InspectService) Copy(name, localPath, containerPath string) error {
 		return fmt.Errorf("copy failed with exit code %d", exitCode)
 	}
 	s.Report.Success("\nSuccessfully copied.\n")
+	return nil
+}
+
+// CopyAsset materializes a copyable embedded script and copies it into the
+// devuser home of the running container, leaving it owned by devuser and
+// executable. When dest is empty it defaults to DevUserHome/<filename>.
+func (s InspectService) CopyAsset(name, assetName, dest string) error {
+	asset, ok := assets.LookupCopyable(assetName)
+	if !ok {
+		return fmt.Errorf("unknown copyable asset '%s' (run with shell completion to list options)", assetName)
+	}
+	if err := s.ensureRunning(name); err != nil {
+		return err
+	}
+
+	tmpDir, err := os.MkdirTemp("", "dc-asset-")
+	if err != nil {
+		return fmt.Errorf("create temp dir: %w", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	res := assets.Preflight([]string{asset.File}, tmpDir)
+	if len(res.Missing) > 0 {
+		return fmt.Errorf("asset '%s' could not be materialized", asset.File)
+	}
+
+	if dest == "" {
+		dest = types.DevUserHome + "/" + asset.File
+	}
+
+	if err := s.Copy(name, filepath.Join(tmpDir, asset.File), dest); err != nil {
+		return err
+	}
+
+	// docker cp lands the file as root; make it a devuser-owned executable script.
+	fixArgs := []string{"exec", name, "sh", "-c",
+		fmt.Sprintf("chown devuser:devuser %q && chmod +x %q", dest, dest)}
+	if exitCode, err := docker.DockerInherit(fixArgs); err != nil {
+		return err
+	} else if exitCode != 0 {
+		s.Report.Warn("could not set ownership/permissions on '%s' (exit %d)", dest, exitCode)
+	}
 	return nil
 }
 

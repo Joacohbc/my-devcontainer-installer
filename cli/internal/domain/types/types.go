@@ -55,7 +55,10 @@ const (
 	ModuleOptionConfirm     ModuleOptionType = "confirm"
 )
 
-const PostScriptDir = "/home/devuser/post-script"
+// DevUserHome is the home directory of the non-root user created by the Base
+// module inside every generated container.
+const DevUserHome = "/home/devuser"
+const PostScriptDir = DevUserHome + "/post-script"
 const DefaultSSHHostPort = 2222
 
 type ModuleOptionChoice struct {

@@ -12,6 +12,7 @@ import (
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/catalog"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/assets"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/service"
 	"github.com/spf13/cobra"
 )
@@ -398,6 +399,50 @@ func TestLogsCommand_HasFlags(t *testing.T) {
 	}
 }
 
+func TestCopyCommand_AssetFlag(t *testing.T) {
+	root := NewRootCommand("test")
+	var copyCmd *cobra.Command
+	for _, c := range root.Commands() {
+		if c.Name() == "copy" {
+			copyCmd = c
+			break
+		}
+	}
+	if copyCmd == nil {
+		t.Fatal("copy command not found")
+	}
+	if copyCmd.Flags().Lookup("asset") == nil {
+		t.Fatal("expected copy flag --asset")
+	}
+
+	// Completion lists the copyable asset names.
+	if len(assets.CopyableNames()) == 0 {
+		t.Fatal("expected copyable asset names for completion")
+	}
+
+	// Args: without --asset, exactly two positional args are required.
+	if err := copyCmd.Args(copyCmd, []string{"a", "b"}); err != nil {
+		t.Errorf("two args should be valid in local mode: %v", err)
+	}
+	if err := copyCmd.Args(copyCmd, []string{"a"}); err == nil {
+		t.Error("single arg should be invalid in local mode")
+	}
+
+	// With --asset set, zero or one positional arg is allowed.
+	if err := copyCmd.Flags().Set("asset", "install-claude-code"); err != nil {
+		t.Fatal(err)
+	}
+	if err := copyCmd.Args(copyCmd, nil); err != nil {
+		t.Errorf("zero args should be valid with --asset: %v", err)
+	}
+	if err := copyCmd.Args(copyCmd, []string{"/tmp/x"}); err != nil {
+		t.Errorf("one dest arg should be valid with --asset: %v", err)
+	}
+	if err := copyCmd.Args(copyCmd, []string{"a", "b"}); err == nil {
+		t.Error("two args should be invalid with --asset")
+	}
+}
+
 func TestResolveProjectComposeFileWithWorkspace(t *testing.T) {
 	tempDir := t.TempDir()
 	wsDir := filepath.Join(tempDir, ".dc_my-ws", "build")
@@ -651,8 +696,8 @@ func TestApplyGenFlags_PresetWithoutServices(t *testing.T) {
 
 	applyGenFlags(config, flags)
 
-	if len(config.Dockerfile.Modules) != 9 {
-		t.Errorf("expected 9 modules, got %d", len(config.Dockerfile.Modules))
+	if len(config.Dockerfile.Modules) != 4 {
+		t.Errorf("expected 4 modules, got %d", len(config.Dockerfile.Modules))
 	}
 	if len(config.Compose.Services) != 0 {
 		t.Errorf("expected 0 services after applying service-less preset, got %d: %v", len(config.Compose.Services), config.Compose.Services)
@@ -674,8 +719,8 @@ func TestInitAndConfigure_PresetSkipsPrompts(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if len(config.Dockerfile.Modules) != 9 {
-		t.Errorf("expected 9 modules from early-resolved preset, got %d", len(config.Dockerfile.Modules))
+	if len(config.Dockerfile.Modules) != 4 {
+		t.Errorf("expected 4 modules from early-resolved preset, got %d", len(config.Dockerfile.Modules))
 	}
 }
 

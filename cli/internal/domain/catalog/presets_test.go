@@ -25,6 +25,19 @@ func TestResolveBuiltin(t *testing.T) {
 	}
 }
 
+func TestBuiltinPresetsExcludeAITools(t *testing.T) {
+	aiModules := []string{
+		"claude-code", "opencode", "codex-cli", "antigravity-cli", "copilot-cli",
+	}
+	for _, p := range catalog.BuiltinPresets {
+		for _, m := range p.Modules {
+			if slices.Contains(aiModules, m) {
+				t.Errorf("preset %q must not include AI module %q", p.ID, m)
+			}
+		}
+	}
+}
+
 func TestResolveUnknown(t *testing.T) {
 	_, ok := catalog.Resolve("non-existent-preset-id", "")
 	if ok {
