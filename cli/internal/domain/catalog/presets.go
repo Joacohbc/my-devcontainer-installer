@@ -42,12 +42,11 @@ var BuiltinPresets = []Preset{
 	},
 	{
 		ID:    "bun",
-		Label: "Bun (pnpm, GitHub CLI, Tmux)",
+		Label: "Bun (GitHub CLI, Tmux)",
 		Modules: []string{
 			string(types.ModuleGithubCli),
 			string(types.ModuleTmux),
 			string(types.ModuleBun),
-			string(types.ModulePnpm),
 		},
 	},
 	{
@@ -112,34 +111,31 @@ var BuiltinPresets = []Preset{
 	},
 	{
 		ID:    "bun-go",
-		Label: "Bun + Go (pnpm, GitHub CLI, Tmux)",
+		Label: "Bun + Go (GitHub CLI, Tmux)",
 		Modules: []string{
 			string(types.ModuleGithubCli),
 			string(types.ModuleTmux),
 			string(types.ModuleBun),
-			string(types.ModulePnpm),
 			string(types.ModuleGolang),
 		},
 	},
 	{
 		ID:    "bun-python",
-		Label: "Bun + Python (pnpm, GitHub CLI, Tmux)",
+		Label: "Bun + Python (GitHub CLI, Tmux)",
 		Modules: []string{
 			string(types.ModuleGithubCli),
 			string(types.ModuleTmux),
 			string(types.ModuleBun),
-			string(types.ModulePnpm),
 			string(types.ModulePython),
 		},
 	},
 	{
 		ID:    "bun-java-temurin",
-		Label: "Bun + Java Temurin (pnpm, GitHub CLI, Tmux)",
+		Label: "Bun + Java Temurin (GitHub CLI, Tmux)",
 		Modules: []string{
 			string(types.ModuleGithubCli),
 			string(types.ModuleTmux),
 			string(types.ModuleBun),
-			string(types.ModulePnpm),
 			string(types.ModuleJavaTemurin),
 		},
 	},
