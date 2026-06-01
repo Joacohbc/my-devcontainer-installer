@@ -18,6 +18,9 @@ type Preset struct {
 	Source   string          `yaml:"-"`
 }
 
+// github-cli and tmux are listed first in every preset so their Dockerfile
+// layers are shared with the base cache image (devcontainer-base), maximising
+// Docker layer cache hits across all variant builds in CI.
 var BuiltinPresets = []Preset{
 	{
 		ID:    "base",
@@ -31,113 +34,113 @@ var BuiltinPresets = []Preset{
 		ID:    "nodejs",
 		Label: "Node.js (pnpm, GitHub CLI, Tmux)",
 		Modules: []string{
-			string(types.ModuleNodejs),
-			string(types.ModulePnpm),
 			string(types.ModuleGithubCli),
 			string(types.ModuleTmux),
+			string(types.ModuleNodejs),
+			string(types.ModulePnpm),
 		},
 	},
 	{
 		ID:    "bun",
 		Label: "Bun (pnpm, GitHub CLI, Tmux)",
 		Modules: []string{
-			string(types.ModuleBun),
-			string(types.ModulePnpm),
 			string(types.ModuleGithubCli),
 			string(types.ModuleTmux),
+			string(types.ModuleBun),
+			string(types.ModulePnpm),
 		},
 	},
 	{
 		ID:    "java-temurin",
 		Label: "Java Temurin (GitHub CLI, Tmux)",
 		Modules: []string{
-			string(types.ModuleJavaTemurin),
 			string(types.ModuleGithubCli),
 			string(types.ModuleTmux),
+			string(types.ModuleJavaTemurin),
 		},
 	},
 	{
 		ID:    "python",
 		Label: "Python (GitHub CLI, Tmux)",
 		Modules: []string{
-			string(types.ModulePython),
 			string(types.ModuleGithubCli),
 			string(types.ModuleTmux),
+			string(types.ModulePython),
 		},
 	},
 	{
 		ID:    "go",
 		Label: "Go (GitHub CLI, Tmux)",
 		Modules: []string{
-			string(types.ModuleGolang),
 			string(types.ModuleGithubCli),
 			string(types.ModuleTmux),
+			string(types.ModuleGolang),
 		},
 	},
 	{
 		ID:    "node-go",
 		Label: "Node.js + Go (pnpm, GitHub CLI, Tmux)",
 		Modules: []string{
+			string(types.ModuleGithubCli),
+			string(types.ModuleTmux),
 			string(types.ModuleNodejs),
 			string(types.ModulePnpm),
 			string(types.ModuleGolang),
-			string(types.ModuleGithubCli),
-			string(types.ModuleTmux),
 		},
 	},
 	{
 		ID:    "node-python",
 		Label: "Node.js + Python (pnpm, GitHub CLI, Tmux)",
 		Modules: []string{
+			string(types.ModuleGithubCli),
+			string(types.ModuleTmux),
 			string(types.ModuleNodejs),
 			string(types.ModulePnpm),
 			string(types.ModulePython),
-			string(types.ModuleGithubCli),
-			string(types.ModuleTmux),
 		},
 	},
 	{
 		ID:    "node-java-temurin",
 		Label: "Node.js + Java Temurin (pnpm, GitHub CLI, Tmux)",
 		Modules: []string{
+			string(types.ModuleGithubCli),
+			string(types.ModuleTmux),
 			string(types.ModuleNodejs),
 			string(types.ModulePnpm),
 			string(types.ModuleJavaTemurin),
-			string(types.ModuleGithubCli),
-			string(types.ModuleTmux),
 		},
 	},
 	{
 		ID:    "bun-go",
 		Label: "Bun + Go (pnpm, GitHub CLI, Tmux)",
 		Modules: []string{
+			string(types.ModuleGithubCli),
+			string(types.ModuleTmux),
 			string(types.ModuleBun),
 			string(types.ModulePnpm),
 			string(types.ModuleGolang),
-			string(types.ModuleGithubCli),
-			string(types.ModuleTmux),
 		},
 	},
 	{
 		ID:    "bun-python",
 		Label: "Bun + Python (pnpm, GitHub CLI, Tmux)",
 		Modules: []string{
+			string(types.ModuleGithubCli),
+			string(types.ModuleTmux),
 			string(types.ModuleBun),
 			string(types.ModulePnpm),
 			string(types.ModulePython),
-			string(types.ModuleGithubCli),
-			string(types.ModuleTmux),
 		},
 	},
 	{
 		ID:    "bun-java-temurin",
 		Label: "Bun + Java Temurin (pnpm, GitHub CLI, Tmux)",
 		Modules: []string{
+			string(types.ModuleGithubCli),
+			string(types.ModuleTmux),
 			string(types.ModuleBun),
 			string(types.ModulePnpm),
 			string(types.ModuleJavaTemurin),
-			string(types.ModuleGithubCli),
-			string(types.ModuleTmux),
 		},
 	},
 }
