@@ -16,7 +16,7 @@ func GenerateDockerfile(config *types.DevcontainerConfig) (string, error) {
 	if config.Mode == types.BuildModeRemote {
 		return "", nil
 	}
-	resolved, err := ResolveDockerfileModules(config.Dockerfile.Modules)
+	resolved, err := ResolveDockerfileModules(MatchDBClientVersions(config))
 	if err != nil {
 		return "", err
 	}

@@ -115,22 +115,41 @@ func TestRustModuleRender(t *testing.T) {
 
 func TestDatabaseClientModulesRender(t *testing.T) {
 	cases := []struct {
-		name   string
-		module *dockerfile.ModuleSpec
-		want   []string
+		name    string
+		module  *dockerfile.ModuleSpec
+		opts    map[string]any
+		want    []string
+		notWant []string
 	}{
-		{"postgres", dockerfile.PostgresClientModule, []string{"POSTGRESQL CLIENT", "postgresql-client"}},
-		{"redis", dockerfile.RedisClientModule, []string{"REDIS CLIENT", "redis-tools"}},
-		{"mysql", dockerfile.MysqlClientModule, []string{"MYSQL CLIENT", "default-mysql-client"}},
-		{"mongo", dockerfile.MongoClientModule, []string{"MONGODB CLIENT", "mongodb-mongosh", "repo.mongodb.org"}},
+		// Default / auto (no version pin) -> generic Ubuntu packages.
+		{"postgres generic", dockerfile.PostgresClientModule, nil, []string{"POSTGRESQL CLIENT", "postgresql-client"}, []string{"apt.postgresql.org"}},
+		{"redis", dockerfile.RedisClientModule, nil, []string{"REDIS CLIENT", "redis-tools"}, nil},
+		{"mysql generic", dockerfile.MysqlClientModule, nil, []string{"MYSQL CLIENT", "default-mysql-client"}, []string{"repo.mysql.com"}},
+		{"mongo", dockerfile.MongoClientModule, nil, []string{"MONGODB CLIENT", "mongodb-mongosh", "repo.mongodb.org"}, nil},
+		// Pinned versions -> vendor apt repos.
+		{"postgres 16 (PGDG)", dockerfile.PostgresClientModule, map[string]any{"version": "16"},
+			[]string{"postgresql-client-16", "apt.postgresql.org", "pgdg main"}, nil},
+		{"mysql 8.4 (MySQL repo)", dockerfile.MysqlClientModule, map[string]any{"version": "8.4"},
+			[]string{"mysql-community-client", "repo.mysql.com", "mysql-8.4-lts"}, []string{"default-mysql-client"}},
+		{"mysql 9.0 innovation", dockerfile.MysqlClientModule, map[string]any{"version": "9.0"},
+			[]string{"mysql-community-client", "mysql-innovation"}, nil},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			out := tc.module.Render(nil)
+			out := tc.module.Render(tc.opts)
 			for _, w := range tc.want {
 				if !strings.Contains(out, w) {
 					t.Errorf("expected output to contain %q:\n%s", w, out)
 				}
+			}
+			for _, nw := range tc.notWant {
+				if strings.Contains(out, nw) {
+					t.Errorf("expected output NOT to contain %q:\n%s", nw, out)
+				}
+			}
+			// Every variant installs in a single RUN with inline cleanup.
+			if got := strings.Count(out, "RUN "); got != 1 {
+				t.Errorf("expected a single RUN layer, got %d:\n%s", got, out)
 			}
 		})
 	}
