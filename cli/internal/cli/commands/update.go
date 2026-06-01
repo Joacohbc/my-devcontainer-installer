@@ -48,7 +48,7 @@ func runUpdateImages(cmd *cobra.Command, _ []string) error {
 	svc := updateService()
 	if all {
 		updated, skipped, failed := svc.UpdateAll(pull, rebuild)
-		console.Printf(console.Subtle("\n--- %d updated, %d skipped, %d failed\n"), updated, skipped, failed)
+		console.Info("--- %d updated, %d skipped, %d failed", updated, skipped, failed)
 		if failed > 0 {
 			return fmt.Errorf("%d project(s) failed to update", failed)
 		}

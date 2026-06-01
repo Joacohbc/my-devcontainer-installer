@@ -35,33 +35,33 @@ func runPrune(cmd *cobra.Command, _ []string) error {
 	toRemoveVols, anyVols := svc.SelectVolumes(all)
 
 	if !anyImgs && !anyNets && !anyVols {
-		console.Println(console.Subtle("No devcontainer resources found locally."))
+		console.Info("No devcontainer resources found locally.")
 		return nil
 	}
 
 	totalToRemove := len(toRemoveImgs) + len(toRemoveNets) + len(toRemoveVols)
 	if totalToRemove == 0 {
-		console.Println(console.Subtle("No orphan devcontainer resources found."))
-		console.Println(console.Subtle("Use --all to remove every devcontainer resource."))
+		console.Info("No orphan devcontainer resources found.")
+		console.Warn("Use --all to remove every devcontainer resource.")
 		return nil
 	}
 
 	if len(toRemoveImgs) > 0 {
 		console.Warn("\nImages to remove (%d):", len(toRemoveImgs))
 		for _, img := range toRemoveImgs {
-			console.Printf(console.Subtle("  %s  (%s)\n"), img.Ref, img.ID)
+			console.Info("  %s  (%s)", img.Ref, img.ID)
 		}
 	}
 	if len(toRemoveNets) > 0 {
 		console.Warn("\nNetworks to remove (%d):", len(toRemoveNets))
 		for _, net := range toRemoveNets {
-			console.Printf(console.Subtle("  %s\n"), net.Name)
+			console.Info("  %s", net.Name)
 		}
 	}
 	if len(toRemoveVols) > 0 {
 		console.Warn("\nVolumes to remove (%d):", len(toRemoveVols))
 		for _, vol := range toRemoveVols {
-			console.Printf(console.Subtle("  %s\n"), vol.Name)
+			console.Info("  %s", vol.Name)
 		}
 	}
 	console.NewLine()
@@ -98,10 +98,9 @@ func runPrune(cmd *cobra.Command, _ []string) error {
 	removedTotal := removedImgs + removedNets + removedVols
 	failedTotal := failedImgs + failedNets + failedVols
 
-	msg := console.SuccessS("\nRemoved %d resource(s).", removedTotal)
+	console.Success("\nRemoved %d resource(s).", removedTotal)
 	if failedTotal > 0 {
-		msg += " " + console.ErrorS("%d failed.", failedTotal)
+		console.Error("%d failed.", failedTotal)
 	}
-	console.Println(msg)
 	return nil
 }

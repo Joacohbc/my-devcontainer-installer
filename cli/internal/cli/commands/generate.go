@@ -210,7 +210,7 @@ func parseGenFlags(cmd *cobra.Command) (*genFlags, error) {
 // runGenerate orchestrates the default config/generation/build workflow.
 func runGenerate(cmd *cobra.Command, _ []string) error {
 	if v, _ := cmd.Flags().GetBool(flagVersion); v {
-		console.Println(version)
+		console.Info("%s", version)
 		return nil
 	}
 
@@ -429,7 +429,7 @@ func prepareBuildDir(cwd string, config *types.DevcontainerConfig, paths project
 // writeGeneratedFiles outputs generated environment configuration blueprints.
 func writeGeneratedFiles(config *types.DevcontainerConfig, plan *service.GeneratePlan, paths project.Paths, flags *genFlags) error {
 	if plan.Dockerfile == "" {
-		console.Printf(console.Subtle("Skipped Dockerfile (mode=%s).\n"), config.Mode)
+		console.Warn("Skipped Dockerfile (mode=%s).", config.Mode)
 	} else {
 		ow, oerr := maybeOverwrite(paths.DockerfilePath, "Dockerfile", flags.interactive, flags.force)
 		if oerr != nil {
@@ -658,7 +658,7 @@ func maybeUpdateGitignore(cwd, workspace string) error {
 	console.NewLine()
 	console.Warn("Git repo detected. The following patterns are not in .gitignore:")
 	for _, e := range missing {
-		console.Printf("  %s\n", console.Subtle(e))
+		console.Warn("  %s", e)
 	}
 
 	ok, err := console.ConfirmDefault("Add them to .gitignore?", true)
@@ -688,11 +688,11 @@ func printLayoutMessage(workspace string, hasPostScripts bool) {
 	console.Bar()
 	console.Header("Generated layout under %s/", root)
 	console.Bar()
-	console.Printf("  %s        Dockerfile, docker-compose.yml, .env, helper .sh\n", console.Bold("build/"))
-	console.Printf("               %s\n", console.Subtle(fmt.Sprintf("→ docker compose -f %s/build/docker-compose.yml up -d", root)))
+	console.Info("  %s        Dockerfile, docker-compose.yml, .env, helper .sh", console.Bold("build/"))
+	console.Info("               → docker compose -f %s/build/docker-compose.yml up -d", root)
 	if hasPostScripts {
-		console.Printf("  %s  Baked into the image, run them inside the container\n", console.Bold("post-script"))
-		console.Printf("               %s\n", console.Subtle("→ ~/post-script/<script>.sh"))
+		console.Info("  %s  Baked into the image, run them inside the container", console.Bold("post-script"))
+		console.Info("               → ~/post-script/<script>.sh")
 	}
 	console.Bar()
 	console.NewLine()

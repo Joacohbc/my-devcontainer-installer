@@ -5,7 +5,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/ui"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/project"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/service"
@@ -29,7 +28,7 @@ for the active workspace, or a specific container via --container.`,
 }
 
 func runInfo(cmd *cobra.Command, _ []string) error {
-	svc := service.InspectService{Report: ui.Console{}}
+	svc := service.InspectService{Report: console}
 	if err := svc.EnsureDocker(); err != nil {
 		return err
 	}
@@ -41,9 +40,9 @@ func runInfo(cmd *cobra.Command, _ []string) error {
 		if err != nil {
 			return err
 		}
-		ui.NewLine()
+		console.NewLine()
 		printContainerInfoBlock(svc, containerName)
-		ui.NewLine()
+		console.NewLine()
 		return nil
 	}
 
@@ -66,9 +65,9 @@ func runInfo(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("no active project compose file found at %s. Run 'devcontainer-cli' to generate one first, or target a specific container via --container", paths.ComposeFile)
 	}
 
-	ui.NewLine()
-	ui.Header(fmt.Sprintf("Workspace: %s", workspace))
-	ui.NewLine()
+	console.NewLine()
+	console.Header("Workspace: %s", workspace)
+	console.NewLine()
 
 	prefixContainer := func(base string) string {
 		if base == workspace || strings.HasPrefix(base, workspace+"-") {
@@ -83,7 +82,7 @@ func runInfo(cmd *cobra.Command, _ []string) error {
 			base = serviceKey
 		}
 		printContainerInfoBlock(svc, prefixContainer(base))
-		ui.NewLine()
+		console.NewLine()
 	}
 
 	return nil
@@ -96,29 +95,22 @@ func printContainerInfoBlock(svc service.InspectService, name string) {
 	const contWidth = 2 + keyWidth + 3
 
 	keyStr := func(k string) string {
-		return ui.Subtle(fmt.Sprintf("  %-*s : ", keyWidth, k))
+		return console.Subtle(fmt.Sprintf("  %-*s : ", keyWidth, k))
 	}
 	cont := strings.Repeat(" ", contWidth)
 
-	ui.Println(ui.Bold(name))
+	console.Header("%s", name)
 
 	info, err := svc.ContainerDetails(name)
 	if err != nil {
-		ui.Println(ui.Subtle("  (not found)"))
+		console.Warn("  (not found)")
 		return
 	}
 
-	ui.Print(keyStr("Image"))
-	ui.Println(info.Image)
-
-	ui.Print(keyStr("Status"))
-	ui.Println(infoStatusLabel(info.Status))
-
-	ui.Print(keyStr("Created"))
-	ui.Println(formatInfoTime(info.Created))
-
-	ui.Print(keyStr("Started"))
-	ui.Println(formatInfoTime(info.StartedAt))
+	console.Print(keyStr("Image") + info.Image + "\n")
+	console.Print(keyStr("Status") + infoStatusLabel(info.Status) + "\n")
+	console.Print(keyStr("Created") + formatInfoTime(info.Created) + "\n")
+	console.Print(keyStr("Started") + formatInfoTime(info.StartedAt) + "\n")
 
 	printInfoMulti(keyStr("Ports"), cont, info.Ports)
 	printInfoMulti(keyStr("Volumes"), cont, info.Volumes)
@@ -129,23 +121,21 @@ func printContainerInfoBlock(svc service.InspectService, name string) {
 // lines aligned with the first value. Prints "-" when vals is empty.
 func printInfoMulti(keyStr, cont string, vals []string) {
 	if len(vals) == 0 {
-		ui.Print(keyStr)
-		ui.Println(ui.Subtle("-"))
+		console.Print(keyStr + console.Subtle("-") + "\n")
 		return
 	}
 	for i, v := range vals {
 		if i == 0 {
-			ui.Print(keyStr)
+			console.Print(keyStr + v + "\n")
 		} else {
-			ui.Print(cont)
+			console.Print(cont + v + "\n")
 		}
-		ui.Println(v)
 	}
 }
 
 func formatInfoTime(t time.Time) string {
 	if t.IsZero() || t.Year() <= 1 {
-		return ui.Subtle("-")
+		return console.Subtle("-")
 	}
 	return t.Local().Format("02-01-2006 15:04:05")
 }
@@ -153,12 +143,12 @@ func formatInfoTime(t time.Time) string {
 func infoStatusLabel(status string) string {
 	switch status {
 	case "running":
-		return ui.GreenS("%s", status)
+		return console.SuccessS("%s", status)
 	case "exited":
-		return ui.RedS("%s", status)
+		return console.ErrorS("%s", status)
 	case "":
-		return ui.YellowS("-")
+		return console.WarnS("-")
 	default:
-		return ui.YellowS("%s", status)
+		return console.WarnS("%s", status)
 	}
 }

@@ -34,8 +34,6 @@ func Header(s string)        { fmt.Println(StyleHeader.Render(s)) }
 func Done()      { fmt.Print(StyleSuccess.Bold(true).Render("\nDone.") + "\n\n") }
 func Cancelled() { Yellow("Cancelled.") }
 
-func NewLine()                  { fmt.Println() }
-func Print(s string)            { fmt.Print(s) }
-func Println(s string)          { fmt.Println(s) }
-func Printf(f string, a ...any) { fmt.Printf(f, a...) }
-func HeaderS(s string) string   { return StyleHeader.Render(s) }
+func NewLine()                { fmt.Println() }
+func Print(s string)          { fmt.Print(s) }
+func HeaderS(s string) string { return StyleHeader.Render(s) }

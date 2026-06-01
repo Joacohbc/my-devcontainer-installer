@@ -73,5 +73,5 @@ func printCleanupInstructions(config *types.DevcontainerConfig) {
 		bar,
 		"",
 	}
-	console.Println(strings.Join(lines, "\n"))
+	console.Print(strings.Join(lines, "\n"))
 }

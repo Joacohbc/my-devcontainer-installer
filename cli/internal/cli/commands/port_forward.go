@@ -367,7 +367,7 @@ func printTunnelPlan(tunnels []service.Tunnel) {
 		if t.IsDevcontainer {
 			tag = console.SuccessS("(devcontainer)")
 		}
-		console.Printf("  %s  %s  %s → %s:%d  %s\n",
+		console.Info("  %s  %s  %s → %s:%d  %s",
 			t.ContainerName, tag,
 			console.WarnS("localhost:%d", t.LocalPort),
 			t.TargetHost, t.ContainerPort,

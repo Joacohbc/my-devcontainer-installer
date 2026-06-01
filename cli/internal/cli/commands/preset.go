@@ -34,12 +34,12 @@ func newPresetListCommand() *cobra.Command {
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			for _, p := range (service.ConfigService{Report: console}).Presets() {
-				console.Printf("%-20s %-10s %s\n", p.ID, p.Source, p.Label)
+				console.Print(fmt.Sprintf("%-20s %-10s %s\n", p.ID, p.Source, p.Label))
 				if len(p.Modules) > 0 {
-					console.Printf("  modules:  %s\n", strings.Join(p.Modules, ", "))
+					console.Print(fmt.Sprintf("  modules:  %s\n", strings.Join(p.Modules, ", ")))
 				}
 				if len(p.Services) > 0 {
-					console.Printf("  services: %s\n", strings.Join(p.Services, ", "))
+					console.Print(fmt.Sprintf("  services: %s\n", strings.Join(p.Services, ", ")))
 				}
 			}
 			return nil

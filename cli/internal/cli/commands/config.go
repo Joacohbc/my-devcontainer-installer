@@ -57,9 +57,9 @@ func runConfigKey(cmd *cobra.Command, key string, args []string) error {
 		if err != nil {
 			return err
 		}
-		console.Println(value)
+		console.Info("%s", value)
 		if !customized {
-			console.Println(console.Subtle("(default — not yet customized)"))
+			console.Warn("(default — not yet customized)")
 		}
 		return nil
 	default:

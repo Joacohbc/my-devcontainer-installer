@@ -98,12 +98,12 @@ func runQuickRun(cmd *cobra.Command, _ []string) error {
 
 	console.Header("\nQuick run: %s", image)
 	console.NewLine()
-	console.Printf(console.Subtle("  Container : %s\n"), containerName)
+	console.Info("  Container : %s", containerName)
 	if len(volumes) > 0 {
-		console.Printf(console.Subtle("  Volumes   : %s\n"), strings.Join(volumes, ", "))
+		console.Info("  Volumes   : %s", strings.Join(volumes, ", "))
 	}
 	if len(ports) > 0 {
-		console.Printf(console.Subtle("  Ports     : %s\n"), strings.Join(ports, ", "))
+		console.Info("  Ports     : %s", strings.Join(ports, ", "))
 	}
 	console.NewLine()
 
@@ -137,12 +137,12 @@ func printRunNextSteps(containerName string) {
 	console.Bar()
 	console.Success("Container running.")
 	console.NewLine()
-	console.Println(console.Bold("Next: set up SSH access"))
-	console.Printf(console.Subtle("   $ devcontainer-cli setup-ssh --container %s\n"), containerName)
+	console.Header("Next: set up SSH access")
+	console.Info("   $ devcontainer-cli setup-ssh --container %s", containerName)
 	console.NewLine()
-	console.Println(console.Bold("Post-install scripts (baked into the image, run on demand):"))
-	console.Printf(console.Subtle("   $ docker exec -it %s ls ~/post-script\n"), containerName)
-	console.Printf(console.Subtle("   $ docker exec -it -u devuser %s bash ~/post-script/login-github-cli.sh\n"), containerName)
+	console.Header("Post-install scripts (baked into the image, run on demand):")
+	console.Info("   $ docker exec -it %s ls ~/post-script", containerName)
+	console.Info("   $ docker exec -it -u devuser %s bash ~/post-script/login-github-cli.sh", containerName)
 	console.Bar()
 	console.NewLine()
 }

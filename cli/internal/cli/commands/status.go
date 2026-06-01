@@ -72,7 +72,7 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 		}
 
 		console.NewLine()
-		console.Println(t.String())
+		console.Print(t.String())
 		console.NewLine()
 		return nil
 	}
@@ -104,7 +104,7 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 		for _, c := range managed {
 			t.Row(c.Name, pick.StatusLabel(c), c.Ports, c.Image)
 		}
-		console.Println(t.String())
+		console.Print(t.String())
 		console.NewLine()
 		return nil
 	}
@@ -171,7 +171,7 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 		t.Row(serviceKey, expectedName, statusText, portsText, imageText)
 	}
 
-	console.Println(t.String())
+	console.Print(t.String())
 	console.NewLine()
 	return nil
 }

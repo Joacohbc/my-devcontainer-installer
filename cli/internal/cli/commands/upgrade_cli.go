@@ -32,14 +32,14 @@ func runSelfUpdate(cmd *cobra.Command, _ []string) error {
 	console.Debug("Note: 'devcontainer-cli update' now manages container images. Self-update lives at 'devcontainer-cli upgrade-cli'.")
 
 	current := version
-	console.Printf(console.Subtle("Current version: %s\n"), current)
-	console.Println(console.Subtle("Fetching latest release..."))
+	console.Info("Current version: %s", current)
+	console.Info("Fetching latest release...")
 	rel, err := svc.LatestRelease()
 	if err != nil {
 		return err
 	}
 	latest := rel.Tag
-	console.Printf(console.Subtle("Latest version : %s\n"), latest)
+	console.Info("Latest version : %s", latest)
 
 	cmp := -1
 	if current != "dev" {
@@ -52,7 +52,7 @@ func runSelfUpdate(cmd *cobra.Command, _ []string) error {
 		case cmp == 0:
 			console.Success("Already up to date.")
 		default:
-			console.Println(console.Subtle("Current version is ahead of latest release."))
+			console.Warn("Current version is ahead of latest release.")
 		}
 		return nil
 	}
