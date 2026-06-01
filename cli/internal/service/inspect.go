@@ -187,6 +187,22 @@ func (s InspectService) ContainerNames() []string {
 	return names
 }
 
+// ListUsers returns usernames from /etc/passwd inside the container.
+// Used for --user flag completion in shell and exec commands.
+func (s InspectService) ListUsers(name string) []string {
+	status, stdout, _, err := docker.DockerCapture([]string{"exec", name, "cut", "-d:", "-f1", "/etc/passwd"})
+	if err != nil || status != 0 {
+		return nil
+	}
+	var users []string
+	for _, line := range strings.Split(stdout, "\n") {
+		if u := strings.TrimSpace(line); u != "" {
+			users = append(users, u)
+		}
+	}
+	return users
+}
+
 // ListDir returns the entries under dir inside the container (directories carry
 // a trailing slash), used to drive shell completion.
 func (s InspectService) ListDir(name, dir string) ([]string, error) {

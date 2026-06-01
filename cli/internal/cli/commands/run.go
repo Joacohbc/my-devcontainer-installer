@@ -24,12 +24,11 @@ func newRunCommand() *cobra.Command {
 	}
 	cmd.Flags().String("variant", "", "Image variant (e.g. ssh, nodejs, python)")
 	cmd.Flags().String("name", "", "Container name (default: dc-<variant>)")
-	cmd.Flags().String("volume", "", "Named volume to mount at /workspace")
-	cmd.Flags().Int("port", 0, "Expose container port 22 on host port n")
+	cmd.Flags().StringSlice("volumes", nil, "Volume mounts (e.g. myvol:/workspace); repeatable or comma-separated")
+	cmd.Flags().StringSlice("ports", nil, "Port mappings (e.g. 2222:22); repeatable or comma-separated")
 	cmd.Flags().String("registry", "", "Registry prefix override")
 	addInteractiveFlag(cmd)
 
-	// Dynamic completions
 	_ = cmd.RegisterFlagCompletionFunc("variant", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return types.RemoteVariants, cobra.ShellCompDirectiveNoFileComp
 	})
@@ -40,15 +39,15 @@ func newRunCommand() *cobra.Command {
 func runQuickRun(cmd *cobra.Command, _ []string) error {
 	variant, _ := cmd.Flags().GetString("variant")
 	name, _ := cmd.Flags().GetString("name")
-	volume, _ := cmd.Flags().GetString("volume")
-	port, _ := cmd.Flags().GetInt("port")
+	volumes, _ := cmd.Flags().GetStringSlice("volumes")
+	ports, _ := cmd.Flags().GetStringSlice("ports")
 	registry, _ := cmd.Flags().GetString("registry")
 	interactive := interactiveFlag(cmd)
 	console := ui.Console{}
 
-	if port < 0 || port > 65535 {
-		return fmt.Errorf("invalid --port value")
-	}
+	// filter empty strings that may come from default flag value
+	volumes = filterEmpty(volumes)
+	ports = filterEmpty(ports)
 
 	if variant != "" {
 		if _, err := types.ParseVariant(variant); err != nil {
@@ -76,6 +75,22 @@ func runQuickRun(cmd *cobra.Command, _ []string) error {
 		variant = picked.Value
 	}
 
+	if interactive && !cmd.Flags().Changed("volumes") {
+		raw, err := console.AskDefault("Volumes to mount (e.g. myvol:/workspace,data:/data — leave empty to skip):", "", nil)
+		if err != nil {
+			return err
+		}
+		volumes = filterEmpty(strings.Split(raw, ","))
+	}
+
+	if interactive && !cmd.Flags().Changed("ports") {
+		raw, err := console.AskDefault("Port mappings to expose (e.g. 2222:22,8080:80 — leave empty to skip):", "", nil)
+		if err != nil {
+			return err
+		}
+		ports = filterEmpty(strings.Split(raw, ","))
+	}
+
 	reg := domain.ResolveRegistry(registry, "")
 	image := domain.ResolveRemoteImage(variant, reg)
 	containerName := name
@@ -86,11 +101,11 @@ func runQuickRun(cmd *cobra.Command, _ []string) error {
 	console.Header("\nQuick run: %s", image)
 	fmt.Println()
 	fmt.Printf(console.Subtle("  Container : %s\n"), containerName)
-	if volume != "" {
-		fmt.Printf(console.Subtle("  Volume    : %s → /workspace\n"), volume)
+	if len(volumes) > 0 {
+		fmt.Printf(console.Subtle("  Volumes   : %s\n"), strings.Join(volumes, ", "))
 	}
-	if port != 0 {
-		fmt.Printf(console.Subtle("  Port      : %d:22\n"), port)
+	if len(ports) > 0 {
+		fmt.Printf(console.Subtle("  Ports     : %s\n"), strings.Join(ports, ", "))
 	}
 	println()
 
@@ -99,8 +114,8 @@ func runQuickRun(cmd *cobra.Command, _ []string) error {
 		Variant:       variant,
 		ContainerName: containerName,
 		Image:         image,
-		Volume:        volume,
-		Port:          port,
+		Volumes:       volumes,
+		Ports:         ports,
 	}); err != nil {
 		return err
 	}
@@ -108,6 +123,16 @@ func runQuickRun(cmd *cobra.Command, _ []string) error {
 	println()
 	printRunNextSteps(console, containerName)
 	return nil
+}
+
+func filterEmpty(ss []string) []string {
+	var out []string
+	for _, s := range ss {
+		if t := strings.TrimSpace(s); t != "" {
+			out = append(out, t)
+		}
+	}
+	return out
 }
 
 func printRunNextSteps(console ui.Console, containerName string) {

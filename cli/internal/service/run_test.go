@@ -52,18 +52,50 @@ func TestRunAlreadyRunningIsNoop(t *testing.T) {
 	}
 }
 
-func TestRunMountsVolume(t *testing.T) {
+func TestRunMountsVolumes(t *testing.T) {
 	runner := &fakeRunner{status: 0, stdout: ""}
 	defer useFakeDocker(runner)()
 
 	svc := RunService{Report: nopReporter{}}
-	if err := svc.Run(QuickRunSpec{ContainerName: "dc-ssh", Image: "img", Volume: "myvol"}); err != nil {
+	err := svc.Run(QuickRunSpec{
+		ContainerName: "dc-ssh",
+		Image:         "img",
+		Volumes:       []string{"myvol:/workspace", "data:/data"},
+	})
+	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if call := runner.callContaining("volume"); call == nil || !slices.Contains(call, "create") {
-		t.Errorf("expected volume create; calls=%v", runner.calls)
+	call := runner.callContaining("run")
+	if call == nil {
+		t.Fatal("expected docker run call")
 	}
-	if call := runner.callContaining("run"); call == nil || !slices.Contains(call, "myvol:/workspace") {
-		t.Errorf("run call missing volume mount: %v", call)
+	for _, v := range []string{"myvol:/workspace", "data:/data"} {
+		if !slices.Contains(call, v) {
+			t.Errorf("run call missing volume mount %q: %v", v, call)
+		}
+	}
+}
+
+func TestRunMapsPorts(t *testing.T) {
+	runner := &fakeRunner{status: 0, stdout: ""}
+	defer useFakeDocker(runner)()
+
+	svc := RunService{Report: nopReporter{}}
+	err := svc.Run(QuickRunSpec{
+		ContainerName: "dc-ssh",
+		Image:         "img",
+		Ports:         []string{"2222:22", "8080:80"},
+	})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	call := runner.callContaining("run")
+	if call == nil {
+		t.Fatal("expected docker run call")
+	}
+	for _, p := range []string{"2222:22", "8080:80"} {
+		if !slices.Contains(call, p) {
+			t.Errorf("run call missing port mapping %q: %v", p, call)
+		}
 	}
 }

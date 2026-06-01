@@ -17,19 +17,40 @@ func newShellCommand() *cobra.Command {
 	}
 	addWorkspaceFlag(cmd)
 	cmd.Flags().String("user", "", "User to run the command as (e.g. root)")
+	cmd.Flags().String("type", "", "Shell to open: bash, zsh or sh (default: auto-detect)")
 	addContainerFlag(cmd)
+
+	_ = cmd.RegisterFlagCompletionFunc("type", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
+		return []string{"bash", "zsh", "sh"}, cobra.ShellCompDirectiveNoFileComp
+	})
+
+	_ = cmd.RegisterFlagCompletionFunc("user", func(cmd *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
+		wsFlag := workspaceFlag(cmd)
+		containerName, err := resolveContainer(cmd, wsFlag)
+		if err != nil {
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		}
+		return service.InspectService{Report: ui.Console{}}.ListUsers(containerName), cobra.ShellCompDirectiveNoFileComp
+	})
+
 	return cmd
 }
 
 func runShell(cmd *cobra.Command, args []string) error {
 	wsFlag := workspaceFlag(cmd)
 	userFlag, _ := cmd.Flags().GetString("user")
+	shellType, _ := cmd.Flags().GetString("type")
 
 	containerName, err := resolveContainer(cmd, wsFlag)
 	if err != nil {
 		return err
 	}
 
+	command := args
+	if shellType != "" {
+		command = append([]string{shellType}, args...)
+	}
+
 	svc := service.InspectService{Report: ui.Console{}}
-	return svc.Shell(containerName, userFlag, args)
+	return svc.Shell(containerName, userFlag, command)
 }

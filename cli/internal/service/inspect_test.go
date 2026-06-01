@@ -161,6 +161,28 @@ func TestInspectContainerNetworkIPs(t *testing.T) {
 	}
 }
 
+func TestInspectListUsers(t *testing.T) {
+	runner := &fakeRunner{status: 0, stdout: "root\ndaemon\ndevuser\n"}
+	defer useFakeDocker(runner)()
+
+	svc := InspectService{Report: nopReporter{}}
+	users := svc.ListUsers("c1")
+	want := []string{"root", "daemon", "devuser"}
+	if !slices.Equal(users, want) {
+		t.Errorf("ListUsers = %v, want %v", users, want)
+	}
+}
+
+func TestInspectListUsersUnavailable(t *testing.T) {
+	runner := &fakeRunner{status: 1}
+	defer useFakeDocker(runner)()
+
+	svc := InspectService{Report: nopReporter{}}
+	if users := svc.ListUsers("c1"); users != nil {
+		t.Errorf("expected nil on docker error, got %v", users)
+	}
+}
+
 func TestInspectListDir(t *testing.T) {
 	runner := &fakeRunner{status: 0, stdout: "a\nb/\n\nc"}
 	defer useFakeDocker(runner)()
