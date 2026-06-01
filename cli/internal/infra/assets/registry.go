@@ -8,6 +8,11 @@ type AssetKind string
 // selectable by the `copy --asset` command.
 const KindScript AssetKind = "script"
 
+// KindBuild marks a script that is only meaningful during the image build
+// (entrypoint, language installers invoked from the Dockerfile). These are not
+// reusable at runtime and are therefore excluded from the copyable set.
+const KindBuild AssetKind = "build"
+
 // Asset describes an embedded asset and its capabilities.
 type Asset struct {
 	Name  string // selection/completion id, e.g. "install-claude-code"
@@ -16,20 +21,20 @@ type Asset struct {
 	Label string
 }
 
-// Registry lists every embedded asset with its metadata. Every entry is a
-// runtime-copyable script (KindScript), so all of them can be pushed into a
-// container with `copy --asset`.
+// Registry lists every embedded asset with its metadata. Scripts marked
+// KindScript are runtime-copyable via `copy --asset`; KindBuild scripts are
+// build-time only and never offered for copying.
 var Registry = []Asset{
-	{Name: "entrypoint", File: "entrypoint.sh", Kind: KindScript, Label: "Container entrypoint"},
-	{Name: "golang-utils", File: "golang_utils.sh", Kind: KindScript, Label: "Go install/update utilities"},
+	{Name: "entrypoint", File: "entrypoint.sh", Kind: KindBuild, Label: "Container entrypoint"},
+	{Name: "golang-utils", File: "golang_utils.sh", Kind: KindBuild, Label: "Go install/update utilities"},
 	{Name: "install-antigravity", File: "install-antigravity.sh", Kind: KindScript, Label: "Antigravity CLI installer"},
 	{Name: "install-claude-code", File: "install-claude-code.sh", Kind: KindScript, Label: "Claude Code installer"},
 	{Name: "install-codex-cli", File: "install-codex-cli.sh", Kind: KindScript, Label: "Codex CLI installer"},
 	{Name: "install-copilot", File: "install-copilot.sh", Kind: KindScript, Label: "GitHub Copilot CLI installer"},
 	{Name: "install-opencode", File: "install-opencode.sh", Kind: KindScript, Label: "OpenCode installer"},
 	{Name: "login-github-cli", File: "login-github-cli.sh", Kind: KindScript, Label: "GitHub CLI login helper"},
-	{Name: "update-golang", File: "update_golang.sh", Kind: KindScript, Label: "Go update script"},
-	{Name: "zsh-installer", File: "zsh-installer.sh", Kind: KindScript, Label: "Zsh configuration installer"},
+	{Name: "update-golang", File: "update_golang.sh", Kind: KindBuild, Label: "Go update script"},
+	{Name: "zsh-installer", File: "zsh-installer.sh", Kind: KindBuild, Label: "Zsh configuration installer"},
 }
 
 // CopyableAssets returns the assets that can be copied into a running container

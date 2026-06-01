@@ -28,9 +28,6 @@ func TestRegistryNamesUnique(t *testing.T) {
 
 func TestCopyableAssetsAreScripts(t *testing.T) {
 	copyable := CopyableAssets()
-	if len(copyable) != len(Registry) {
-		t.Errorf("expected all %d registry assets to be copyable scripts, got %d", len(Registry), len(copyable))
-	}
 	for _, a := range copyable {
 		if a.Kind != KindScript {
 			t.Errorf("copyable asset %q must be KindScript, got %q", a.Name, a.Kind)
@@ -38,6 +35,29 @@ func TestCopyableAssetsAreScripts(t *testing.T) {
 	}
 	if len(CopyableNames()) != len(copyable) {
 		t.Errorf("CopyableNames length %d != CopyableAssets length %d", len(CopyableNames()), len(copyable))
+	}
+}
+
+func TestBuildOnlyAssetsAreNotCopyable(t *testing.T) {
+	// Build-time-only scripts must never be offered for runtime copying.
+	buildOnly := []string{"entrypoint", "golang-utils", "update-golang", "zsh-installer"}
+	for _, name := range buildOnly {
+		if _, ok := LookupCopyable(name); ok {
+			t.Errorf("build-only asset %q must not be copyable", name)
+		}
+	}
+	// The copyable set is exactly the runtime installers + the gh login helper.
+	want := []string{
+		"install-antigravity", "install-claude-code", "install-codex-cli",
+		"install-copilot", "install-opencode", "login-github-cli",
+	}
+	if len(CopyableNames()) != len(want) {
+		t.Fatalf("expected %d copyable assets, got %v", len(want), CopyableNames())
+	}
+	for _, name := range want {
+		if _, ok := LookupCopyable(name); !ok {
+			t.Errorf("expected %q to be copyable", name)
+		}
 	}
 }
 
