@@ -3,6 +3,9 @@ name: CLI Release
 on:
   push:
     tags:
+      # Matches both stable tags (v1.4.0) and testing builds (v1.4.0-vt.N).
+      # GoReleaser's `prerelease: auto` flags the latter as a GitHub pre-release,
+      # so `upgrade-cli` only offers them as an opt-in.
       - 'v*'
   workflow_dispatch:
 

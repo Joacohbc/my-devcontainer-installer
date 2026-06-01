@@ -2,6 +2,7 @@ package service
 
 import (
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -72,6 +73,30 @@ func TestRunMountsVolumes(t *testing.T) {
 	for _, v := range []string{"myvol:/workspace", "data:/data"} {
 		if !slices.Contains(call, v) {
 			t.Errorf("run call missing volume mount %q: %v", v, call)
+		}
+	}
+}
+
+func TestRunDoesNotMountDockerSocket(t *testing.T) {
+	runner := &fakeRunner{status: 0, stdout: ""}
+	defer useFakeDocker(runner)()
+
+	svc := RunService{Report: nopReporter{}}
+	err := svc.Run(QuickRunSpec{
+		ContainerName: "dc-ssh",
+		Image:         "img",
+		Volumes:       []string{"myvol:/workspace"},
+	})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	call := runner.callContaining("run")
+	if call == nil {
+		t.Fatal("expected docker run call")
+	}
+	for _, arg := range call {
+		if strings.Contains(arg, "docker.sock") {
+			t.Errorf("docker.sock must never be mounted by default; calls=%v", call)
 		}
 	}
 }

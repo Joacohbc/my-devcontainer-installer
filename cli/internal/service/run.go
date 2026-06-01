@@ -48,7 +48,6 @@ func (s RunService) Run(spec QuickRunSpec) error {
 		"run", "-d",
 		"--name", spec.ContainerName,
 		"--restart", "unless-stopped",
-		"-v", "/var/run/docker.sock:/var/run/docker.sock",
 		"--label", types.LabelManaged + "=true",
 		"--label", types.LabelQuickRun + "=" + spec.Variant,
 	}

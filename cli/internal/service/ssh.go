@@ -1,7 +1,6 @@
 package service
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -89,18 +88,6 @@ func (s SshService) InstallKeyLocal(pub []byte, user, container, script string) 
 	status, err := docker.DockerExecStdin(pub, args)
 	if err != nil || status != 0 {
 		return fmt.Errorf("docker exec key install failed")
-	}
-	return nil
-}
-
-// InstallKeyRemote installs the public key over SSH on a remote docker host.
-func (s SshService) InstallKeyRemote(remote, user, container, script string, pub []byte) error {
-	remoteCmd := fmt.Sprintf("docker exec -i -u %s %s sh -c '%s'", user, container, script)
-	c := exec.Command("ssh", remote, remoteCmd)
-	c.Stdin = bytes.NewReader(pub)
-	c.Stdout, c.Stderr = os.Stdout, os.Stderr
-	if err := c.Run(); err != nil {
-		return fmt.Errorf("remote key install failed")
 	}
 	return nil
 }

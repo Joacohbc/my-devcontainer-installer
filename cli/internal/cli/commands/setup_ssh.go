@@ -262,6 +262,11 @@ func detectMode(f *setupSshFlags) string {
 }
 
 func checkPrereqs(mode string) error {
+	// Remote mode only renders config text to paste on another machine; it runs
+	// no ssh/keygen/docker here, so it needs no local tooling.
+	if mode == "remote" {
+		return nil
+	}
 	for _, t := range []string{"ssh", "ssh-keygen"} {
 		if !which(t) {
 			return fmt.Errorf("missing tool: %s", t)
@@ -279,10 +284,7 @@ func stackRunning(container string) bool {
 	return service.SshService{Report: console}.ContainerRunning(container)
 }
 
-func ensureStack(f *setupSshFlags, mode string) error {
-	if mode == "remote" {
-		return nil
-	}
+func ensureStack(f *setupSshFlags) error {
 	if stackRunning(f.container) {
 		console.Ok(fmt.Sprintf("Container '%s' is running.", f.container))
 		return nil
@@ -319,10 +321,7 @@ func ensureStack(f *setupSshFlags, mode string) error {
 	return nil
 }
 
-func fetchPassword(f *setupSshFlags, mode string) {
-	if mode == "remote" {
-		return
-	}
+func fetchPassword(f *setupSshFlags) {
 	console.Log("Fetching temporary password from logs...")
 	combined, ok := service.SshService{Report: console}.ServiceLogs(f.composeFile, f.service)
 	if !ok {
@@ -405,17 +404,6 @@ func installKey(f *setupSshFlags, mode string) (installResult, error) {
 		return installResult{}, err
 	}
 	script := sshdefaults.AuthorizedKeysInstallScript()
-
-	if mode == "remote" {
-		if f.remote == "" {
-			return installResult{}, fmt.Errorf("--remote USER@HOST required for remote mode")
-		}
-		console.Log(fmt.Sprintf("Installing public key into %s via %s...", f.container, f.remote))
-		if err := (service.SshService{Report: console}).InstallKeyRemote(f.remote, f.user, f.container, script, pub); err != nil {
-			return installResult{}, err
-		}
-		return installResult{}, nil
-	}
 
 	if mode == "local" {
 		ip, ierr := containerIP(f.container, f)
@@ -675,15 +663,22 @@ func runSetupSsh(cmd *cobra.Command, _ []string) error {
 		f.alias = alias
 	}
 
-	console.Log(fmt.Sprintf("Mode: %s   Workspace: %s   Alias: %s   Key: %s", mode, workspace, f.alias, f.key))
-	if mode != "remote" {
-		console.Log(fmt.Sprintf("Service: %s   Container: %s   Compose: %s", f.service, f.container, f.composeFile))
+	// Remote mode assumes the connection to the docker host already exists
+	// (devcontainer-cli runs on that host). It neither generates nor installs
+	// keys and writes no local config — it only renders the config block to
+	// paste on the connecting machine.
+	if mode == "remote" {
+		console.Log(fmt.Sprintf("Mode: %s   Workspace: %s   Alias: %s   Remote: %s   Container: %s", mode, workspace, f.alias, f.remote, f.container))
+		return emitRemoteConfig(f)
 	}
 
-	if err := ensureStack(f, mode); err != nil {
+	console.Log(fmt.Sprintf("Mode: %s   Workspace: %s   Alias: %s   Key: %s", mode, workspace, f.alias, f.key))
+	console.Log(fmt.Sprintf("Service: %s   Container: %s   Compose: %s", f.service, f.container, f.composeFile))
+
+	if err := ensureStack(f); err != nil {
 		return err
 	}
-	fetchPassword(f, mode)
+	fetchPassword(f)
 	if err := genKey(f.key); err != nil {
 		return err
 	}
@@ -696,25 +691,26 @@ func runSetupSsh(cmd *cobra.Command, _ []string) error {
 	}
 	testConnection(f.alias)
 	console.Ok(fmt.Sprintf("Done. Connect with:  ssh %s", f.alias))
-	if mode == "remote" {
-		printRemoteConnectionInstructions(f, inst)
-	}
 	return nil
 }
 
-func printRemoteConnectionInstructions(f *setupSshFlags, inst installResult) {
-	block, err := buildConfigBlock("remote", f, inst)
+// emitRemoteConfig renders the ~/.ssh/config ProxyCommand block for remote
+// access and prints it. No keys are generated or installed: providing
+// USER@HOST (or an alias) already implies a working connection to the host.
+func emitRemoteConfig(f *setupSshFlags) error {
+	block, err := buildConfigBlock("remote", f, installResult{})
 	if err != nil {
-		return
+		return err
 	}
 	console.NewLine()
-	console.Log("Remote connection config — to connect from a different machine, add this block to its ~/.ssh/config:")
+	console.Log("Remote connection config — add this block to the connecting machine's ~/.ssh/config:")
 	console.NewLine()
 	console.Info("---")
 	console.Print(block + "\n")
 	console.Info("---")
 	console.NewLine()
 	console.Success("Then connect with:  ssh %s", f.alias)
+	return nil
 }
 
 func fileExists(p string) bool {

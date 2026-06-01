@@ -48,6 +48,9 @@ checksum:
 
 release:
   draft: false
+  # `auto` marks tags with a SemVer pre-release segment (e.g. v1.4.0-vt.1,
+  # the testing-build convention) as GitHub pre-releases. upgrade-cli treats
+  # those as opt-in and defaults users to the latest stable release.
   prerelease: auto
 
 changelog:

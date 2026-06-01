@@ -3,6 +3,7 @@ package commands
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/charmbracelet/log"
@@ -297,6 +298,36 @@ Host *.wildcard
 	for i, h := range want {
 		if hosts[i] != h {
 			t.Errorf("hosts[%d] = %q, want %q", i, hosts[i], h)
+		}
+	}
+}
+
+// Remote mode renders config text only; it never runs ssh/keygen/docker, so it
+// requires no local tooling.
+func TestCheckPrereqs_RemoteSkipsTooling(t *testing.T) {
+	if err := checkPrereqs("remote"); err != nil {
+		t.Errorf("checkPrereqs(remote) = %v, want nil (remote needs no local tools)", err)
+	}
+}
+
+// The remote config block builds purely from the alias, remote host and
+// container — with an empty installResult — proving no key generation or
+// installation needs to have happened first.
+func TestBuildConfigBlock_RemoteNeedsNoKeyInstall(t *testing.T) {
+	f := &setupSshFlags{
+		alias:     "myws",
+		user:      "devuser",
+		key:       "~/.ssh/id_myws",
+		remote:    "user@host",
+		container: "myws-devcontainer-ssh",
+	}
+	block, err := buildConfigBlock("remote", f, installResult{})
+	if err != nil {
+		t.Fatalf("buildConfigBlock(remote): %v", err)
+	}
+	for _, want := range []string{"Host myws", "ProxyCommand ssh user@host", "myws-devcontainer-ssh"} {
+		if !strings.Contains(block, want) {
+			t.Errorf("remote block missing %q:\n%s", want, block)
 		}
 	}
 }

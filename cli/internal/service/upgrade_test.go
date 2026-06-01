@@ -143,6 +143,60 @@ func TestCompareVersions(t *testing.T) {
 	}
 }
 
+func TestIsTestingVersion(t *testing.T) {
+	cases := []struct {
+		tag  string
+		want bool
+	}{
+		{"v1.4.0-vt.1", true},
+		{"v1.4.0-vt", true},
+		{"1.4.0-vt.2", true},
+		{"v1.4.0", false},
+		{"v1.4.0-rc.1", false},
+		{"v1.4.0-beta.vt", true},
+		{"v2.0.0-vtx.1", false},
+	}
+	for _, c := range cases {
+		if got := isTestingVersion(c.tag); got != c.want {
+			t.Errorf("isTestingVersion(%q) = %v, want %v", c.tag, got, c.want)
+		}
+	}
+}
+
+func TestPickTargets(t *testing.T) {
+	releases := []Release{
+		{Tag: "v1.5.0-vt.2", Prerelease: true},
+		{Tag: "v1.5.0-vt.1", Prerelease: true},
+		{Tag: "v1.4.0"},
+		{Tag: "v1.3.0"},
+		{Tag: "v1.6.0-draft", Prerelease: true, Draft: true}, // ignored
+	}
+	top, stable := pickTargets(releases)
+	if top == nil || top.Tag != "v1.5.0-vt.2" {
+		t.Errorf("top = %v, want v1.5.0-vt.2", top)
+	}
+	if stable == nil || stable.Tag != "v1.4.0" {
+		t.Errorf("stable = %v, want v1.4.0", stable)
+	}
+}
+
+func TestPickTargets_OnlyStable(t *testing.T) {
+	top, stable := pickTargets([]Release{{Tag: "v2.0.0"}, {Tag: "v2.1.0"}})
+	if top == nil || stable == nil || top.Tag != "v2.1.0" || stable.Tag != "v2.1.0" {
+		t.Errorf("top=%v stable=%v, want both v2.1.0", top, stable)
+	}
+}
+
+func TestPickTargets_OnlyTesting(t *testing.T) {
+	top, stable := pickTargets([]Release{{Tag: "v0.1.0-vt.1", Prerelease: true}})
+	if top == nil || top.Tag != "v0.1.0-vt.1" {
+		t.Errorf("top = %v, want v0.1.0-vt.1", top)
+	}
+	if stable != nil {
+		t.Errorf("stable = %v, want nil (only testing releases)", stable)
+	}
+}
+
 func TestGetTargetTriplet(t *testing.T) {
 	triplet, _, err := getTargetTriplet()
 	if err != nil {
