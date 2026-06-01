@@ -41,9 +41,9 @@ func runInfo(cmd *cobra.Command, _ []string) error {
 		if err != nil {
 			return err
 		}
-		fmt.Println()
+		ui.NewLine()
 		printContainerInfoBlock(svc, containerName)
-		fmt.Println()
+		ui.NewLine()
 		return nil
 	}
 
@@ -66,9 +66,9 @@ func runInfo(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("no active project compose file found at %s. Run 'devcontainer-cli' to generate one first, or target a specific container via --container", paths.ComposeFile)
 	}
 
-	fmt.Println()
+	ui.NewLine()
 	ui.Header(fmt.Sprintf("Workspace: %s", workspace))
-	fmt.Println()
+	ui.NewLine()
 
 	prefixContainer := func(base string) string {
 		if base == workspace || strings.HasPrefix(base, workspace+"-") {
@@ -83,7 +83,7 @@ func runInfo(cmd *cobra.Command, _ []string) error {
 			base = serviceKey
 		}
 		printContainerInfoBlock(svc, prefixContainer(base))
-		fmt.Println()
+		ui.NewLine()
 	}
 
 	return nil
@@ -100,25 +100,25 @@ func printContainerInfoBlock(svc service.InspectService, name string) {
 	}
 	cont := strings.Repeat(" ", contWidth)
 
-	fmt.Println(ui.Bold(name))
+	ui.Println(ui.Bold(name))
 
 	info, err := svc.ContainerDetails(name)
 	if err != nil {
-		fmt.Println(ui.Subtle("  (not found)"))
+		ui.Println(ui.Subtle("  (not found)"))
 		return
 	}
 
-	fmt.Print(keyStr("Image"))
-	fmt.Println(info.Image)
+	ui.Print(keyStr("Image"))
+	ui.Println(info.Image)
 
-	fmt.Print(keyStr("Status"))
-	fmt.Println(infoStatusLabel(info.Status))
+	ui.Print(keyStr("Status"))
+	ui.Println(infoStatusLabel(info.Status))
 
-	fmt.Print(keyStr("Created"))
-	fmt.Println(formatInfoTime(info.Created))
+	ui.Print(keyStr("Created"))
+	ui.Println(formatInfoTime(info.Created))
 
-	fmt.Print(keyStr("Started"))
-	fmt.Println(formatInfoTime(info.StartedAt))
+	ui.Print(keyStr("Started"))
+	ui.Println(formatInfoTime(info.StartedAt))
 
 	printInfoMulti(keyStr("Ports"), cont, info.Ports)
 	printInfoMulti(keyStr("Volumes"), cont, info.Volumes)
@@ -129,17 +129,17 @@ func printContainerInfoBlock(svc service.InspectService, name string) {
 // lines aligned with the first value. Prints "-" when vals is empty.
 func printInfoMulti(keyStr, cont string, vals []string) {
 	if len(vals) == 0 {
-		fmt.Print(keyStr)
-		fmt.Println(ui.Subtle("-"))
+		ui.Print(keyStr)
+		ui.Println(ui.Subtle("-"))
 		return
 	}
 	for i, v := range vals {
 		if i == 0 {
-			fmt.Print(keyStr)
+			ui.Print(keyStr)
 		} else {
-			fmt.Print(cont)
+			ui.Print(cont)
 		}
-		fmt.Println(v)
+		ui.Println(v)
 	}
 }
 

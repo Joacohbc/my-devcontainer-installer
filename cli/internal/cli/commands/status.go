@@ -31,7 +31,7 @@ func newStatusCommand() *cobra.Command {
 }
 
 func runStatus(cmd *cobra.Command, _ []string) error {
-	svc := service.InspectService{Report: ui.Console{}}
+	svc := service.InspectService{Report: console}
 	if err := svc.EnsureDocker(); err != nil {
 		return err
 	}
@@ -66,14 +66,14 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 		if c, found := containerMap[containerName]; found {
 			t.Row(c.Name, pick.StatusLabel(c), c.Ports, c.Image)
 		} else if state, serr := svc.ContainerState(containerName); serr == nil {
-			t.Row(containerName, ui.RedS("%s", state), "", svc.ContainerImage(containerName))
+			t.Row(containerName, console.ErrorS("%s", state), "", svc.ContainerImage(containerName))
 		} else {
-			t.Row(containerName, ui.RedS("not found"), "", "")
+			t.Row(containerName, console.ErrorS("not found"), "", "")
 		}
 
-		fmt.Println()
-		fmt.Println(t)
-		fmt.Println()
+		console.NewLine()
+		console.Println(t.String())
+		console.NewLine()
 		return nil
 	}
 
@@ -81,9 +81,9 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 	if allFlag, _ := cmd.Flags().GetBool("all"); allFlag {
 		managed := pick.ListManaged()
 
-		fmt.Println()
-		ui.Header("All managed containers")
-		fmt.Println()
+		console.NewLine()
+		console.Header("All managed containers")
+		console.NewLine()
 
 		t := table.New().
 			Border(lipgloss.NormalBorder()).
@@ -97,15 +97,15 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 			})
 
 		if len(managed) == 0 {
-			fmt.Println(ui.YellowS("No managed containers found."))
-			fmt.Println()
+			console.Warn("No managed containers found.")
+			console.NewLine()
 			return nil
 		}
 		for _, c := range managed {
 			t.Row(c.Name, pick.StatusLabel(c), c.Ports, c.Image)
 		}
-		fmt.Println(t)
-		fmt.Println()
+		console.Println(t.String())
+		console.NewLine()
 		return nil
 	}
 
@@ -128,9 +128,9 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("no active project compose file found at %s. Run 'devcontainer-cli' to generate one first, or target a specific container via --container", paths.ComposeFile)
 	}
 
-	fmt.Println()
-	ui.Header(fmt.Sprintf("Workspace: %s", workspace))
-	fmt.Println()
+	console.NewLine()
+	console.Header("Workspace: %s", workspace)
+	console.NewLine()
 
 	t := table.New().
 		Border(lipgloss.NormalBorder()).
@@ -158,7 +158,7 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 		}
 		expectedName := prefixContainerLocal(workspace, baseContainer)
 
-		statusText := ui.RedS("not created")
+		statusText := console.ErrorS("not created")
 		portsText := ""
 		imageText := ""
 
@@ -171,7 +171,7 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 		t.Row(serviceKey, expectedName, statusText, portsText, imageText)
 	}
 
-	fmt.Println(t)
-	fmt.Println()
+	console.Println(t.String())
+	console.NewLine()
 	return nil
 }

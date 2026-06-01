@@ -338,7 +338,7 @@ func fetchPassword(f *setupSshFlags, mode string) {
 	if last == "" {
 		console.Warn("Could not read password from logs (maybe key already installed).")
 	} else {
-		fmt.Printf(console.Subtle("   %s\n"), last)
+		console.Printf(console.Subtle("   %s\n"), last)
 	}
 }
 
@@ -548,10 +548,10 @@ func updateSshConfig(f *setupSshFlags, mode string, inst installResult) error {
 
 	if hasAliasBlock(current, f.alias) {
 		console.Warn("Host '%s' already defined in %s", f.alias, configPath)
-		fmt.Println(console.Subtle("---- existing ----"))
-		fmt.Println(extractAliasBlock(current, f.alias))
-		fmt.Println(console.Subtle("---- proposed ----"))
-		fmt.Println(newBlock)
+		console.Println(console.Subtle("---- existing ----"))
+		console.Println(extractAliasBlock(current, f.alias))
+		console.Println(console.Subtle("---- proposed ----"))
+		console.Println(newBlock)
 		replace := true
 		if !f.assumeYes {
 			ok, cerr := console.ConfirmDefault(fmt.Sprintf("Replace existing block for Host '%s'?", f.alias), false)
@@ -707,14 +707,14 @@ func printRemoteConnectionInstructions(f *setupSshFlags, inst installResult) {
 	if err != nil {
 		return
 	}
-	fmt.Println()
+	console.NewLine()
 	console.Log("Remote connection config — to connect from a different machine, add this block to its ~/.ssh/config:")
-	fmt.Println()
-	fmt.Println(console.Subtle("---"))
-	fmt.Println(block)
-	fmt.Println(console.Subtle("---"))
-	fmt.Println()
-	fmt.Printf("Then connect with:  ssh %s\n", f.alias)
+	console.NewLine()
+	console.Println(console.Subtle("---"))
+	console.Println(block)
+	console.Println(console.Subtle("---"))
+	console.NewLine()
+	console.Printf("Then connect with:  ssh %s\n", f.alias)
 }
 
 func fileExists(p string) bool {

@@ -3,7 +3,6 @@ package commands
 import (
 	"fmt"
 
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/ui"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/service"
 	"github.com/spf13/cobra"
@@ -34,7 +33,7 @@ Note: To update the CLI binary itself, run 'devcontainer-cli upgrade-cli'.`,
 }
 
 func updateService() service.UpdateService {
-	return service.UpdateService{Report: ui.Console{}}
+	return service.UpdateService{Report: console}
 }
 
 func runUpdateImages(cmd *cobra.Command, _ []string) error {
@@ -49,7 +48,7 @@ func runUpdateImages(cmd *cobra.Command, _ []string) error {
 	svc := updateService()
 	if all {
 		updated, skipped, failed := svc.UpdateAll(pull, rebuild)
-		fmt.Printf(ui.Subtle("\n--- %d updated, %d skipped, %d failed\n"), updated, skipped, failed)
+		console.Printf(console.Subtle("\n--- %d updated, %d skipped, %d failed\n"), updated, skipped, failed)
 		if failed > 0 {
 			return fmt.Errorf("%d project(s) failed to update", failed)
 		}

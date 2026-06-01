@@ -74,6 +74,12 @@ func (Console) Bar() {
 	Bar()
 }
 
+func (Console) NewLine()                  { NewLine() }
+func (Console) Print(s string)            { Print(s) }
+func (Console) Println(s string)          { Println(s) }
+func (Console) Printf(f string, a ...any) { Printf(f, a...) }
+func (Console) HeaderS(s string) string   { return HeaderS(s) }
+
 func (Console) Bold(s string) string {
 	return Bold(s)
 }

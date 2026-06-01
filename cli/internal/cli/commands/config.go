@@ -3,7 +3,6 @@ package commands
 import (
 	"fmt"
 
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/ui"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/service"
 	"github.com/spf13/cobra"
@@ -48,7 +47,7 @@ func newConfigKeyCommand(key, description string) *cobra.Command {
 
 func runConfigKey(cmd *cobra.Command, key string, args []string) error {
 	unset, _ := cmd.Flags().GetBool("unset")
-	svc := service.ConfigService{Report: ui.Console{}}
+	svc := service.ConfigService{Report: console}
 
 	switch {
 	case unset:
@@ -58,9 +57,9 @@ func runConfigKey(cmd *cobra.Command, key string, args []string) error {
 		if err != nil {
 			return err
 		}
-		fmt.Println(value)
+		console.Println(value)
 		if !customized {
-			fmt.Println(ui.Subtle("(default — not yet customized)"))
+			console.Println(console.Subtle("(default — not yet customized)"))
 		}
 		return nil
 	default:

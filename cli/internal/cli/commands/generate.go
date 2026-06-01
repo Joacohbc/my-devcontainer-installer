@@ -210,7 +210,7 @@ func parseGenFlags(cmd *cobra.Command) (*genFlags, error) {
 // runGenerate orchestrates the default config/generation/build workflow.
 func runGenerate(cmd *cobra.Command, _ []string) error {
 	if v, _ := cmd.Flags().GetBool(flagVersion); v {
-		fmt.Println(version)
+		console.Println(version)
 		return nil
 	}
 
@@ -220,7 +220,7 @@ func runGenerate(cmd *cobra.Command, _ []string) error {
 	}
 
 	console.Header("\nDevContainer Dockerfile Builder")
-	fmt.Println()
+	console.NewLine()
 
 	cwd, err := currentDir()
 	if err != nil {
@@ -429,7 +429,7 @@ func prepareBuildDir(cwd string, config *types.DevcontainerConfig, paths project
 // writeGeneratedFiles outputs generated environment configuration blueprints.
 func writeGeneratedFiles(config *types.DevcontainerConfig, plan *service.GeneratePlan, paths project.Paths, flags *genFlags) error {
 	if plan.Dockerfile == "" {
-		fmt.Printf(console.Subtle("Skipped Dockerfile (mode=%s).\n"), config.Mode)
+		console.Printf(console.Subtle("Skipped Dockerfile (mode=%s).\n"), config.Mode)
 	} else {
 		ow, oerr := maybeOverwrite(paths.DockerfilePath, "Dockerfile", flags.interactive, flags.force)
 		if oerr != nil {
@@ -655,10 +655,10 @@ func maybeUpdateGitignore(cwd, workspace string) error {
 	}
 
 	_ = workspace // workspace is available if we want per-workspace entries later
-	fmt.Println()
+	console.NewLine()
 	console.Warn("Git repo detected. The following patterns are not in .gitignore:")
 	for _, e := range missing {
-		fmt.Printf("  %s\n", console.Subtle(e))
+		console.Printf("  %s\n", console.Subtle(e))
 	}
 
 	ok, err := console.ConfirmDefault("Add them to .gitignore?", true)
@@ -684,16 +684,16 @@ func maybeUpdateGitignore(cwd, workspace string) error {
 
 func printLayoutMessage(workspace string, hasPostScripts bool) {
 	root := ".dc_" + workspace
-	fmt.Println()
+	console.NewLine()
 	console.Bar()
 	console.Header("Generated layout under %s/", root)
 	console.Bar()
-	fmt.Printf("  %s        Dockerfile, docker-compose.yml, .env, helper .sh\n", console.Bold("build/"))
-	fmt.Printf("               %s\n", console.Subtle(fmt.Sprintf("→ docker compose -f %s/build/docker-compose.yml up -d", root)))
+	console.Printf("  %s        Dockerfile, docker-compose.yml, .env, helper .sh\n", console.Bold("build/"))
+	console.Printf("               %s\n", console.Subtle(fmt.Sprintf("→ docker compose -f %s/build/docker-compose.yml up -d", root)))
 	if hasPostScripts {
-		fmt.Printf("  %s  Baked into the image, run them inside the container\n", console.Bold("post-script"))
-		fmt.Printf("               %s\n", console.Subtle("→ ~/post-script/<script>.sh"))
+		console.Printf("  %s  Baked into the image, run them inside the container\n", console.Bold("post-script"))
+		console.Printf("               %s\n", console.Subtle("→ ~/post-script/<script>.sh"))
 	}
 	console.Bar()
-	fmt.Println()
+	console.NewLine()
 }
