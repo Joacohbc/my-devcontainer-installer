@@ -7,7 +7,10 @@ import (
 )
 
 func TestSshContainerRunning(t *testing.T) {
-	runner := &fakeRunner{status: 0, stdout: "alpha\nmyws-devcontainer\nbeta"}
+	stdout := `{"Names":"alpha","Image":"img1","Status":"Up","State":"running","Labels":"","Ports":""}
+{"Names":"myws-devcontainer","Image":"img2","Status":"Up","State":"running","Labels":"","Ports":""}
+{"Names":"beta","Image":"img3","Status":"Up","State":"running","Labels":"","Ports":""}`
+	runner := &fakeRunner{status: 0, stdout: stdout}
 	defer useFakeDocker(runner)()
 
 	svc := SshService{Report: nopReporter{}}

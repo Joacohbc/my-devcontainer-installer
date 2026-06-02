@@ -306,15 +306,13 @@ func (s InspectService) ContainerNames() []string {
 	if !docker.IsDockerAvailable() {
 		return nil
 	}
-	status, stdout, _, err := docker.DockerCapture([]string{"ps", "-a", "--format", "{{.Names}}"})
-	if err != nil || status != 0 {
+	containers, err := s.ListContainers(true, false)
+	if err != nil {
 		return nil
 	}
 	var names []string
-	for _, line := range strings.Split(stdout, "\n") {
-		if line = strings.TrimSpace(line); line != "" {
-			names = append(names, line)
-		}
+	for _, c := range containers {
+		names = append(names, c.Name)
 	}
 	return names
 }
@@ -349,4 +347,104 @@ func (s InspectService) ListDir(name, dir string) ([]string, error) {
 		}
 	}
 	return entries, nil
+}
+
+// Container represents a high-level Docker container listed by InspectService.
+type Container struct {
+	Name    string
+	Image   string
+	Status  string
+	State   string
+	Managed bool
+	Ports   string
+}
+
+type dockerPSLine struct {
+	Names  string `json:"Names"`
+	Image  string `json:"Image"`
+	Status string `json:"Status"`
+	State  string `json:"State"`
+	Labels string `json:"Labels"`
+	Ports  string `json:"Ports"`
+}
+
+func parsePSLines(stdout string) []dockerPSLine {
+	var out []dockerPSLine
+	for _, line := range strings.Split(strings.TrimSpace(stdout), "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		var obj dockerPSLine
+		if err := json.Unmarshal([]byte(line), &obj); err != nil {
+			continue
+		}
+		if obj.Names == "" {
+			continue
+		}
+		out = append(out, obj)
+	}
+	return out
+}
+
+// ListManaged returns all containers carrying the CLI managed label. Docker
+// errors yield an empty list.
+func (s InspectService) ListManaged() []Container {
+	containers, _ := s.ListContainers(true, true)
+	return containers
+}
+
+// ListAll returns running containers regardless of label, flagging which are
+// CLI-managed devcontainers.
+func (s InspectService) ListAll() []Container {
+	containers, _ := s.ListContainers(false, false)
+	return containers
+}
+
+// ListContainers queries the Docker daemon for containers.
+// If 'all' is true, stopped containers are included (adds -a).
+// If 'managedOnly' is true, only containers with the CLI managed label are returned.
+func (s InspectService) ListContainers(all bool, managedOnly bool) ([]Container, error) {
+	args := []string{"ps", "--format", "{{json .}}"}
+	if all {
+		args = append(args, "-a")
+	}
+	if managedOnly {
+		args = append(args, "--filter", "label="+types.LabelManaged+"=true")
+	}
+
+	status, stdout, _, err := docker.DockerCapture(args)
+	if err != nil {
+		return nil, err
+	}
+	if status != 0 {
+		return nil, fmt.Errorf("docker ps exited with status %d", status)
+	}
+	if strings.TrimSpace(stdout) == "" {
+		return nil, nil
+	}
+
+	managedLabel := types.LabelManaged + "=true"
+	var out []Container
+	for _, l := range parsePSLines(stdout) {
+		managed := false
+		if managedOnly {
+			managed = true
+		} else {
+			for _, lab := range strings.Split(l.Labels, ",") {
+				if strings.TrimSpace(lab) == managedLabel {
+					managed = true
+					break
+				}
+			}
+		}
+		out = append(out, Container{
+			Name:    l.Names,
+			Image:   l.Image,
+			Status:  l.Status,
+			State:   l.State,
+			Managed: managed,
+			Ports:   l.Ports,
+		})
+	}
+	return out, nil
 }

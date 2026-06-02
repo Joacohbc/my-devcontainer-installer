@@ -295,3 +295,100 @@ func TestInspectListDir(t *testing.T) {
 		t.Errorf("entries = %v, want %v", entries, want)
 	}
 }
+
+func TestParsePSLines(t *testing.T) {
+	stdout := `{"Names":"ws1-devcontainer-ssh","Image":"img1","Status":"Up 2 minutes","State":"running","Labels":"a=b","Ports":"22/tcp"}
+{"Names":"ws2-devcontainer-ssh","Image":"img2","Status":"Exited (0)","State":"exited","Labels":"","Ports":""}
+
+not-json-should-be-skipped
+{"Image":"no-name-skipped","State":"running"}
+`
+	lines := parsePSLines(stdout)
+	if len(lines) != 2 {
+		t.Fatalf("expected 2 parsed lines, got %d: %+v", len(lines), lines)
+	}
+	if lines[0].Names != "ws1-devcontainer-ssh" || lines[0].Image != "img1" || lines[0].State != "running" {
+		t.Errorf("line[0] mis-parsed: %+v", lines[0])
+	}
+	if lines[1].Names != "ws2-devcontainer-ssh" || lines[1].State != "exited" {
+		t.Errorf("line[1] mis-parsed: %+v", lines[1])
+	}
+}
+
+func TestParsePSLines_Empty(t *testing.T) {
+	if lines := parsePSLines("   \n\n"); len(lines) != 0 {
+		t.Errorf("expected no lines for blank input, got %+v", lines)
+	}
+}
+
+func TestInspectListManaged(t *testing.T) {
+	stdout := `{"Names":"c1","Image":"img1","Status":"Up 2 minutes","State":"running","Labels":"dev.devcontainer-installer.managed=true","Ports":"22/tcp"}`
+	runner := &fakeRunner{status: 0, stdout: stdout}
+	defer useFakeDocker(runner)()
+
+	svc := InspectService{Report: nopReporter{}}
+	containers := svc.ListManaged()
+	if len(containers) != 1 {
+		t.Fatalf("expected 1 container, got %d", len(containers))
+	}
+	c := containers[0]
+	if c.Name != "c1" || c.Image != "img1" || !c.Managed || c.State != "running" {
+		t.Errorf("unexpected container: %+v", c)
+	}
+}
+
+func TestInspectListAll(t *testing.T) {
+	stdout := `{"Names":"c1","Image":"img1","Status":"Up 2 minutes","State":"running","Labels":"dev.devcontainer-installer.managed=true","Ports":"22/tcp"}
+{"Names":"c2","Image":"img2","Status":"Up 5 minutes","State":"running","Labels":"other=label","Ports":"80/tcp"}`
+	runner := &fakeRunner{status: 0, stdout: stdout}
+	defer useFakeDocker(runner)()
+
+	svc := InspectService{Report: nopReporter{}}
+	containers := svc.ListAll()
+	if len(containers) != 2 {
+		t.Fatalf("expected 2 containers, got %d", len(containers))
+	}
+	if !containers[0].Managed {
+		t.Errorf("expected container 0 to be managed")
+	}
+	if containers[1].Managed {
+		t.Errorf("expected container 1 to not be managed")
+	}
+}
+
+func TestInspectListContainers(t *testing.T) {
+	stdout := `{"Names":"c1","Image":"img1","Status":"Up 2 minutes","State":"running","Labels":"dev.devcontainer-installer.managed=true","Ports":"22/tcp"}
+{"Names":"c2","Image":"img2","Status":"Up 5 minutes","State":"running","Labels":"other=label","Ports":"80/tcp"}`
+	runner := &fakeRunner{status: 0, stdout: stdout}
+	defer useFakeDocker(runner)()
+
+	svc := InspectService{Report: nopReporter{}}
+	containers, err := svc.ListContainers(true, false)
+	if err != nil {
+		t.Fatalf("ListContainers error: %v", err)
+	}
+	if len(containers) != 2 {
+		t.Fatalf("expected 2 containers, got %d", len(containers))
+	}
+	if !containers[0].Managed {
+		t.Errorf("expected container 0 to be managed")
+	}
+	if containers[1].Managed {
+		t.Errorf("expected container 1 to not be managed")
+	}
+
+	call := runner.callContaining("ps")
+	if call == nil {
+		t.Fatalf("expected docker ps call")
+	}
+	foundA := false
+	for _, arg := range call {
+		if arg == "-a" {
+			foundA = true
+			break
+		}
+	}
+	if !foundA {
+		t.Errorf("expected -a flag in docker ps call: %v", call)
+	}
+}
