@@ -40,5 +40,10 @@ if [ -d /workspace ]; then
     setfacl -d -m u:devuser:rwx /workspace 2>/dev/null || true
 fi
 
+if [ -d /var/run/docker.sock ]; then
+    setfacl -R -m u:devuser:rwx /var/run/docker.sock 2>/dev/null || true
+    setfacl -d -m u:devuser:rwx /var/run/docker.sock 2>/dev/null || true
+fi
+
 # Start the SSH service
 /usr/sbin/sshd -D -o ListenAddress=0.0.0.0
