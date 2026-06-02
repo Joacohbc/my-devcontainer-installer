@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/osutil"
 )
 
 // SshService owns the external-command and docker orchestration behind the
@@ -21,8 +22,7 @@ type SshService struct {
 
 // CommandExists reports whether bin is on PATH.
 func (s SshService) CommandExists(bin string) bool {
-	_, err := exec.LookPath(bin)
-	return err == nil
+	return osutil.CommandExists(bin)
 }
 
 // ContainerRunning reports whether a container with the exact name is running.
