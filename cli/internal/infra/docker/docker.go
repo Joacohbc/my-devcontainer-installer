@@ -10,7 +10,15 @@ import (
 	"sync"
 )
 
+// Runner abstracts OS subprocess execution (such as exec.CommandContext) for the docker package.
+// It serves as a dependency injection point: by programming against this abstraction rather than
+// concrete OS execution, unit tests can swap the runner (via SetRunner) with mock/fake implementations
+// to simulate Docker daemon states, mock exit codes, and capture command invocations without spawning
+// real system processes.
 type Runner interface {
+	// Run executes a command with the given context, arguments, working directory, and environment.
+	// The stdio parameter specifies stream handling ("inherit" connects streams to the terminal;
+	// "pipe" captures outputs in stdout and stderr return values).
 	Run(ctx context.Context, args []string, stdio string, cwd string, env map[string]string) (status int, stdout, stderr string)
 }
 
@@ -79,6 +87,9 @@ func EnsureDocker() error {
 	return nil
 }
 
+// DockerInherit runs a docker command inheriting the parent process's standard streams
+// (Stdin, Stdout, Stderr). It is used for interactive shell sessions, real-time logging,
+// or operations where terminal interaction is required. It returns the process exit status.
 func DockerInherit(args []string) (int, error) {
 	if err := EnsureDocker(); err != nil {
 		return 1, err
@@ -88,6 +99,10 @@ func DockerInherit(args []string) (int, error) {
 	return status, nil
 }
 
+// DockerCapture runs a docker command in the background, piping and collecting its standard
+// output and error streams into memory strings. It is used for programmatic checks and queries
+// (such as state check or JSON list processing) and does not write to the user's terminal.
+// It returns the process exit status, captured stdout, captured stderr, and any execution error.
 func DockerCapture(args []string) (status int, stdout, stderr string, err error) {
 	if err = EnsureDocker(); err != nil {
 		return 1, "", "", err
