@@ -74,11 +74,12 @@ func (s PasswordService) ChangePasswordNonInteractive(container, password string
 }
 
 func (s PasswordService) ensureRunning(container string) error {
-	status, stdout, _, err := docker.DockerCapture([]string{"inspect", "-f", "{{.State.Status}}", container})
-	if err != nil || status != 0 {
-		return fmt.Errorf("container '%s' not found", container)
+	inspectSvc := InspectService{Report: s.Report}
+	state, err := inspectSvc.ContainerState(container)
+	if err != nil {
+		return fmt.Errorf("container '%s' not found. Ensure it is running", container)
 	}
-	if strings.TrimSpace(stdout) != "running" {
+	if state != StateRunning {
 		return fmt.Errorf("container '%s' is not running. Run 'devcontainer-cli' or 'devcontainer-cli start' first", container)
 	}
 	return nil

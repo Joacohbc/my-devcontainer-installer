@@ -326,14 +326,24 @@ func installKey(ssh service.SshService, f *setupSshFlags, mode sshdefaults.Mode)
 			return installResult{}, fmt.Errorf("could not resolve container IP")
 		}
 		console.Log(fmt.Sprintf("Installing public key into %s (%s) via docker exec...", f.container, ip))
-		if err := ssh.InstallKeyLocal(pub, f.user, f.container, script); err != nil {
+		if err := ssh.InstallKeyLocal(service.InstallKeySpec{
+			PublicKey: pub,
+			User:      f.user,
+			Container: f.container,
+			Script:    script,
+		}); err != nil {
 			return installResult{}, err
 		}
 		return installResult{hostname: ip}, nil
 	}
 
 	console.Log(fmt.Sprintf("Installing public key into %s via docker exec...", f.container))
-	if err := ssh.InstallKeyLocal(pub, f.user, f.container, script); err != nil {
+	if err := ssh.InstallKeyLocal(service.InstallKeySpec{
+		PublicKey: pub,
+		User:      f.user,
+		Container: f.container,
+		Script:    script,
+	}); err != nil {
 		return installResult{}, err
 	}
 	return installResult{hostname: "localhost", port: f.port}, nil

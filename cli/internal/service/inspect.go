@@ -14,16 +14,41 @@ import (
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
 )
 
+// ContainerState represents the execution state of a container.
+type ContainerState string
+
+const (
+	StateRunning ContainerState = "running"
+	StateExited  ContainerState = "exited"
+	StateCreated ContainerState = "created"
+	StateDead    ContainerState = "dead"
+	StatePaused  ContainerState = "paused"
+)
+
+// PortBinding represents a port mapped from the host to the container.
+type PortBinding struct {
+	HostPort      string
+	ContainerPort string
+	Protocol      string
+}
+
+// VolumeMount represents a directory or volume mounted into the container.
+type VolumeMount struct {
+	Source      string
+	Destination string
+	Type        string
+}
+
 // ContainerInfo holds the detailed fields shown by the info command.
 type ContainerInfo struct {
 	Name      string
 	Image     string
-	Status    string
+	Status    ContainerState
 	Created   time.Time
 	StartedAt time.Time
-	IPs       []string // "network ip"
-	Ports     []string // "hostport:containerport/proto"
-	Volumes   []string // "source → destination"
+	IPs       []NetworkIP
+	Ports     []PortBinding
+	Volumes   []VolumeMount
 }
 
 // dockerInspectRaw is the minimal subset of `docker inspect` JSON we consume.
@@ -65,12 +90,12 @@ func (s InspectService) EnsureDocker() error { return docker.EnsureDocker() }
 
 // ContainerState returns the container's State.Status (e.g. "running"), or an
 // error if it cannot be inspected.
-func (s InspectService) ContainerState(name string) (string, error) {
+func (s InspectService) ContainerState(name string) (ContainerState, error) {
 	status, stdout, _, err := docker.DockerCapture([]string{"inspect", "-f", "{{.State.Status}}", name})
 	if err != nil || status != 0 {
 		return "", fmt.Errorf("container '%s' not found", name)
 	}
-	return strings.TrimSpace(stdout), nil
+	return ContainerState(strings.TrimSpace(stdout)), nil
 }
 
 // ContainerImage returns the container's configured image, or "" if unknown.
@@ -92,7 +117,7 @@ func (s InspectService) ContainerDetails(name string) (*ContainerInfo, error) {
 	info := &ContainerInfo{
 		Name:   strings.TrimPrefix(raw.Name, "/"),
 		Image:  raw.Config.Image,
-		Status: raw.State.Status,
+		Status: ContainerState(raw.State.Status),
 	}
 	if t, terr := time.Parse(time.RFC3339Nano, raw.Created); terr == nil {
 		info.Created = t
@@ -105,28 +130,58 @@ func (s InspectService) ContainerDetails(name string) (*ContainerInfo, error) {
 		if m.Type == "volume" && m.Name != "" {
 			src = m.Name
 		}
-		info.Volumes = append(info.Volumes, src+" → "+m.Destination)
+		info.Volumes = append(info.Volumes, VolumeMount{
+			Source:      src,
+			Destination: m.Destination,
+			Type:        m.Type,
+		})
 	}
 	for portProto, bindings := range raw.NetworkSettings.Ports {
+		parts := strings.SplitN(portProto, "/", 2)
+		containerPort := parts[0]
+		protocol := "tcp"
+		if len(parts) > 1 {
+			protocol = parts[1]
+		}
 		for _, b := range bindings {
 			if b.HostPort != "" {
-				info.Ports = append(info.Ports, b.HostPort+":"+portProto)
+				info.Ports = append(info.Ports, PortBinding{
+					HostPort:      b.HostPort,
+					ContainerPort: containerPort,
+					Protocol:      protocol,
+				})
 			}
 		}
 	}
-	sort.Strings(info.Ports)
+	sort.Slice(info.Ports, func(i, j int) bool {
+		if info.Ports[i].HostPort == info.Ports[j].HostPort {
+			return info.Ports[i].ContainerPort < info.Ports[j].ContainerPort
+		}
+		return info.Ports[i].HostPort < info.Ports[j].HostPort
+	})
 	for netName, net := range raw.NetworkSettings.Networks {
 		if net.IPAddress != "" {
-			info.IPs = append(info.IPs, netName+" "+net.IPAddress)
+			info.IPs = append(info.IPs, NetworkIP{
+				Network: netName,
+				IP:      net.IPAddress,
+			})
 		}
 	}
-	sort.Strings(info.IPs)
+	sort.Slice(info.IPs, func(i, j int) bool {
+		if info.IPs[i].Network == info.IPs[j].Network {
+			return info.IPs[i].IP < info.IPs[j].IP
+		}
+		return info.IPs[i].Network < info.IPs[j].Network
+	})
+	sort.Slice(info.Volumes, func(i, j int) bool {
+		return info.Volumes[i].Source < info.Volumes[j].Source
+	})
 	return info, nil
 }
 
 func (s InspectService) ensureRunning(name string) error {
 	state, err := s.ContainerState(name)
-	if err != nil || state != "running" {
+	if err != nil || state != StateRunning {
 		return fmt.Errorf("container '%s' is not running. Run 'devcontainer-cli' or 'devcontainer-cli start' first", name)
 	}
 	return nil
@@ -283,18 +338,33 @@ func (s InspectService) ComposeLogs(composeFile string, follow bool, tail string
 	return nil
 }
 
-// ContainerNetworkIPs returns lines of "network ip" for a running container,
+// NetworkIP pairs a docker network name with the container's IP on it.
+type NetworkIP struct {
+	Network string
+	IP      string
+}
+
+// ContainerNetworkIPs returns structured NetworkIP pairs for a running container,
 // or an error if the container cannot be inspected.
-func (s InspectService) ContainerNetworkIPs(name string) ([]string, error) {
+func (s InspectService) ContainerNetworkIPs(name string) ([]NetworkIP, error) {
 	format := `{{range $n, $net := .NetworkSettings.Networks}}{{$n}} {{$net.IPAddress}}{{"\n"}}{{end}}`
 	status, stdout, _, err := docker.DockerCapture([]string{"inspect", "-f", format, name})
 	if err != nil || status != 0 {
 		return nil, fmt.Errorf("container '%s' not found", name)
 	}
-	var result []string
+	var result []NetworkIP
 	for _, line := range strings.Split(stdout, "\n") {
-		if line = strings.TrimSpace(line); line != "" {
-			result = append(result, line)
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		sep := strings.Index(line, " ")
+		if sep < 0 {
+			continue
+		}
+		ip := strings.TrimSpace(line[sep+1:])
+		if ip != "" {
+			result = append(result, NetworkIP{Network: line[:sep], IP: ip})
 		}
 	}
 	return result, nil

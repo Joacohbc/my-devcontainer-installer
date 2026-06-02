@@ -179,7 +179,7 @@ func TestInspectContainerDetails(t *testing.T) {
 	if info.Image != "myimage:latest" {
 		t.Errorf("Image = %q", info.Image)
 	}
-	if info.Status != "running" {
+	if info.Status != StateRunning {
 		t.Errorf("Status = %q", info.Status)
 	}
 	if info.Created.Year() != 2024 {
@@ -191,11 +191,11 @@ func TestInspectContainerDetails(t *testing.T) {
 	if len(info.Volumes) != 2 {
 		t.Fatalf("Volumes = %v, want 2 entries", info.Volumes)
 	}
-	if len(info.Ports) != 1 || info.Ports[0] != "2222:22/tcp" {
-		t.Errorf("Ports = %v, want [2222:22/tcp]", info.Ports)
+	if len(info.Ports) != 1 || info.Ports[0].HostPort != "2222" || info.Ports[0].ContainerPort != "22" || info.Ports[0].Protocol != "tcp" {
+		t.Errorf("Ports = %v, want [{2222 22 tcp}]", info.Ports)
 	}
-	if len(info.IPs) != 1 || info.IPs[0] != "bridge 172.17.0.2" {
-		t.Errorf("IPs = %v, want [bridge 172.17.0.2]", info.IPs)
+	if len(info.IPs) != 1 || info.IPs[0].Network != "bridge" || info.IPs[0].IP != "172.17.0.2" {
+		t.Errorf("IPs = %v, want [{bridge 172.17.0.2}]", info.IPs)
 	}
 }
 

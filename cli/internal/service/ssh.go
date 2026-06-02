@@ -72,36 +72,15 @@ func (s SshService) GenerateKey(keyPath string) error {
 	return nil
 }
 
-// NetworkIP pairs a docker network name with the container's IP on it.
-type NetworkIP struct {
-	Network string
-	IP      string
-}
-
 // ContainerIPs inspects a container and returns its (network, ip) pairs, one per
 // attached network with a non-empty address.
 func (s SshService) ContainerIPs(container string) ([]NetworkIP, error) {
-	format := `{{range $name, $net := .NetworkSettings.Networks}}{{$name}} {{$net.IPAddress}}{{"\n"}}{{end}}`
-	status, stdout, _, err := docker.DockerCapture([]string{"inspect", "-f", format, container})
-	if err != nil || status != 0 {
+	inspectSvc := InspectService{Report: s.Report}
+	ips, err := inspectSvc.ContainerNetworkIPs(container)
+	if err != nil {
 		return nil, fmt.Errorf("could not resolve container IP")
 	}
-	var entries []NetworkIP
-	for _, line := range strings.Split(stdout, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		sep := strings.Index(line, " ")
-		if sep < 0 {
-			continue
-		}
-		ip := strings.TrimSpace(line[sep+1:])
-		if ip != "" {
-			entries = append(entries, NetworkIP{Network: line[:sep], IP: ip})
-		}
-	}
-	return entries, nil
+	return ips, nil
 }
 
 // PasswordFromLogs scans the compose service logs for the last line announcing
@@ -120,11 +99,19 @@ func (s SshService) PasswordFromLogs(composeFile, service, user string) (string,
 	return last, last != ""
 }
 
+// InstallKeySpec holds the parameters for installing a public key inside a container.
+type InstallKeySpec struct {
+	PublicKey []byte
+	User      string
+	Container string
+	Script    string
+}
+
 // InstallKeyLocal pipes the public key into the container and runs the install
 // script via `docker exec`.
-func (s SshService) InstallKeyLocal(pub []byte, user, container, script string) error {
-	args := []string{"exec", "-i", "-u", user, container, "sh", "-c", script}
-	status, err := docker.DockerExecStdin(pub, args)
+func (s SshService) InstallKeyLocal(spec InstallKeySpec) error {
+	args := []string{"exec", "-i", "-u", spec.User, spec.Container, "sh", "-c", spec.Script}
+	status, err := docker.DockerExecStdin(spec.PublicKey, args)
 	if err != nil || status != 0 {
 		return fmt.Errorf("docker exec key install failed")
 	}

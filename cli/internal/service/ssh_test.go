@@ -59,14 +59,26 @@ func TestSshInstallKeyLocal(t *testing.T) {
 	okRunner := &fakeRunner{status: 0}
 	restore := useFakeDocker(okRunner)
 	svc := SshService{Report: nopReporter{}}
-	if err := svc.InstallKeyLocal([]byte("k"), "devuser", "c1", "echo"); err != nil {
+	err := svc.InstallKeyLocal(InstallKeySpec{
+		PublicKey: []byte("k"),
+		User:      "devuser",
+		Container: "c1",
+		Script:    "echo",
+	})
+	if err != nil {
 		t.Errorf("InstallKeyLocal ok: %v", err)
 	}
 	restore()
 
 	failRunner := &fakeRunner{status: 1}
 	defer useFakeDocker(failRunner)()
-	if err := (SshService{Report: nopReporter{}}).InstallKeyLocal([]byte("k"), "devuser", "c1", "echo"); err == nil {
+	err = (SshService{Report: nopReporter{}}).InstallKeyLocal(InstallKeySpec{
+		PublicKey: []byte("k"),
+		User:      "devuser",
+		Container: "c1",
+		Script:    "echo",
+	})
+	if err == nil {
 		t.Error("expected error when docker exec fails")
 	}
 }
