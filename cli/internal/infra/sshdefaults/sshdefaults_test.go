@@ -146,3 +146,10 @@ func TestBuildConfigBlock_RemoteRequiresRemoteAndContainer(t *testing.T) {
 		t.Error("expected error when container missing")
 	}
 }
+
+// An unrecognized mode is an error, not a half-rendered "Host x" stanza.
+func TestBuildConfigBlock_UnknownMode(t *testing.T) {
+	if _, err := sshdefaults.BuildConfigBlock(sshdefaults.ConfigBlockOptions{Mode: "bogus", Alias: "x"}); err == nil {
+		t.Error("expected error for unknown mode")
+	}
+}

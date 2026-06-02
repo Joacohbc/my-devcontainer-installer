@@ -90,19 +90,20 @@ type ConfigBlockOptions struct {
 	Container string
 }
 
-// BuildConfigBlock renders an ~/.ssh/config Host stanza for the given mode.
+// BuildConfigBlock renders an ~/.ssh/config Host stanza for the given mode. Each
+// case returns the whole stanza as one literal so it reads like the file it
+// produces; defaults and validation are applied just before the Sprintf.
 func BuildConfigBlock(opts ConfigBlockOptions) (string, error) {
-	lines := []string{"Host " + opts.Alias}
 	switch opts.Mode {
 	case ModeLocal:
 		if opts.Hostname == "" {
 			return "", fmt.Errorf("hostname required for local mode")
 		}
-		lines = append(lines,
-			"    HostName "+opts.Hostname,
-			"    User "+opts.User,
-			"    IdentityFile "+opts.KeyPath,
-		)
+		return fmt.Sprintf(`Host %s
+    HostName %s
+    User %s
+    IdentityFile %s`, opts.Alias, opts.Hostname, opts.User, opts.KeyPath), nil
+
 	case ModeWindows:
 		hostname := opts.Hostname
 		if hostname == "" {
@@ -112,12 +113,12 @@ func BuildConfigBlock(opts ConfigBlockOptions) (string, error) {
 		if port == "" {
 			port = fmt.Sprintf("%d", WindowsPort)
 		}
-		lines = append(lines,
-			"    HostName "+hostname,
-			"    Port "+port,
-			"    User "+opts.User,
-			"    IdentityFile "+opts.KeyPath,
-		)
+		return fmt.Sprintf(`Host %s
+    HostName %s
+    Port %s
+    User %s
+    IdentityFile %s`, opts.Alias, hostname, port, opts.User, opts.KeyPath), nil
+
 	case ModeRemote:
 		if opts.Remote == "" {
 			return "", fmt.Errorf("remote required for remote mode")
@@ -126,16 +127,17 @@ func BuildConfigBlock(opts ConfigBlockOptions) (string, error) {
 			return "", fmt.Errorf("container required for remote mode")
 		}
 		// The ProxyCommand is wrapped in double quotes, so the command
-		// substitution and the template's inner quotes must be escaped: \$ keeps
-		// the docker inspect running on the remote host (not the local machine),
-		// and \" stops the format's quotes from closing the ProxyCommand string.
+		// substitution and the format's inner quotes must be escaped: \$ keeps the
+		// docker inspect running on the remote host (not the local machine), and \"
+		// stops the format's quotes from closing the ProxyCommand string. The IP
+		// format itself carries Go-template-looking {{ }} braces, which is why this
+		// stays plain Sprintf — feeding it through text/template would collide.
 		escapedFormat := strings.ReplaceAll(DockerIPFormat, `"`, `\"`)
 		ipExpr := fmt.Sprintf(`\$(docker inspect -f '%s' %s | head -n1)`, escapedFormat, opts.Container)
-		lines = append(lines,
-			"    User "+opts.User,
-			"    IdentityFile "+opts.KeyPath,
-			fmt.Sprintf(`    ProxyCommand ssh %s "nc -q0 %s 22"`, opts.Remote, ipExpr),
-		)
+		return fmt.Sprintf(`Host %s
+    User %s
+    IdentityFile %s
+    ProxyCommand ssh %s "nc -q0 %s 22"`, opts.Alias, opts.User, opts.KeyPath, opts.Remote, ipExpr), nil
 	}
-	return strings.Join(lines, "\n"), nil
+	return "", fmt.Errorf("unknown mode %q", opts.Mode)
 }

@@ -554,11 +554,17 @@ func runSetupSsh(cmd *cobra.Command, _ []string) error {
 // devcontainer-cli runs on the docker host, so these steps belong on the machine
 // the user connects FROM.
 func emitRemoteConfig(f *setupSshFlags) error {
-	block, err := buildConfigBlock(sshdefaults.ModeRemote, f, installResult{})
+	displayKey := "~/.ssh/" + filepath.Base(f.key)
+
+	// The block is pasted into the connecting machine's ~/.ssh/config, whose home
+	// is not this host's, so IdentityFile must use the ~ form, not f.key's
+	// absolute local path.
+	rf := *f
+	rf.key = displayKey
+	block, err := buildConfigBlock(sshdefaults.ModeRemote, &rf, installResult{})
 	if err != nil {
 		return err
 	}
-	displayKey := "~/.ssh/" + filepath.Base(f.key)
 
 	console.NewLine()
 	console.Log("Remote setup — run these steps on the machine you'll connect FROM:")

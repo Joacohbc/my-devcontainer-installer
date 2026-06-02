@@ -1,0 +1,1 @@
+- Arreglar instalacion de Clientes de base de datos por version (dejar solo los que realmente puedo mantener PostgreSQL, Mongo y Redis) y eliminar los que no se pueden mantener MySQL (demasiado vibecoding)

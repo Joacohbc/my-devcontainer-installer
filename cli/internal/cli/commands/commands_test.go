@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -331,6 +332,47 @@ func TestBuildConfigBlock_RemoteNeedsNoKeyInstall(t *testing.T) {
 		if !strings.Contains(block, want) {
 			t.Errorf("remote block missing %q:\n%s", want, block)
 		}
+	}
+}
+
+// emitRemoteConfig renders the block for pasting on the *connecting* machine, so
+// IdentityFile must use the ~/.ssh form, never this host's absolute home path.
+func TestEmitRemoteConfig_KeyUsesTilde(t *testing.T) {
+	f := &setupSshFlags{
+		alias:     "myws",
+		user:      "devuser",
+		key:       "/home/devuser/.ssh/id_myws",
+		remote:    "user@host",
+		container: "myws-devcontainer-ssh",
+	}
+
+	orig := os.Stdout
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe: %v", err)
+	}
+	os.Stdout = w
+	emitErr := emitRemoteConfig(f)
+	_ = w.Close()
+	os.Stdout = orig
+	if emitErr != nil {
+		t.Fatalf("emitRemoteConfig: %v", emitErr)
+	}
+	out, err := io.ReadAll(r)
+	if err != nil {
+		t.Fatalf("read captured stdout: %v", err)
+	}
+	got := string(out)
+
+	if !strings.Contains(got, "IdentityFile ~/.ssh/id_myws") {
+		t.Errorf("remote block should render IdentityFile with ~/.ssh, got:\n%s", got)
+	}
+	if strings.Contains(got, "/home/devuser") {
+		t.Errorf("remote block must not leak this host's absolute home path, got:\n%s", got)
+	}
+	// f itself must stay untouched — the tilde rewrite is local to the render.
+	if f.key != "/home/devuser/.ssh/id_myws" {
+		t.Errorf("emitRemoteConfig mutated f.key to %q", f.key)
 	}
 }
 

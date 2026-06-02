@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/logger"
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/sshhelp"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/catalog"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
@@ -516,7 +515,8 @@ func saveAndPostProcess(cwd string, config *types.DevcontainerConfig, plan *serv
 	if build == nil || !*build {
 		console.Done()
 	}
-	sshhelp.Print(config.Workspace)
+	console.NewLine()
+	console.Info("SSH access: run 'devcontainer-cli setup-ssh' to generate a key and register the host automatically.")
 	return nil
 }
 
