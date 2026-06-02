@@ -71,14 +71,52 @@ func (s SshService) GenerateKey(keyPath string) error {
 	return nil
 }
 
-// ContainerNetworks returns lines of "<network> <ip>" for a container.
-func (s SshService) ContainerNetworks(container string) (string, error) {
+// NetworkIP pairs a docker network name with the container's IP on it.
+type NetworkIP struct {
+	Network string
+	IP      string
+}
+
+// ContainerIPs inspects a container and returns its (network, ip) pairs, one per
+// attached network with a non-empty address.
+func (s SshService) ContainerIPs(container string) ([]NetworkIP, error) {
 	format := `{{range $name, $net := .NetworkSettings.Networks}}{{$name}} {{$net.IPAddress}}{{"\n"}}{{end}}`
 	status, stdout, _, err := docker.DockerCapture([]string{"inspect", "-f", format, container})
 	if err != nil || status != 0 {
-		return "", fmt.Errorf("could not resolve container IP")
+		return nil, fmt.Errorf("could not resolve container IP")
 	}
-	return stdout, nil
+	var entries []NetworkIP
+	for _, line := range strings.Split(stdout, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		sep := strings.Index(line, " ")
+		if sep < 0 {
+			continue
+		}
+		ip := strings.TrimSpace(line[sep+1:])
+		if ip != "" {
+			entries = append(entries, NetworkIP{Network: line[:sep], IP: ip})
+		}
+	}
+	return entries, nil
+}
+
+// PasswordFromLogs scans the compose service logs for the last line announcing
+// the temporary password for user, returning the line and whether one was found.
+func (s SshService) PasswordFromLogs(composeFile, service, user string) (string, bool) {
+	combined, ok := s.ServiceLogs(composeFile, service)
+	if !ok {
+		return "", false
+	}
+	var last string
+	for _, line := range strings.Split(combined, "\n") {
+		if strings.Contains(line, user+" password") {
+			last = line
+		}
+	}
+	return last, last != ""
 }
 
 // InstallKeyLocal pipes the public key into the container and runs the install

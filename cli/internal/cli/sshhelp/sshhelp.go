@@ -19,10 +19,10 @@ func linuxBlock() string {
 	ipVar := "IP_SSH"
 	ipCmd := fmt.Sprintf("%s=$(docker inspect -f '%s' %s | head -n1)", ipVar, sshdefaults.DockerIPFormat, sshdefaults.ServiceName)
 	block, _ := sshdefaults.BuildConfigBlock(sshdefaults.ConfigBlockOptions{
-		Mode:     "local",
+		Mode:     sshdefaults.ModeLocal,
 		Alias:    sshdefaults.Alias,
 		User:     sshdefaults.User,
-		Key:      keyPath(),
+		KeyPath:  keyPath(),
 		Hostname: "$" + ipVar,
 	})
 	return strings.Join([]string{
@@ -37,10 +37,10 @@ func windowsBlock() string {
 	prompt := ui.Subtle("   $ ")
 	port := domain.ResolveSSHHostPort()
 	block, _ := sshdefaults.BuildConfigBlock(sshdefaults.ConfigBlockOptions{
-		Mode:     "windows",
+		Mode:     sshdefaults.ModeWindows,
 		Alias:    sshdefaults.Alias,
 		User:     sshdefaults.User,
-		Key:      keyPath(),
+		KeyPath:  keyPath(),
 		Hostname: "localhost",
 		Port:     fmt.Sprintf("%d", port),
 	})

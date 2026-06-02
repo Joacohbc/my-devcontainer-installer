@@ -6,11 +6,9 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
-	"slices"
 	"strings"
 	"time"
 
-	"github.com/goccy/go-yaml"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/pick"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/sshdefaults"
@@ -87,18 +85,6 @@ func newSetupSshCommand() *cobra.Command {
 	return cmd
 }
 
-func defaultComposeFile(cwd string) string {
-	cfg, _ := domain.LoadConfig(cwd)
-	ws := ""
-	if cfg != nil {
-		ws = cfg.Workspace
-	}
-	if ws == "" {
-		ws = domain.SanitizeDockerName(filepath.Base(cwd), "devcontainer")
-	}
-	return fmt.Sprintf(".dc_%s/build/docker-compose.yml", ws)
-}
-
 func collectSetupSshFlags(cmd *cobra.Command) (*setupSshFlags, error) {
 	f := cmd.Flags()
 	cwd, err := currentDir()
@@ -133,108 +119,58 @@ func collectSetupSshFlags(cmd *cobra.Command) (*setupSshFlags, error) {
 	return g, nil
 }
 
-func which(bin string) bool {
-	return service.SshService{Report: console}.CommandExists(bin)
-}
+// resolveTargetService determines the compose service/container to target. The
+// two paths are kept separate:
+//   - container-driven: an explicit --container fully determines the target (the
+//     service name defaults to sshdefaults.ServiceName unless --service is given),
+//     so no compose file is read.
+//   - workspace-driven: the target is discovered from the project compose file,
+//     falling back to the managed-container picker when none exists.
+func resolveTargetService(f *setupSshFlags) (service.ComposeTarget, error) {
+	if f.containerExplicit {
+		return service.ComposeTarget{Service: f.service, Container: f.container}, nil
+	}
 
-type composeServiceInfo struct {
-	service   string
-	container string
-}
-
-type composeDoc struct {
-	Services map[string]composeService `yaml:"services"`
-}
-
-type composeService struct {
-	ContainerName string `yaml:"container_name"`
-}
-
-func readComposeServices(composeFile string) map[string]composeService {
-	data, err := os.ReadFile(composeFile)
-	if err != nil {
-		return nil
-	}
-	var doc composeDoc
-	if err := yaml.Unmarshal(data, &doc); err != nil {
-		return nil
-	}
-	if len(doc.Services) == 0 {
-		return nil
-	}
-	return doc.Services
-}
-
-func containerOf(svc composeService, key string) string {
-	if svc.ContainerName != "" {
-		return svc.ContainerName
-	}
-	return key
-}
-
-func pickDevcontainerService(services map[string]composeService) *composeServiceInfo {
-	for key, svc := range services {
-		if key == sshdefaults.ServiceName || containerOf(svc, key) == sshdefaults.ServiceName {
-			return &composeServiceInfo{service: key, container: containerOf(svc, key)}
-		}
-	}
-	var candidates []composeServiceInfo
-	for key, svc := range services {
-		c := containerOf(svc, key)
-		if strings.Contains(key, "devcontainer") || strings.Contains(c, "devcontainer") {
-			candidates = append(candidates, composeServiceInfo{service: key, container: c})
-		}
-	}
-	if len(candidates) == 1 {
-		return &candidates[0]
-	}
-	return nil
-}
-
-func resolveTargetService(f *setupSshFlags) (composeServiceInfo, error) {
-	if f.containerExplicit && f.serviceExplicit {
-		return composeServiceInfo{service: f.service, container: f.container}, nil
-	}
 	cwd, err := currentDir()
 	if err != nil {
-		return composeServiceInfo{}, err
+		return service.ComposeTarget{}, err
 	}
 	composePath := filepath.Join(cwd, f.composeFile)
-	services := readComposeServices(composePath)
+	services := service.ReadComposeServices(composePath)
 	if services == nil {
-		if f.containerExplicit {
-			return composeServiceInfo{service: f.service, container: f.container}, nil
-		}
 		picked, err := pick.PickManaged("Select devcontainer to set up SSH for:", pick.PickOptions{
 			Interactive: !f.assumeYes,
 			AssumeYes:   f.assumeYes,
 		})
 		if err != nil {
-			return composeServiceInfo{}, err
+			return service.ComposeTarget{}, err
 		}
-		return composeServiceInfo{service: sshdefaults.ServiceName, container: picked.Name}, nil
+		return service.ComposeTarget{Service: sshdefaults.ServiceName, Container: picked.Name}, nil
 	}
 
-	if picked := pickDevcontainerService(services); picked != nil {
-		if f.containerExplicit {
-			picked.container = f.container
-		}
+	if target, ok := service.PickDevcontainerService(services); ok {
 		if f.serviceExplicit {
-			picked.service = f.service
+			target.Service = f.service
 		}
-		return *picked, nil
+		return target, nil
 	}
 
-	var keys []string
+	return selectComposeService(f, services, composePath)
+}
+
+// selectComposeService asks the user to choose among the compose services when no
+// devcontainer service could be auto-detected.
+func selectComposeService(f *setupSshFlags, services map[string]service.ComposeService, composePath string) (service.ComposeTarget, error) {
+	keys := make([]string, 0, len(services))
 	for key := range services {
 		keys = append(keys, key)
 	}
 	if len(keys) == 0 {
-		return composeServiceInfo{}, fmt.Errorf("no services found in %s", composePath)
+		return service.ComposeTarget{}, fmt.Errorf("no services found in %s", composePath)
 	}
 	if f.assumeYes {
 		first := keys[0]
-		return composeServiceInfo{service: first, container: containerOf(services[first], first)}, nil
+		return service.ComposeTarget{Service: first, Container: service.ContainerOf(services[first], first)}, nil
 	}
 	choices := make([]service.Option, len(keys))
 	for i, key := range keys {
@@ -246,46 +182,47 @@ func resolveTargetService(f *setupSshFlags) (composeServiceInfo, error) {
 	}
 	chosen, err := console.Select("Select SSH service:", choices, service.Option{Value: keys[0]})
 	if err != nil {
-		return composeServiceInfo{}, err
+		return service.ComposeTarget{}, err
 	}
-	return composeServiceInfo{service: chosen.Value, container: containerOf(services[chosen.Value], chosen.Value)}, nil
+	return service.ComposeTarget{Service: chosen.Value, Container: service.ContainerOf(services[chosen.Value], chosen.Value)}, nil
 }
 
-func detectMode(f *setupSshFlags) string {
+func detectMode(f *setupSshFlags) sshdefaults.Mode {
 	if f.mode != "" {
-		return f.mode
+		return sshdefaults.Mode(f.mode)
 	}
 	if runtime.GOOS == "windows" {
-		return "windows"
+		return sshdefaults.ModeWindows
 	}
-	return "local"
+	return sshdefaults.ModeLocal
 }
 
-func checkPrereqs(mode string) error {
+func checkPrereqs(mode sshdefaults.Mode) error {
 	// Remote mode only renders config text to paste on another machine; it runs
 	// no ssh/keygen/docker here, so it needs no local tooling.
-	if mode == "remote" {
+	if mode == sshdefaults.ModeRemote {
 		return nil
 	}
-	for _, t := range []string{"ssh", "ssh-keygen"} {
-		if !which(t) {
-			return fmt.Errorf("missing tool: %s", t)
+	ssh := service.SshService{Report: console}
+	for _, tool := range []string{"ssh", "ssh-keygen"} {
+		if !ssh.CommandExists(tool) {
+			return fmt.Errorf("missing tool: %s", tool)
 		}
 	}
-	if mode == "local" || mode == "windows" {
-		if !which("docker") {
+	if mode == sshdefaults.ModeLocal || mode == sshdefaults.ModeWindows {
+		if !ssh.CommandExists("docker") {
 			return fmt.Errorf("missing tool: docker")
 		}
 	}
 	return nil
 }
 
-func stackRunning(container string) bool {
-	return service.SshService{Report: console}.ContainerRunning(container)
-}
+const containerStartTimeoutSeconds = 20
 
-func ensureStack(f *setupSshFlags) error {
-	if stackRunning(f.container) {
+// ensureStack makes sure the target container is running, starting the compose
+// stack (with confirmation) and waiting for it when necessary.
+func ensureStack(ssh service.SshService, f *setupSshFlags) error {
+	if ssh.ContainerRunning(f.container) {
 		console.Ok(fmt.Sprintf("Container '%s' is running.", f.container))
 		return nil
 	}
@@ -309,85 +246,60 @@ func ensureStack(f *setupSshFlags) error {
 	if !proceed {
 		return fmt.Errorf("aborting — stack must be running")
 	}
-	if err := (service.SshService{Report: console}).ComposeUp(f.composeFile); err != nil {
+	if err := ssh.ComposeUp(f.composeFile); err != nil {
 		return err
 	}
-	for tries := 20; tries > 0 && !stackRunning(f.container); tries-- {
+	for remaining := containerStartTimeoutSeconds; remaining > 0 && !ssh.ContainerRunning(f.container); remaining-- {
 		time.Sleep(time.Second)
 	}
-	if !stackRunning(f.container) {
+	if !ssh.ContainerRunning(f.container) {
 		return fmt.Errorf("container failed to start")
 	}
 	return nil
 }
 
-func fetchPassword(f *setupSshFlags) {
+func fetchPassword(ssh service.SshService, f *setupSshFlags) {
 	console.Log("Fetching temporary password from logs...")
-	combined, ok := service.SshService{Report: console}.ServiceLogs(f.composeFile, f.service)
-	if !ok {
-		console.Warn("Could not read logs.")
-		return
-	}
-	var last string
-	for _, l := range strings.Split(combined, "\n") {
-		if strings.Contains(l, f.user+" password") {
-			last = l
-		}
-	}
-	if last == "" {
-		console.Warn("Could not read password from logs (maybe key already installed).")
+	if line, ok := ssh.PasswordFromLogs(f.composeFile, f.service, f.user); ok {
+		console.Info("   %s", line)
 	} else {
-		console.Info("   %s", last)
+		console.Warn("Could not read password from logs (maybe key already installed).")
 	}
 }
 
-func genKey(keyPath string) error {
+func genKey(ssh service.SshService, keyPath string) error {
 	if fileExists(keyPath) && fileExists(keyPath+".pub") {
 		console.Ok(fmt.Sprintf("Key already exists: %s", keyPath))
 		return nil
 	}
 	console.Log(fmt.Sprintf("Generating ed25519 key at %s", keyPath))
-	if err := (service.SshService{Report: console}).GenerateKey(keyPath); err != nil {
+	if err := ssh.GenerateKey(keyPath); err != nil {
 		return err
 	}
 	console.Ok("Key generated.")
 	return nil
 }
 
-func containerIP(container string, f *setupSshFlags) (string, error) {
-	stdout, err := service.SshService{Report: console}.ContainerNetworks(container)
+// containerIP resolves a single usable IP for the container, prompting to choose
+// when the container is attached to more than one network.
+func containerIP(ssh service.SshService, container string, f *setupSshFlags) (string, error) {
+	entries, err := ssh.ContainerIPs(container)
 	if err != nil {
 		return "", err
 	}
-	type entry struct{ network, ip string }
-	var entries []entry
-	for _, l := range strings.Split(stdout, "\n") {
-		l = strings.TrimSpace(l)
-		if l == "" {
-			continue
-		}
-		sep := strings.Index(l, " ")
-		if sep < 0 {
-			continue
-		}
-		ip := strings.TrimSpace(l[sep+1:])
-		if ip != "" {
-			entries = append(entries, entry{network: l[:sep], ip: ip})
-		}
-	}
-	if len(entries) == 0 {
+	switch len(entries) {
+	case 0:
 		return "", nil
-	}
-	if len(entries) == 1 {
-		return entries[0].ip, nil
+	case 1:
+		return entries[0].IP, nil
 	}
 	if f.assumeYes {
-		console.Warn("Container '%s' is on %d networks; using '%s' (%s).", container, len(entries), entries[0].network, entries[0].ip)
-		return entries[0].ip, nil
+		console.Warn("Container '%s' is on %d networks; using '%s' (%s).", container, len(entries), entries[0].Network, entries[0].IP)
+		return entries[0].IP, nil
 	}
 	choices := make([]service.Option, len(entries))
-	for i, e := range entries {
-		choices[i] = service.Option{Value: e.ip, Label: fmt.Sprintf("%s (%s)", e.network, e.ip)}
+	for i, entry := range entries {
+		choices[i] = service.Option{Value: entry.IP, Label: fmt.Sprintf("%s (%s)", entry.Network, entry.IP)}
 	}
 	sel, err := console.Select("Container is on multiple networks. Select one:", choices, choices[0])
 	return sel.Value, err
@@ -398,15 +310,15 @@ type installResult struct {
 	port     string
 }
 
-func installKey(f *setupSshFlags, mode string) (installResult, error) {
+func installKey(ssh service.SshService, f *setupSshFlags, mode sshdefaults.Mode) (installResult, error) {
 	pub, err := os.ReadFile(f.key + ".pub")
 	if err != nil {
 		return installResult{}, err
 	}
 	script := sshdefaults.AuthorizedKeysInstallScript()
 
-	if mode == "local" {
-		ip, ierr := containerIP(f.container, f)
+	if mode == sshdefaults.ModeLocal {
+		ip, ierr := containerIP(ssh, f.container, f)
 		if ierr != nil {
 			return installResult{}, ierr
 		}
@@ -414,29 +326,25 @@ func installKey(f *setupSshFlags, mode string) (installResult, error) {
 			return installResult{}, fmt.Errorf("could not resolve container IP")
 		}
 		console.Log(fmt.Sprintf("Installing public key into %s (%s) via docker exec...", f.container, ip))
-		if err := dockerExecStdin(pub, f.user, f.container, script); err != nil {
+		if err := ssh.InstallKeyLocal(pub, f.user, f.container, script); err != nil {
 			return installResult{}, err
 		}
 		return installResult{hostname: ip}, nil
 	}
 
 	console.Log(fmt.Sprintf("Installing public key into %s via docker exec...", f.container))
-	if err := dockerExecStdin(pub, f.user, f.container, script); err != nil {
+	if err := ssh.InstallKeyLocal(pub, f.user, f.container, script); err != nil {
 		return installResult{}, err
 	}
 	return installResult{hostname: "localhost", port: f.port}, nil
 }
 
-func dockerExecStdin(input []byte, user, container, script string) error {
-	return service.SshService{Report: console}.InstallKeyLocal(input, user, container, script)
-}
-
-func buildConfigBlock(mode string, f *setupSshFlags, inst installResult) (string, error) {
+func buildConfigBlock(mode sshdefaults.Mode, f *setupSshFlags, inst installResult) (string, error) {
 	return sshdefaults.BuildConfigBlock(sshdefaults.ConfigBlockOptions{
 		Mode:      mode,
 		Alias:     f.alias,
 		User:      f.user,
-		Key:       f.key,
+		KeyPath:   f.key,
 		Hostname:  inst.hostname,
 		Port:      inst.port,
 		Remote:    f.remote,
@@ -444,140 +352,56 @@ func buildConfigBlock(mode string, f *setupSshFlags, inst installResult) (string
 	})
 }
 
-var hostAliasRe = regexp.MustCompile(`^\s*Host\s+(.+)$`)
-
-func aliasOfHostLine(line string) []string {
-	m := hostAliasRe.FindStringSubmatch(line)
-	if m == nil {
-		return nil
-	}
-	return strings.Fields(m[1])
-}
-
-func hasAliasBlock(content, alias string) bool {
-	for _, line := range strings.Split(content, "\n") {
-		if slices.Contains(aliasOfHostLine(line), alias) {
-			return true
-		}
-	}
-	return false
-}
-
-func stripAliasBlock(content, alias string) string {
-	var out []string
-	skip := false
-	for _, line := range strings.Split(content, "\n") {
-		hosts := aliasOfHostLine(line)
-		isHostLine := len(hosts) > 0
-		if skip {
-			if isHostLine {
-				if slices.Contains(hosts, alias) {
-					continue
-				}
-				skip = false
-				out = append(out, line)
-			}
-			continue
-		}
-		if isHostLine && slices.Contains(hosts, alias) {
-			skip = true
-			continue
-		}
-		out = append(out, line)
-	}
-	return strings.Join(out, "\n")
-}
-
-func extractAliasBlock(content, alias string) string {
-	var out []string
-	printing := false
-	for _, line := range strings.Split(content, "\n") {
-		hosts := aliasOfHostLine(line)
-		isHostLine := len(hosts) > 0
-		if printing {
-			if isHostLine {
-				if !slices.Contains(hosts, alias) {
-					break
-				}
-				out = append(out, line)
-				continue
-			}
-			out = append(out, line)
-			continue
-		}
-		if isHostLine && slices.Contains(hosts, alias) {
-			printing = true
-			out = append(out, line)
-		}
-	}
-	return strings.Join(out, "\n")
-}
-
-func updateSshConfig(f *setupSshFlags, mode string, inst installResult) error {
-	home, _ := os.UserHomeDir()
-	sshDir := filepath.Join(home, ".ssh")
-	configPath := filepath.Join(sshDir, "config")
-	if err := os.MkdirAll(sshDir, 0o700); err != nil {
-		return err
-	}
-	if !fileExists(configPath) {
-		if err := os.WriteFile(configPath, []byte(""), 0o600); err != nil {
-			return err
-		}
-	}
-	_ = os.Chmod(configPath, 0o600)
-
+// updateSshConfig writes the freshly built Host block into ~/.ssh/config,
+// appending it or (after confirmation) replacing an existing block for the
+// alias. All file parsing/IO lives in the service layer.
+func updateSshConfig(ssh service.SshService, f *setupSshFlags, mode sshdefaults.Mode, inst installResult) error {
 	newBlock, err := buildConfigBlock(mode, f, inst)
 	if err != nil {
 		return err
 	}
-	currentBytes, _ := os.ReadFile(configPath)
-	current := string(currentBytes)
+	configPath, current, err := ssh.ReadSSHConfig()
+	if err != nil {
+		return err
+	}
 
-	if hasAliasBlock(current, f.alias) {
-		console.Warn("Host '%s' already defined in %s", f.alias, configPath)
-		console.Info("---- existing ----")
-		console.Print(extractAliasBlock(current, f.alias) + "\n")
-		console.Info("---- proposed ----")
-		console.Print(newBlock + "\n")
-		replace := true
-		if !f.assumeYes {
-			ok, cerr := console.ConfirmDefault(fmt.Sprintf("Replace existing block for Host '%s'?", f.alias), false)
-			if cerr != nil {
-				return cerr
-			}
-			replace = ok
-		}
-		if !replace {
-			console.Warn("Skipping ssh config update.")
-			return nil
-		}
-		_ = os.WriteFile(configPath+".bak", currentBytes, 0o600)
-		console.Ok(fmt.Sprintf("Backup saved: %s.bak", configPath))
-		stripped := strings.TrimRight(stripAliasBlock(current, f.alias), "\n")
-		if stripped != "" {
-			stripped += "\n\n"
-		}
-		if err := os.WriteFile(configPath, []byte(stripped+newBlock+"\n"), 0o600); err != nil {
-			return err
-		}
-		console.Ok(fmt.Sprintf("Replaced Host '%s' in %s", f.alias, configPath))
-	} else {
-		body := strings.TrimRight(current, "\n")
-		if body != "" {
-			body += "\n\n"
-		}
-		if err := os.WriteFile(configPath, []byte(body+newBlock+"\n"), 0o600); err != nil {
+	if !service.HasHostAlias(current, f.alias) {
+		if err := ssh.AppendHostBlock(configPath, current, newBlock); err != nil {
 			return err
 		}
 		console.Ok(fmt.Sprintf("Appended Host '%s' to %s", f.alias, configPath))
+		return nil
 	}
+
+	console.Warn("Host '%s' already defined in %s", f.alias, configPath)
+	console.Info("---- existing ----")
+	console.Print(service.ExtractHostBlock(current, f.alias) + "\n")
+	console.Info("---- proposed ----")
+	console.Print(newBlock + "\n")
+	replace := true
+	if !f.assumeYes {
+		ok, cerr := console.ConfirmDefault(fmt.Sprintf("Replace existing block for Host '%s'?", f.alias), false)
+		if cerr != nil {
+			return cerr
+		}
+		replace = ok
+	}
+	if !replace {
+		console.Warn("Skipping ssh config update.")
+		return nil
+	}
+	backupPath, err := ssh.ReplaceHostBlock(configPath, current, f.alias, newBlock)
+	if err != nil {
+		return err
+	}
+	console.Ok(fmt.Sprintf("Backup saved: %s", backupPath))
+	console.Ok(fmt.Sprintf("Replaced Host '%s' in %s", f.alias, configPath))
 	return nil
 }
 
-func testConnection(alias string) {
+func testConnection(ssh service.SshService, alias string) {
 	console.Log(fmt.Sprintf("Testing ssh %s ...", alias))
-	switch (service.SshService{Report: console}).TestConnection(alias) {
+	switch ssh.TestConnection(alias) {
 	case service.SSHTestOK:
 		console.Ok(fmt.Sprintf("SSH alias '%s' works.", alias))
 	case service.SSHTestTimeout:
@@ -587,7 +411,19 @@ func testConnection(alias string) {
 	}
 }
 
-func deriveWorkspace(containerName string) (string, error) {
+// deriveWorkspace resolves the workspace backing the alias/key/compose defaults,
+// keeping the two paths separate:
+//   - container-driven: when --container is explicit, the workspace is parsed from
+//     that container name so the defaults match the targeted container, not the
+//     current directory.
+//   - workspace-driven: otherwise it comes from the project config, then the
+//     container name, then the sanitized directory name.
+func deriveWorkspace(f *setupSshFlags) (string, error) {
+	if f.containerExplicit {
+		if ws := workspaceFromContainer(f.container); ws != "" {
+			return ws, nil
+		}
+	}
 	cwd, err := currentDir()
 	if err != nil {
 		return "", err
@@ -595,13 +431,23 @@ func deriveWorkspace(containerName string) (string, error) {
 	if cfg, _ := domain.LoadConfig(cwd); cfg != nil && cfg.Workspace != "" {
 		return cfg.Workspace, nil
 	}
-	if containerName != "" {
-		re := regexp.MustCompile("^(.+)-" + regexp.QuoteMeta(sshdefaults.ServiceName) + "$")
-		if m := re.FindStringSubmatch(containerName); m != nil {
-			return m[1], nil
-		}
+	if ws := workspaceFromContainer(f.container); ws != "" {
+		return ws, nil
 	}
 	return domain.SanitizeDockerName(filepath.Base(cwd), "devcontainer"), nil
+}
+
+// workspaceFromContainer extracts "<workspace>" from a
+// "<workspace>-devcontainer-ssh" container name, or "" when it does not match.
+func workspaceFromContainer(containerName string) string {
+	if containerName == "" {
+		return ""
+	}
+	re := regexp.MustCompile("^(.+)-" + regexp.QuoteMeta(sshdefaults.ServiceName) + "$")
+	if m := re.FindStringSubmatch(containerName); m != nil {
+		return m[1]
+	}
+	return ""
 }
 
 func applyWorkspaceDefaults(f *setupSshFlags, workspace string) {
@@ -619,7 +465,7 @@ func applyWorkspaceDefaults(f *setupSshFlags, workspace string) {
 		f.container = workspace + "-" + sshdefaults.ServiceName
 	}
 	if !f.composeFileExplicit {
-		f.composeFile = fmt.Sprintf(".dc_%s/build/docker-compose.yml", workspace)
+		f.composeFile = relativeComposeFile(workspace)
 	}
 }
 
@@ -628,23 +474,22 @@ func runSetupSsh(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
+	ssh := service.SshService{Report: console}
 	mode := detectMode(f)
 	if err := checkPrereqs(mode); err != nil {
 		return err
 	}
 
-	resolvedContainer := ""
-	if mode != "remote" {
+	if mode != sshdefaults.ModeRemote {
 		target, err := resolveTargetService(f)
 		if err != nil {
 			return err
 		}
-		f.service = target.service
-		f.container = target.container
-		resolvedContainer = target.container
+		f.service = target.Service
+		f.container = target.Container
 	}
 
-	workspace, err := deriveWorkspace(resolvedContainer)
+	workspace, err := deriveWorkspace(f)
 	if err != nil {
 		return err
 	}
@@ -667,48 +512,60 @@ func runSetupSsh(cmd *cobra.Command, _ []string) error {
 	// (devcontainer-cli runs on that host). It neither generates nor installs
 	// keys and writes no local config — it only renders the config block to
 	// paste on the connecting machine.
-	if mode == "remote" {
-		console.Log(fmt.Sprintf("Mode: %s   Workspace: %s   Alias: %s   Remote: %s   Container: %s", mode, workspace, f.alias, f.remote, f.container))
+	if mode == sshdefaults.ModeRemote {
 		return emitRemoteConfig(f)
 	}
 
 	console.Log(fmt.Sprintf("Mode: %s   Workspace: %s   Alias: %s   Key: %s", mode, workspace, f.alias, f.key))
 	console.Log(fmt.Sprintf("Service: %s   Container: %s   Compose: %s", f.service, f.container, f.composeFile))
 
-	if err := ensureStack(f); err != nil {
+	if err := ensureStack(ssh, f); err != nil {
 		return err
 	}
-	fetchPassword(f)
-	if err := genKey(f.key); err != nil {
+	fetchPassword(ssh, f)
+	if err := genKey(ssh, f.key); err != nil {
 		return err
 	}
-	inst, err := installKey(f, mode)
+	inst, err := installKey(ssh, f, mode)
 	if err != nil {
 		return err
 	}
-	if err := updateSshConfig(f, mode, inst); err != nil {
+	if err := updateSshConfig(ssh, f, mode, inst); err != nil {
 		return err
 	}
-	testConnection(f.alias)
+	testConnection(ssh, f.alias)
 	console.Ok(fmt.Sprintf("Done. Connect with:  ssh %s", f.alias))
 	return nil
 }
 
-// emitRemoteConfig renders the ~/.ssh/config ProxyCommand block for remote
-// access and prints it. No keys are generated or installed: providing
-// USER@HOST (or an alias) already implies a working connection to the host.
+// emitRemoteConfig prints the manual step-by-step for remote access — generate a
+// key, install its public half into the container through the docker host, then
+// add the ProxyCommand block — without running anything locally. In remote mode
+// devcontainer-cli runs on the docker host, so these steps belong on the machine
+// the user connects FROM.
 func emitRemoteConfig(f *setupSshFlags) error {
-	block, err := buildConfigBlock("remote", f, installResult{})
+	block, err := buildConfigBlock(sshdefaults.ModeRemote, f, installResult{})
 	if err != nil {
 		return err
 	}
+	displayKey := "~/.ssh/" + filepath.Base(f.key)
+
 	console.NewLine()
-	console.Log("Remote connection config — add this block to the connecting machine's ~/.ssh/config:")
+	console.Log("Remote setup — run these steps on the machine you'll connect FROM:")
 	console.NewLine()
-	console.Info("---")
+
+	console.Info("1) Generate an SSH key pair:")
+	console.Print("   " + sshdefaults.RemoteKeygenCommand(displayKey) + "\n")
+	console.NewLine()
+
+	console.Info("2) Install the public key into the container (through the docker host):")
+	console.Print("   " + sshdefaults.RemoteInstallKeyCommand(displayKey, f.remote, f.user, f.container) + "\n")
+	console.NewLine()
+
+	console.Info("3) Add this block to that machine's ~/.ssh/config:")
 	console.Print(block + "\n")
-	console.Info("---")
 	console.NewLine()
+
 	console.Success("Then connect with:  ssh %s", f.alias)
 	return nil
 }

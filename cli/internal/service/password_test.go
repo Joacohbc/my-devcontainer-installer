@@ -47,42 +47,60 @@ func (r *seqRunner) callContaining(token string) []string {
 	return nil
 }
 
-func TestPasswordShowReturnsEntry(t *testing.T) {
-	shadowEntry := "devuser:$6$hash:19000:0:99999:7:::"
+func TestPasswordInitialReturnsPassword(t *testing.T) {
+	initialPassword := "Xq7r2vBn9wKpLm3sTd5fGh1jZc4uYe8a"
 	runner := &seqRunner{responses: []struct {
 		status int
 		stdout string
 	}{
-		{0, "running"},   // inspect (ensureRunning)
-		{0, shadowEntry}, // getent shadow
+		{0, "running"},              // inspect (ensureRunning)
+		{0, initialPassword + "\n"}, // cat initial_password.txt
 	}}
 	docker.SetRunner(runner)
 	docker.ResetDockerCache()
 	defer func() { docker.ResetRunner(); docker.ResetDockerCache() }()
 
 	svc := PasswordService{Report: nopReporter{}}
-	out, err := svc.ShowPassword("c1")
+	out, err := svc.InitialPassword("c1")
 	if err != nil {
-		t.Fatalf("ShowPassword: %v", err)
+		t.Fatalf("InitialPassword: %v", err)
 	}
-	if out != shadowEntry {
-		t.Errorf("ShowPassword = %q, want %q", out, shadowEntry)
+	if out != initialPassword {
+		t.Errorf("InitialPassword = %q, want %q", out, initialPassword)
 	}
-	call := runner.callContaining("getent")
+	call := runner.callContaining("cat")
 	if call == nil {
-		t.Fatal("expected getent call")
+		t.Fatal("expected cat call")
 	}
-	if !slices.Contains(call, "shadow") || !slices.Contains(call, "devuser") {
-		t.Errorf("getent call missing shadow/devuser: %v", call)
+	if !slices.Contains(call, initialPasswordFile) {
+		t.Errorf("cat call missing %s: %v", initialPasswordFile, call)
 	}
 }
 
-func TestPasswordShowFailsWhenNotRunning(t *testing.T) {
+func TestPasswordInitialFailsWhenFileMissing(t *testing.T) {
+	runner := &seqRunner{responses: []struct {
+		status int
+		stdout string
+	}{
+		{0, "running"}, // inspect (ensureRunning)
+		{1, ""},        // cat fails: file absent
+	}}
+	docker.SetRunner(runner)
+	docker.ResetDockerCache()
+	defer func() { docker.ResetRunner(); docker.ResetDockerCache() }()
+
+	svc := PasswordService{Report: nopReporter{}}
+	if _, err := svc.InitialPassword("c1"); err == nil {
+		t.Fatal("expected error when the initial password file is missing")
+	}
+}
+
+func TestPasswordInitialFailsWhenNotRunning(t *testing.T) {
 	runner := &fakeRunner{status: 0, stdout: "exited"}
 	defer useFakeDocker(runner)()
 
 	svc := PasswordService{Report: nopReporter{}}
-	_, err := svc.ShowPassword("c1")
+	_, err := svc.InitialPassword("c1")
 	if err == nil {
 		t.Fatal("expected error when container not running")
 	}

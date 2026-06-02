@@ -2,6 +2,7 @@ package commands
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/ui"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/service"
@@ -22,8 +23,11 @@ func newPasswordCommand() *cobra.Command {
 
 func newPasswordShowCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:          "show",
-		Short:        "Show the devuser /etc/shadow entry (hash and aging info)",
+		Use:   "show",
+		Short: "Show the initial devuser password generated when the container was created",
+		Long: "Show the initial devuser password generated when the container was created.\n\n" +
+			"This is the only password the CLI can reveal: Linux stores credentials as a\n" +
+			"one-way hash, so a password later set via 'password change' cannot be retrieved.",
 		SilenceUsage: true,
 		RunE:         runPasswordShow,
 	}
@@ -53,11 +57,12 @@ func runPasswordShow(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 	svc := service.PasswordService{Report: ui.Console{}}
-	entry, err := svc.ShowPassword(containerName)
+	password, err := svc.InitialPassword(containerName)
 	if err != nil {
 		return err
 	}
-	fmt.Println(entry)
+	fmt.Println(password)
+	fmt.Fprintln(os.Stderr, ui.Subtle("Initial password only — a password changed via 'password change' is hashed and cannot be retrieved."))
 	return nil
 }
 

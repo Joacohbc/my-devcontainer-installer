@@ -68,6 +68,47 @@ func TestSshInstallKeyLocal(t *testing.T) {
 	}
 }
 
+func TestSshContainerIPs(t *testing.T) {
+	runner := &fakeRunner{status: 0, stdout: "net1 172.18.0.2\nnet2 172.19.0.2\nbroken\nempty \n"}
+	defer useFakeDocker(runner)()
+
+	svc := SshService{Report: nopReporter{}}
+	entries, err := svc.ContainerIPs("c1")
+	if err != nil {
+		t.Fatalf("ContainerIPs ok: %v", err)
+	}
+	want := []NetworkIP{{Network: "net1", IP: "172.18.0.2"}, {Network: "net2", IP: "172.19.0.2"}}
+	if !slices.Equal(entries, want) {
+		t.Errorf("ContainerIPs = %v, want %v", entries, want)
+	}
+
+	failRunner := &fakeRunner{status: 1}
+	defer useFakeDocker(failRunner)()
+	if _, err := (SshService{Report: nopReporter{}}).ContainerIPs("c1"); err == nil {
+		t.Error("expected error when docker inspect fails")
+	}
+}
+
+func TestSshPasswordFromLogs(t *testing.T) {
+	runner := &fakeRunner{status: 0, stdout: "starting\ndevuser password: old\ndevuser password: new\nready"}
+	defer useFakeDocker(runner)()
+
+	svc := SshService{Report: nopReporter{}}
+	line, ok := svc.PasswordFromLogs("compose.yml", "ssh", "devuser")
+	if !ok {
+		t.Fatal("expected a password line to be found")
+	}
+	if !strings.Contains(line, "new") {
+		t.Errorf("PasswordFromLogs = %q, want the last match (new)", line)
+	}
+
+	noneRunner := &fakeRunner{status: 0, stdout: "no secrets here"}
+	defer useFakeDocker(noneRunner)()
+	if _, ok := (SshService{Report: nopReporter{}}).PasswordFromLogs("compose.yml", "ssh", "devuser"); ok {
+		t.Error("did not expect a password line when logs have none")
+	}
+}
+
 func TestSshCommandExists(t *testing.T) {
 	svc := SshService{Report: nopReporter{}}
 	if !svc.CommandExists("go") {

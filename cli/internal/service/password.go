@@ -4,28 +4,34 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
 )
+
+const initialPasswordFile = types.DevUserHome + "/initial_password.txt"
 
 // PasswordService manages devuser password operations inside a running container.
 type PasswordService struct {
 	Report Reporter
 }
 
-// ShowPassword returns the /etc/shadow entry for devuser, which encodes the
-// password hash, last-change date, and aging fields.
-func (s PasswordService) ShowPassword(container string) (string, error) {
+// InitialPassword returns the auto-generated devuser password captured at first
+// boot in initialPasswordFile.
+//
+// This is the only password the CLI can reveal: Linux stores credentials as a
+// one-way hash, so a password later set via ChangePassword cannot be recovered.
+func (s PasswordService) InitialPassword(container string) (string, error) {
 	if err := s.ensureRunning(container); err != nil {
 		return "", err
 	}
 	status, stdout, _, err := docker.DockerCapture([]string{
-		"exec", container, "getent", "shadow", "devuser",
+		"exec", container, "cat", initialPasswordFile,
 	})
 	if err != nil {
 		return "", fmt.Errorf("docker exec failed: %w", err)
 	}
 	if status != 0 {
-		return "", fmt.Errorf("getent shadow failed (exit %d) — is devuser defined in /etc/shadow?", status)
+		return "", fmt.Errorf("%s not found — the initial password is unavailable (it may have been changed since the container was created)", initialPasswordFile)
 	}
 	return strings.TrimSpace(stdout), nil
 }

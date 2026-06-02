@@ -2,7 +2,6 @@ package commands
 
 import (
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/ui"
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/service"
 	"github.com/spf13/cobra"
 )
@@ -37,13 +36,7 @@ func runUp(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
-	var workspace string
-	if wsFlag != "" {
-		workspace = wsFlag
-	} else {
-		cfg, _ := domain.LoadConfig(cwd)
-		workspace = domain.ResolveWorkspace(cwd, cfg)
-	}
+	workspace := resolveWorkspace(cwd, wsFlag)
 
 	build, _ := cmd.Flags().GetBool("build")
 	if err := svc.Up(composeFile, workspace, build); err != nil {

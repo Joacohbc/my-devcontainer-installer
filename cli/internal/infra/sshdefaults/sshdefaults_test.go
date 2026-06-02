@@ -25,12 +25,35 @@ func TestAuthorizedKeysInstallScript(t *testing.T) {
 	}
 }
 
+func TestRemoteKeygenCommand(t *testing.T) {
+	got := sshdefaults.RemoteKeygenCommand("~/.ssh/id_myws")
+	for _, frag := range []string{"ssh-keygen", "-t ed25519", "-f ~/.ssh/id_myws", `-N ""`} {
+		if !strings.Contains(got, frag) {
+			t.Errorf("keygen command missing %q: %s", frag, got)
+		}
+	}
+}
+
+func TestRemoteInstallKeyCommand(t *testing.T) {
+	got := sshdefaults.RemoteInstallKeyCommand("~/.ssh/id_myws", "user@host", "devuser", "myws-devcontainer-ssh")
+	for _, frag := range []string{
+		"cat ~/.ssh/id_myws.pub",
+		"ssh user@host",
+		"docker exec -i -u devuser myws-devcontainer-ssh",
+		sshdefaults.AuthorizedKeysInstallScript(),
+	} {
+		if !strings.Contains(got, frag) {
+			t.Errorf("install command missing %q: %s", frag, got)
+		}
+	}
+}
+
 func TestBuildConfigBlock_Local(t *testing.T) {
 	got, err := sshdefaults.BuildConfigBlock(sshdefaults.ConfigBlockOptions{
-		Mode:     "local",
+		Mode:     sshdefaults.ModeLocal,
 		Alias:    "devcontainer",
 		User:     "devuser",
-		Key:      "/home/u/.ssh/id_devcontainer",
+		KeyPath:  "/home/u/.ssh/id_devcontainer",
 		Hostname: "172.20.0.2",
 	})
 	if err != nil {
@@ -44,17 +67,17 @@ func TestBuildConfigBlock_Local(t *testing.T) {
 }
 
 func TestBuildConfigBlock_LocalRequiresHostname(t *testing.T) {
-	if _, err := sshdefaults.BuildConfigBlock(sshdefaults.ConfigBlockOptions{Mode: "local", Alias: "x"}); err == nil {
+	if _, err := sshdefaults.BuildConfigBlock(sshdefaults.ConfigBlockOptions{Mode: sshdefaults.ModeLocal, Alias: "x"}); err == nil {
 		t.Error("expected error when hostname missing for local mode")
 	}
 }
 
 func TestBuildConfigBlock_WindowsDefaults(t *testing.T) {
 	got, err := sshdefaults.BuildConfigBlock(sshdefaults.ConfigBlockOptions{
-		Mode:  "windows",
-		Alias: "devcontainer",
-		User:  "devuser",
-		Key:   "k",
+		Mode:    sshdefaults.ModeWindows,
+		Alias:   "devcontainer",
+		User:    "devuser",
+		KeyPath: "k",
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -69,10 +92,10 @@ func TestBuildConfigBlock_WindowsDefaults(t *testing.T) {
 
 func TestBuildConfigBlock_WindowsCustomHostnameAndPort(t *testing.T) {
 	got, err := sshdefaults.BuildConfigBlock(sshdefaults.ConfigBlockOptions{
-		Mode:     "windows",
+		Mode:     sshdefaults.ModeWindows,
 		Alias:    "devcontainer",
 		User:     "devuser",
-		Key:      "k",
+		KeyPath:  "k",
 		Hostname: "192.168.1.5",
 		Port:     "2200",
 	})
@@ -86,10 +109,10 @@ func TestBuildConfigBlock_WindowsCustomHostnameAndPort(t *testing.T) {
 
 func TestBuildConfigBlock_Remote(t *testing.T) {
 	got, err := sshdefaults.BuildConfigBlock(sshdefaults.ConfigBlockOptions{
-		Mode:      "remote",
+		Mode:      sshdefaults.ModeRemote,
 		Alias:     "devcontainer",
 		User:      "devuser",
-		Key:       "k",
+		KeyPath:   "k",
 		Remote:    "myhost",
 		Container: "ws-devcontainer-ssh",
 	})
@@ -102,13 +125,24 @@ func TestBuildConfigBlock_Remote(t *testing.T) {
 	if !strings.Contains(got, "ws-devcontainer-ssh") {
 		t.Errorf("remote block should reference the container:\n%s", got)
 	}
+	// The substitution must be deferred to the remote host (\$) and the format's
+	// inner quotes escaped (\") so the ProxyCommand string is not broken.
+	if !strings.Contains(got, `\$(docker inspect`) {
+		t.Errorf("remote ProxyCommand must escape the command substitution as \\$:\n%s", got)
+	}
+	if !strings.Contains(got, `{{\"\n\"}}`) {
+		t.Errorf("remote ProxyCommand must escape the template quotes as \\\":\n%s", got)
+	}
+	if strings.Contains(got, `{{"\n"}}`) {
+		t.Errorf("remote ProxyCommand left unescaped template quotes:\n%s", got)
+	}
 }
 
 func TestBuildConfigBlock_RemoteRequiresRemoteAndContainer(t *testing.T) {
-	if _, err := sshdefaults.BuildConfigBlock(sshdefaults.ConfigBlockOptions{Mode: "remote", Alias: "x", Container: "c"}); err == nil {
+	if _, err := sshdefaults.BuildConfigBlock(sshdefaults.ConfigBlockOptions{Mode: sshdefaults.ModeRemote, Alias: "x", Container: "c"}); err == nil {
 		t.Error("expected error when remote host missing")
 	}
-	if _, err := sshdefaults.BuildConfigBlock(sshdefaults.ConfigBlockOptions{Mode: "remote", Alias: "x", Remote: "h"}); err == nil {
+	if _, err := sshdefaults.BuildConfigBlock(sshdefaults.ConfigBlockOptions{Mode: sshdefaults.ModeRemote, Alias: "x", Remote: "h"}); err == nil {
 		t.Error("expected error when container missing")
 	}
 }
