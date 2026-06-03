@@ -10,6 +10,26 @@ import (
 
 var hostAliasRe = regexp.MustCompile(`^\s*Host\s+(.+)$`)
 
+// managedMarkerRe matches the comment that sshdefaults.ManagedComment emits above
+// a CLI-generated Host block, capturing the owning workspace.
+var managedMarkerRe = regexp.MustCompile(`^\s*#\s*devcontainer-cli:managed\s+workspace=(\S+)\s*$`)
+
+// managedMarkerWorkspace returns the workspace tagged on a managed marker line, or
+// ("", false) when line is not such a marker.
+func managedMarkerWorkspace(line string) (string, bool) {
+	m := managedMarkerRe.FindStringSubmatch(line)
+	if m == nil {
+		return "", false
+	}
+	return m[1], true
+}
+
+// isManagedMarkerLine reports whether line is any CLI managed-block marker.
+func isManagedMarkerLine(line string) bool {
+	_, ok := managedMarkerWorkspace(line)
+	return ok
+}
+
 // HostAliasesInLine returns the aliases declared on a single `Host a b c` line,
 // or nil when line is not a Host declaration.
 func HostAliasesInLine(line string) []string {
@@ -48,7 +68,56 @@ func StripHostBlock(content, alias string) string {
 			continue
 		}
 		if isHostLine && slices.Contains(hosts, alias) {
+			// Drop a managed marker comment sitting directly above this Host line so
+			// removing the block does not leave an orphaned marker behind.
+			if n := len(out); n > 0 && isManagedMarkerLine(out[n-1]) {
+				out = out[:n-1]
+			}
 			skip = true
+			continue
+		}
+		out = append(out, line)
+	}
+	return strings.Join(out, "\n")
+}
+
+// HasManagedBlock reports whether content contains a CLI managed Host block tagged
+// with workspace.
+func HasManagedBlock(content, workspace string) bool {
+	for _, line := range strings.Split(content, "\n") {
+		if ws, ok := managedMarkerWorkspace(line); ok && ws == workspace {
+			return true
+		}
+	}
+	return false
+}
+
+// StripManagedBlock returns content with the CLI managed block tagged workspace
+// removed: the marker comment line plus the Host stanza beneath it, up to the next
+// Host line, the next marker, or EOF.
+func StripManagedBlock(content, workspace string) string {
+	var out []string
+	skip := false
+	sawHost := false
+	for _, line := range strings.Split(content, "\n") {
+		if ws, ok := managedMarkerWorkspace(line); ok && ws == workspace {
+			// Start dropping: the marker line, then the Host stanza that follows it.
+			skip = true
+			sawHost = false
+			continue
+		}
+		if skip {
+			isHostLine := len(HostAliasesInLine(line)) > 0
+			// The block's own Host line is the first Host line after the marker; only
+			// a later Host/Match line or another marker ends the stanza.
+			if (isHostLine && sawHost) || isManagedMarkerLine(line) {
+				skip = false
+				out = append(out, line)
+				continue
+			}
+			if isHostLine {
+				sawHost = true
+			}
 			continue
 		}
 		out = append(out, line)
@@ -158,6 +227,40 @@ func (s SshService) AppendHostBlock(path, content, newBlock string) error {
 		body += "\n\n"
 	}
 	return os.WriteFile(path, []byte(body+newBlock+"\n"), 0o600)
+}
+
+// RemoveManagedBlock removes the CLI managed Host block tagged with workspace from
+// ~/.ssh/config. Unlike ReadSSHConfig it does not create the file: a missing config
+// (or no matching block) is a no-op returning removed=false. When a block is
+// removed it backs the original up to path+".bak" first and returns that path.
+func (s SshService) RemoveManagedBlock(workspace string) (removed bool, backupPath string, err error) {
+	path, err := sshConfigPath()
+	if err != nil {
+		return false, "", err
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, "", nil
+		}
+		return false, "", err
+	}
+	content := string(data)
+	if !HasManagedBlock(content, workspace) {
+		return false, "", nil
+	}
+	backupPath = path + ".bak"
+	if err := os.WriteFile(backupPath, data, 0o600); err != nil {
+		return false, "", err
+	}
+	stripped := strings.TrimRight(StripManagedBlock(content, workspace), "\n")
+	if stripped != "" {
+		stripped += "\n"
+	}
+	if err := os.WriteFile(path, []byte(stripped), 0o600); err != nil {
+		return false, "", err
+	}
+	return true, backupPath, nil
 }
 
 // ConfigHostAliasesFromDisk reads ~/.ssh/config and returns its non-wildcard

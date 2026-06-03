@@ -116,6 +116,102 @@ func TestReadAndWriteSSHConfig(t *testing.T) {
 	}
 }
 
+const managedConfig = `# devcontainer-cli:managed workspace=proj
+Host proj
+    HostName 172.18.0.2
+    User devuser
+
+Host other
+    HostName example.com
+`
+
+func TestHasManagedBlock(t *testing.T) {
+	if !HasManagedBlock(managedConfig, "proj") {
+		t.Error("expected managed block for workspace 'proj'")
+	}
+	if HasManagedBlock(managedConfig, "missing") {
+		t.Error("did not expect managed block for workspace 'missing'")
+	}
+	if HasManagedBlock(sampleConfig, "devcontainer") {
+		t.Error("untagged config must not report a managed block")
+	}
+}
+
+func TestStripManagedBlock(t *testing.T) {
+	stripped := StripManagedBlock(managedConfig, "proj")
+	if strings.Contains(stripped, "172.18.0.2") || strings.Contains(stripped, "Host proj") {
+		t.Errorf("managed Host block not removed:\n%s", stripped)
+	}
+	if strings.Contains(stripped, "devcontainer-cli:managed") {
+		t.Errorf("managed marker comment not removed:\n%s", stripped)
+	}
+	if !strings.Contains(stripped, "Host other") || !strings.Contains(stripped, "example.com") {
+		t.Errorf("unrelated block was removed:\n%s", stripped)
+	}
+}
+
+func TestStripHostBlockRemovesPrecedingMarker(t *testing.T) {
+	// Stripping a managed block by alias must also drop its marker comment so no
+	// orphaned marker is left when setup-ssh replaces an existing block.
+	stripped := StripHostBlock(managedConfig, "proj")
+	if strings.Contains(stripped, "devcontainer-cli:managed") {
+		t.Errorf("orphaned marker left behind:\n%s", stripped)
+	}
+	if !strings.Contains(stripped, "Host other") {
+		t.Errorf("unrelated block was removed:\n%s", stripped)
+	}
+}
+
+func TestRemoveManagedBlock(t *testing.T) {
+	home := t.TempDir()
+	setHomeDir(t, home)
+	if err := os.MkdirAll(filepath.Join(home, ".ssh"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(home, ".ssh", "config")
+	if err := os.WriteFile(path, []byte(managedConfig), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	svc := SshService{Report: nopReporter{}}
+	removed, backup, err := svc.RemoveManagedBlock("proj")
+	if err != nil {
+		t.Fatalf("RemoveManagedBlock: %v", err)
+	}
+	if !removed {
+		t.Fatal("expected removed=true for tagged workspace")
+	}
+	if _, err := os.Stat(backup); err != nil {
+		t.Errorf("expected backup at %s: %v", backup, err)
+	}
+	data, _ := os.ReadFile(path)
+	got := string(data)
+	if strings.Contains(got, "Host proj") || strings.Contains(got, "devcontainer-cli:managed") {
+		t.Errorf("managed block not removed from disk:\n%s", got)
+	}
+	if !strings.Contains(got, "Host other") {
+		t.Errorf("unrelated block lost:\n%s", got)
+	}
+}
+
+func TestRemoveManagedBlockNoMatch(t *testing.T) {
+	home := t.TempDir()
+	setHomeDir(t, home)
+	svc := SshService{Report: nopReporter{}}
+
+	// Missing ~/.ssh/config is a no-op and must not create the file.
+	removed, _, err := svc.RemoveManagedBlock("proj")
+	if err != nil {
+		t.Fatalf("RemoveManagedBlock (missing file): %v", err)
+	}
+	if removed {
+		t.Error("expected removed=false when config is absent")
+	}
+	if _, err := os.Stat(filepath.Join(home, ".ssh", "config")); !os.IsNotExist(err) {
+		t.Error("RemoveManagedBlock must not create ~/.ssh/config")
+	}
+}
+
 func TestConfigHostAliasesFromDisk(t *testing.T) {
 	home := t.TempDir()
 	setHomeDir(t, home)

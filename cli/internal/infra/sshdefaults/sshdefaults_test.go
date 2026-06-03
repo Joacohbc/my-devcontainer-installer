@@ -68,6 +68,46 @@ func TestBuildConfigBlock_Local(t *testing.T) {
 	}
 }
 
+func TestBuildConfigBlock_WorkspaceMarker(t *testing.T) {
+	got, err := sshdefaults.BuildConfigBlock(sshdefaults.ConfigBlockOptions{
+		Mode:      sshdefaults.ModeLocal,
+		Alias:     "myalias",
+		User:      "devuser",
+		KeyPath:   "k",
+		Hostname:  "172.20.0.2",
+		Workspace: "myproj",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	wantMarker := "# devcontainer-cli:managed workspace=myproj"
+	if !strings.HasPrefix(got, wantMarker+"\n") {
+		t.Errorf("expected block to start with marker %q:\n%s", wantMarker, got)
+	}
+	if !strings.Contains(got, "Host myalias") {
+		t.Errorf("marked block missing Host stanza:\n%s", got)
+	}
+}
+
+func TestBuildConfigBlock_NoMarkerWhenWorkspaceEmpty(t *testing.T) {
+	got, err := sshdefaults.BuildConfigBlock(sshdefaults.ConfigBlockOptions{
+		Mode:     sshdefaults.ModeLocal,
+		Alias:    "x",
+		User:     "devuser",
+		KeyPath:  "k",
+		Hostname: "1.2.3.4",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if strings.Contains(got, "devcontainer-cli:managed") {
+		t.Errorf("did not expect a marker when Workspace is empty:\n%s", got)
+	}
+	if !strings.HasPrefix(got, "Host x") {
+		t.Errorf("expected stanza to start with Host:\n%s", got)
+	}
+}
+
 func TestBuildConfigBlock_LocalRequiresHostname(t *testing.T) {
 	if _, err := sshdefaults.BuildConfigBlock(sshdefaults.ConfigBlockOptions{Mode: sshdefaults.ModeLocal, Alias: "x"}); err == nil {
 		t.Error("expected error when hostname missing for local mode")

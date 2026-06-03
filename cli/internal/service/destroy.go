@@ -38,9 +38,28 @@ func (s DestroyService) Run(t DestroyTarget) error {
 	s.removeIfExists(t.ProjectDir)
 	s.removeIfExists(t.ConfigPath)
 	domain.RemoveEntry(t.ProjectKey)
+	s.removeSSHConfigBlock(t.Workspace)
 
 	s.Report.Success("Destroyed.")
 	return nil
+}
+
+// removeSSHConfigBlock drops the managed Host block setup-ssh wrote for this
+// workspace from ~/.ssh/config. Failures here are non-fatal: a missing or locked
+// ssh config must not abort the destroy.
+func (s DestroyService) removeSSHConfigBlock(workspace string) {
+	if workspace == "" {
+		return
+	}
+	ssh := SshService{Report: s.Report}
+	removed, backup, err := ssh.RemoveManagedBlock(workspace)
+	if err != nil {
+		s.Report.Warn("Could not update ~/.ssh/config: %v", err)
+		return
+	}
+	if removed {
+		s.Report.Info("Removed SSH host block for '%s' from ~/.ssh/config (backup: %s)", workspace, backup)
+	}
 }
 
 func (s DestroyService) removeIfExists(path string) {
