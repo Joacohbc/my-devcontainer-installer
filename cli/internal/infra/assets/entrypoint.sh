@@ -40,9 +40,8 @@ if [ -d /workspace ]; then
     setfacl -d -m u:devuser:rwx /workspace 2>/dev/null || true
 fi
 
-if [ -d /var/run/docker.sock ]; then
-    setfacl -R -m u:devuser:rwx /var/run/docker.sock 2>/dev/null || true
-    setfacl -d -m u:devuser:rwx /var/run/docker.sock 2>/dev/null || true
+if [ -S /var/run/docker.sock ]; then
+    setfacl -m u:devuser:rw /var/run/docker.sock 2>/dev/null || true
 fi
 
 # Start the SSH service
