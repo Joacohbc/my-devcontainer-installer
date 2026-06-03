@@ -198,22 +198,10 @@ func detectMode(f *setupSshFlags) sshdefaults.Mode {
 }
 
 func checkPrereqs(mode sshdefaults.Mode) error {
-	// Remote mode only renders config text to paste on another machine; it runs
-	// no ssh/keygen/docker here, so it needs no local tooling.
-	if mode == sshdefaults.ModeRemote {
-		return nil
-	}
-
 	ssh := service.SshService{Report: console}
-	for _, tool := range []string{"ssh", "ssh-keygen"} {
+	for _, tool := range []string{"ssh", "ssh-keygen", "docker"} {
 		if !ssh.CommandExists(tool) {
 			return fmt.Errorf("missing tool: %s", tool)
-		}
-	}
-
-	if mode == sshdefaults.ModeLocal || mode == sshdefaults.ModeWindows {
-		if !ssh.CommandExists("docker") {
-			return fmt.Errorf("missing tool: docker")
 		}
 	}
 	return nil
@@ -490,14 +478,12 @@ func runSetupSsh(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
-	if mode != sshdefaults.ModeRemote {
-		target, err := resolveTargetService(f)
-		if err != nil {
-			return err
-		}
-		f.service = target.Service
-		f.container = target.Container
+	target, err := resolveTargetService(f)
+	if err != nil {
+		return err
 	}
+	f.service = target.Service
+	f.container = target.Container
 
 	workspace, err := deriveWorkspace(f)
 	if err != nil {
@@ -518,14 +504,6 @@ func runSetupSsh(cmd *cobra.Command, _ []string) error {
 		f.alias = alias
 	}
 
-	// Remote mode assumes the connection to the docker host already exists
-	// (devcontainer-cli runs on that host). It neither generates nor installs
-	// keys and writes no local config — it only renders the config block to
-	// paste on the connecting machine.
-	if mode == sshdefaults.ModeRemote {
-		return emitRemoteConfig(ssh, f)
-	}
-
 	console.Log(fmt.Sprintf("Mode: %s   Workspace: %s   Alias: %s   Key: %s", mode, workspace, f.alias, f.key))
 	console.Log(fmt.Sprintf("Service: %s   Container: %s   Compose: %s", f.service, f.container, f.composeFile))
 
@@ -540,6 +518,10 @@ func runSetupSsh(cmd *cobra.Command, _ []string) error {
 	inst, err := installKey(ssh, f, mode)
 	if err != nil {
 		return err
+	}
+
+	if mode == sshdefaults.ModeRemote {
+		return emitRemoteConfig(ssh, f)
 	}
 
 	if err := updateSshConfig(ssh, f, mode, inst); err != nil {
@@ -557,9 +539,8 @@ func runSetupSsh(cmd *cobra.Command, _ []string) error {
 // prints one self-contained snippet (RemoteExportScript) that writes that same
 // key on the connecting machine and appends the ProxyCommand block to its
 // ~/.ssh/config. The snippet contains a PRIVATE key. The shared public key is
-// already in the container's authorized_keys from the local/host setup-ssh run,
-// so the connecting machine only needs the key + config — nothing is installed
-// into the container here.
+// injected into the target container prior to invoking this function, so the
+// connecting machine only needs the key + config.
 func emitRemoteConfig(ssh service.SshService, f *setupSshFlags) error {
 	displayKey := "~/.ssh/" + sshdefaults.KeyName
 
