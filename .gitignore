@@ -13,6 +13,7 @@ cli/dist/
 
 .dc_*
 .antigravitycli/
+graphify-out/
 
 # devcontainer-cli
 .dc_*/
