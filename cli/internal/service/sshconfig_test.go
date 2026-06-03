@@ -3,9 +3,21 @@ package service
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
+
+// setHomeDir points os.UserHomeDir() at dir, using the env var honored on the
+// current platform (HOME on Unix/macOS, USERPROFILE on Windows).
+func setHomeDir(t *testing.T, dir string) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Setenv("USERPROFILE", dir)
+		return
+	}
+	t.Setenv("HOME", dir)
+}
 
 const sampleConfig = `Host devcontainer
     HostName 172.18.0.2
@@ -65,7 +77,7 @@ func TestConfigHostAliases(t *testing.T) {
 
 func TestReadAndWriteSSHConfig(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setHomeDir(t, home)
 
 	svc := SshService{Report: nopReporter{}}
 
@@ -106,7 +118,7 @@ func TestReadAndWriteSSHConfig(t *testing.T) {
 
 func TestConfigHostAliasesFromDisk(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setHomeDir(t, home)
 	if err := os.MkdirAll(filepath.Join(home, ".ssh"), 0o700); err != nil {
 		t.Fatal(err)
 	}
