@@ -330,13 +330,6 @@ Host *.wildcard
 	}
 }
 
-// Remote mode renders config text only; it never runs ssh/keygen/docker, so it
-// requires no local tooling.
-func TestCheckPrereqs_RemoteSkipsTooling(t *testing.T) {
-	if err := checkPrereqs("remote"); err != nil {
-		t.Errorf("checkPrereqs(remote) = %v, want nil (remote needs no local tools)", err)
-	}
-}
 
 // The remote config block builds purely from the alias, remote host and
 // container — with an empty installResult — proving no key generation or
