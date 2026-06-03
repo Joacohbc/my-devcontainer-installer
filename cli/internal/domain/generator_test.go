@@ -77,7 +77,6 @@ func TestGenerateDockerfile_AllSelectedModules(t *testing.T) {
 			{ID: "go"},
 			{ID: "postgres-client"},
 			{ID: "redis-client"},
-			{ID: "mysql-client"},
 			{ID: "mongo-client"},
 			{ID: "nodejs"},
 			{ID: "bun"},
@@ -93,7 +92,6 @@ func TestGenerateDockerfile_AllSelectedModules(t *testing.T) {
 	assertContainsStr(t, df, "install_golang", "full dockerfile")
 	assertContainsStr(t, df, "postgresql-client", "full dockerfile")
 	assertContainsStr(t, df, "redis-tools", "full dockerfile")
-	assertContainsStr(t, df, "default-mysql-client", "full dockerfile")
 	assertContainsStr(t, df, "mongodb-mongosh", "full dockerfile")
 	assertContainsStr(t, df, "nvm install --lts", "full dockerfile")
 	assertContainsStr(t, df, "bun.sh/install", "full dockerfile")
@@ -107,7 +105,7 @@ func TestGenerateDockerfile_TmuxModule(t *testing.T) {
 		c.Dockerfile.Modules = []types.SelectedModule{{ID: "tmux"}}
 	})
 	df := mustGenerateDockerfile(t, cfg)
-	assertContainsStr(t, df, "RUN apt-get update && apt-get install -y tmux", "tmux")
+	assertContainsStr(t, df, "RUN apt-get update && apt-get install -y tmux && apt-get autoremove -y && apt-get autoclean && rm -rf /var/lib/apt/lists/*", "tmux")
 }
 
 func TestGenerateDockerfile_DodModule(t *testing.T) {
@@ -218,9 +216,6 @@ func TestGenerateCompose_ValidYAMLWithExpectedServices(t *testing.T) {
 	}
 	if services["postgres"] != nil {
 		t.Error("expected postgres to be absent")
-	}
-	if services["mysql"] != nil {
-		t.Error("expected mysql to be absent")
 	}
 }
 
@@ -648,4 +643,24 @@ func TestGenerateDockerfile_CopilotCli(t *testing.T) {
 	})
 	df := mustGenerateDockerfile(t, cfg)
 	assertContainsStr(t, df, "install-copilot.sh", "copilot-cli script")
+}
+
+func TestGenerateDockerfile_Graphify(t *testing.T) {
+	cfg := makeConfig(func(c *types.DevcontainerConfig) {
+		c.Dockerfile.Modules = []types.SelectedModule{{ID: "graphify"}}
+	})
+	df := mustGenerateDockerfile(t, cfg)
+	assertContainsStr(t, df, "install-graphify.sh", "graphify script")
+	// graphify requires python
+	assertContainsStr(t, df, "python3", "graphify requires python")
+}
+
+func TestGenerateDockerfile_Caveman(t *testing.T) {
+	cfg := makeConfig(func(c *types.DevcontainerConfig) {
+		c.Dockerfile.Modules = []types.SelectedModule{{ID: "caveman"}}
+	})
+	df := mustGenerateDockerfile(t, cfg)
+	assertContainsStr(t, df, "install-caveman.sh", "caveman script")
+	// caveman requires nodejs
+	assertContainsStr(t, df, "nvm install --lts", "caveman requires nodejs")
 }

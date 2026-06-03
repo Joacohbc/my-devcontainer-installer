@@ -64,6 +64,12 @@ func runDown(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
+	if killed, ferr := (service.PortForwardService{Report: console}).StopAllForwards(cwd, workspace); ferr != nil {
+		console.Warn("Failed to stop port-forwards: %v", ferr)
+	} else if killed > 0 {
+		console.Info("Stopped %d background port-forward(s).", killed)
+	}
+
 	if err := svc.Down(composeFile, workspace, removeVolumes); err != nil {
 		return err
 	}

@@ -128,40 +128,6 @@ func TestDevcontainerRender_NoDatabasesNoDependsOn(t *testing.T) {
 	}
 }
 
-func TestMysqlRender(t *testing.T) {
-	def := compose.MysqlService.Render(compose.RenderContext{})
-	if def == nil {
-		t.Fatal("expected a service definition")
-	}
-	if def.Image != "mysql:8.0" {
-		t.Errorf("default image = %q, want mysql:8.0", def.Image)
-	}
-	if def.ContainerName != "mysql" {
-		t.Errorf("ContainerName = %q, want mysql", def.ContainerName)
-	}
-	env, ok := def.Environment.(map[string]string)
-	if !ok || env["MYSQL_DATABASE"] != "devdb" {
-		t.Errorf("expected MYSQL_DATABASE=devdb, got %+v", def.Environment)
-	}
-	if env["MYSQL_USER"] != "devuser" || env["MYSQL_PASSWORD"] != "devpass" || env["MYSQL_ROOT_PASSWORD"] != "devpass" {
-		t.Errorf("expected default devuser/devpass, got %+v", def.Environment)
-	}
-
-	custom := compose.MysqlService.Render(compose.RenderContext{Options: map[string]any{"version": "8.4"}})
-	if custom.Image != "mysql:8.4" {
-		t.Errorf("custom image = %q, want mysql:8.4", custom.Image)
-	}
-
-	customCreds := compose.MysqlService.Render(compose.RenderContext{
-		DefaultDBUser:     "charlie",
-		DefaultDBPassword: "mypassword",
-	})
-	envCustom, ok := customCreds.Environment.(map[string]string)
-	if !ok || envCustom["MYSQL_USER"] != "charlie" || envCustom["MYSQL_PASSWORD"] != "mypassword" || envCustom["MYSQL_ROOT_PASSWORD"] != "mypassword" {
-		t.Errorf("expected custom charlie/mypassword, got %+v", envCustom)
-	}
-}
-
 // Every compose service must render a definition with a container name and must
 // not panic on an empty render context.
 func TestAllComposeServicesRender(t *testing.T) {

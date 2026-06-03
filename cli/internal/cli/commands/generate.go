@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/logger"
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/sshhelp"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/catalog"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
@@ -28,6 +27,7 @@ const (
 	flagImage          = "image"
 	flagWorkspace      = "workspace"
 	flagPersist        = "persist"
+	flagForward        = "forward"
 	flagPreset         = "preset"
 	flagNoInteractive  = "no-interactive"
 	flagNonInteractive = "non-interactive"
@@ -49,6 +49,7 @@ func addGenerateFlags(cmd *cobra.Command) {
 	f.String(flagImage, "", "Image name (default: derived from fingerprint for local-cached)")
 	f.String(flagWorkspace, "", "Workspace name (default: current dir name)")
 	f.String(flagPersist, "", "Persistence volumes mounted in the devcontainer: comma-separated ids (etc,root,home), 'all', or 'none'")
+	f.StringArray(flagForward, nil, "Background port-forward(s) started on 'up' (repeatable; e.g. --forward 3000 --forward 8080:80)")
 	f.String(flagPreset, "", "Apply a preset (modules + services). See 'preset list'.")
 	f.Bool(flagNoInteractive, false, "Fail if any value is missing instead of prompting")
 	f.Bool(flagNonInteractive, false, "Alias for --no-interactive")
@@ -108,6 +109,7 @@ type genFlags struct {
 	withModules []string
 	services    []string
 	persist     *[]string // nil = not set (keep existing/default)
+	forwards    []types.PortForward
 	mode        string
 	variant     string
 	registry    string
@@ -192,6 +194,14 @@ func parseGenFlags(cmd *cobra.Command) (*genFlags, error) {
 			return nil, err
 		}
 		g.persist = &ids
+	}
+	if f.Changed(flagForward) {
+		raw, _ := f.GetStringArray(flagForward)
+		forwards, err := service.ParsePortForwards(strings.Join(raw, ","))
+		if err != nil {
+			return nil, fmt.Errorf("invalid --forward: %w", err)
+		}
+		g.forwards = forwards
 	}
 
 	if g.mode != "" {
@@ -516,7 +526,8 @@ func saveAndPostProcess(cwd string, config *types.DevcontainerConfig, plan *serv
 	if build == nil || !*build {
 		console.Done()
 	}
-	sshhelp.Print(config.Workspace)
+	console.NewLine()
+	console.Info("SSH access: run 'devcontainer-cli setup-ssh' to generate a key and register the host automatically.")
 	return nil
 }
 
@@ -573,6 +584,9 @@ func applyGenFlags(config *types.DevcontainerConfig, flags *genFlags) {
 	}
 	if flags.persist != nil {
 		config.Compose.PersistVolumes = flags.persist
+	}
+	if flags.forwards != nil {
+		config.PortForwards = flags.forwards
 	}
 	if flags.mode == string(types.BuildModeRemote) || config.Mode == types.BuildModeRemote {
 		variant := flags.variant

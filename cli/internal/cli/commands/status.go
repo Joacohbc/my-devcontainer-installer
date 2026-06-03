@@ -8,7 +8,6 @@ import (
 	"github.com/charmbracelet/lipgloss/table"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/pick"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/ui"
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/project"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/service"
 	"github.com/spf13/cobra"
@@ -114,16 +113,10 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
-	var workspace string
-	if wsFlag != "" {
-		workspace = wsFlag
-	} else {
-		cfg, _ := domain.LoadConfig(cwd)
-		workspace = domain.ResolveWorkspace(cwd, cfg)
-	}
+	workspace := resolveWorkspace(cwd, wsFlag)
 
 	paths := project.ProjectPaths(cwd, workspace)
-	services := readComposeServices(paths.ComposeFile)
+	services := service.ReadComposeServices(paths.ComposeFile)
 	if services == nil {
 		return fmt.Errorf("no active project compose file found at %s. Run 'devcontainer-cli' to generate one first, or target a specific container via --container", paths.ComposeFile)
 	}

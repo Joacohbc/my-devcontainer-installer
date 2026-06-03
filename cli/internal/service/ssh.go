@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/osutil"
 )
 
 // SshService owns the external-command and docker orchestration behind the
@@ -21,18 +22,18 @@ type SshService struct {
 
 // CommandExists reports whether bin is on PATH.
 func (s SshService) CommandExists(bin string) bool {
-	_, err := exec.LookPath(bin)
-	return err == nil
+	return osutil.CommandExists(bin)
 }
 
 // ContainerRunning reports whether a container with the exact name is running.
 func (s SshService) ContainerRunning(name string) bool {
-	status, stdout, _, err := docker.DockerCapture([]string{"ps", "--format", "{{.Names}}"})
-	if err != nil || status != 0 {
+	inspectSvc := InspectService{Report: s.Report}
+	containers, err := inspectSvc.ListContainers(false, false)
+	if err != nil {
 		return false
 	}
-	for _, line := range strings.Split(stdout, "\n") {
-		if strings.TrimSpace(line) == name {
+	for _, c := range containers {
+		if c.Name == name {
 			return true
 		}
 	}
@@ -48,16 +49,6 @@ func (s SshService) ComposeUp(composeFile string) error {
 	return nil
 }
 
-// ServiceLogs returns the combined stdout+stderr logs for a compose service and
-// whether the read succeeded.
-func (s SshService) ServiceLogs(composeFile, service string) (string, bool) {
-	status, stdout, stderr, err := docker.DockerCapture([]string{"compose", "-f", composeFile, "logs", service})
-	if err != nil || status != 0 {
-		return "", false
-	}
-	return stdout + "\n" + stderr, true
-}
-
 // GenerateKey creates an ed25519 keypair at keyPath.
 func (s SshService) GenerateKey(keyPath string) error {
 	if err := os.MkdirAll(filepath.Dir(keyPath), 0o700); err != nil {
@@ -71,21 +62,53 @@ func (s SshService) GenerateKey(keyPath string) error {
 	return nil
 }
 
-// ContainerNetworks returns lines of "<network> <ip>" for a container.
-func (s SshService) ContainerNetworks(container string) (string, error) {
-	format := `{{range $name, $net := .NetworkSettings.Networks}}{{$name}} {{$net.IPAddress}}{{"\n"}}{{end}}`
-	status, stdout, _, err := docker.DockerCapture([]string{"inspect", "-f", format, container})
-	if err != nil || status != 0 {
-		return "", fmt.Errorf("could not resolve container IP")
+// EnsureKey makes the managed key exist at keyPath, generating it once. It
+// returns created=false (and no error) when both keyPath and keyPath+".pub"
+// already exist; otherwise it generates the pair and returns created=true.
+func (s SshService) EnsureKey(keyPath string) (created bool, err error) {
+	if fileExists(keyPath) && fileExists(keyPath+".pub") {
+		return false, nil
 	}
-	return stdout, nil
+	if err := s.GenerateKey(keyPath); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// PublicKey reads the public half of the key pair at keyPath (keyPath+".pub").
+func (s SshService) PublicKey(keyPath string) ([]byte, error) {
+	return os.ReadFile(keyPath + ".pub")
+}
+
+// PrivateKey reads the private key at keyPath.
+func (s SshService) PrivateKey(keyPath string) ([]byte, error) {
+	return os.ReadFile(keyPath)
+}
+
+// ContainerIPs inspects a container and returns its (network, ip) pairs, one per
+// attached network with a non-empty address.
+func (s SshService) ContainerIPs(container string) ([]NetworkIP, error) {
+	inspectSvc := InspectService{Report: s.Report}
+	ips, err := inspectSvc.ContainerNetworkIPs(container)
+	if err != nil {
+		return nil, fmt.Errorf("could not resolve container IP")
+	}
+	return ips, nil
+}
+
+// InstallKeySpec holds the parameters for installing a public key inside a container.
+type InstallKeySpec struct {
+	PublicKey []byte
+	User      string
+	Container string
+	Script    string
 }
 
 // InstallKeyLocal pipes the public key into the container and runs the install
 // script via `docker exec`.
-func (s SshService) InstallKeyLocal(pub []byte, user, container, script string) error {
-	args := []string{"exec", "-i", "-u", user, container, "sh", "-c", script}
-	status, err := docker.DockerExecStdin(pub, args)
+func (s SshService) InstallKeyLocal(spec InstallKeySpec) error {
+	args := []string{"exec", "-i", "-u", spec.User, spec.Container, "sh", "-c", spec.Script}
+	status, err := docker.DockerExecStdin(spec.PublicKey, args)
 	if err != nil || status != 0 {
 		return fmt.Errorf("docker exec key install failed")
 	}

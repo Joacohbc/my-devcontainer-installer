@@ -75,8 +75,8 @@ func TestLoadConfig_MigratesLegacyDbclients(t *testing.T) {
 	}{
 		{
 			name: "explicit clients",
-			body: `{"mode":"local-cached","image":"x:local","workspace":"ws","dockerfile":{"modules":[{"id":"dbclients","options":{"clients":["postgres","mysql"]}}]}}`,
-			want: []string{"postgres-client", "mysql-client"},
+			body: `{"mode":"local-cached","image":"x:local","workspace":"ws","dockerfile":{"modules":[{"id":"dbclients","options":{"clients":["postgres","redis"]}}]}}`,
+			want: []string{"postgres-client", "redis-client"},
 		},
 		{
 			name: "missing clients option defaults to psql/redis/mongo",

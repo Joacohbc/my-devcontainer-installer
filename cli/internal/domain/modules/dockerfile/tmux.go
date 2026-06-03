@@ -1,6 +1,10 @@
 package dockerfile
 
-import "github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
+import (
+	"fmt"
+
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
+)
 
 var TmuxModule = &ModuleSpec{
 	ID:         types.ModuleTmux,
@@ -8,10 +12,10 @@ var TmuxModule = &ModuleSpec{
 	Category:   types.CategoryInfra,
 	UICategory: types.UICategoryDevTools,
 	Render: func(opts map[string]any) string {
-		return `##
+		return fmt.Sprintf(`##
 ## TMUX
 ##
-RUN apt-get update && apt-get install -y tmux
-`
+RUN apt-get update && apt-get install -y tmux && %s
+`, aptCleanup())
 	},
 }

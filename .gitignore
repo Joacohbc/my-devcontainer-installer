@@ -12,5 +12,8 @@ cli/devcontainer.config.*
 cli/dist/
 
 .dc_*
-devcontainer.config.json
 .antigravitycli/
+
+# devcontainer-cli
+.dc_*/
+devcontainer.config.json

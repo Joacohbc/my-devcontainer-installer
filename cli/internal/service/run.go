@@ -2,7 +2,6 @@ package service
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
@@ -29,10 +28,10 @@ type QuickRunSpec struct {
 // container is running.
 func (s RunService) Run(spec QuickRunSpec) error {
 	switch s.containerState(spec.ContainerName) {
-	case "running":
+	case StateRunning:
 		s.Report.Success("✓ Container '%s' is already running.", spec.ContainerName)
 		return nil
-	case "exited", "created", "paused":
+	case StateExited, StateCreated, StatePaused:
 		s.Report.Warn("↻ Starting existing container '%s'...", spec.ContainerName)
 		status, err := docker.DockerInherit([]string{"start", spec.ContainerName})
 		if err != nil {
@@ -70,7 +69,11 @@ func (s RunService) Run(spec QuickRunSpec) error {
 	return nil
 }
 
-func (s RunService) containerState(name string) string {
-	_, stdout, _, _ := docker.DockerCapture([]string{"inspect", "-f", "{{.State.Status}}", name})
-	return strings.TrimSpace(strings.ReplaceAll(stdout, " ", ""))
+func (s RunService) containerState(name string) ContainerState {
+	inspectSvc := InspectService{Report: s.Report}
+	state, err := inspectSvc.ContainerState(name)
+	if err != nil {
+		return ""
+	}
+	return state
 }

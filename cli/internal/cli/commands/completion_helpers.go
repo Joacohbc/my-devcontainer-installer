@@ -1,8 +1,6 @@
 package commands
 
 import (
-	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/ui"
@@ -10,32 +8,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// listSshHosts parses ~/.ssh/config and returns all defined non-wildcard Host aliases.
+// listSshHosts returns all non-wildcard Host aliases defined in ~/.ssh/config.
 func listSshHosts() []string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return nil
-	}
-	configPath := filepath.Join(home, ".ssh", "config")
-	data, err := os.ReadFile(configPath)
-	if err != nil {
-		return nil
-	}
-
-	var hosts []string
-	seen := make(map[string]bool)
-	for _, line := range strings.Split(string(data), "\n") {
-		// Use the existing aliasOfHostLine package helper
-		lineHosts := aliasOfHostLine(line)
-		for _, h := range lineHosts {
-			h = strings.TrimSpace(h)
-			if h != "" && !strings.Contains(h, "*") && !strings.Contains(h, "?") && !seen[h] {
-				seen[h] = true
-				hosts = append(hosts, h)
-			}
-		}
-	}
-	return hosts
+	return service.SshService{Report: ui.Console{}}.ConfigHostAliasesFromDisk()
 }
 
 // listContainers queries all container names from the running Docker daemon.
@@ -84,7 +59,7 @@ func completeContainerPath(containerName, toComplete string) ([]string, cobra.Sh
 
 // listComposeServices retrieves defined service names from the specified compose file.
 func listComposeServices(composeFile string) []string {
-	services := readComposeServices(composeFile)
+	services := service.ReadComposeServices(composeFile)
 	if services == nil {
 		return nil
 	}

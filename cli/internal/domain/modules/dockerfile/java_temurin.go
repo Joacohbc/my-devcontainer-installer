@@ -59,7 +59,8 @@ var JavaTemurinModule = &ModuleSpec{
 RUN wget -O - https://packages.adoptium.net/artifactory/api/gpg/key/public | apt-key add - && \
     echo "deb https://packages.adoptium.net/artifactory/deb $(awk -F= '/^VERSION_CODENAME/{print$2}' /etc/os-release) main" | tee /etc/apt/sources.list.d/adoptium.list && \
     apt-get update && \
-    apt-get install -y %s
-`, strings.Join(pkgs, " "))
+    apt-get install -y %s && \
+    %s
+`, strings.Join(pkgs, " "), aptCleanup())
 	},
 }

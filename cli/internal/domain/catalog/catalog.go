@@ -19,7 +19,6 @@ var DockerfileModules = []*dockerfile.ModuleSpec{
 	dockerfile.RustModule,
 	dockerfile.PostgresClientModule,
 	dockerfile.RedisClientModule,
-	dockerfile.MysqlClientModule,
 	dockerfile.MongoClientModule,
 	dockerfile.NodejsModule,
 	dockerfile.PnpmModule,
@@ -29,6 +28,8 @@ var DockerfileModules = []*dockerfile.ModuleSpec{
 	dockerfile.CodexCliModule,
 	dockerfile.AntigravityCliModule,
 	dockerfile.CopilotCliModule,
+	dockerfile.GraphifyModule,
+	dockerfile.CavemanModule,
 	dockerfile.TmuxModule,
 	dockerfile.DodModule,
 	dockerfile.CleanupModule,
@@ -40,7 +41,6 @@ var ComposeServices = []*compose.ServiceSpec{
 	compose.MongoService,
 	compose.RedisService,
 	compose.PostgresService,
-	compose.MysqlService,
 	compose.TunnelService,
 }
 

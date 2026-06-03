@@ -5,7 +5,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/project"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/service"
 	"github.com/spf13/cobra"
@@ -51,16 +50,10 @@ func runInfo(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
-	var workspace string
-	if wsFlag != "" {
-		workspace = wsFlag
-	} else {
-		cfg, _ := domain.LoadConfig(cwd)
-		workspace = domain.ResolveWorkspace(cwd, cfg)
-	}
+	workspace := resolveWorkspace(cwd, wsFlag)
 
 	paths := project.ProjectPaths(cwd, workspace)
-	services := readComposeServices(paths.ComposeFile)
+	services := service.ReadComposeServices(paths.ComposeFile)
 	if services == nil {
 		return fmt.Errorf("no active project compose file found at %s. Run 'devcontainer-cli' to generate one first, or target a specific container via --container", paths.ComposeFile)
 	}
@@ -112,9 +105,23 @@ func printContainerInfoBlock(svc service.InspectService, name string) {
 	console.Print(keyStr("Created") + formatInfoTime(info.Created) + "\n")
 	console.Print(keyStr("Started") + formatInfoTime(info.StartedAt) + "\n")
 
-	printInfoMulti(keyStr("Ports"), cont, info.Ports)
-	printInfoMulti(keyStr("Volumes"), cont, info.Volumes)
-	printInfoMulti(keyStr("IPs"), cont, info.IPs)
+	var ports []string
+	for _, p := range info.Ports {
+		ports = append(ports, fmt.Sprintf("%s:%s/%s", p.HostPort, p.ContainerPort, p.Protocol))
+	}
+	printInfoMulti(keyStr("Ports"), cont, ports)
+
+	var vols []string
+	for _, v := range info.Volumes {
+		vols = append(vols, v.Source+" → "+v.Destination)
+	}
+	printInfoMulti(keyStr("Volumes"), cont, vols)
+
+	var ips []string
+	for _, ip := range info.IPs {
+		ips = append(ips, ip.Network+" "+ip.IP)
+	}
+	printInfoMulti(keyStr("IPs"), cont, ips)
 }
 
 // printInfoMulti prints a key followed by multiple values, continuing on new
@@ -140,11 +147,11 @@ func formatInfoTime(t time.Time) string {
 	return t.Local().Format("02-01-2006 15:04:05")
 }
 
-func infoStatusLabel(status string) string {
+func infoStatusLabel(status service.ContainerState) string {
 	switch status {
-	case "running":
+	case service.StateRunning:
 		return console.SuccessS("%s", status)
-	case "exited":
+	case service.StateExited:
 		return console.ErrorS("%s", status)
 	case "":
 		return console.WarnS("-")

@@ -21,6 +21,7 @@ Runs: docker compose -f .dc_<workspace>/build/docker-compose.yml up -d`,
 	}
 	addWorkspaceFlag(cmd)
 	cmd.Flags().Bool("build", false, "Build images before starting containers (docker compose up -d --build)")
+	cmd.Flags().Bool("no-forward", false, "Skip starting the configured background port-forwards")
 	return cmd
 }
 
@@ -37,18 +38,31 @@ func runUp(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
-	var workspace string
-	if wsFlag != "" {
-		workspace = wsFlag
-	} else {
-		cfg, _ := domain.LoadConfig(cwd)
-		workspace = domain.ResolveWorkspace(cwd, cfg)
-	}
+	workspace := resolveWorkspace(cwd, wsFlag)
 
 	build, _ := cmd.Flags().GetBool("build")
 	if err := svc.Up(composeFile, workspace, build); err != nil {
 		return err
 	}
+
+	noForward, _ := cmd.Flags().GetBool("no-forward")
+	if !noForward {
+		startConfiguredForwards(cwd, workspace)
+	}
+
 	ui.Done()
 	return nil
+}
+
+// startConfiguredForwards spawns the project's declared background port-forwards
+// after the stack is up. Failures are reported but do not fail `up`.
+func startConfiguredForwards(cwd, workspace string) {
+	cfg, err := domain.LoadConfig(cwd)
+	if err != nil || cfg == nil || len(cfg.PortForwards) == 0 {
+		return
+	}
+	console := ui.Console{}
+	if _, err := (service.PortForwardService{Report: console}).StartConfigured(cwd, workspace, cfg.PortForwards); err != nil {
+		console.Warn("Port-forwarding setup failed: %v", err)
+	}
 }

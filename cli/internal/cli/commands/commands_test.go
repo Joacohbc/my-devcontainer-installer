@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,6 +14,7 @@ import (
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/catalog"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/assets"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/sshdefaults"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/service"
 	"github.com/spf13/cobra"
 )
@@ -133,7 +135,7 @@ func TestConfigCommand_HasDefaultsSubcommands(t *testing.T) {
 	if config == nil {
 		t.Fatal("config command not found")
 	}
-	wants := []string{"db-user", "db-password", "ssh-port"}
+	wants := []string{"db-user", "db-password", "ssh-port", "ssh-key"}
 	have := map[string]bool{}
 	for _, sub := range config.Commands() {
 		have[sub.Name()] = true
@@ -141,6 +143,31 @@ func TestConfigCommand_HasDefaultsSubcommands(t *testing.T) {
 	for _, name := range wants {
 		if !have[name] {
 			t.Errorf("expected config subcommand %q to be registered", name)
+		}
+	}
+}
+
+// config ssh-key is a bespoke command exposing --unset, --generate, --public
+// and --private beyond the plain get/set verbs.
+func TestConfigSSHKeyCommand_Flags(t *testing.T) {
+	root := NewRootCommand("test")
+	var sshKey *cobra.Command
+	for _, c := range root.Commands() {
+		if c.Name() != "config" {
+			continue
+		}
+		for _, sub := range c.Commands() {
+			if sub.Name() == "ssh-key" {
+				sshKey = sub
+			}
+		}
+	}
+	if sshKey == nil {
+		t.Fatal("config ssh-key subcommand not found")
+	}
+	for _, flag := range []string{"unset", "generate", "public", "private"} {
+		if sshKey.Flags().Lookup(flag) == nil {
+			t.Errorf("expected config ssh-key to define --%s", flag)
 		}
 	}
 }
@@ -322,7 +349,7 @@ func TestBuildConfigBlock_RemoteNeedsNoKeyInstall(t *testing.T) {
 		remote:    "user@host",
 		container: "myws-devcontainer-ssh",
 	}
-	block, err := buildConfigBlock("remote", f, installResult{})
+	block, err := buildConfigBlock(sshdefaults.ModeRemote, f, installResult{})
 	if err != nil {
 		t.Fatalf("buildConfigBlock(remote): %v", err)
 	}
@@ -330,6 +357,152 @@ func TestBuildConfigBlock_RemoteNeedsNoKeyInstall(t *testing.T) {
 		if !strings.Contains(block, want) {
 			t.Errorf("remote block missing %q:\n%s", want, block)
 		}
+	}
+}
+
+// emitRemoteConfig hands over the shared managed key: it renders the export
+// snippet (embedding the private+public key bytes) plus a config block whose
+// IdentityFile uses the ~/.ssh form, never this host's absolute home path.
+func TestEmitRemoteConfig_ExportsSharedKey(t *testing.T) {
+	dir := t.TempDir()
+	keyPath := filepath.Join(dir, "id_devcontainer")
+	if err := os.WriteFile(keyPath, []byte("PRIV-KEY"), 0o600); err != nil {
+		t.Fatalf("write key: %v", err)
+	}
+	if err := os.WriteFile(keyPath+".pub", []byte("ssh-ed25519 PUB"), 0o644); err != nil {
+		t.Fatalf("write pub: %v", err)
+	}
+
+	f := &setupSshFlags{
+		alias:     "myws",
+		user:      "devuser",
+		key:       keyPath,
+		remote:    "user@host",
+		container: "myws-devcontainer-ssh",
+	}
+	ssh := service.SshService{Report: console}
+
+	orig := os.Stdout
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe: %v", err)
+	}
+	os.Stdout = w
+	emitErr := emitRemoteConfig(ssh, f)
+	_ = w.Close()
+	os.Stdout = orig
+	if emitErr != nil {
+		t.Fatalf("emitRemoteConfig: %v", emitErr)
+	}
+	out, err := io.ReadAll(r)
+	if err != nil {
+		t.Fatalf("read captured stdout: %v", err)
+	}
+	got := string(out)
+
+	if !strings.Contains(got, "IdentityFile ~/.ssh/"+sshdefaults.KeyName) {
+		t.Errorf("remote block should render IdentityFile with ~/.ssh, got:\n%s", got)
+	}
+	for _, frag := range []string{"PRIV-KEY", "ssh-ed25519 PUB", "ProxyCommand ssh user@host"} {
+		if !strings.Contains(got, frag) {
+			t.Errorf("export output missing %q:\n%s", frag, got)
+		}
+	}
+	// The container already has the shared key in authorized_keys from the host
+	// run, so remote output must not include a container-install one-liner.
+	if strings.Contains(got, "docker exec") || strings.Contains(got, "authorized_keys") {
+		t.Errorf("remote output must not install into the container, got:\n%s", got)
+	}
+	if strings.Contains(got, dir) {
+		t.Errorf("remote output must not leak this host's absolute key path, got:\n%s", got)
+	}
+	// f itself must stay untouched — the tilde rewrite is local to the render.
+	if f.key != keyPath {
+		t.Errorf("emitRemoteConfig mutated f.key to %q", f.key)
+	}
+}
+
+// With no --key, setup-ssh defaults to the shared managed key under the CLI
+// config dir, not a per-host ~/.ssh path.
+func TestCollectSetupSshFlags_DefaultsToManagedKey(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	cmd := newSetupSshCommand()
+	if err := cmd.Flags().Parse(nil); err != nil {
+		t.Fatalf("parse flags: %v", err)
+	}
+	f, err := collectSetupSshFlags(cmd)
+	if err != nil {
+		t.Fatalf("collectSetupSshFlags: %v", err)
+	}
+	if f.key != domain.DefaultManagedSSHKeyPath() {
+		t.Errorf("default key = %q, want managed default %q", f.key, domain.DefaultManagedSSHKeyPath())
+	}
+}
+
+// The shared key is reused by every workspace: applyWorkspaceDefaults rewrites
+// the alias/container but must NOT rewrite the key per workspace.
+func TestApplyWorkspaceDefaults_KeepsSharedKey(t *testing.T) {
+	managed := domain.DefaultManagedSSHKeyPath()
+	f := &setupSshFlags{
+		alias:     sshdefaults.Alias,
+		key:       managed,
+		container: sshdefaults.ServiceName,
+	}
+	applyWorkspaceDefaults(f, "myws")
+	if f.key != managed {
+		t.Errorf("applyWorkspaceDefaults rewrote f.key to %q; the shared key must be left untouched", f.key)
+	}
+	if f.alias != "myws" {
+		t.Errorf("expected alias defaulted to workspace, got %q", f.alias)
+	}
+}
+
+func TestWorkspaceFromContainer(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"myws-devcontainer-ssh", "myws"},
+		{"a-b-devcontainer-ssh", "a-b"},
+		{"devcontainer-ssh", ""},
+		{"random", ""},
+		{"", ""},
+	}
+	for _, c := range cases {
+		if got := workspaceFromContainer(c.in); got != c.want {
+			t.Errorf("workspaceFromContainer(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+// An explicit --container short-circuits resolveTargetService: no compose file is
+// read, and the service defaults to sshdefaults.ServiceName unless --service set.
+func TestResolveTargetService_ContainerDriven(t *testing.T) {
+	f := &setupSshFlags{
+		container:         "other-devcontainer-ssh",
+		containerExplicit: true,
+		service:           sshdefaults.ServiceName,
+		composeFile:       "/nonexistent/docker-compose.yml",
+	}
+	target, err := resolveTargetService(f)
+	if err != nil {
+		t.Fatalf("resolveTargetService: %v", err)
+	}
+	if target.Container != "other-devcontainer-ssh" || target.Service != sshdefaults.ServiceName {
+		t.Errorf("got %+v, want container=other-devcontainer-ssh service=%s", target, sshdefaults.ServiceName)
+	}
+}
+
+// With an explicit container the workspace is parsed from the container name,
+// independent of the current directory or project config.
+func TestDeriveWorkspace_ContainerDriven(t *testing.T) {
+	f := &setupSshFlags{
+		container:         "billing-devcontainer-ssh",
+		containerExplicit: true,
+	}
+	ws, err := deriveWorkspace(f)
+	if err != nil {
+		t.Fatalf("deriveWorkspace: %v", err)
+	}
+	if ws != "billing" {
+		t.Errorf("deriveWorkspace = %q, want billing", ws)
 	}
 }
 
@@ -440,6 +613,39 @@ func TestCopyCommand_AssetFlag(t *testing.T) {
 	}
 	if err := copyCmd.Args(copyCmd, []string{"a", "b"}); err == nil {
 		t.Error("two args should be invalid with --asset")
+	}
+}
+
+func TestCopyDirection(t *testing.T) {
+	cases := []struct {
+		name          string
+		src, dst      string
+		wantFrom      bool
+		wantSrc, want string
+		wantErr       bool
+	}{
+		{"host to container default", "./a", "/dest", false, "./a", "/dest", false},
+		{"host to container explicit", "./a", ":/dest", false, "./a", "/dest", false},
+		{"container to host", ":/src", "./out", true, "/src", "./out", false},
+		{"container to container", ":/src", ":/dest", false, "", "", true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			from, src, dst, err := copyDirection(c.src, c.dst)
+			if c.wantErr {
+				if err == nil {
+					t.Fatal("expected error")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if from != c.wantFrom || src != c.wantSrc || dst != c.want {
+				t.Errorf("got (from=%v, src=%q, dst=%q), want (from=%v, src=%q, dst=%q)",
+					from, src, dst, c.wantFrom, c.wantSrc, c.want)
+			}
+		})
 	}
 }
 

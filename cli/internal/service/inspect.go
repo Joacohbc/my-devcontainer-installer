@@ -14,16 +14,41 @@ import (
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
 )
 
+// ContainerState represents the execution state of a container.
+type ContainerState string
+
+const (
+	StateRunning ContainerState = "running"
+	StateExited  ContainerState = "exited"
+	StateCreated ContainerState = "created"
+	StateDead    ContainerState = "dead"
+	StatePaused  ContainerState = "paused"
+)
+
+// PortBinding represents a port mapped from the host to the container.
+type PortBinding struct {
+	HostPort      string
+	ContainerPort string
+	Protocol      string
+}
+
+// VolumeMount represents a directory or volume mounted into the container.
+type VolumeMount struct {
+	Source      string
+	Destination string
+	Type        string
+}
+
 // ContainerInfo holds the detailed fields shown by the info command.
 type ContainerInfo struct {
 	Name      string
 	Image     string
-	Status    string
+	Status    ContainerState
 	Created   time.Time
 	StartedAt time.Time
-	IPs       []string // "network ip"
-	Ports     []string // "hostport:containerport/proto"
-	Volumes   []string // "source → destination"
+	IPs       []NetworkIP
+	Ports     []PortBinding
+	Volumes   []VolumeMount
 }
 
 // dockerInspectRaw is the minimal subset of `docker inspect` JSON we consume.
@@ -65,12 +90,12 @@ func (s InspectService) EnsureDocker() error { return docker.EnsureDocker() }
 
 // ContainerState returns the container's State.Status (e.g. "running"), or an
 // error if it cannot be inspected.
-func (s InspectService) ContainerState(name string) (string, error) {
+func (s InspectService) ContainerState(name string) (ContainerState, error) {
 	status, stdout, _, err := docker.DockerCapture([]string{"inspect", "-f", "{{.State.Status}}", name})
 	if err != nil || status != 0 {
 		return "", fmt.Errorf("container '%s' not found", name)
 	}
-	return strings.TrimSpace(stdout), nil
+	return ContainerState(strings.TrimSpace(stdout)), nil
 }
 
 // ContainerImage returns the container's configured image, or "" if unknown.
@@ -92,7 +117,7 @@ func (s InspectService) ContainerDetails(name string) (*ContainerInfo, error) {
 	info := &ContainerInfo{
 		Name:   strings.TrimPrefix(raw.Name, "/"),
 		Image:  raw.Config.Image,
-		Status: raw.State.Status,
+		Status: ContainerState(raw.State.Status),
 	}
 	if t, terr := time.Parse(time.RFC3339Nano, raw.Created); terr == nil {
 		info.Created = t
@@ -105,34 +130,76 @@ func (s InspectService) ContainerDetails(name string) (*ContainerInfo, error) {
 		if m.Type == "volume" && m.Name != "" {
 			src = m.Name
 		}
-		info.Volumes = append(info.Volumes, src+" → "+m.Destination)
+		info.Volumes = append(info.Volumes, VolumeMount{
+			Source:      src,
+			Destination: m.Destination,
+			Type:        m.Type,
+		})
 	}
 	for portProto, bindings := range raw.NetworkSettings.Ports {
+		parts := strings.SplitN(portProto, "/", 2)
+		containerPort := parts[0]
+		protocol := "tcp"
+		if len(parts) > 1 {
+			protocol = parts[1]
+		}
 		for _, b := range bindings {
 			if b.HostPort != "" {
-				info.Ports = append(info.Ports, b.HostPort+":"+portProto)
+				info.Ports = append(info.Ports, PortBinding{
+					HostPort:      b.HostPort,
+					ContainerPort: containerPort,
+					Protocol:      protocol,
+				})
 			}
 		}
 	}
-	sort.Strings(info.Ports)
+	sort.Slice(info.Ports, func(i, j int) bool {
+		if info.Ports[i].HostPort == info.Ports[j].HostPort {
+			return info.Ports[i].ContainerPort < info.Ports[j].ContainerPort
+		}
+		return info.Ports[i].HostPort < info.Ports[j].HostPort
+	})
 	for netName, net := range raw.NetworkSettings.Networks {
 		if net.IPAddress != "" {
-			info.IPs = append(info.IPs, netName+" "+net.IPAddress)
+			info.IPs = append(info.IPs, NetworkIP{
+				Network: netName,
+				IP:      net.IPAddress,
+			})
 		}
 	}
-	sort.Strings(info.IPs)
+	sort.Slice(info.IPs, func(i, j int) bool {
+		if info.IPs[i].Network == info.IPs[j].Network {
+			return info.IPs[i].IP < info.IPs[j].IP
+		}
+		return info.IPs[i].Network < info.IPs[j].Network
+	})
+	sort.Slice(info.Volumes, func(i, j int) bool {
+		return info.Volumes[i].Source < info.Volumes[j].Source
+	})
 	return info, nil
 }
 
 func (s InspectService) ensureRunning(name string) error {
 	state, err := s.ContainerState(name)
-	if err != nil || state != "running" {
+	if err != nil || state != StateRunning {
 		return fmt.Errorf("container '%s' is not running. Run 'devcontainer-cli' or 'devcontainer-cli start' first", name)
 	}
 	return nil
 }
 
-// Shell opens an interactive shell (or runs command) in the running container.
+// loginShellLauncher resolves the current user's configured login shell (from
+// /etc/passwd, falling back to $SHELL, then bash, then sh) and execs it as a
+// login shell (-l) so that /etc/profile and the user's profile/rc files are
+// loaded — a fully interactive login session, not a bare shell.
+const loginShellLauncher = `SH="$(getent passwd "$(id -u)" 2>/dev/null | cut -d: -f7)"; ` +
+	`[ -x "$SH" ] || SH="$SHELL"; ` +
+	`[ -x "$SH" ] || SH="$(command -v bash)"; ` +
+	`[ -x "$SH" ] || SH="$(command -v sh)"; ` +
+	`exec "$SH" -l`
+
+// Shell opens an interactive login shell (or runs command) in the running
+// container. With no command it launches the user's configured login shell so
+// profiles and rc files are sourced.
 func (s InspectService) Shell(name, user string, command []string) error {
 	if err := s.ensureRunning(name); err != nil {
 		return err
@@ -145,7 +212,7 @@ func (s InspectService) Shell(name, user string, command []string) error {
 	if len(command) > 0 {
 		execArgs = append(execArgs, command...)
 	} else {
-		execArgs = append(execArgs, "sh", "-c", "if command -v bash >/dev/null 2>&1; then exec bash; else exec sh; fi")
+		execArgs = append(execArgs, "sh", "-c", loginShellLauncher)
 	}
 	exitCode, err := docker.DockerInherit(execArgs)
 	if err != nil {
@@ -180,7 +247,7 @@ func (s InspectService) Ls(name, path string, all, long bool) error {
 	return nil
 }
 
-// Copy copies a local file/dir into the running container.
+// Copy copies a local file/dir from the host into the running container.
 func (s InspectService) Copy(name, localPath, containerPath string) error {
 	if _, err := os.Stat(localPath); os.IsNotExist(err) {
 		return fmt.Errorf("local path '%s' does not exist", localPath)
@@ -190,6 +257,23 @@ func (s InspectService) Copy(name, localPath, containerPath string) error {
 	}
 	s.Report.Warn("\nCopying '%s' to '%s' in container '%s'...", localPath, containerPath, name)
 	exitCode, err := docker.DockerInherit([]string{"cp", localPath, name + ":" + containerPath})
+	if err != nil {
+		return err
+	}
+	if exitCode != 0 {
+		return fmt.Errorf("copy failed with exit code %d", exitCode)
+	}
+	s.Report.Success("\nSuccessfully copied.\n")
+	return nil
+}
+
+// CopyFromContainer copies a file/dir from the running container out to the host.
+func (s InspectService) CopyFromContainer(name, containerPath, localPath string) error {
+	if err := s.ensureRunning(name); err != nil {
+		return err
+	}
+	s.Report.Warn("\nCopying '%s' from container '%s' to '%s'...", containerPath, name, localPath)
+	exitCode, err := docker.DockerInherit([]string{"cp", name + ":" + containerPath, localPath})
 	if err != nil {
 		return err
 	}
@@ -283,18 +367,33 @@ func (s InspectService) ComposeLogs(composeFile string, follow bool, tail string
 	return nil
 }
 
-// ContainerNetworkIPs returns lines of "network ip" for a running container,
+// NetworkIP pairs a docker network name with the container's IP on it.
+type NetworkIP struct {
+	Network string
+	IP      string
+}
+
+// ContainerNetworkIPs returns structured NetworkIP pairs for a running container,
 // or an error if the container cannot be inspected.
-func (s InspectService) ContainerNetworkIPs(name string) ([]string, error) {
+func (s InspectService) ContainerNetworkIPs(name string) ([]NetworkIP, error) {
 	format := `{{range $n, $net := .NetworkSettings.Networks}}{{$n}} {{$net.IPAddress}}{{"\n"}}{{end}}`
 	status, stdout, _, err := docker.DockerCapture([]string{"inspect", "-f", format, name})
 	if err != nil || status != 0 {
 		return nil, fmt.Errorf("container '%s' not found", name)
 	}
-	var result []string
+	var result []NetworkIP
 	for _, line := range strings.Split(stdout, "\n") {
-		if line = strings.TrimSpace(line); line != "" {
-			result = append(result, line)
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		sep := strings.Index(line, " ")
+		if sep < 0 {
+			continue
+		}
+		ip := strings.TrimSpace(line[sep+1:])
+		if ip != "" {
+			result = append(result, NetworkIP{Network: line[:sep], IP: ip})
 		}
 	}
 	return result, nil
@@ -306,15 +405,13 @@ func (s InspectService) ContainerNames() []string {
 	if !docker.IsDockerAvailable() {
 		return nil
 	}
-	status, stdout, _, err := docker.DockerCapture([]string{"ps", "-a", "--format", "{{.Names}}"})
-	if err != nil || status != 0 {
+	containers, err := s.ListContainers(true, false)
+	if err != nil {
 		return nil
 	}
 	var names []string
-	for _, line := range strings.Split(stdout, "\n") {
-		if line = strings.TrimSpace(line); line != "" {
-			names = append(names, line)
-		}
+	for _, c := range containers {
+		names = append(names, c.Name)
 	}
 	return names
 }
@@ -349,4 +446,104 @@ func (s InspectService) ListDir(name, dir string) ([]string, error) {
 		}
 	}
 	return entries, nil
+}
+
+// Container represents a high-level Docker container listed by InspectService.
+type Container struct {
+	Name    string
+	Image   string
+	Status  string
+	State   string
+	Managed bool
+	Ports   string
+}
+
+type dockerPSLine struct {
+	Names  string `json:"Names"`
+	Image  string `json:"Image"`
+	Status string `json:"Status"`
+	State  string `json:"State"`
+	Labels string `json:"Labels"`
+	Ports  string `json:"Ports"`
+}
+
+func parsePSLines(stdout string) []dockerPSLine {
+	var out []dockerPSLine
+	for _, line := range strings.Split(strings.TrimSpace(stdout), "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		var obj dockerPSLine
+		if err := json.Unmarshal([]byte(line), &obj); err != nil {
+			continue
+		}
+		if obj.Names == "" {
+			continue
+		}
+		out = append(out, obj)
+	}
+	return out
+}
+
+// ListManaged returns all containers carrying the CLI managed label. Docker
+// errors yield an empty list.
+func (s InspectService) ListManaged() []Container {
+	containers, _ := s.ListContainers(true, true)
+	return containers
+}
+
+// ListAll returns running containers regardless of label, flagging which are
+// CLI-managed devcontainers.
+func (s InspectService) ListAll() []Container {
+	containers, _ := s.ListContainers(false, false)
+	return containers
+}
+
+// ListContainers queries the Docker daemon for containers.
+// If 'all' is true, stopped containers are included (adds -a).
+// If 'managedOnly' is true, only containers with the CLI managed label are returned.
+func (s InspectService) ListContainers(all bool, managedOnly bool) ([]Container, error) {
+	args := []string{"ps", "--format", "{{json .}}"}
+	if all {
+		args = append(args, "-a")
+	}
+	if managedOnly {
+		args = append(args, "--filter", "label="+types.LabelManaged+"=true")
+	}
+
+	status, stdout, _, err := docker.DockerCapture(args)
+	if err != nil {
+		return nil, err
+	}
+	if status != 0 {
+		return nil, fmt.Errorf("docker ps exited with status %d", status)
+	}
+	if strings.TrimSpace(stdout) == "" {
+		return nil, nil
+	}
+
+	managedLabel := types.LabelManaged + "=true"
+	var out []Container
+	for _, l := range parsePSLines(stdout) {
+		managed := false
+		if managedOnly {
+			managed = true
+		} else {
+			for _, lab := range strings.Split(l.Labels, ",") {
+				if strings.TrimSpace(lab) == managedLabel {
+					managed = true
+					break
+				}
+			}
+		}
+		out = append(out, Container{
+			Name:    l.Names,
+			Image:   l.Image,
+			Status:  l.Status,
+			State:   l.State,
+			Managed: managed,
+			Ports:   l.Ports,
+		})
+	}
+	return out, nil
 }

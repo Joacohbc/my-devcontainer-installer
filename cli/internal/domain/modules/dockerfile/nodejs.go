@@ -69,8 +69,8 @@ func renderNvm(version string) string {
 ## NVM + NODE (devuser)
 ##
 RUN NVM_VERSION=$(curl -s https://api.github.com/repos/nvm-sh/nvm/releases/latest | jq -r .tag_name) && \
-    su - devuser -c "curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/${NVM_VERSION}/install.sh | bash"
-RUN su - devuser -c 'export NVM_DIR="$HOME/.nvm" && . "$NVM_DIR/nvm.sh" && %s'
+    su - devuser -c "curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/${NVM_VERSION}/install.sh | bash" && \
+    su - devuser -c 'export NVM_DIR="$HOME/.nvm" && . "$NVM_DIR/nvm.sh" && %s'
 %s
 `, installNode, emitShellInit(".nodejs_init.sh", initLines))
 }
@@ -92,8 +92,8 @@ func renderFnm(version string) string {
 	return fmt.Sprintf(`##
 ## FNM + NODE (devuser)
 ##
-RUN su - devuser -c 'curl -fsSL https://fnm.vercel.app/install | bash -s -- --install-dir "$HOME/.fnm" --skip-shell'
-RUN su - devuser -c 'export PATH="$HOME/.fnm:$PATH" && eval "$(fnm env)" && %s'
+RUN su - devuser -c 'curl -fsSL https://fnm.vercel.app/install | bash -s -- --install-dir "$HOME/.fnm" --skip-shell' && \
+    su - devuser -c 'export PATH="$HOME/.fnm:$PATH" && eval "$(fnm env)" && %s'
 %s
 `, installNode, emitShellInit(".nodejs_init.sh", initLines))
 }

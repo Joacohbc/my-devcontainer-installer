@@ -26,18 +26,22 @@ var PythonModule = &ModuleSpec{
 				uv = b
 			}
 		}
-		uvBlock := ""
-		if uv {
-			uvBlock = fmt.Sprintf(`
-# Install uv (Astral Python installer/manager) for devuser
-RUN su - devuser -c 'curl -LsSf https://astral.sh/uv/install.sh | sh'
-%s
-`, emitShellInit(".python_init.sh", []string{`export PATH="$HOME/.local/bin:$PATH"`}))
+		if !uv {
+			return fmt.Sprintf(`##
+## PYTHON
+##
+RUN apt-get update && apt-get install -y python3 python3-pip && %s
+`, aptCleanup())
 		}
+		// python3 + pip and uv (Astral installer for devuser) install in one RUN
+		// layer; cleanup runs last so the apt cache never lands in the layer.
 		return fmt.Sprintf(`##
 ## PYTHON
 ##
-RUN apt-get update && apt-get install -y python3 python3-pip
-%s`, uvBlock)
+RUN apt-get update && apt-get install -y python3 python3-pip && \
+    su - devuser -c 'curl -LsSf https://astral.sh/uv/install.sh | sh' && \
+    %s
+%s
+`, aptCleanup(), emitShellInit(".python_init.sh", []string{`export PATH="$HOME/.local/bin:$PATH"`}))
 	},
 }

@@ -54,6 +54,17 @@ func TestBuiltinPresetsExcludeAITools(t *testing.T) {
 	}
 }
 
+// pnpm requires nodejs (which pulls in nvm + Node), so it must never appear in a
+// preset that doesn't also include nodejs — otherwise a Bun-only image would
+// drag in the whole Node toolchain.
+func TestBuiltinPresetsNoPnpmWithoutNodejs(t *testing.T) {
+	for _, p := range catalog.BuiltinPresets {
+		if slices.Contains(p.Modules, "pnpm") && !slices.Contains(p.Modules, "nodejs") {
+			t.Errorf("preset %q includes pnpm without nodejs: %v", p.ID, p.Modules)
+		}
+	}
+}
+
 func TestResolveUnknown(t *testing.T) {
 	_, ok := catalog.Resolve("non-existent-preset-id", "")
 	if ok {

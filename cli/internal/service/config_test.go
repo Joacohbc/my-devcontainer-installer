@@ -51,6 +51,32 @@ func TestConfigSSHPortValidation(t *testing.T) {
 	}
 }
 
+func TestConfigSSHKeyRoundTrip(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	svc := ConfigService{Report: nopReporter{}}
+
+	value, customized, err := svc.GetGlobalDefault("ssh-key")
+	if err != nil || customized || value != domain.DefaultManagedSSHKeyPath() {
+		t.Fatalf("fresh ssh-key = %q customized=%v err=%v; want managed default uncustomized", value, customized, err)
+	}
+
+	if err := svc.SetGlobalDefault("ssh-key", "/custom/key"); err != nil {
+		t.Fatalf("SetGlobalDefault: %v", err)
+	}
+	value, customized, _ = svc.GetGlobalDefault("ssh-key")
+	if value != "/custom/key" || !customized {
+		t.Errorf("after set: value=%q customized=%v", value, customized)
+	}
+
+	if err := svc.UnsetGlobalDefault("ssh-key"); err != nil {
+		t.Fatalf("UnsetGlobalDefault: %v", err)
+	}
+	value, customized, _ = svc.GetGlobalDefault("ssh-key")
+	if value != domain.DefaultManagedSSHKeyPath() || customized {
+		t.Errorf("after unset: value=%q customized=%v", value, customized)
+	}
+}
+
 func TestConfigUnknownKey(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	svc := ConfigService{Report: nopReporter{}}

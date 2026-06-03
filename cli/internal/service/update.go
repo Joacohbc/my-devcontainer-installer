@@ -3,7 +3,6 @@ package service
 import (
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
@@ -28,11 +27,11 @@ func pullImage(image string) error {
 // UpdateContainer resolves the image of a single running container and pulls
 // its latest version, returning the resolved image.
 func (s UpdateService) UpdateContainer(containerName string) (string, error) {
-	status, stdout, _, err := docker.DockerCapture([]string{"inspect", "-f", "{{.Config.Image}}", containerName})
-	if err != nil || status != 0 {
+	inspectSvc := InspectService{Report: s.Report}
+	if _, err := inspectSvc.ContainerState(containerName); err != nil {
 		return "", fmt.Errorf("failed to inspect container '%s'", containerName)
 	}
-	image := strings.TrimSpace(stdout)
+	image := inspectSvc.ContainerImage(containerName)
 	if image == "" {
 		return "", fmt.Errorf("could not resolve image for container '%s'", containerName)
 	}
