@@ -582,6 +582,7 @@ func TestGenerateEnv_IncludesEnvVars(t *testing.T) {
 	env := domain.GenerateEnv(cfg)
 	assertContainsStr(t, env, "TUNNEL_TOKEN=abc", "env")
 	assertContainsStr(t, env, "DOCKER_SUBNET=10.0.0.0/8", "env")
+	assertContainsStr(t, env, "COMPOSE_PROJECT_NAME=devcontainer", "env project name")
 }
 
 func TestGenerateEnv_DerivesIPFromDockerSubnetOverride(t *testing.T) {
@@ -593,6 +594,7 @@ func TestGenerateEnv_DerivesIPFromDockerSubnetOverride(t *testing.T) {
 	env := domain.GenerateEnv(cfg)
 	assertContainsStr(t, env, "DOCKER_SUBNET=172.26.0.0/24", "env override")
 	assertContainsStr(t, env, "DEVCONTAINER_IP=172.26.0.254", "env override ip")
+	assertContainsStr(t, env, "COMPOSE_PROJECT_NAME=devcontainer", "env project name")
 }
 
 func TestGenerateEnv_WritesBothSubnetAndIP(t *testing.T) {
@@ -603,6 +605,7 @@ func TestGenerateEnv_WritesBothSubnetAndIP(t *testing.T) {
 	env := domain.GenerateEnv(cfg)
 	assertContainsStr(t, env, "DOCKER_SUBNET=172.25.0.0/28", "env subnet")
 	assertContainsStr(t, env, "DEVCONTAINER_IP=172.25.0.14", "env ip")
+	assertContainsStr(t, env, "COMPOSE_PROJECT_NAME=devcontainer", "env project name")
 }
 
 func TestGenerateDockerfile_ClaudeCode(t *testing.T) {
