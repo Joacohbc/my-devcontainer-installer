@@ -137,24 +137,6 @@ func compareVersions(a, b string) int {
 // (1) than b, honoring pre-release suffixes.
 func (s UpgradeService) CompareVersions(a, b string) int { return compareVersions(a, b) }
 
-// isTestingVersion reports whether a tag is a "version for testing": a SemVer
-// pre-release whose identifiers include a "vt" token (e.g. v1.4.0-vt.1).
-func isTestingVersion(tag string) bool {
-	_, pre, hasPre := splitVersion(tag)
-	if !hasPre {
-		return false
-	}
-	for _, tok := range strings.FieldsFunc(pre, func(r rune) bool { return r == '.' || r == '-' }) {
-		if tok == "vt" {
-			return true
-		}
-	}
-	return false
-}
-
-// IsTestingVersion reports whether tag is a testing (vt) pre-release.
-func (s UpgradeService) IsTestingVersion(tag string) bool { return isTestingVersion(tag) }
-
 // pickTargets returns the newest release overall (top) and the newest stable,
 // non-draft release (stable), ignoring drafts. Either may be nil when no
 // release qualifies.
@@ -247,7 +229,7 @@ func httpGet(rawURL string, withAuth bool, maxBytes int64) (int, []byte, error) 
 }
 
 // ListReleases fetches recent releases (newest first per the GitHub API),
-// including pre-releases and testing (vt) builds.
+// including pre-releases.
 func (s UpgradeService) ListReleases() ([]Release, error) {
 	apiURL := fmt.Sprintf("https://%s/repos/%s/releases?per_page=30", primaryAPIHost, selfUpdateRepo)
 	status, body, err := httpGet(apiURL, true, 5*1024*1024)
@@ -268,7 +250,7 @@ func (s UpgradeService) ListReleases() ([]Release, error) {
 }
 
 // UpgradeTargets returns the newest release overall (top) and the newest stable
-// release (stable). Testing (vt) builds surface only through top, so a caller
+// release (stable). Pre-releases surface only through top, so a caller
 // can offer them as an opt-in while defaulting to stable. top is never nil on
 // success; stable may be nil when only pre-releases exist.
 func (s UpgradeService) UpgradeTargets() (top, stable *Release, err error) {

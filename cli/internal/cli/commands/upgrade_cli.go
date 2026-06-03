@@ -15,10 +15,10 @@ func newUpgradeCliCommand() *cobra.Command {
 		Short: "Replace this binary with the latest GitHub release",
 		Long: `devcontainer-cli upgrade-cli — replace the current binary with the latest release
 
-By default this installs the latest stable release. Testing builds (tagged
-vX.Y.Z-vt.N) are opt-in: when one is newer than the installed version you are
+By default this installs the latest stable release. Pre-releases
+are opt-in: when one is newer than the installed version you are
 asked whether to install it, otherwise the latest stable is used. Pass
---testing to install it without prompting (and in non-interactive mode).
+--pre-release to install it without prompting (and in non-interactive mode).
 
 Env:
   GITHUB_TOKEN  Optional, to avoid the 60 req/hour anonymous rate limit`,
@@ -27,7 +27,7 @@ Env:
 	}
 	cmd.Flags().Bool("check", false, "Print current vs latest and exit (no download)")
 	cmd.Flags().Bool("force", false, "Reinstall even if the current version matches latest")
-	cmd.Flags().Bool("testing", false, "Install the latest testing (vt) build if it is newer")
+	cmd.Flags().Bool("pre-release", false, "Install the latest pre-release (testing) if it is newer")
 	addInteractiveFlag(cmd)
 	return cmd
 }
@@ -35,7 +35,7 @@ Env:
 func runSelfUpdate(cmd *cobra.Command, _ []string) error {
 	check, _ := cmd.Flags().GetBool("check")
 	force, _ := cmd.Flags().GetBool("force")
-	wantTesting, _ := cmd.Flags().GetBool("testing")
+	wantPreRelease, _ := cmd.Flags().GetBool("pre-release")
 	interactive := interactiveFlag(cmd)
 
 	svc := service.UpgradeService{Report: console}
@@ -50,8 +50,8 @@ func runSelfUpdate(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
-	// The normal upgrade target is the latest stable release; testing (vt)
-	// builds are opt-in. Fall back to top only when no stable release exists.
+	// The normal upgrade target is the latest stable release; pre-releases
+	// are opt-in. Fall back to top only when no stable release exists.
 	target := stable
 	if target == nil {
 		target = top
@@ -60,32 +60,32 @@ func runSelfUpdate(cmd *cobra.Command, _ []string) error {
 	newerThanCurrent := func(rel *service.Release) bool {
 		return rel != nil && (current == "dev" || svc.CompareVersions(current, rel.Tag) < 0)
 	}
-	testingAvailable := svc.IsTestingVersion(top.Tag) && newerThanCurrent(top)
+	preReleaseAvailable := top.Prerelease && newerThanCurrent(top)
 
 	if check {
 		printUpgradeCheck(svc, current, target)
-		if testingAvailable {
-			console.Warn("Testing version available: %s (install with --testing)", top.Tag)
+		if preReleaseAvailable {
+			console.Warn("Pre-release version available: %s (install with --pre-release)", top.Tag)
 		}
 		return nil
 	}
 
-	if testingAvailable {
-		if !wantTesting && interactive {
+	if preReleaseAvailable {
+		if !wantPreRelease && interactive {
 			ok, err := console.ConfirmDefault(
-				fmt.Sprintf("Testing version %s is available (latest stable: %s). Install the testing version?", top.Tag, tagOrNone(stable)),
+				fmt.Sprintf("Pre-release version %s is available (latest stable: %s). Install the pre-release version?", top.Tag, tagOrNone(stable)),
 				false,
 			)
 			if err != nil {
 				return err
 			}
-			wantTesting = ok
+			wantPreRelease = ok
 		}
 		switch {
-		case wantTesting:
+		case wantPreRelease:
 			target = top
 		case !interactive:
-			console.Info("Testing version %s available; installing latest stable (pass --testing to opt in).", top.Tag)
+			console.Info("Pre-release version %s available; installing latest stable (pass --pre-release to opt in).", top.Tag)
 		}
 	}
 

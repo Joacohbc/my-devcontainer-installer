@@ -143,26 +143,6 @@ func TestCompareVersions(t *testing.T) {
 	}
 }
 
-func TestIsTestingVersion(t *testing.T) {
-	cases := []struct {
-		tag  string
-		want bool
-	}{
-		{"v1.4.0-vt.1", true},
-		{"v1.4.0-vt", true},
-		{"1.4.0-vt.2", true},
-		{"v1.4.0", false},
-		{"v1.4.0-rc.1", false},
-		{"v1.4.0-beta.vt", true},
-		{"v2.0.0-vtx.1", false},
-	}
-	for _, c := range cases {
-		if got := isTestingVersion(c.tag); got != c.want {
-			t.Errorf("isTestingVersion(%q) = %v, want %v", c.tag, got, c.want)
-		}
-	}
-}
-
 func TestPickTargets(t *testing.T) {
 	releases := []Release{
 		{Tag: "v1.5.0-vt.2", Prerelease: true},
