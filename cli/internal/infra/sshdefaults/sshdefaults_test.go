@@ -61,7 +61,7 @@ func TestBuildConfigBlock_Local(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	for _, frag := range []string{"Host devcontainer", "HostName 172.20.0.2", "User devuser", "IdentityFile /home/u/.ssh/id_devcontainer"} {
+	for _, frag := range []string{"Host devcontainer", "HostName 172.20.0.2", "User devuser", "IdentityFile /home/u/.ssh/id_devcontainer", "IdentitiesOnly yes"} {
 		if !strings.Contains(got, frag) {
 			t.Errorf("local block missing %q:\n%s", frag, got)
 		}
@@ -89,6 +89,9 @@ func TestBuildConfigBlock_WindowsDefaults(t *testing.T) {
 	}
 	if !strings.Contains(got, "Port 2222") {
 		t.Errorf("expected default windows port 2222:\n%s", got)
+	}
+	if !strings.Contains(got, "IdentitiesOnly yes") {
+		t.Errorf("expected IdentitiesOnly yes:\n%s", got)
 	}
 }
 
@@ -126,6 +129,9 @@ func TestBuildConfigBlock_Remote(t *testing.T) {
 	}
 	if !strings.Contains(got, "ws-devcontainer-ssh") {
 		t.Errorf("remote block should reference the container:\n%s", got)
+	}
+	if !strings.Contains(got, "IdentitiesOnly yes") {
+		t.Errorf("expected IdentitiesOnly yes:\n%s", got)
 	}
 	// The substitution must be deferred to the remote host (\$) and the format's
 	// inner quotes escaped (\") so the ProxyCommand string is not broken.

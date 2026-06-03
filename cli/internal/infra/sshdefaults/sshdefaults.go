@@ -121,7 +121,8 @@ func BuildConfigBlock(opts ConfigBlockOptions) (string, error) {
 		return fmt.Sprintf(`Host %s
     HostName %s
     User %s
-    IdentityFile %s`, opts.Alias, opts.Hostname, opts.User, opts.KeyPath), nil
+    IdentityFile %s
+    IdentitiesOnly yes`, opts.Alias, opts.Hostname, opts.User, opts.KeyPath), nil
 
 	case ModeWindows:
 		hostname := opts.Hostname
@@ -136,7 +137,8 @@ func BuildConfigBlock(opts ConfigBlockOptions) (string, error) {
     HostName %s
     Port %s
     User %s
-    IdentityFile %s`, opts.Alias, hostname, port, opts.User, opts.KeyPath), nil
+    IdentityFile %s
+    IdentitiesOnly yes`, opts.Alias, hostname, port, opts.User, opts.KeyPath), nil
 
 	case ModeRemote:
 		if opts.Remote == "" {
@@ -156,6 +158,7 @@ func BuildConfigBlock(opts ConfigBlockOptions) (string, error) {
 		return fmt.Sprintf(`Host %s
     User %s
     IdentityFile %s
+    IdentitiesOnly yes
     ProxyCommand ssh %s "nc -q0 %s 22"`, opts.Alias, opts.User, opts.KeyPath, opts.Remote, ipExpr), nil
 	}
 	return "", fmt.Errorf("unknown mode %q", opts.Mode)
