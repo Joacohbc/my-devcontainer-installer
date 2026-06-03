@@ -2,6 +2,7 @@ package commands
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/ui"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/assets"
@@ -13,10 +14,18 @@ func init() { register(newCopyCommand()) }
 
 func newCopyCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "copy [src_local_path] [dest_container_path]",
+		Use:     "copy [src] [dest]",
 		Aliases: []string{"cp"},
-		Short:   "Copy a file or directory from the host to the container",
-		Long: `devcontainer-cli copy — copy a local file or directory into the running devcontainer
+		Short:   "Copy files or directories between the host and the container",
+		Long: `devcontainer-cli copy — copy a file or directory between the host and the running devcontainer
+
+A path prefixed with ':' refers to a path inside the container (the container is
+resolved automatically, so you don't type its name). Exactly one of src/dest may
+be a container path; the direction is inferred from where the ':' is:
+
+  copy ./app.go :/home/devuser/app.go   # host -> container
+  copy :/home/devuser/out.log ./out.log # container -> host
+  copy ./app.go /home/devuser/app.go    # host -> container (':' optional on dest)
 
 Supports real-time dynamic completion for paths inside the container.
 
@@ -77,25 +86,55 @@ func runCopy(cmd *cobra.Command, args []string) error {
 		return svc.CopyAsset(containerName, asset, dest)
 	}
 
-	return svc.Copy(containerName, args[0], args[1])
+	fromContainer, src, dst, err := copyDirection(args[0], args[1])
+	if err != nil {
+		return err
+	}
+	if fromContainer {
+		return svc.CopyFromContainer(containerName, src, dst)
+	}
+	return svc.Copy(containerName, src, dst)
+}
+
+// copyDirection inspects the ':'-prefix on src/dst to decide copy direction and
+// returns the paths with any prefix stripped. A ':'-prefixed path is inside the
+// container; exactly one side may be a container path. When neither is prefixed
+// the copy defaults to host -> container for backward compatibility.
+func copyDirection(src, dst string) (fromContainer bool, cleanSrc, cleanDst string, err error) {
+	srcInContainer := strings.HasPrefix(src, ":")
+	dstInContainer := strings.HasPrefix(dst, ":")
+	if srcInContainer && dstInContainer {
+		return false, "", "", fmt.Errorf("container-to-container copy is not supported; only one path may be a container path (':'-prefixed)")
+	}
+	if srcInContainer {
+		return true, strings.TrimPrefix(src, ":"), dst, nil
+	}
+	return false, src, strings.TrimPrefix(dst, ":"), nil
 }
 
 func runCopyCompletion(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 	if assetFlag(cmd) != "" {
 		return completeContainerPathForAsset(cmd, args, toComplete)
 	}
-	if len(args) == 0 {
+	// Either positional (src or dest) may target the container. A ':'-prefixed
+	// value completes paths inside the container; otherwise fall back to local
+	// host file completion.
+	if len(args) > 1 {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	if !strings.HasPrefix(toComplete, ":") {
 		return nil, cobra.ShellCompDirectiveDefault
 	}
-	if len(args) == 1 {
-		wsFlag := workspaceFlag(cmd)
-		containerName, err := resolveContainer(cmd, wsFlag)
-		if err != nil {
-			return nil, cobra.ShellCompDirectiveNoFileComp
-		}
-		return completeContainerPath(containerName, toComplete)
+	wsFlag := workspaceFlag(cmd)
+	containerName, err := resolveContainer(cmd, wsFlag)
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
-	return nil, cobra.ShellCompDirectiveNoFileComp
+	suggestions, directive := completeContainerPath(containerName, strings.TrimPrefix(toComplete, ":"))
+	for i, s := range suggestions {
+		suggestions[i] = ":" + s
+	}
+	return suggestions, directive
 }
 
 // completeContainerPathForAsset completes the optional destination path inside

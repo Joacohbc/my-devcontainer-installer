@@ -616,6 +616,39 @@ func TestCopyCommand_AssetFlag(t *testing.T) {
 	}
 }
 
+func TestCopyDirection(t *testing.T) {
+	cases := []struct {
+		name          string
+		src, dst      string
+		wantFrom      bool
+		wantSrc, want string
+		wantErr       bool
+	}{
+		{"host to container default", "./a", "/dest", false, "./a", "/dest", false},
+		{"host to container explicit", "./a", ":/dest", false, "./a", "/dest", false},
+		{"container to host", ":/src", "./out", true, "/src", "./out", false},
+		{"container to container", ":/src", ":/dest", false, "", "", true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			from, src, dst, err := copyDirection(c.src, c.dst)
+			if c.wantErr {
+				if err == nil {
+					t.Fatal("expected error")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if from != c.wantFrom || src != c.wantSrc || dst != c.want {
+				t.Errorf("got (from=%v, src=%q, dst=%q), want (from=%v, src=%q, dst=%q)",
+					from, src, dst, c.wantFrom, c.wantSrc, c.want)
+			}
+		})
+	}
+}
+
 func TestResolveProjectComposeFileWithWorkspace(t *testing.T) {
 	tempDir := t.TempDir()
 	wsDir := filepath.Join(tempDir, ".dc_my-ws", "build")

@@ -235,7 +235,7 @@ func (s InspectService) Ls(name, path string, all, long bool) error {
 	return nil
 }
 
-// Copy copies a local file/dir into the running container.
+// Copy copies a local file/dir from the host into the running container.
 func (s InspectService) Copy(name, localPath, containerPath string) error {
 	if _, err := os.Stat(localPath); os.IsNotExist(err) {
 		return fmt.Errorf("local path '%s' does not exist", localPath)
@@ -245,6 +245,23 @@ func (s InspectService) Copy(name, localPath, containerPath string) error {
 	}
 	s.Report.Warn("\nCopying '%s' to '%s' in container '%s'...", localPath, containerPath, name)
 	exitCode, err := docker.DockerInherit([]string{"cp", localPath, name + ":" + containerPath})
+	if err != nil {
+		return err
+	}
+	if exitCode != 0 {
+		return fmt.Errorf("copy failed with exit code %d", exitCode)
+	}
+	s.Report.Success("\nSuccessfully copied.\n")
+	return nil
+}
+
+// CopyFromContainer copies a file/dir from the running container out to the host.
+func (s InspectService) CopyFromContainer(name, containerPath, localPath string) error {
+	if err := s.ensureRunning(name); err != nil {
+		return err
+	}
+	s.Report.Warn("\nCopying '%s' from container '%s' to '%s'...", containerPath, name, localPath)
+	exitCode, err := docker.DockerInherit([]string{"cp", name + ":" + containerPath, localPath})
 	if err != nil {
 		return err
 	}

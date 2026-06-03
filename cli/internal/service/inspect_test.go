@@ -98,6 +98,21 @@ func TestInspectCopy(t *testing.T) {
 	}
 }
 
+func TestInspectCopyFromContainer(t *testing.T) {
+	runner := &fakeRunner{status: 0, stdout: "running"}
+	defer useFakeDocker(runner)()
+
+	dest := filepath.Join(t.TempDir(), "out.log")
+	svc := InspectService{Report: nopReporter{}}
+	if err := svc.CopyFromContainer("c1", "/var/log/out.log", dest); err != nil {
+		t.Fatalf("CopyFromContainer: %v", err)
+	}
+	call := runner.callContaining("cp")
+	if call == nil || !slices.Contains(call, "c1:/var/log/out.log") || !slices.Contains(call, dest) {
+		t.Errorf("unexpected cp call: %v", call)
+	}
+}
+
 func TestInspectCopyAsset(t *testing.T) {
 	runner := &fakeRunner{status: 0, stdout: "running"}
 	defer useFakeDocker(runner)()
