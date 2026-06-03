@@ -330,7 +330,6 @@ Host *.wildcard
 	}
 }
 
-
 // The remote config block builds purely from the alias, remote host and
 // container — with an empty installResult — proving no key generation or
 // installation needs to have happened first.
