@@ -48,8 +48,9 @@ func TestBuildOnlyAssetsAreNotCopyable(t *testing.T) {
 	}
 	// The copyable set is exactly the runtime installers + the gh login helper.
 	want := []string{
-		"install-antigravity", "install-claude-code", "install-codex-cli",
-		"install-copilot", "install-opencode", "login-github-cli",
+		"install-antigravity", "install-caveman", "install-claude-code",
+		"install-codex-cli", "install-copilot", "install-graphify",
+		"install-opencode", "login-github-cli",
 	}
 	if len(CopyableNames()) != len(want) {
 		t.Fatalf("expected %d copyable assets, got %v", len(want), CopyableNames())

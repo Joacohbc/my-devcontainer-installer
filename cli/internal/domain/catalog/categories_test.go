@@ -32,7 +32,7 @@ func TestSelectableByCategoryMapping(t *testing.T) {
 	grouped := SelectableByCategory()
 
 	want := map[types.UICategory][]string{
-		types.UICategoryAITools:   {"claude-code", "opencode", "codex-cli", "antigravity-cli", "copilot-cli"},
+		types.UICategoryAITools:   {"claude-code", "opencode", "codex-cli", "antigravity-cli", "copilot-cli", "graphify", "caveman"},
 		types.UICategoryLanguages: {"java-temurin", "java-openjdk", "python", "go", "php", "rust", "nodejs", "pnpm", "bun"},
 		types.UICategoryDatabases: {"sqlite", "mongo", "redis", "postgres"},
 		types.UICategoryDevTools:  {"github-cli", "tmux", "dod", "tunnel"},

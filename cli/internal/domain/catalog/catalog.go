@@ -28,6 +28,8 @@ var DockerfileModules = []*dockerfile.ModuleSpec{
 	dockerfile.CodexCliModule,
 	dockerfile.AntigravityCliModule,
 	dockerfile.CopilotCliModule,
+	dockerfile.GraphifyModule,
+	dockerfile.CavemanModule,
 	dockerfile.TmuxModule,
 	dockerfile.DodModule,
 	dockerfile.CleanupModule,

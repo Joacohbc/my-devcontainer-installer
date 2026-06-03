@@ -644,3 +644,23 @@ func TestGenerateDockerfile_CopilotCli(t *testing.T) {
 	df := mustGenerateDockerfile(t, cfg)
 	assertContainsStr(t, df, "install-copilot.sh", "copilot-cli script")
 }
+
+func TestGenerateDockerfile_Graphify(t *testing.T) {
+	cfg := makeConfig(func(c *types.DevcontainerConfig) {
+		c.Dockerfile.Modules = []types.SelectedModule{{ID: "graphify"}}
+	})
+	df := mustGenerateDockerfile(t, cfg)
+	assertContainsStr(t, df, "install-graphify.sh", "graphify script")
+	// graphify requires python
+	assertContainsStr(t, df, "python3", "graphify requires python")
+}
+
+func TestGenerateDockerfile_Caveman(t *testing.T) {
+	cfg := makeConfig(func(c *types.DevcontainerConfig) {
+		c.Dockerfile.Modules = []types.SelectedModule{{ID: "caveman"}}
+	})
+	df := mustGenerateDockerfile(t, cfg)
+	assertContainsStr(t, df, "install-caveman.sh", "caveman script")
+	// caveman requires nodejs
+	assertContainsStr(t, df, "nvm install --lts", "caveman requires nodejs")
+}

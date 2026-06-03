@@ -29,6 +29,8 @@ const (
 	ModuleCodexCli       ModuleID = "codex-cli"
 	ModuleAntigravityCli ModuleID = "antigravity-cli"
 	ModuleCopilotCli     ModuleID = "copilot-cli"
+	ModuleGraphify       ModuleID = "graphify"
+	ModuleCaveman        ModuleID = "caveman"
 	ModuleTmux           ModuleID = "tmux"
 	ModuleDod            ModuleID = "dod"
 	ModuleCleanup        ModuleID = "cleanup"
