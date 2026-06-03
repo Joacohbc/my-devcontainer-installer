@@ -238,27 +238,15 @@ func DefaultPersistVolumeIDs() []string {
 	return ids
 }
 
-// PortForward declares a persistent local→container SSH tunnel stored in the
-// project config. On `up` each one is spawned as a detached background process;
-// `port-forward ls/stop` manages them by a unique id derived from the local
-// port. TargetHost defaults to "localhost" and Alias to the workspace name.
-type PortForward struct {
-	LocalPort     int    `json:"localPort" yaml:"localPort"`
-	ContainerPort int    `json:"containerPort" yaml:"containerPort"`
-	TargetHost    string `json:"targetHost,omitempty" yaml:"targetHost,omitempty"`
-	Alias         string `json:"alias,omitempty" yaml:"alias,omitempty"`
-}
-
 type DevcontainerConfig struct {
-	Mode         BuildMode         `json:"mode" yaml:"mode"`
-	Image        string            `json:"image" yaml:"image"`
-	Workspace    string            `json:"workspace" yaml:"workspace"`
-	Dockerfile   DockerfileConfig  `json:"dockerfile" yaml:"dockerfile"`
-	Compose      ComposeConfig     `json:"compose" yaml:"compose"`
-	Env          map[string]string `json:"env" yaml:"env"`
-	PortForwards []PortForward     `json:"portForwards,omitempty" yaml:"portForwards,omitempty"`
-	Remote       *RemoteConfig     `json:"remote,omitempty" yaml:"remote,omitempty"`
-	Fingerprint  string            `json:"fingerprint,omitempty" yaml:"fingerprint,omitempty"`
+	Mode        BuildMode         `json:"mode" yaml:"mode"`
+	Image       string            `json:"image" yaml:"image"`
+	Workspace   string            `json:"workspace" yaml:"workspace"`
+	Dockerfile  DockerfileConfig  `json:"dockerfile" yaml:"dockerfile"`
+	Compose     ComposeConfig     `json:"compose" yaml:"compose"`
+	Env         map[string]string `json:"env" yaml:"env"`
+	Remote      *RemoteConfig     `json:"remote,omitempty" yaml:"remote,omitempty"`
+	Fingerprint string            `json:"fingerprint,omitempty" yaml:"fingerprint,omitempty"`
 }
 
 const ConfigFile = "devcontainer.config.json"

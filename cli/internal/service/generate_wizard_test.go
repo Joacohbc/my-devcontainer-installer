@@ -32,37 +32,6 @@ func TestConfigureReducesWizardAnswers(t *testing.T) {
 	}
 }
 
-func TestConfigureReducesPortForwards(t *testing.T) {
-	defer useFakeDocker(&fakeRunner{status: 0})()
-
-	svc := GenerateService{Report: nopReporter{}}
-	base := &types.DevcontainerConfig{Env: map[string]string{}}
-	prompter := scriptedPrompter{answers: map[string]any{
-		stepKeyWorkspace: "testws",
-		stepKeyMode:      string(types.BuildModeLocalCached),
-		stepKeySubnet:    "172.45.0.0/16",
-		stepKeyForwards:  "3000, 8080:80, 5432:postgres:5432",
-	}}
-
-	cfg, err := svc.Configure(base, "/home/user/proj", prompter)
-	if err != nil {
-		t.Fatalf("Configure: %v", err)
-	}
-	want := []types.PortForward{
-		{LocalPort: 3000, ContainerPort: 3000},
-		{LocalPort: 8080, ContainerPort: 80},
-		{LocalPort: 5432, TargetHost: "postgres", ContainerPort: 5432},
-	}
-	if len(cfg.PortForwards) != len(want) {
-		t.Fatalf("PortForwards = %+v, want %+v", cfg.PortForwards, want)
-	}
-	for i := range want {
-		if cfg.PortForwards[i] != want[i] {
-			t.Errorf("PortForwards[%d] = %+v, want %+v", i, cfg.PortForwards[i], want[i])
-		}
-	}
-}
-
 func TestVariantChoicesCoversRemoteVariants(t *testing.T) {
 	choices := VariantChoices()
 	if len(choices) != len(types.RemoteVariants) {

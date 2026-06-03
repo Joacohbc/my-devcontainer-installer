@@ -3,8 +3,6 @@ package service
 import (
 	"fmt"
 	"path/filepath"
-	"strconv"
-	"strings"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/catalog"
@@ -23,99 +21,7 @@ const (
 	stepKeyImage     = "image"
 	stepKeySubnet    = "subnet"
 	stepKeyPersist   = "persist"
-	stepKeyForwards  = "forwards"
 )
-
-// parsePortForwardPort validates a single port token (1..65535).
-func parsePortForwardPort(value, label string) (int, error) {
-	n, err := strconv.Atoi(strings.TrimSpace(value))
-	if err != nil || n <= 0 || n > 65535 {
-		return 0, fmt.Errorf("invalid %s: %s", label, value)
-	}
-	return n, nil
-}
-
-// parsePortForward parses one mapping token into a PortForward. Accepted forms:
-// "port", "local:container", or "local:host:container".
-func parsePortForward(item string) (types.PortForward, error) {
-	parts := strings.Split(item, ":")
-	for i := range parts {
-		parts[i] = strings.TrimSpace(parts[i])
-	}
-	switch len(parts) {
-	case 1:
-		p, err := parsePortForwardPort(parts[0], "port")
-		if err != nil {
-			return types.PortForward{}, err
-		}
-		return types.PortForward{LocalPort: p, ContainerPort: p}, nil
-	case 2:
-		local, err := parsePortForwardPort(parts[0], "local port")
-		if err != nil {
-			return types.PortForward{}, err
-		}
-		container, err := parsePortForwardPort(parts[1], "container port")
-		if err != nil {
-			return types.PortForward{}, err
-		}
-		return types.PortForward{LocalPort: local, ContainerPort: container}, nil
-	case 3:
-		local, err := parsePortForwardPort(parts[0], "local port")
-		if err != nil {
-			return types.PortForward{}, err
-		}
-		if parts[1] == "" {
-			return types.PortForward{}, fmt.Errorf("invalid target host: empty string")
-		}
-		container, err := parsePortForwardPort(parts[2], "container port")
-		if err != nil {
-			return types.PortForward{}, err
-		}
-		return types.PortForward{LocalPort: local, TargetHost: parts[1], ContainerPort: container}, nil
-	default:
-		return types.PortForward{}, fmt.Errorf("invalid port mapping: %s (expected 'port', 'local:container' or 'local:host:container')", item)
-	}
-}
-
-// ParsePortForwards parses a comma-separated list of port mappings into
-// PortForwards. An empty string yields no forwards. It is reused by the wizard
-// and the generate --forward flags.
-func ParsePortForwards(value string) ([]types.PortForward, error) {
-	var forwards []types.PortForward
-	for _, item := range strings.Split(value, ",") {
-		t := strings.TrimSpace(item)
-		if t == "" {
-			continue
-		}
-		f, err := parsePortForward(t)
-		if err != nil {
-			return nil, err
-		}
-		forwards = append(forwards, f)
-	}
-	return forwards, nil
-}
-
-// formatPortForward renders a PortForward back to its compact mapping token.
-func formatPortForward(f types.PortForward) string {
-	switch {
-	case f.TargetHost != "":
-		return fmt.Sprintf("%d:%s:%d", f.LocalPort, f.TargetHost, f.ContainerPort)
-	case f.LocalPort == f.ContainerPort:
-		return strconv.Itoa(f.LocalPort)
-	default:
-		return fmt.Sprintf("%d:%d", f.LocalPort, f.ContainerPort)
-	}
-}
-
-// formatPortForwards joins forwards into the comma-separated wizard input form.
-func formatPortForwards(forwards []types.PortForward) string {
-	tokens := make([]string, 0, len(forwards))
-	for _, f := range forwards {
-		tokens = append(tokens, formatPortForward(f))
-	}
-	return strings.Join(tokens, ", ")
-}
 
 func categoryStepKey(c types.UICategory) string  { return "cat:" + string(c) }
 func optionStepKey(entryID, optID string) string { return "opt:" + entryID + ":" + optID }
@@ -307,27 +213,8 @@ func (w wizardContext) steps(s *State) []Step {
 	}
 	steps = append(steps, w.subnetStep())
 	steps = append(steps, w.persistStep())
-	steps = append(steps, w.forwardsStep())
 	steps = append(steps, w.envSteps(s)...)
 	return steps
-}
-
-func (w wizardContext) forwardsStep() Step {
-	return Step{Key: stepKeyForwards, Build: func(s *State) Field {
-		initial := formatPortForwards(w.base.PortForwards)
-		if s.Has(stepKeyForwards) {
-			initial = s.String(stepKeyForwards)
-		}
-		return Field{
-			Kind:    FieldInput,
-			Title:   "Port-forwards en segundo plano (CSV, ej. 3000, 8080:80, 5432:postgres:5432; vacío para ninguno):",
-			Initial: initial,
-			Validate: func(v string) error {
-				_, err := ParsePortForwards(v)
-				return err
-			},
-		}
-	}}
 }
 
 func basePersistIDs(base *types.DevcontainerConfig) []string {
@@ -581,14 +468,6 @@ func (w wizardContext) reduce(s *State) *types.DevcontainerConfig {
 		draft.Compose.PersistVolumes = &persist
 	} else {
 		draft.Compose.PersistVolumes = w.base.Compose.PersistVolumes
-	}
-
-	if s.Has(stepKeyForwards) {
-		// Validated by the step; a parse error here means no forwards.
-		forwards, _ := ParsePortForwards(s.String(stepKeyForwards))
-		draft.PortForwards = forwards
-	} else {
-		draft.PortForwards = w.base.PortForwards
 	}
 
 	if mode == types.BuildModeRemote {
