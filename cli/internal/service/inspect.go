@@ -187,7 +187,19 @@ func (s InspectService) ensureRunning(name string) error {
 	return nil
 }
 
-// Shell opens an interactive shell (or runs command) in the running container.
+// loginShellLauncher resolves the current user's configured login shell (from
+// /etc/passwd, falling back to $SHELL, then bash, then sh) and execs it as a
+// login shell (-l) so that /etc/profile and the user's profile/rc files are
+// loaded — a fully interactive login session, not a bare shell.
+const loginShellLauncher = `SH="$(getent passwd "$(id -u)" 2>/dev/null | cut -d: -f7)"; ` +
+	`[ -x "$SH" ] || SH="$SHELL"; ` +
+	`[ -x "$SH" ] || SH="$(command -v bash)"; ` +
+	`[ -x "$SH" ] || SH="$(command -v sh)"; ` +
+	`exec "$SH" -l`
+
+// Shell opens an interactive login shell (or runs command) in the running
+// container. With no command it launches the user's configured login shell so
+// profiles and rc files are sourced.
 func (s InspectService) Shell(name, user string, command []string) error {
 	if err := s.ensureRunning(name); err != nil {
 		return err
@@ -200,7 +212,7 @@ func (s InspectService) Shell(name, user string, command []string) error {
 	if len(command) > 0 {
 		execArgs = append(execArgs, command...)
 	} else {
-		execArgs = append(execArgs, "sh", "-c", "if command -v bash >/dev/null 2>&1; then exec bash; else exec sh; fi")
+		execArgs = append(execArgs, "sh", "-c", loginShellLauncher)
 	}
 	exitCode, err := docker.DockerInherit(execArgs)
 	if err != nil {

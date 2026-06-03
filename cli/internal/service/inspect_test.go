@@ -48,6 +48,13 @@ func TestInspectShellBuildsExecArgs(t *testing.T) {
 			if slices.Contains(call, "-u") != c.wantUser {
 				t.Errorf("-u presence = %v, want %v (call %v)", !c.wantUser, c.wantUser, call)
 			}
+			// With no command, launch a login shell so profiles/rc files load.
+			if len(c.command) == 0 {
+				joined := strings.Join(call, " ")
+				if !strings.Contains(joined, "exec \"$SH\" -l") || !strings.Contains(joined, "getent passwd") {
+					t.Errorf("expected login-shell launcher, got %v", call)
+				}
+			}
 		})
 	}
 }
