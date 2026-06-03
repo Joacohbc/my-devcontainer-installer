@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"runtime"
 	"strings"
 	"time"
@@ -19,20 +18,16 @@ import (
 func init() { register(newSetupSshCommand()) }
 
 type setupSshFlags struct {
-	remote              string
-	alias               string
-	aliasExplicit       bool
-	key                 string
-	port                string
-	mode                string
-	assumeYes           bool
-	container           string
-	containerExplicit   bool
-	service             string
-	serviceExplicit     bool
-	composeFile         string
-	composeFileExplicit bool
-	user                string
+	remote            string
+	alias             string
+	key               string
+	port              string
+	assumeYes         bool
+	container         string
+	containerExplicit bool
+	service           string
+	composeFile       string
+	user              string
 }
 
 func newSetupSshCommand() *cobra.Command {
@@ -45,41 +40,19 @@ func newSetupSshCommand() *cobra.Command {
 	}
 	f := cmd.Flags()
 	f.String("remote", "", "Configure remote-server access (ProxyCommand mode): USER@HOST")
-	f.String("alias", sshdefaults.Alias, "SSH alias to register")
 	f.String("key", "", "Private key path (default: the shared managed key under the CLI config dir)")
 	f.String("port", fmt.Sprintf("%d", domain.ResolveSSHHostPort()), "Port for Windows mode")
-	f.String("mode", "", "Force mode: local | windows | remote")
 	f.String("container", sshdefaults.ServiceName, "Container name (auto-detected from compose if omitted)")
-	f.String("service", sshdefaults.ServiceName, "Compose service name (auto-detected if omitted)")
-	f.StringP("compose-file", "f", "", "Compose file path (default: .dc_<workspace>/build/docker-compose.yml)")
 	f.String("user", sshdefaults.User, "SSH user inside container")
 	f.BoolP("yes", "y", false, `Assume "yes" to all prompts`)
 
 	// Dynamic completions
-	_ = cmd.RegisterFlagCompletionFunc("mode", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		return []string{"local", "windows", "remote"}, cobra.ShellCompDirectiveNoFileComp
-	})
 	_ = cmd.RegisterFlagCompletionFunc("container", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return listContainers(), cobra.ShellCompDirectiveNoFileComp
-	})
-	_ = cmd.RegisterFlagCompletionFunc("service", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		compFile, _ := cmd.Flags().GetString("compose-file")
-		if compFile == "" {
-			cwd, err := currentDir()
-			if err != nil {
-				return nil, cobra.ShellCompDirectiveNoFileComp
-			}
-			compFile = defaultComposeFile(cwd)
-		}
-		return listComposeServices(compFile), cobra.ShellCompDirectiveNoFileComp
 	})
 	_ = cmd.RegisterFlagCompletionFunc("remote", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return listSshHosts(), cobra.ShellCompDirectiveNoFileComp
 	})
-	_ = cmd.RegisterFlagCompletionFunc("alias", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		return listSshHosts(), cobra.ShellCompDirectiveNoFileComp
-	})
-	_ = cmd.MarkFlagFilename("compose-file", "yml", "yaml")
 	_ = cmd.MarkFlagFilename("key")
 
 	return cmd
@@ -93,27 +66,17 @@ func collectSetupSshFlags(cmd *cobra.Command) (*setupSshFlags, error) {
 	}
 	g := &setupSshFlags{}
 	g.remote, _ = f.GetString("remote")
-	g.alias, _ = f.GetString("alias")
-	g.aliasExplicit = f.Changed("alias")
+	g.alias = sshdefaults.Alias
 	g.key, _ = f.GetString("key")
 	g.key = domain.ResolveSSHKeyPath(g.key)
 	g.port, _ = f.GetString("port")
-	g.mode, _ = f.GetString("mode")
 	g.container, _ = f.GetString("container")
 	g.containerExplicit = f.Changed("container")
-	g.service, _ = f.GetString("service")
-	g.serviceExplicit = f.Changed("service")
-	g.composeFile, _ = f.GetString("compose-file")
-	g.composeFileExplicit = f.Changed("compose-file")
-	if g.composeFile == "" {
-		g.composeFile = defaultComposeFile(cwd)
-	}
+	g.service = sshdefaults.ServiceName
+	g.composeFile = defaultComposeFile(cwd)
 	g.user, _ = f.GetString("user")
 	g.assumeYes, _ = f.GetBool("yes")
 
-	if g.remote != "" && !f.Changed("mode") {
-		g.mode = "remote"
-	}
 	return g, nil
 }
 
@@ -125,10 +88,6 @@ func collectSetupSshFlags(cmd *cobra.Command) (*setupSshFlags, error) {
 //   - workspace-driven: the target is discovered from the project compose file,
 //     falling back to the managed-container picker when none exists.
 func resolveTargetService(f *setupSshFlags) (service.ComposeTarget, error) {
-	if f.containerExplicit {
-		return service.ComposeTarget{Service: f.service, Container: f.container}, nil
-	}
-
 	cwd, err := currentDir()
 	if err != nil {
 		return service.ComposeTarget{}, err
@@ -147,9 +106,6 @@ func resolveTargetService(f *setupSshFlags) (service.ComposeTarget, error) {
 	}
 
 	if target, ok := service.PickDevcontainerService(services); ok {
-		if f.serviceExplicit {
-			target.Service = f.service
-		}
 		return target, nil
 	}
 
@@ -186,8 +142,8 @@ func selectComposeService(f *setupSshFlags, services map[string]service.ComposeS
 }
 
 func detectMode(f *setupSshFlags) sshdefaults.Mode {
-	if f.mode != "" {
-		return sshdefaults.Mode(f.mode)
+	if f.remote != "" {
+		return sshdefaults.ModeRemote
 	}
 
 	if runtime.GOOS == "windows" {
@@ -218,6 +174,11 @@ func ensureStack(ssh service.SshService, f *setupSshFlags) error {
 	}
 
 	console.Warn("Container '%s' not running.", f.container)
+
+	if f.containerExplicit || f.composeFile == "" {
+		return fmt.Errorf("container '%s' is not running. Please start it manually first", f.container)
+	}
+
 	cwd, err := currentDir()
 	if err != nil {
 		return err
@@ -420,11 +381,6 @@ func testConnection(ssh service.SshService, alias string) {
 //   - workspace-driven: otherwise it comes from the project config, then the
 //     container name, then the sanitized directory name.
 func deriveWorkspace(f *setupSshFlags) (string, error) {
-	if f.containerExplicit {
-		if ws := workspaceFromContainer(f.container); ws != "" {
-			return ws, nil
-		}
-	}
 	cwd, err := currentDir()
 	if err != nil {
 		return "", err
@@ -432,23 +388,7 @@ func deriveWorkspace(f *setupSshFlags) (string, error) {
 	if cfg, _ := domain.LoadConfig(cwd); cfg != nil && cfg.Workspace != "" {
 		return cfg.Workspace, nil
 	}
-	if ws := workspaceFromContainer(f.container); ws != "" {
-		return ws, nil
-	}
 	return domain.SanitizeDockerName(filepath.Base(cwd), "devcontainer"), nil
-}
-
-// workspaceFromContainer extracts "<workspace>" from a
-// "<workspace>-devcontainer-ssh" container name, or "" when it does not match.
-func workspaceFromContainer(containerName string) string {
-	if containerName == "" {
-		return ""
-	}
-	re := regexp.MustCompile("^(.+)-" + regexp.QuoteMeta(sshdefaults.ServiceName) + "$")
-	if m := re.FindStringSubmatch(containerName); m != nil {
-		return m[1]
-	}
-	return ""
 }
 
 func applyWorkspaceDefaults(f *setupSshFlags, workspace string) {
@@ -458,12 +398,8 @@ func applyWorkspaceDefaults(f *setupSshFlags, workspace string) {
 	if f.alias == sshdefaults.Alias {
 		f.alias = workspace
 	}
-	if !f.containerExplicit && f.container == sshdefaults.ServiceName {
-		f.container = workspace + "-" + sshdefaults.ServiceName
-	}
-	if !f.composeFileExplicit {
-		f.composeFile = relativeComposeFile(workspace)
-	}
+	f.container = workspace + "-" + sshdefaults.ServiceName
+	f.composeFile = relativeComposeFile(workspace)
 }
 
 func runSetupSsh(cmd *cobra.Command, _ []string) error {
@@ -478,20 +414,32 @@ func runSetupSsh(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
-	target, err := resolveTargetService(f)
-	if err != nil {
-		return err
-	}
-	f.service = target.Service
-	f.container = target.Container
+	var workspace string
+	if f.containerExplicit {
+		// Loose container mode: bypass workspace logic completely.
+		f.composeFile = ""
+		f.service = sshdefaults.ServiceName
+		if f.alias == sshdefaults.Alias {
+			f.alias = f.container
+		}
+		workspace = "(none)"
+	} else {
+		// Workspace mode: discover target container and workspace context.
+		target, err := resolveTargetService(f)
+		if err != nil {
+			return err
+		}
+		f.service = target.Service
+		f.container = target.Container
 
-	workspace, err := deriveWorkspace(f)
-	if err != nil {
-		return err
+		workspace, err = deriveWorkspace(f)
+		if err != nil {
+			return err
+		}
+		applyWorkspaceDefaults(f, workspace)
 	}
-	applyWorkspaceDefaults(f, workspace)
 
-	if !f.aliasExplicit && !f.assumeYes {
+	if f.remote == "" && !f.assumeYes {
 		alias, err := console.AskDefault("SSH connection name (alias):", f.alias, func(v string) error {
 			if strings.TrimSpace(v) == "" {
 				return fmt.Errorf("name cannot be empty")

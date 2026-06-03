@@ -457,55 +457,6 @@ func TestApplyWorkspaceDefaults_KeepsSharedKey(t *testing.T) {
 	}
 }
 
-func TestWorkspaceFromContainer(t *testing.T) {
-	cases := []struct{ in, want string }{
-		{"myws-devcontainer-ssh", "myws"},
-		{"a-b-devcontainer-ssh", "a-b"},
-		{"devcontainer-ssh", ""},
-		{"random", ""},
-		{"", ""},
-	}
-	for _, c := range cases {
-		if got := workspaceFromContainer(c.in); got != c.want {
-			t.Errorf("workspaceFromContainer(%q) = %q, want %q", c.in, got, c.want)
-		}
-	}
-}
-
-// An explicit --container short-circuits resolveTargetService: no compose file is
-// read, and the service defaults to sshdefaults.ServiceName unless --service set.
-func TestResolveTargetService_ContainerDriven(t *testing.T) {
-	f := &setupSshFlags{
-		container:         "other-devcontainer-ssh",
-		containerExplicit: true,
-		service:           sshdefaults.ServiceName,
-		composeFile:       "/nonexistent/docker-compose.yml",
-	}
-	target, err := resolveTargetService(f)
-	if err != nil {
-		t.Fatalf("resolveTargetService: %v", err)
-	}
-	if target.Container != "other-devcontainer-ssh" || target.Service != sshdefaults.ServiceName {
-		t.Errorf("got %+v, want container=other-devcontainer-ssh service=%s", target, sshdefaults.ServiceName)
-	}
-}
-
-// With an explicit container the workspace is parsed from the container name,
-// independent of the current directory or project config.
-func TestDeriveWorkspace_ContainerDriven(t *testing.T) {
-	f := &setupSshFlags{
-		container:         "billing-devcontainer-ssh",
-		containerExplicit: true,
-	}
-	ws, err := deriveWorkspace(f)
-	if err != nil {
-		t.Fatalf("deriveWorkspace: %v", err)
-	}
-	if ws != "billing" {
-		t.Errorf("deriveWorkspace = %q, want billing", ws)
-	}
-}
-
 func TestListComposeServices_ReadsCompose(t *testing.T) {
 	tempDir := t.TempDir()
 	composePath := filepath.Join(tempDir, "docker-compose.yml")
