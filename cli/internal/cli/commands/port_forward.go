@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/pick"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/service"
 	"github.com/spf13/cobra"
 )
@@ -54,7 +55,126 @@ Examples:
 		return listComposeServices(defaultComposeFile(cwd)), cobra.ShellCompDirectiveNoFileComp
 	})
 
+	cmd.AddCommand(newForwardListCommand(), newForwardStopCommand(), newForwardStartCommand())
 	return cmd
+}
+
+// forwardProjectContext resolves the cwd and workspace for the background
+// port-forward subcommands.
+func forwardProjectContext() (cwd, workspace string, err error) {
+	cwd, err = currentDir()
+	if err != nil {
+		return "", "", err
+	}
+	cfg, _ := domain.LoadConfig(cwd)
+	return cwd, domain.ResolveWorkspace(cwd, cfg), nil
+}
+
+func newForwardListCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:          "ls",
+		Aliases:      []string{"list"},
+		Short:        "List the project's running background port-forwards",
+		SilenceUsage: true,
+		RunE:         runForwardList,
+	}
+}
+
+func runForwardList(cmd *cobra.Command, _ []string) error {
+	cwd, workspace, err := forwardProjectContext()
+	if err != nil {
+		return err
+	}
+	forwards, err := service.PortForwardService{Report: console}.ListForwards(cwd, workspace)
+	if err != nil {
+		return err
+	}
+	if len(forwards) == 0 {
+		console.Info("No background port-forwards running.")
+		return nil
+	}
+	console.Info("Background port-forwards for '%s':", workspace)
+	for _, f := range forwards {
+		console.Info("  %s  %s → %s:%d  via %s  (pid %d)",
+			f.ID, console.WarnS("localhost:%d", f.LocalPort), f.TargetHost, f.ContainerPort, f.Alias, f.PID)
+	}
+	return nil
+}
+
+func newForwardStopCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:          "stop [id]",
+		Short:        "Stop a background port-forward by id (or --all)",
+		Args:         cobra.MaximumNArgs(1),
+		SilenceUsage: true,
+		RunE:         runForwardStop,
+	}
+	cmd.Flags().Bool("all", false, "Stop all background port-forwards for the project")
+	_ = cmd.RegisterFlagCompletionFunc("all", func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	})
+	cmd.ValidArgsFunction = func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
+		cwd, workspace, err := forwardProjectContext()
+		if err != nil {
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		}
+		forwards, _ := service.PortForwardService{Report: console}.ListForwards(cwd, workspace)
+		ids := make([]string, 0, len(forwards))
+		for _, f := range forwards {
+			ids = append(ids, f.ID)
+		}
+		return ids, cobra.ShellCompDirectiveNoFileComp
+	}
+	return cmd
+}
+
+func runForwardStop(cmd *cobra.Command, args []string) error {
+	cwd, workspace, err := forwardProjectContext()
+	if err != nil {
+		return err
+	}
+	svc := service.PortForwardService{Report: console}
+	if all, _ := cmd.Flags().GetBool("all"); all {
+		killed, err := svc.StopAllForwards(cwd, workspace)
+		if err != nil {
+			return err
+		}
+		console.Success("Stopped %d background port-forward(s).", killed)
+		return nil
+	}
+	if len(args) != 1 {
+		return fmt.Errorf("provide a forward id (see 'port-forward ls') or pass --all")
+	}
+	return svc.StopForward(cwd, workspace, args[0])
+}
+
+func newForwardStartCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:          "start",
+		Short:        "Start the background port-forwards declared in the config",
+		SilenceUsage: true,
+		RunE:         runForwardStart,
+	}
+}
+
+func runForwardStart(cmd *cobra.Command, _ []string) error {
+	cwd, workspace, err := forwardProjectContext()
+	if err != nil {
+		return err
+	}
+	cfg, _ := domain.LoadConfig(cwd)
+	if cfg == nil || len(cfg.PortForwards) == 0 {
+		console.Info("No port-forwards configured in %s.", domain.ConfigPath(cwd))
+		return nil
+	}
+	started, err := service.PortForwardService{Report: console}.StartConfigured(cwd, workspace, cfg.PortForwards)
+	if err != nil {
+		return err
+	}
+	if len(started) == 0 {
+		console.Info("All configured port-forwards are already running.")
+	}
+	return nil
 }
 
 type parsedMapping struct {

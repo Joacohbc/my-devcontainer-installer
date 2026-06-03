@@ -56,6 +56,10 @@ func runDestroy(cmd *cobra.Command, _ []string) error {
 		}
 	}
 
+	if _, ferr := (service.PortForwardService{Report: console}).StopAllForwards(cwd, workspace); ferr != nil {
+		console.Warn("Failed to stop port-forwards: %v", ferr)
+	}
+
 	svc := service.DestroyService{Report: console}
 	return svc.Run(service.DestroyTarget{
 		Workspace:   workspace,
