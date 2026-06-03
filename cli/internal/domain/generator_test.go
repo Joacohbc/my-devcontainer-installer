@@ -201,6 +201,9 @@ func TestGenerateCompose_ValidYAMLWithExpectedServices(t *testing.T) {
 	if err := yaml.Unmarshal([]byte(yml), &parsed); err != nil {
 		t.Fatalf("invalid YAML: %v\n%s", err, yml)
 	}
+	if parsed["name"] != "devcontainer" {
+		t.Errorf("expected name to be %q, got %q", "devcontainer", parsed["name"])
+	}
 	services := parsed["services"].(map[string]any)
 	if services["devcontainer-ssh"] == nil {
 		t.Error("expected devcontainer-ssh service")

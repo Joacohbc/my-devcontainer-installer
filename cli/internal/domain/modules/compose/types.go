@@ -28,6 +28,7 @@ type RenderContext struct {
 }
 
 type ComposeDoc struct {
+	Name     string                 `yaml:"name"`
 	Services map[string]*ServiceDef `yaml:"services"`
 	Networks map[string]*NetworkDef `yaml:"networks"`
 	Volumes  map[string]*VolumeDef  `yaml:"volumes"`

@@ -328,6 +328,7 @@ func GenerateCompose(config *types.DevcontainerConfig) (string, error) {
 	}
 
 	doc := compose.ComposeDoc{
+		Name:     workspace,
 		Services: services,
 		Networks: networks,
 		Volumes:  volumes,
