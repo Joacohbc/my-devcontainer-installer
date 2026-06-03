@@ -48,7 +48,6 @@ var dbclientLegacyIDs = map[string]types.ModuleID{
 	"postgres": types.ModulePostgresClient,
 	"redis":    types.ModuleRedisClient,
 	"mongo":    types.ModuleMongoClient,
-	"mysql":    types.ModuleMysqlClient,
 }
 
 // migrateDbclients expands the legacy combined "dbclients" module (a single

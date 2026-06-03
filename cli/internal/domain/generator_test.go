@@ -77,7 +77,6 @@ func TestGenerateDockerfile_AllSelectedModules(t *testing.T) {
 			{ID: "go"},
 			{ID: "postgres-client"},
 			{ID: "redis-client"},
-			{ID: "mysql-client"},
 			{ID: "mongo-client"},
 			{ID: "nodejs"},
 			{ID: "bun"},
@@ -93,7 +92,6 @@ func TestGenerateDockerfile_AllSelectedModules(t *testing.T) {
 	assertContainsStr(t, df, "install_golang", "full dockerfile")
 	assertContainsStr(t, df, "postgresql-client", "full dockerfile")
 	assertContainsStr(t, df, "redis-tools", "full dockerfile")
-	assertContainsStr(t, df, "default-mysql-client", "full dockerfile")
 	assertContainsStr(t, df, "mongodb-mongosh", "full dockerfile")
 	assertContainsStr(t, df, "nvm install --lts", "full dockerfile")
 	assertContainsStr(t, df, "bun.sh/install", "full dockerfile")
@@ -218,9 +216,6 @@ func TestGenerateCompose_ValidYAMLWithExpectedServices(t *testing.T) {
 	}
 	if services["postgres"] != nil {
 		t.Error("expected postgres to be absent")
-	}
-	if services["mysql"] != nil {
-		t.Error("expected mysql to be absent")
 	}
 }
 

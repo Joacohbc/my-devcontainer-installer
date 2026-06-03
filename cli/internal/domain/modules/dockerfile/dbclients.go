@@ -99,52 +99,6 @@ RUN install -m 0755 -d /etc/apt/keyrings && \
 	},
 }
 
-// MysqlClientComponents maps a pinned MySQL release to its apt repo component.
-var MysqlClientComponents = map[string]string{
-	"8.0": "mysql-8.0",
-	"8.4": "mysql-8.4-lts",
-	"9.0": "mysql-innovation",
-}
-
-var MysqlClientModule = &ModuleSpec{
-	ID:         types.ModuleMysqlClient,
-	Label:      "MySQL client (mysql)",
-	Category:   types.CategoryDB,
-	UICategory: types.UICategoryClients,
-	Options: []types.ModuleOption{
-		versionOption("mysql client version", []types.ModuleOptionChoice{
-			{Value: "9.0", Label: "MySQL 9.0 (Innovation)"},
-			{Value: "8.4", Label: "MySQL 8.4 (LTS)"},
-			{Value: "8.0", Label: "MySQL 8.0 (LTS)"},
-		}),
-	},
-	Render: func(opts map[string]any) string {
-		version, _ := opts["version"].(string)
-		component, ok := MysqlClientComponents[version]
-		if !ok {
-			// Generic, MySQL-compatible client (MariaDB) from Ubuntu's repos.
-			return fmt.Sprintf(`##
-## MYSQL CLIENT
-##
-RUN apt-get update && apt-get install -y \
-    default-mysql-client && %s
-`, aptCleanup())
-		}
-		// Pin the real Oracle MySQL client via the official MySQL apt repository.
-		return fmt.Sprintf(`##
-## MYSQL CLIENT (MySQL %s)
-##
-RUN install -m 0755 -d /etc/apt/keyrings && \
-    export DEBIAN_FRONTEND=noninteractive && \
-    curl -fsSL https://repo.mysql.com/RPM-GPG-KEY-mysql-2023 | gpg --dearmor -o /etc/apt/keyrings/mysql.gpg && \
-    echo "deb [signed-by=/etc/apt/keyrings/mysql.gpg] http://repo.mysql.com/apt/ubuntu $(lsb_release -cs) %s" > /etc/apt/sources.list.d/mysql.list && \
-    apt-get update && \
-    apt-get install -y mysql-community-client && \
-    %s
-`, version, component, aptCleanup())
-	},
-}
-
 var RedisClientModule = aptClientModule(
 	types.ModuleRedisClient,
 	"Redis client (redis-cli)",

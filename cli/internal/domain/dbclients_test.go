@@ -52,13 +52,6 @@ func TestMatchDBClientVersions(t *testing.T) {
 			client:   types.ModulePostgresClient,
 			want:     "auto",
 		},
-		{
-			name:     "mysql service version matches client verbatim",
-			services: []any{map[string]any{"id": "mysql", "options": map[string]any{"version": "8.4"}}},
-			modules:  []types.SelectedModule{{ID: types.ModuleMysqlClient}},
-			client:   types.ModuleMysqlClient,
-			want:     "8.4",
-		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

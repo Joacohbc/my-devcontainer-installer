@@ -124,15 +124,10 @@ func TestDatabaseClientModulesRender(t *testing.T) {
 		// Default / auto (no version pin) -> generic Ubuntu packages.
 		{"postgres generic", dockerfile.PostgresClientModule, nil, []string{"POSTGRESQL CLIENT", "postgresql-client"}, []string{"apt.postgresql.org"}},
 		{"redis", dockerfile.RedisClientModule, nil, []string{"REDIS CLIENT", "redis-tools"}, nil},
-		{"mysql generic", dockerfile.MysqlClientModule, nil, []string{"MYSQL CLIENT", "default-mysql-client"}, []string{"repo.mysql.com"}},
 		{"mongo", dockerfile.MongoClientModule, nil, []string{"MONGODB CLIENT", "mongodb-mongosh", "repo.mongodb.org"}, nil},
 		// Pinned versions -> vendor apt repos.
 		{"postgres 16 (PGDG)", dockerfile.PostgresClientModule, map[string]any{"version": "16"},
 			[]string{"postgresql-client-16", "apt.postgresql.org", "pgdg main"}, nil},
-		{"mysql 8.4 (MySQL repo)", dockerfile.MysqlClientModule, map[string]any{"version": "8.4"},
-			[]string{"mysql-community-client", "repo.mysql.com", "mysql-8.4-lts"}, []string{"default-mysql-client"}},
-		{"mysql 9.0 innovation", dockerfile.MysqlClientModule, map[string]any{"version": "9.0"},
-			[]string{"mysql-community-client", "mysql-innovation"}, nil},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -187,7 +182,6 @@ func TestAptModulesIncludeStandardCleanup(t *testing.T) {
 		{"java-openjdk", dockerfile.JavaOpenjdkModule, nil},
 		{"postgres-client", dockerfile.PostgresClientModule, nil},
 		{"redis-client", dockerfile.RedisClientModule, nil},
-		{"mysql-client", dockerfile.MysqlClientModule, nil},
 		{"mongo-client", dockerfile.MongoClientModule, nil},
 	}
 	for _, tc := range cases {

@@ -20,7 +20,6 @@ const (
 	ModuleRust           ModuleID = "rust"
 	ModulePostgresClient ModuleID = "postgres-client"
 	ModuleRedisClient    ModuleID = "redis-client"
-	ModuleMysqlClient    ModuleID = "mysql-client"
 	ModuleMongoClient    ModuleID = "mongo-client"
 	ModuleNodejs         ModuleID = "nodejs"
 	ModulePnpm           ModuleID = "pnpm"
@@ -42,7 +41,6 @@ const (
 	ServiceMongo        ServiceID = "mongo"
 	ServiceRedis        ServiceID = "redis"
 	ServicePostgres     ServiceID = "postgres"
-	ServiceMysql        ServiceID = "mysql"
 	ServiceTunnel       ServiceID = "tunnel"
 )
 

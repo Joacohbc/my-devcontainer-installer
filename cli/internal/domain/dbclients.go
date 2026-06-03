@@ -19,7 +19,6 @@ type dbClientLink struct {
 
 var dbClientLinks = []dbClientLink{
 	{client: types.ModulePostgresClient, service: types.ServicePostgres, translate: majorBeforeDash},
-	{client: types.ModuleMysqlClient, service: types.ServiceMysql, translate: identityVersion},
 }
 
 // majorBeforeDash returns the leading segment before the first '-', e.g.
@@ -31,8 +30,6 @@ func majorBeforeDash(v string) string {
 	}
 	return v
 }
-
-func identityVersion(v string) string { return v }
 
 // MatchDBClientVersions returns the selected Dockerfile modules with each DB
 // client's "version" option resolved: when it is unset or "auto" and the
