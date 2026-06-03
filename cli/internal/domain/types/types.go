@@ -61,6 +61,11 @@ const DevUserHome = "/home/devuser"
 const PostScriptDir = DevUserHome + "/post-script"
 const DefaultSSHHostPort = 2222
 
+// SSHKeyName is the filename of the single shared SSH key reused by every
+// devcontainer (local and remote). The managed key lives under the CLI global
+// config dir; sshdefaults.KeyName aliases this value.
+const SSHKeyName = "id_devcontainer"
+
 type ModuleOptionChoice struct {
 	Value string `json:"value"`
 	Label string `json:"label"`

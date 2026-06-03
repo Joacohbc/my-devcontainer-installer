@@ -54,6 +54,8 @@ func (s ConfigService) GetGlobalDefault(key string) (value string, customized bo
 			return strconv.Itoa(port), true, nil
 		}
 		return fallbackSSHPort, false, nil
+	case "ssh-key":
+		return defaulted(globalDefaults(cfg).SSHKeyPath, domain.DefaultManagedSSHKeyPath())
 	}
 	return "", false, fmt.Errorf("unknown config key: %s", key)
 }
@@ -77,6 +79,9 @@ func (s ConfigService) SetGlobalDefault(key, value string) error {
 		}
 		ensureDefaults(&cfg)
 		cfg.Defaults.SSHHostPort = port
+	case "ssh-key":
+		ensureDefaults(&cfg)
+		cfg.Defaults.SSHKeyPath = value
 	default:
 		return fmt.Errorf("unknown config key: %s", key)
 	}
@@ -107,6 +112,10 @@ func (s ConfigService) UnsetGlobalDefault(key string) error {
 		ensureDefaults(&cfg)
 		cfg.Defaults.SSHHostPort = 0
 		fallback = fallbackSSHPort
+	case "ssh-key":
+		ensureDefaults(&cfg)
+		cfg.Defaults.SSHKeyPath = ""
+		fallback = domain.DefaultManagedSSHKeyPath()
 	default:
 		return fmt.Errorf("unknown config key: %s", key)
 	}

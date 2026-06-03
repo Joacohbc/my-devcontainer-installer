@@ -145,6 +145,46 @@ func TestResolveDBCredentials(t *testing.T) {
 	})
 }
 
+func TestDefaultManagedSSHKeyPath(t *testing.T) {
+	withTempXDGDir(t, func() {
+		got := domain.DefaultManagedSSHKeyPath()
+		want := filepath.Join(domain.GlobalConfigDir(), "ssh", "id_devcontainer")
+		if got != want {
+			t.Errorf("DefaultManagedSSHKeyPath() = %q, want %q", got, want)
+		}
+	})
+}
+
+func TestResolveSSHKeyPath(t *testing.T) {
+	// Default managed path when nothing is set.
+	withTempXDGDir(t, func() {
+		got := domain.ResolveSSHKeyPath("")
+		if got != domain.DefaultManagedSSHKeyPath() {
+			t.Errorf("ResolveSSHKeyPath(\"\") = %q, want managed default %q", got, domain.DefaultManagedSSHKeyPath())
+		}
+	})
+
+	// Configured override wins over the default.
+	withTempXDGDir(t, func() {
+		_ = domain.SaveGlobalConfig(domain.GlobalConfig{
+			Defaults: &domain.Defaults{SSHKeyPath: "/custom/key"},
+		})
+		if got := domain.ResolveSSHKeyPath(""); got != "/custom/key" {
+			t.Errorf("ResolveSSHKeyPath(\"\") = %q, want configured /custom/key", got)
+		}
+	})
+
+	// Flag override wins over everything.
+	withTempXDGDir(t, func() {
+		_ = domain.SaveGlobalConfig(domain.GlobalConfig{
+			Defaults: &domain.Defaults{SSHKeyPath: "/custom/key"},
+		})
+		if got := domain.ResolveSSHKeyPath("/flag/key"); got != "/flag/key" {
+			t.Errorf("ResolveSSHKeyPath(\"/flag/key\") = %q, want flag override", got)
+		}
+	})
+}
+
 func TestResolveSSHHostPort(t *testing.T) {
 	// Case 1: Empty / no config
 	withTempXDGDir(t, func() {

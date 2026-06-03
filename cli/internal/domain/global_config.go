@@ -14,6 +14,7 @@ type Defaults struct {
 	DBUser      string `json:"dbUser,omitempty"`
 	DBPassword  string `json:"dbPassword,omitempty"`
 	SSHHostPort int    `json:"sshHostPort,omitempty"`
+	SSHKeyPath  string `json:"sshKeyPath,omitempty"`
 }
 
 type GlobalConfig struct {
@@ -120,4 +121,23 @@ func ResolveSSHHostPort() int {
 		return cfg.Defaults.SSHHostPort
 	}
 	return types.DefaultSSHHostPort
+}
+
+// DefaultManagedSSHKeyPath is the path of the single shared SSH key managed by
+// the CLI, stored under the global config dir (e.g. <config>/ssh/id_devcontainer).
+func DefaultManagedSSHKeyPath() string {
+	return filepath.Join(GlobalConfigDir(), "ssh", types.SSHKeyName)
+}
+
+// ResolveSSHKeyPath returns the SSH key path to use, with precedence
+// flagOverride → cfg.Defaults.SSHKeyPath → DefaultManagedSSHKeyPath().
+func ResolveSSHKeyPath(flagOverride string) string {
+	if flagOverride != "" {
+		return flagOverride
+	}
+	cfg := LoadGlobalConfig()
+	if cfg.Defaults != nil && cfg.Defaults.SSHKeyPath != "" {
+		return cfg.Defaults.SSHKeyPath
+	}
+	return DefaultManagedSSHKeyPath()
 }

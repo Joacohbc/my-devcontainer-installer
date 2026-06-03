@@ -49,16 +49,6 @@ func (s SshService) ComposeUp(composeFile string) error {
 	return nil
 }
 
-// ServiceLogs returns the combined stdout+stderr logs for a compose service and
-// whether the read succeeded.
-func (s SshService) ServiceLogs(composeFile, service string) (string, bool) {
-	status, stdout, stderr, err := docker.DockerCapture([]string{"compose", "-f", composeFile, "logs", service})
-	if err != nil || status != 0 {
-		return "", false
-	}
-	return stdout + "\n" + stderr, true
-}
-
 // GenerateKey creates an ed25519 keypair at keyPath.
 func (s SshService) GenerateKey(keyPath string) error {
 	if err := os.MkdirAll(filepath.Dir(keyPath), 0o700); err != nil {
@@ -72,6 +62,29 @@ func (s SshService) GenerateKey(keyPath string) error {
 	return nil
 }
 
+// EnsureKey makes the managed key exist at keyPath, generating it once. It
+// returns created=false (and no error) when both keyPath and keyPath+".pub"
+// already exist; otherwise it generates the pair and returns created=true.
+func (s SshService) EnsureKey(keyPath string) (created bool, err error) {
+	if fileExists(keyPath) && fileExists(keyPath+".pub") {
+		return false, nil
+	}
+	if err := s.GenerateKey(keyPath); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// PublicKey reads the public half of the key pair at keyPath (keyPath+".pub").
+func (s SshService) PublicKey(keyPath string) ([]byte, error) {
+	return os.ReadFile(keyPath + ".pub")
+}
+
+// PrivateKey reads the private key at keyPath.
+func (s SshService) PrivateKey(keyPath string) ([]byte, error) {
+	return os.ReadFile(keyPath)
+}
+
 // ContainerIPs inspects a container and returns its (network, ip) pairs, one per
 // attached network with a non-empty address.
 func (s SshService) ContainerIPs(container string) ([]NetworkIP, error) {
@@ -81,22 +94,6 @@ func (s SshService) ContainerIPs(container string) ([]NetworkIP, error) {
 		return nil, fmt.Errorf("could not resolve container IP")
 	}
 	return ips, nil
-}
-
-// PasswordFromLogs scans the compose service logs for the last line announcing
-// the temporary password for user, returning the line and whether one was found.
-func (s SshService) PasswordFromLogs(composeFile, service, user string) (string, bool) {
-	combined, ok := s.ServiceLogs(composeFile, service)
-	if !ok {
-		return "", false
-	}
-	var last string
-	for _, line := range strings.Split(combined, "\n") {
-		if strings.Contains(line, user+" password") {
-			last = line
-		}
-	}
-	return last, last != ""
 }
 
 // InstallKeySpec holds the parameters for installing a public key inside a container.

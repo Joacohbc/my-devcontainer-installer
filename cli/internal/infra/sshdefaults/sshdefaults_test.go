@@ -1,20 +1,11 @@
 package sshdefaults_test
 
 import (
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/sshdefaults"
 )
-
-func TestDefaultKeyPath(t *testing.T) {
-	got := sshdefaults.DefaultKeyPath()
-	wantSuffix := filepath.Join(".ssh", sshdefaults.KeyName)
-	if !strings.HasSuffix(got, wantSuffix) {
-		t.Errorf("DefaultKeyPath() = %q, want suffix %q", got, wantSuffix)
-	}
-}
 
 func TestAuthorizedKeysInstallScript(t *testing.T) {
 	got := sshdefaults.AuthorizedKeysInstallScript()
@@ -25,25 +16,36 @@ func TestAuthorizedKeysInstallScript(t *testing.T) {
 	}
 }
 
-func TestRemoteKeygenCommand(t *testing.T) {
-	got := sshdefaults.RemoteKeygenCommand("~/.ssh/id_myws")
-	for _, frag := range []string{"ssh-keygen", "-t ed25519", "-f ~/.ssh/id_myws", `-N ""`} {
-		if !strings.Contains(got, frag) {
-			t.Errorf("keygen command missing %q: %s", frag, got)
-		}
+func TestRemoteExportScript(t *testing.T) {
+	block, err := sshdefaults.BuildConfigBlock(sshdefaults.ConfigBlockOptions{
+		Mode:      sshdefaults.ModeRemote,
+		Alias:     "myws",
+		User:      "devuser",
+		KeyPath:   "~/.ssh/" + sshdefaults.KeyName,
+		Remote:    "user@host",
+		Container: "myws-devcontainer-ssh",
+	})
+	if err != nil {
+		t.Fatalf("BuildConfigBlock: %v", err)
 	}
-}
+	got := sshdefaults.RemoteExportScript(sshdefaults.RemoteExportOptions{
+		PrivateKey:  []byte("PRIVATE-KEY-BYTES"),
+		PublicKey:   []byte("ssh-ed25519 AAAA pub"),
+		ConfigBlock: block,
+	})
 
-func TestRemoteInstallKeyCommand(t *testing.T) {
-	got := sshdefaults.RemoteInstallKeyCommand("~/.ssh/id_myws", "user@host", "devuser", "myws-devcontainer-ssh")
+	keyPath := "~/.ssh/" + sshdefaults.KeyName
 	for _, frag := range []string{
-		"cat ~/.ssh/id_myws.pub",
-		"ssh user@host",
-		"docker exec -i -u devuser myws-devcontainer-ssh",
-		sshdefaults.AuthorizedKeysInstallScript(),
+		"mkdir -p ~/.ssh && chmod 700 ~/.ssh",
+		"PRIVATE-KEY-BYTES",
+		"ssh-ed25519 AAAA pub",
+		"chmod 600 " + keyPath,
+		"chmod 644 " + keyPath + ".pub",
+		"cat >> ~/.ssh/config",
+		"ProxyCommand ssh user@host",
 	} {
 		if !strings.Contains(got, frag) {
-			t.Errorf("install command missing %q: %s", frag, got)
+			t.Errorf("export script missing %q:\n%s", frag, got)
 		}
 	}
 }

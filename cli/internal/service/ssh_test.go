@@ -1,10 +1,52 @@
 package service
 
 import (
+	"os"
+	"path/filepath"
 	"slices"
-	"strings"
 	"testing"
 )
+
+func TestSshEnsureKeyAlreadyExists(t *testing.T) {
+	dir := t.TempDir()
+	keyPath := filepath.Join(dir, "id_devcontainer")
+	if err := os.WriteFile(keyPath, []byte("private"), 0o600); err != nil {
+		t.Fatalf("write key: %v", err)
+	}
+	if err := os.WriteFile(keyPath+".pub", []byte("public"), 0o644); err != nil {
+		t.Fatalf("write pub: %v", err)
+	}
+
+	svc := SshService{Report: nopReporter{}}
+	created, err := svc.EnsureKey(keyPath)
+	if err != nil {
+		t.Fatalf("EnsureKey: %v", err)
+	}
+	if created {
+		t.Error("expected created=false when both key files already exist")
+	}
+}
+
+func TestSshPublicAndPrivateKeyReads(t *testing.T) {
+	dir := t.TempDir()
+	keyPath := filepath.Join(dir, "id_devcontainer")
+	if err := os.WriteFile(keyPath, []byte("PRIV"), 0o600); err != nil {
+		t.Fatalf("write key: %v", err)
+	}
+	if err := os.WriteFile(keyPath+".pub", []byte("PUB"), 0o644); err != nil {
+		t.Fatalf("write pub: %v", err)
+	}
+
+	svc := SshService{Report: nopReporter{}}
+	priv, err := svc.PrivateKey(keyPath)
+	if err != nil || string(priv) != "PRIV" {
+		t.Errorf("PrivateKey = %q, %v; want PRIV", priv, err)
+	}
+	pub, err := svc.PublicKey(keyPath)
+	if err != nil || string(pub) != "PUB" {
+		t.Errorf("PublicKey = %q, %v; want PUB", pub, err)
+	}
+}
 
 func TestSshContainerRunning(t *testing.T) {
 	stdout := `{"Names":"alpha","Image":"img1","Status":"Up","State":"running","Labels":"","Ports":""}
@@ -38,20 +80,6 @@ func TestSshComposeUp(t *testing.T) {
 	defer useFakeDocker(failRunner)()
 	if err := (SshService{Report: nopReporter{}}).ComposeUp("compose.yml"); err == nil {
 		t.Error("expected error when compose up fails")
-	}
-}
-
-func TestSshServiceLogs(t *testing.T) {
-	runner := &fakeRunner{status: 0, stdout: "line1"}
-	defer useFakeDocker(runner)()
-
-	svc := SshService{Report: nopReporter{}}
-	combined, ok := svc.ServiceLogs("compose.yml", "ssh")
-	if !ok {
-		t.Fatal("expected logs read to succeed")
-	}
-	if !strings.Contains(combined, "line1") {
-		t.Errorf("combined logs = %q, want it to contain line1", combined)
 	}
 }
 
@@ -101,26 +129,6 @@ func TestSshContainerIPs(t *testing.T) {
 	defer useFakeDocker(failRunner)()
 	if _, err := (SshService{Report: nopReporter{}}).ContainerIPs("c1"); err == nil {
 		t.Error("expected error when docker inspect fails")
-	}
-}
-
-func TestSshPasswordFromLogs(t *testing.T) {
-	runner := &fakeRunner{status: 0, stdout: "starting\ndevuser password: old\ndevuser password: new\nready"}
-	defer useFakeDocker(runner)()
-
-	svc := SshService{Report: nopReporter{}}
-	line, ok := svc.PasswordFromLogs("compose.yml", "ssh", "devuser")
-	if !ok {
-		t.Fatal("expected a password line to be found")
-	}
-	if !strings.Contains(line, "new") {
-		t.Errorf("PasswordFromLogs = %q, want the last match (new)", line)
-	}
-
-	noneRunner := &fakeRunner{status: 0, stdout: "no secrets here"}
-	defer useFakeDocker(noneRunner)()
-	if _, ok := (SshService{Report: nopReporter{}}).PasswordFromLogs("compose.yml", "ssh", "devuser"); ok {
-		t.Error("did not expect a password line when logs have none")
 	}
 }
 

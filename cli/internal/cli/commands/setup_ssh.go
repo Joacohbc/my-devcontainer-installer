@@ -46,7 +46,7 @@ func newSetupSshCommand() *cobra.Command {
 	f := cmd.Flags()
 	f.String("remote", "", "Configure remote-server access (ProxyCommand mode): USER@HOST")
 	f.String("alias", sshdefaults.Alias, "SSH alias to register")
-	f.String("key", "", "Private key path (default: ~/.ssh/"+sshdefaults.KeyName+")")
+	f.String("key", "", "Private key path (default: the shared managed key under the CLI config dir)")
 	f.String("port", fmt.Sprintf("%d", domain.ResolveSSHHostPort()), "Port for Windows mode")
 	f.String("mode", "", "Force mode: local | windows | remote")
 	f.String("container", sshdefaults.ServiceName, "Container name (auto-detected from compose if omitted)")
@@ -96,9 +96,7 @@ func collectSetupSshFlags(cmd *cobra.Command) (*setupSshFlags, error) {
 	g.alias, _ = f.GetString("alias")
 	g.aliasExplicit = f.Changed("alias")
 	g.key, _ = f.GetString("key")
-	if g.key == "" {
-		g.key = sshdefaults.DefaultKeyPath()
-	}
+	g.key = domain.ResolveSSHKeyPath(g.key)
 	g.port, _ = f.GetString("port")
 	g.mode, _ = f.GetString("mode")
 	g.container, _ = f.GetString("container")
@@ -191,9 +189,11 @@ func detectMode(f *setupSshFlags) sshdefaults.Mode {
 	if f.mode != "" {
 		return sshdefaults.Mode(f.mode)
 	}
+
 	if runtime.GOOS == "windows" {
 		return sshdefaults.ModeWindows
 	}
+
 	return sshdefaults.ModeLocal
 }
 
@@ -203,12 +203,14 @@ func checkPrereqs(mode sshdefaults.Mode) error {
 	if mode == sshdefaults.ModeRemote {
 		return nil
 	}
+
 	ssh := service.SshService{Report: console}
 	for _, tool := range []string{"ssh", "ssh-keygen"} {
 		if !ssh.CommandExists(tool) {
 			return fmt.Errorf("missing tool: %s", tool)
 		}
 	}
+
 	if mode == sshdefaults.ModeLocal || mode == sshdefaults.ModeWindows {
 		if !ssh.CommandExists("docker") {
 			return fmt.Errorf("missing tool: docker")
@@ -226,15 +228,18 @@ func ensureStack(ssh service.SshService, f *setupSshFlags) error {
 		console.Ok(fmt.Sprintf("Container '%s' is running.", f.container))
 		return nil
 	}
+
 	console.Warn("Container '%s' not running.", f.container)
 	cwd, err := currentDir()
 	if err != nil {
 		return err
 	}
+
 	composePath := filepath.Join(cwd, f.composeFile)
 	if _, err := os.Stat(composePath); err != nil {
 		return fmt.Errorf("compose file not found: %s\nRun 'devcontainer-cli' first to generate it, or pass -f <path> to specify a different compose file", composePath)
 	}
+
 	proceed := true
 	if !f.assumeYes {
 		ok, err := console.ConfirmDefault("Start it now with docker compose up -d?", true)
@@ -243,40 +248,38 @@ func ensureStack(ssh service.SshService, f *setupSshFlags) error {
 		}
 		proceed = ok
 	}
+
 	if !proceed {
 		return fmt.Errorf("aborting — stack must be running")
 	}
+
 	if err := ssh.ComposeUp(f.composeFile); err != nil {
 		return err
 	}
+
 	for remaining := containerStartTimeoutSeconds; remaining > 0 && !ssh.ContainerRunning(f.container); remaining-- {
 		time.Sleep(time.Second)
 	}
+
 	if !ssh.ContainerRunning(f.container) {
 		return fmt.Errorf("container failed to start")
 	}
+
 	return nil
 }
 
-func fetchPassword(ssh service.SshService, f *setupSshFlags) {
-	console.Log("Fetching temporary password from logs...")
-	if line, ok := ssh.PasswordFromLogs(f.composeFile, f.service, f.user); ok {
-		console.Info("   %s", line)
-	} else {
-		console.Warn("Could not read password from logs (maybe key already installed).")
-	}
-}
-
 func genKey(ssh service.SshService, keyPath string) error {
-	if fileExists(keyPath) && fileExists(keyPath+".pub") {
-		console.Ok(fmt.Sprintf("Key already exists: %s", keyPath))
-		return nil
-	}
-	console.Log(fmt.Sprintf("Generating ed25519 key at %s", keyPath))
-	if err := ssh.GenerateKey(keyPath); err != nil {
+	created, err := ssh.EnsureKey(keyPath)
+	if err != nil {
 		return err
 	}
-	console.Ok("Key generated.")
+
+	if created {
+		console.Ok(fmt.Sprintf("Generated ed25519 key at %s", keyPath))
+	} else {
+		console.Ok(fmt.Sprintf("Key already exists: %s", keyPath))
+	}
+
 	return nil
 }
 
@@ -464,12 +467,8 @@ func applyWorkspaceDefaults(f *setupSshFlags, workspace string) {
 	if workspace == "" {
 		return
 	}
-	home, _ := os.UserHomeDir()
 	if f.alias == sshdefaults.Alias {
 		f.alias = workspace
-	}
-	if f.key == sshdefaults.DefaultKeyPath() {
-		f.key = filepath.Join(home, ".ssh", "id_"+workspace)
 	}
 	if !f.containerExplicit && f.container == sshdefaults.ServiceName {
 		f.container = workspace + "-" + sshdefaults.ServiceName
@@ -484,6 +483,7 @@ func runSetupSsh(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
+
 	ssh := service.SshService{Report: console}
 	mode := detectMode(f)
 	if err := checkPrereqs(mode); err != nil {
@@ -523,7 +523,7 @@ func runSetupSsh(cmd *cobra.Command, _ []string) error {
 	// keys and writes no local config — it only renders the config block to
 	// paste on the connecting machine.
 	if mode == sshdefaults.ModeRemote {
-		return emitRemoteConfig(f)
+		return emitRemoteConfig(ssh, f)
 	}
 
 	console.Log(fmt.Sprintf("Mode: %s   Workspace: %s   Alias: %s   Key: %s", mode, workspace, f.alias, f.key))
@@ -532,29 +532,36 @@ func runSetupSsh(cmd *cobra.Command, _ []string) error {
 	if err := ensureStack(ssh, f); err != nil {
 		return err
 	}
-	fetchPassword(ssh, f)
+
 	if err := genKey(ssh, f.key); err != nil {
 		return err
 	}
+
 	inst, err := installKey(ssh, f, mode)
 	if err != nil {
 		return err
 	}
+
 	if err := updateSshConfig(ssh, f, mode, inst); err != nil {
 		return err
 	}
+
 	testConnection(ssh, f.alias)
 	console.Ok(fmt.Sprintf("Done. Connect with:  ssh %s", f.alias))
 	return nil
 }
 
-// emitRemoteConfig prints the manual step-by-step for remote access — generate a
-// key, install its public half into the container through the docker host, then
-// add the ProxyCommand block — without running anything locally. In remote mode
-// devcontainer-cli runs on the docker host, so these steps belong on the machine
-// the user connects FROM.
-func emitRemoteConfig(f *setupSshFlags) error {
-	displayKey := "~/.ssh/" + filepath.Base(f.key)
+// emitRemoteConfig hands over the shared managed key to the machine the user
+// connects FROM. In remote mode devcontainer-cli runs on the docker host, so it
+// ensures the managed key exists here, reads its private+public bytes, and
+// prints one self-contained snippet (RemoteExportScript) that writes that same
+// key on the connecting machine and appends the ProxyCommand block to its
+// ~/.ssh/config. The snippet contains a PRIVATE key. The shared public key is
+// already in the container's authorized_keys from the local/host setup-ssh run,
+// so the connecting machine only needs the key + config — nothing is installed
+// into the container here.
+func emitRemoteConfig(ssh service.SshService, f *setupSshFlags) error {
+	displayKey := "~/.ssh/" + sshdefaults.KeyName
 
 	// The block is pasted into the connecting machine's ~/.ssh/config, whose home
 	// is not this host's, so IdentityFile must use the ~ form, not f.key's
@@ -566,20 +573,34 @@ func emitRemoteConfig(f *setupSshFlags) error {
 		return err
 	}
 
+	if _, err := ssh.EnsureKey(f.key); err != nil {
+		return err
+	}
+
+	priv, err := ssh.PrivateKey(f.key)
+	if err != nil {
+		return err
+	}
+
+	pub, err := ssh.PublicKey(f.key)
+	if err != nil {
+		return err
+	}
+
+	exportScript := sshdefaults.RemoteExportScript(sshdefaults.RemoteExportOptions{
+		PrivateKey:  priv,
+		PublicKey:   pub,
+		ConfigBlock: block,
+	})
+
 	console.NewLine()
 	console.Log("Remote setup — run these steps on the machine you'll connect FROM:")
 	console.NewLine()
-
-	console.Info("1) Generate an SSH key pair:")
-	console.Print("   " + sshdefaults.RemoteKeygenCommand(displayKey) + "\n")
+	console.Warn("The snippet below contains a PRIVATE key — treat it as a secret.")
 	console.NewLine()
 
-	console.Info("2) Install the public key into the container (through the docker host):")
-	console.Print("   " + sshdefaults.RemoteInstallKeyCommand(displayKey, f.remote, f.user, f.container) + "\n")
-	console.NewLine()
-
-	console.Info("3) Add this block to that machine's ~/.ssh/config:")
-	console.Print(block + "\n")
+	console.Info("Install the shared key + ssh config (paste on the connecting machine):")
+	console.Print(exportScript + "\n")
 	console.NewLine()
 
 	console.Success("Then connect with:  ssh %s", f.alias)
