@@ -489,6 +489,38 @@ func TestGenerateCompose_NetworkNamedAfterWorkspace(t *testing.T) {
 	}
 }
 
+func TestGenerateCompose_DevcontainerHostnameIsWorkspace(t *testing.T) {
+	cfg := makeConfig(func(c *types.DevcontainerConfig) {
+		c.Workspace = "my-project"
+	})
+	yml := mustGenerateCompose(t, cfg)
+	var parsed map[string]any
+	if err := yaml.Unmarshal([]byte(yml), &parsed); err != nil {
+		t.Fatalf("invalid YAML: %v", err)
+	}
+	services := parsed["services"].(map[string]any)
+	devSvc := services["devcontainer-ssh"].(map[string]any)
+	if devSvc["hostname"] != "my-project" {
+		t.Errorf("expected devcontainer hostname %q, got %v", "my-project", devSvc["hostname"])
+	}
+}
+
+func TestGenerateCompose_DBServicesHaveNoHostname(t *testing.T) {
+	cfg := makeConfig(func(c *types.DevcontainerConfig) {
+		c.Compose.Services = []any{"postgres"}
+	})
+	yml := mustGenerateCompose(t, cfg)
+	var parsed map[string]any
+	if err := yaml.Unmarshal([]byte(yml), &parsed); err != nil {
+		t.Fatalf("invalid YAML: %v", err)
+	}
+	services := parsed["services"].(map[string]any)
+	pg := services["postgres"].(map[string]any)
+	if _, ok := pg["hostname"]; ok {
+		t.Errorf("did not expect hostname on db service, got %v", pg["hostname"])
+	}
+}
+
 func TestGenerateCompose_RemoteModeOmitsBuild(t *testing.T) {
 	cfg := makeConfig(func(c *types.DevcontainerConfig) {
 		c.Mode = types.BuildModeRemote

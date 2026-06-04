@@ -268,6 +268,10 @@ func GenerateCompose(config *types.DevcontainerConfig) (string, error) {
 			rendered.Build = ""
 		}
 
+		if svc.ID == types.ServiceDevcontainer {
+			rendered.Hostname = workspace
+		}
+
 		baseContainer := rendered.ContainerName
 		if baseContainer == "" {
 			baseContainer = string(svc.ID)
