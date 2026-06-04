@@ -38,6 +38,7 @@ type ServiceDef struct {
 	Image         string            `yaml:"image,omitempty"`
 	Build         string            `yaml:"build,omitempty"`
 	ContainerName string            `yaml:"container_name"`
+	Hostname      string            `yaml:"hostname,omitempty"`
 	Command       string            `yaml:"command,omitempty"`
 	Restart       string            `yaml:"restart,omitempty"`
 	Privileged    bool              `yaml:"privileged,omitempty"`
