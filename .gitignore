@@ -11,9 +11,9 @@ cli/docker-compose.*
 cli/devcontainer.config.*
 cli/dist/
 
-.dc_*
 .antigravitycli/
 graphify-out/
+testing-dir/
 
 # devcontainer-cli
 .dc_*/
