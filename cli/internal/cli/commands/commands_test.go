@@ -341,11 +341,11 @@ func TestBuildConfigBlock_RemoteNeedsNoKeyInstall(t *testing.T) {
 		remote:    "user@host",
 		container: "myws-devcontainer-ssh",
 	}
-	block, err := buildConfigBlock(sshdefaults.ModeRemote, f, installResult{})
+	block, err := buildConfigBlock(sshdefaults.ModeRemote, f, installResult{}, "myws")
 	if err != nil {
 		t.Fatalf("buildConfigBlock(remote): %v", err)
 	}
-	for _, want := range []string{"Host myws", "ProxyCommand ssh user@host", "myws-devcontainer-ssh"} {
+	for _, want := range []string{"# devcontainer-cli:managed workspace=myws", "Host myws", "ProxyCommand ssh user@host", "myws-devcontainer-ssh"} {
 		if !strings.Contains(block, want) {
 			t.Errorf("remote block missing %q:\n%s", want, block)
 		}
@@ -380,7 +380,7 @@ func TestEmitRemoteConfig_ExportsSharedKey(t *testing.T) {
 		t.Fatalf("os.Pipe: %v", err)
 	}
 	os.Stdout = w
-	emitErr := emitRemoteConfig(ssh, f)
+	emitErr := emitRemoteConfig(ssh, f, "myws")
 	_ = w.Close()
 	os.Stdout = orig
 	if emitErr != nil {
