@@ -22,6 +22,8 @@ func newPortForwardCommand() *cobra.Command {
 		Short: "Forward host ports to container ports using SSH",
 		Long: `devcontainer-cli port-forward — securely forwards host ports to container ports via SSH.
 
+This is critical for accessing web applications, databases, or APIs running inside the devcontainer from your local host machine's browser or tools.
+
 Run with no port_mapping for an interactive session: pick any running container
 (devcontainers are marked '(devcontainer)'), enter one or more ports, and repeat
 for other containers. All tunnels are opened in parallel after you confirm.

@@ -16,7 +16,7 @@ func newInfoCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:          "info",
 		Short:        "Show detailed information about project containers",
-		Long:         `devcontainer-cli info — displays comprehensive details including name, image, status, timestamps, ports, volumes, and IP addresses for the active workspace, or a specific container using the --container flag.`,
+		Long:         "devcontainer-cli info — displays comprehensive details including name, image, status, timestamps, ports, volumes, and IP addresses for the active workspace, or a specific container using the --container flag.\n\nThis is extremely helpful for debugging connection issues, verifying that ports are exposed correctly, and understanding the current state and resource mapping of your devcontainer setup.",
 		SilenceUsage: true,
 		RunE:         runInfo,
 	}

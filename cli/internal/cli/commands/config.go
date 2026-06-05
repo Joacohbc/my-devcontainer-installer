@@ -16,6 +16,7 @@ func newConfigCommand() *cobra.Command {
 		Use:   "config",
 		Short: "Manage global CLI configuration settings",
 		Long: "devcontainer-cli config — read, write, or update global CLI configuration settings.\n\n" +
+			"This command allows you to customize the behavior of the CLI across all your projects by modifying global defaults, such as the container registry URL or the default SSH key.\n\n" +
 			"Config file: " + domain.GlobalConfigPath(),
 		SilenceUsage: true,
 	}
@@ -33,7 +34,7 @@ func newConfigKeyCommand(key, description string) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   key + " [value]",
 		Short: "Get or set the default " + description,
-		Long: fmt.Sprintf("devcontainer-cli config %s — retrieves or updates the default %s in the global configuration.\n\nUsage:\n"+
+		Long: fmt.Sprintf("devcontainer-cli config %s — retrieves or updates the default %s in the global configuration.\n\nThis ensures that newly generated devcontainers inherit your preferred defaults, reducing repetitive manual configuration.\n\nUsage:\n"+
 			"  devcontainer-cli config %s                 # print current value\n"+
 			"  devcontainer-cli config %s <value>         # set value\n"+
 			"  devcontainer-cli config %s --unset         # remove key", key, description, key, key, key),
@@ -51,7 +52,7 @@ func newConfigSSHKeyCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "ssh-key [path]",
 		Short: "Get or set the shared managed SSH key path",
-		Long: "devcontainer-cli config ssh-key — retrieves or updates the path to the single shared SSH key reused by every devcontainer.\n\nUsage:\n" +
+		Long: "devcontainer-cli config ssh-key — retrieves or updates the path to the single shared SSH key reused by every devcontainer.\n\nConfiguring a single shared key streamlines secure connections across all your environments without having to manage multiple credentials.\n\nUsage:\n" +
 			"  devcontainer-cli config ssh-key            # print path and whether the key exists\n" +
 			"  devcontainer-cli config ssh-key <path>     # set the key path\n" +
 			"  devcontainer-cli config ssh-key --unset    # revert to the default managed path\n" +

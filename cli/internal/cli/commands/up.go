@@ -14,6 +14,8 @@ func newUpCommand() *cobra.Command {
 		Short: "Create and start project containers",
 		Long: `devcontainer-cli up — builds, recreates, starts, and attaches to containers for a service.
 
+Use this command to apply configuration changes, rebuild images after modifying Dockerfiles, or simply to ensure your entire project environment is running and up-to-date.
+
 Runs: docker compose -f .dc_<workspace>/build/docker-compose.yml up -d`,
 		SilenceUsage: true,
 		RunE:         runUp,

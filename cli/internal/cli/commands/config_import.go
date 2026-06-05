@@ -15,7 +15,7 @@ func newConfigImportCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:          "import <file.yml>",
 		Short:        "Import a YAML configuration file",
-		Long:         "devcontainer-cli import — reads a YAML configuration file and writes it to devcontainer.config.json in the current directory.",
+		Long:         "devcontainer-cli import — reads a YAML configuration file and writes it to devcontainer.config.json in the current directory.\n\nThis is the inverse of the 'export' command, allowing you to quickly bootstrap a project's devcontainer setup from a pre-existing YAML template or shared configuration file.",
 		Args:         cobra.ExactArgs(1),
 		SilenceUsage: true,
 		RunE:         runConfigImport,

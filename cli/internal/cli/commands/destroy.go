@@ -18,6 +18,8 @@ func newDestroyCommand() *cobra.Command {
 		Short: "Tear down project containers, volumes, and delete configuration files",
 		Long: `devcontainer-cli destroy — permanently removes all resources for the current project.
 
+Use this when you are completely finished working on a project or need to perform a hard reset from scratch, as it ensures no residual containers, network configurations, or data volumes are left behind.
+
 Runs 'docker compose down -v' (containers + volumes), then deletes the generated
 .dc_<workspace>/ directory and devcontainer.config.json. This action is irreversible.`,
 		SilenceUsage: true,

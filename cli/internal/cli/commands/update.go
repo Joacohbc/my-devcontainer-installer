@@ -16,6 +16,8 @@ func newUpdateCommand() *cobra.Command {
 		Short: "Update container images for this project or all projects",
 		Long: `devcontainer-cli update — pulls the latest container images for the project.
 
+Essential for keeping your base tools, databases, and dependencies secure and up-to-date with upstream changes without needing to manually run docker pull commands.
+
   devcontainer-cli update              Update images for the project in the current dir
   devcontainer-cli update --all        Update images for every recorded project
   devcontainer-cli update --pull       Force pull for remote images

@@ -26,6 +26,7 @@ func newPasswordShowCommand() *cobra.Command {
 		Use:   "show",
 		Short: "Show the initial devuser password",
 		Long: "devcontainer-cli password show — displays the initial devuser password generated when the container was created.\n\n" +
+			"This is necessary if you need to perform actions requiring sudo inside the container or when setting up SSH access for the first time.\n" +
 			"This is the only password the CLI can reveal: Linux stores credentials as a\n" +
 			"one-way hash, so a password later set via 'password change' cannot be retrieved.",
 		SilenceUsage: true,

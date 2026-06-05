@@ -14,6 +14,7 @@ func newLsCommand() *cobra.Command {
 		Short: "List files and directories inside the devcontainer",
 		Long: `devcontainer-cli ls — lists files and directories inside the running devcontainer. Wraps the 'ls' command.
 
+Useful for quickly inspecting the contents of the devcontainer's filesystem without needing to open a full shell session.
 Supports real-time dynamic completion for paths inside the container.`,
 		SilenceUsage:      true,
 		ValidArgsFunction: runLsCompletion,

@@ -34,7 +34,7 @@ func newSetupSshCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:          "setup-ssh",
 		Short:        "Automate SSH setup for the devcontainer",
-		Long:         "devcontainer-cli setup-ssh — automates SSH key generation, installation, and configuration for connecting to devcontainer-ssh.",
+		Long:         "devcontainer-cli setup-ssh — automates SSH key generation, installation, and configuration for connecting to devcontainer-ssh.\n\nThis completely bypasses the need for manual SSH key copying or editing ~/.ssh/config, providing immediate, secure access to your environments.",
 		SilenceUsage: true,
 		RunE:         runSetupSsh,
 	}
