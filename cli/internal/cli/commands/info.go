@@ -14,9 +14,9 @@ func init() { register(newInfoCommand()) }
 
 func newInfoCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "info",
-		Short: "Show detailed information about project containers",
-		Long: `devcontainer-cli info — displays comprehensive details including name, image, status, timestamps, ports, volumes, and IP addresses for the active workspace, or a specific container using the --container flag.`,
+		Use:          "info",
+		Short:        "Show detailed information about project containers",
+		Long:         `devcontainer-cli info — displays comprehensive details including name, image, status, timestamps, ports, volumes, and IP addresses for the active workspace, or a specific container using the --container flag.`,
 		SilenceUsage: true,
 		RunE:         runInfo,
 	}
