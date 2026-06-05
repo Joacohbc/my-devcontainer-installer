@@ -12,7 +12,7 @@ func newUpCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "up",
 		Short: "Create and start project containers",
-		Long: `devcontainer-cli up — build, recreate, start, and attach to containers for a service
+		Long: `devcontainer-cli up — builds, recreates, starts, and attaches to containers for a service.
 
 Runs: docker compose -f .dc_<workspace>/build/docker-compose.yml up -d`,
 		SilenceUsage: true,

@@ -15,8 +15,8 @@ func init() {
 func newLifecycleCommand(verb string) *cobra.Command {
 	return &cobra.Command{
 		Use:   verb,
-		Short: "docker compose " + verb + " for the current project",
-		Long: "devcontainer-cli " + verb + " — docker compose " + verb + " for the current project\n\n" +
+		Short: "Run docker compose " + verb + " for the current project",
+		Long: "devcontainer-cli " + verb + " — executes 'docker compose " + verb + "' for the current project.\n\n" +
 			"Runs: docker compose -f .dc_<workspace>/build/docker-compose.yml " + verb,
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -28,8 +28,8 @@ func newLifecycleCommand(verb string) *cobra.Command {
 func newStartCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "start",
-		Short: "docker compose start for the current project",
-		Long: "devcontainer-cli start — docker compose start for the current project\n\n" +
+		Short: "Start existing project containers",
+		Long: "devcontainer-cli start — starts existing project containers without recreating them.\n\n" +
 			"Runs: docker compose -f .dc_<workspace>/build/docker-compose.yml start\n\n" +
 			"With --container: starts a single container via docker start.",
 		SilenceUsage: true,
@@ -62,8 +62,8 @@ func runStart(cmd *cobra.Command, _ []string) error {
 func newStopCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "stop",
-		Short: "docker compose stop for the current project",
-		Long: "devcontainer-cli stop — docker compose stop for the current project\n\n" +
+		Short: "Stop running project containers",
+		Long: "devcontainer-cli stop — stops running project containers without removing them.\n\n" +
 			"Runs: docker compose -f .dc_<workspace>/build/docker-compose.yml stop\n\n" +
 			"With --container: stops a single container via docker stop.",
 		SilenceUsage: true,

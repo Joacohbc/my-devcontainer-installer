@@ -15,8 +15,8 @@ func init() { register(newRunCommand()) }
 func newRunCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "run",
-		Short: "Spin up a remote image container without project files",
-		Long: "devcontainer-cli run — spin up a container from a remote image without any project files\n\n" +
+		Short: "Start a container from a remote image without project files",
+		Long: "devcontainer-cli run — starts a devcontainer from a remote image without relying on local project files.\n\n" +
 			"Variants: " + strings.Join(types.RemoteVariants, ", "),
 		SilenceUsage: true,
 		RunE:         runQuickRun,

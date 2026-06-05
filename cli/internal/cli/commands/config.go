@@ -14,8 +14,8 @@ func init() { register(newConfigCommand()) }
 func newConfigCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "config",
-		Short: "Read or write global CLI config (e.g. 'config registry <url>')",
-		Long: "devcontainer-cli config — read/write global CLI config\n\n" +
+		Short: "Manage global CLI configuration settings",
+		Long: "devcontainer-cli config — read, write, or update global CLI configuration settings.\n\n" +
 			"Config file: " + domain.GlobalConfigPath(),
 		SilenceUsage: true,
 	}
@@ -32,8 +32,8 @@ func newConfigCommand() *cobra.Command {
 func newConfigKeyCommand(key, description string) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   key + " [value]",
-		Short: "Get/set the default " + description,
-		Long: fmt.Sprintf("devcontainer-cli config %s — get/set the default %s\n\nUsage:\n"+
+		Short: "Get or set the default " + description,
+		Long: fmt.Sprintf("devcontainer-cli config %s — retrieves or updates the default %s in the global configuration.\n\nUsage:\n"+
 			"  devcontainer-cli config %s                 # print current value\n"+
 			"  devcontainer-cli config %s <value>         # set value\n"+
 			"  devcontainer-cli config %s --unset         # remove key", key, description, key, key, key),
@@ -50,8 +50,8 @@ func newConfigKeyCommand(key, description string) *cobra.Command {
 func newConfigSSHKeyCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "ssh-key [path]",
-		Short: "Get/set the shared managed SSH key path",
-		Long: "devcontainer-cli config ssh-key — manage the single shared SSH key reused by every devcontainer\n\nUsage:\n" +
+		Short: "Get or set the shared managed SSH key path",
+		Long: "devcontainer-cli config ssh-key — retrieves or updates the path to the single shared SSH key reused by every devcontainer.\n\nUsage:\n" +
 			"  devcontainer-cli config ssh-key            # print path and whether the key exists\n" +
 			"  devcontainer-cli config ssh-key <path>     # set the key path\n" +
 			"  devcontainer-cli config ssh-key --unset    # revert to the default managed path\n" +

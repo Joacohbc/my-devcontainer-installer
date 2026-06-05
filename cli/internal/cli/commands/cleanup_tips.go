@@ -15,7 +15,7 @@ func newCleanupTipsCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:          "cleanup-tips",
 		Short:        "Show docker cleanup commands for this project",
-		Long:         "devcontainer-cli cleanup-tips — show docker cleanup commands for this project",
+		Long:         "devcontainer-cli cleanup-tips — shows suggested docker cleanup commands for the current project resources.",
 		SilenceUsage: true,
 		RunE: func(_ *cobra.Command, _ []string) error {
 			cwd, err := currentDir()

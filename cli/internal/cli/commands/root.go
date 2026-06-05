@@ -12,8 +12,8 @@ func NewRootCommand(v string) *cobra.Command {
 	version = v
 	root := &cobra.Command{
 		Use:   "devcontainer-cli",
-		Short: "Generate Dockerfile + docker-compose.yml for devcontainers",
-		Long:  "devcontainer CLI — generate Dockerfile + docker-compose.yml and manage devcontainer environments.",
+		Short: "Generate and manage devcontainer environments",
+		Long:  "devcontainer CLI — generates Dockerfile and docker-compose.yml files, and manages devcontainer environments.",
 		// Run the generate flow when no subcommand is given.
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,

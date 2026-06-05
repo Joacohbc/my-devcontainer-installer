@@ -12,7 +12,7 @@ func newLsCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "ls [container_path]",
 		Short: "List files and directories inside the devcontainer",
-		Long: `devcontainer-cli ls — wrapper for ls command inside the devcontainer
+		Long: `devcontainer-cli ls — lists files and directories inside the running devcontainer. Wraps the 'ls' command.
 
 Supports real-time dynamic completion for paths inside the container.`,
 		SilenceUsage:      true,

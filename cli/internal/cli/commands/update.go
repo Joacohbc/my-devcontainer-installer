@@ -13,8 +13,8 @@ func init() { register(newUpdateCommand()) }
 func newUpdateCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "update",
-		Short: "Update container images for this project / all projects",
-		Long: `devcontainer-cli update — update container images
+		Short: "Update container images for this project or all projects",
+		Long: `devcontainer-cli update — pulls the latest container images for the project.
 
   devcontainer-cli update              Update images for the project in the current dir
   devcontainer-cli update --all        Update images for every recorded project

@@ -33,8 +33,8 @@ type setupSshFlags struct {
 func newSetupSshCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:          "setup-ssh",
-		Short:        "Run automated SSH setup (see: setup-ssh --help)",
-		Long:         "devcontainer-cli setup-ssh — automate SSH key + config for devcontainer-ssh",
+		Short:        "Automate SSH setup for the devcontainer",
+		Long:         "devcontainer-cli setup-ssh — automates SSH key generation, installation, and configuration for connecting to devcontainer-ssh.",
 		SilenceUsage: true,
 		RunE:         runSetupSsh,
 	}

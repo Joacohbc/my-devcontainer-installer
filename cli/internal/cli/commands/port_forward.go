@@ -19,8 +19,8 @@ func init() { register(newPortForwardCommand()) }
 func newPortForwardCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "port-forward [port_mapping]",
-		Short: "Forward host port to a container port using SSH",
-		Long: `devcontainer-cli port-forward — forward host ports to container ports using SSH
+		Short: "Forward host ports to container ports using SSH",
+		Long: `devcontainer-cli port-forward — securely forwards host ports to container ports via SSH.
 
 Run with no port_mapping for an interactive session: pick any running container
 (devcontainers are marked '(devcontainer)'), enter one or more ports, and repeat

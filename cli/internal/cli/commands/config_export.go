@@ -11,7 +11,8 @@ import (
 func newConfigExportCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:          "export",
-		Short:        "Export devcontainer.config.json as YAML",
+		Short:        "Export the current project's configuration to YAML",
+		Long:         "devcontainer-cli export — converts devcontainer.config.json to a YAML format and outputs it to stdout.",
 		SilenceUsage: true,
 		RunE:         runConfigExport,
 	}

@@ -17,7 +17,7 @@ func newCopyCommand() *cobra.Command {
 		Use:     "copy [src] [dest]",
 		Aliases: []string{"cp"},
 		Short:   "Copy files or directories between the host and the container",
-		Long: `devcontainer-cli copy — copy a file or directory between the host and the running devcontainer
+		Long: `devcontainer-cli copy — copies files or directories between the host machine and the running devcontainer.
 
 A path prefixed with ':' refers to a path inside the container (the container is
 resolved automatically, so you don't type its name). Exactly one of src/dest may

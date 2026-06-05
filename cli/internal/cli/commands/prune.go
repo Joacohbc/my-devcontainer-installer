@@ -12,11 +12,11 @@ func init() { register(newPruneCommand()) }
 func newPruneCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "prune",
-		Short: "Remove orphan devcontainer resources",
-		Long: `devcontainer-cli prune — remove devcontainer resources (images, networks, volumes) whose projects no longer exist
+		Short: "Remove orphaned devcontainer resources",
+		Long: `devcontainer-cli prune — removes devcontainer resources (images, networks, volumes) belonging to projects that no longer exist.
 
-By default removes only orphan resources (project directory is gone).
-Use --all to remove every devcontainer resource regardless.`,
+By default, it removes only orphaned resources (where the project directory is gone).
+Use --all to remove all devcontainer resources regardless of their project status.`,
 		SilenceUsage: true,
 		RunE:         runPrune,
 	}

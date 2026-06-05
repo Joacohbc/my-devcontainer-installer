@@ -19,7 +19,7 @@ func init() { register(newPresetCommand()) }
 func newPresetCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "preset",
-		Short: "Manage presets",
+		Short: "Manage configuration presets",
 	}
 	cmd.AddCommand(newPresetListCommand())
 	cmd.AddCommand(newPresetCreateCommand())
@@ -30,7 +30,7 @@ func newPresetCommand() *cobra.Command {
 func newPresetListCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:          "list",
-		Short:        "List builtin and user-defined presets",
+		Short:        "List available built-in and user-defined presets",
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			for _, p := range (service.ConfigService{Report: console}).Presets() {
@@ -140,7 +140,7 @@ func runPresetCreate(cmd *cobra.Command, args []string) error {
 func newPresetCopyCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:          "copy <existing-preset-id> <new-preset-id>",
-		Short:        "Copy an existing preset (builtin or user) to a new user preset",
+		Short:        "Duplicate an existing preset to a new user preset",
 		Args:         cobra.ExactArgs(2),
 		SilenceUsage: true,
 		RunE:         runPresetCopy,

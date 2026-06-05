@@ -12,8 +12,8 @@ func init() { register(newDownCommand()) }
 func newDownCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "down",
-		Short: "Bring down project containers",
-		Long: `devcontainer-cli down — stop and remove project containers
+		Short: "Stop and remove project containers",
+		Long: `devcontainer-cli down — stops and removes the running containers for the current project.
 
 Runs: docker compose -f .dc_<workspace>/build/docker-compose.yml down
 Add -v/--volumes to also remove named volumes (deletes data). --yes only

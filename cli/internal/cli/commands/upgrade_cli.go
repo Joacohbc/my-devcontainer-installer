@@ -12,8 +12,8 @@ func init() { register(newUpgradeCliCommand()) }
 func newUpgradeCliCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "upgrade-cli",
-		Short: "Replace this binary with the latest GitHub release",
-		Long: `devcontainer-cli upgrade-cli — replace the current binary with the latest release
+		Short: "Upgrade the CLI to the latest GitHub release",
+		Long: `devcontainer-cli upgrade-cli — downloads and replaces the current binary with the latest available release from GitHub.
 
 By default this installs the latest stable release. Pre-releases
 are opt-in: when one is newer than the installed version you are
