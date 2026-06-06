@@ -18,8 +18,9 @@ func newUpdateCommand() *cobra.Command {
 
 Essential for keeping your base tools, databases, and dependencies secure and up-to-date with upstream changes without needing to manually run docker pull commands.
 
-Scope: Active project (default) or All projects
+Scope: Active workspace (default) or All projects
 
+Examples:
   devcontainer-cli update              Update images for the project in the current dir
   devcontainer-cli update --all        Update images for every recorded project
   devcontainer-cli update --pull       Force pull for remote images

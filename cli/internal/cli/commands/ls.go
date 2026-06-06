@@ -17,7 +17,12 @@ func newLsCommand() *cobra.Command {
 Useful for quickly inspecting the contents of the devcontainer's filesystem without needing to open a full shell session.
 Supports real-time dynamic completion for paths inside the container.
 
-Scope: Container`,
+Scope: Container
+
+Examples:
+  devcontainer-cli ls /home/devuser
+  devcontainer-cli ls -l -a /var/log
+  devcontainer-cli ls -w my-workspace -c database /`,
 		SilenceUsage:      true,
 		ValidArgsFunction: runLsCompletion,
 		RunE:              runLs,

@@ -18,8 +18,8 @@ func init() { register(newStatusCommand()) }
 func newStatusCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:          "status",
-		Short:        "Show container status for the active project",
-		Long:         "devcontainer-cli status — lists containers, states, and port mappings for the active workspace.\n\nProvides a quick overview of which services are currently running and accessible, similar to 'docker compose ps' but tailored to the devcontainer environment.\n\nScope: Active project",
+		Short:        "Show container status for the active workspace",
+		Long:         "devcontainer-cli status — lists containers, states, and port mappings for the active workspace.\n\nProvides a quick overview of which services are currently running and accessible, similar to 'docker compose ps' but tailored to the devcontainer environment.\n\nScope: Active workspace\n\nExamples:\n  devcontainer-cli status\n  devcontainer-cli status --all\n  devcontainer-cli status -c database\n  devcontainer-cli status -w my-workspace",
 		SilenceUsage: true,
 		RunE:         runStatus,
 	}
@@ -118,7 +118,7 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 	paths := project.ProjectPaths(cwd, workspace)
 	services := service.ReadComposeServices(paths.ComposeFile)
 	if services == nil {
-		return fmt.Errorf("no active project compose file found at %s. Run 'devcontainer-cli' to generate one first, or target a specific container via --container", paths.ComposeFile)
+		return fmt.Errorf("no active workspace compose file found at %s. Run 'devcontainer-cli' to generate one first, or target a specific container via --container", paths.ComposeFile)
 	}
 
 	console.NewLine()

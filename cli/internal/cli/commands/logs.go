@@ -12,7 +12,7 @@ func newLogsCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "logs [service]",
 		Short: "View logs from project containers",
-		Long:  "devcontainer-cli logs — displays log output from project containers. Wraps 'docker compose logs'.\n\nEssential for debugging container startup issues, checking application output, or monitoring background service behavior within the devcontainer.\n\nScope: Active project",
+		Long:  "devcontainer-cli logs — displays log output from project containers. Wraps 'docker compose logs'.\n\nEssential for debugging container startup issues, checking application output, or monitoring background service behavior within the devcontainer.\n\nScope: Active workspace\n\nExamples:\n  devcontainer-cli logs\n  devcontainer-cli logs -f\n  devcontainer-cli logs --tail 100\n  devcontainer-cli logs -c database",
 		RunE:  runLogs,
 	}
 	addWorkspaceFlag(cmd)

@@ -24,6 +24,12 @@ are opt-in: when one is newer than the installed version you are
 asked whether to install it, otherwise the latest stable is used. Pass
 --pre-release to install it without prompting (and in non-interactive mode).
 
+Examples:
+  devcontainer-cli upgrade-cli
+  devcontainer-cli upgrade-cli --check
+  devcontainer-cli upgrade-cli --pre-release
+  devcontainer-cli upgrade-cli --force -y
+
 Env:
   GITHUB_TOKEN  Optional, to avoid the 60 req/hour anonymous rate limit`,
 		SilenceUsage: true,

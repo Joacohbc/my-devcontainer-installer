@@ -28,7 +28,7 @@ func newPasswordShowCommand() *cobra.Command {
 		Long: "devcontainer-cli password show — displays the initial devuser password generated when the container was created.\n\n" +
 			"This is necessary if you need to perform actions requiring sudo inside the container or when setting up SSH access for the first time.\n" +
 			"This is the only password the CLI can reveal: Linux stores credentials as a\n" +
-			"one-way hash, so a password later set via 'password change' cannot be retrieved.\n\nScope: Container",
+			"one-way hash, so a password later set via 'password change' cannot be retrieved.\n\nScope: Container\n\nExamples:\n  devcontainer-cli password show\n  devcontainer-cli password show -w my-workspace",
 		SilenceUsage: true,
 		RunE:         runPasswordShow,
 	}
@@ -41,6 +41,7 @@ func newPasswordChangeCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:          "change",
 		Short:        "Change the devuser password",
+		Long:         "devcontainer-cli password change — changes the devuser password inside the running container.\n\nExamples:\n  devcontainer-cli password change\n  devcontainer-cli password change --password new_secure_password\n  devcontainer-cli password change -w my-workspace -c database",
 		SilenceUsage: true,
 		RunE:         runPasswordChange,
 	}

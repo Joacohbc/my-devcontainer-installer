@@ -35,6 +35,7 @@ Examples:
   devcontainer-cli port-forward 3000
   devcontainer-cli port-forward 8080:80
   devcontainer-cli port-forward 5432:postgres:5432
+  devcontainer-cli port-forward --no-interactive
   devcontainer-cli port-forward 5432 --service postgres
   devcontainer-cli port-forward 3000 --alias my-custom-host`,
 		Args:         cobra.MaximumNArgs(1),

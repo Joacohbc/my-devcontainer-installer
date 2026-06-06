@@ -19,7 +19,12 @@ func newRunCommand() *cobra.Command {
 		Long: "devcontainer-cli run — starts a devcontainer from a remote image without relying on local project files.\n\n" +
 			"This is useful for quickly spinning up an isolated environment to test a tool, experiment with a language, or run a single script without needing to set up a full project directory.\n\n" +
 			"Scope: Global CLI\n\n" +
-			"Variants: " + strings.Join(types.RemoteVariants, ", "),
+			"Variants: " + strings.Join(types.RemoteVariants, ", ") + "\n\n" +
+			"Examples:\n" +
+			"  devcontainer-cli run\n" +
+			"  devcontainer-cli run --variant go\n" +
+			"  devcontainer-cli run --name temp-env --no-interactive\n" +
+			"  devcontainer-cli run --volumes \"/local/data:/data\" --ports \"8080:80\" -y",
 		SilenceUsage: true,
 		RunE:         runQuickRun,
 	}

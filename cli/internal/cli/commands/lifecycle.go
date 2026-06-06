@@ -18,8 +18,11 @@ func newLifecycleCommand(verb string) *cobra.Command {
 		Short: "Run docker compose " + verb + " for the current project",
 		Long: "devcontainer-cli " + verb + " — executes 'docker compose " + verb + "' for the current project.\n\n" +
 			"This provides a convenient wrapper around standard docker compose commands, ensuring they are executed against the correct dynamically generated docker-compose.yml file for your active workspace.\n\n" +
-			"Scope: Active project\n\n" +
-			"Runs: docker compose -f .dc_<workspace>/build/docker-compose.yml " + verb,
+			"Scope: Active workspace\n\n" +
+			"Runs: docker compose -f .dc_<workspace>/build/docker-compose.yml " + verb + "\n\n" +
+			"Examples:\n" +
+			"  devcontainer-cli " + verb + "\n" +
+			"  devcontainer-cli " + verb + " -w my-workspace",
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runLifecycle(verb)
@@ -33,9 +36,12 @@ func newStartCommand() *cobra.Command {
 		Short: "Start existing project containers",
 		Long: "devcontainer-cli start — starts existing project containers without recreating them.\n\n" +
 			"Use this to quickly resume work on a project that was previously stopped (via 'stop'), without going through the potentially slower build/recreation phase of the 'up' command.\n\n" +
-			"Scope: Active project\n\n" +
+			"Scope: Active workspace\n\n" +
 			"Runs: docker compose -f .dc_<workspace>/build/docker-compose.yml start\n\n" +
-			"With --container: starts a single container via docker start.",
+			"With --container: starts a single container via docker start.\n\n" +
+			"Examples:\n" +
+			"  devcontainer-cli start\n" +
+			"  devcontainer-cli start -c database",
 		SilenceUsage: true,
 		RunE:         runStart,
 	}
@@ -69,9 +75,12 @@ func newStopCommand() *cobra.Command {
 		Short: "Stop running project containers",
 		Long: "devcontainer-cli stop — stops running project containers without removing them.\n\n" +
 			"Use this to temporarily halt your project environments to save resources on your machine, while keeping the container state intact for a fast resume later.\n\n" +
-			"Scope: Active project\n\n" +
+			"Scope: Active workspace\n\n" +
 			"Runs: docker compose -f .dc_<workspace>/build/docker-compose.yml stop\n\n" +
-			"With --container: stops a single container via docker stop.",
+			"With --container: stops a single container via docker stop.\n\n" +
+			"Examples:\n" +
+			"  devcontainer-cli stop\n" +
+			"  devcontainer-cli stop -c database",
 		SilenceUsage: true,
 		RunE:         runStop,
 	}

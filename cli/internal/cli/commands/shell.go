@@ -12,7 +12,7 @@ func newShellCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "shell [flags] [-- command args...]",
 		Short: "Open an interactive shell in the devcontainer",
-		Long:  "devcontainer-cli shell — opens an interactive shell session in the devcontainer. Shortcut for 'docker exec -it <container> <shell>'.\n\nWhile SSH is the recommended way to connect, this provides a fallback method to execute commands directly inside the container when SSH is unavailable or being configured.\n\nScope: Container",
+		Long:  "devcontainer-cli shell — opens an interactive shell session in the devcontainer. Shortcut for 'docker exec -it <container> <shell>'.\n\nWhile SSH is the recommended way to connect, this provides a fallback method to execute commands directly inside the container when SSH is unavailable or being configured.\n\nScope: Container\n\nExamples:\n  devcontainer-cli shell\n  devcontainer-cli shell -w my-workspace\n  devcontainer-cli shell --user root\n  devcontainer-cli shell --type bash",
 		RunE:  runShell,
 	}
 	addWorkspaceFlag(cmd)

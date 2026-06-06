@@ -16,7 +16,7 @@ func newInfoCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:          "info",
 		Short:        "Show detailed information about project containers",
-		Long:         "devcontainer-cli info — displays comprehensive details including name, image, status, timestamps, ports, volumes, and IP addresses for the active workspace, or a specific container using the --container flag.\n\nThis is extremely helpful for debugging connection issues, verifying that ports are exposed correctly, and understanding the current state and resource mapping of your devcontainer setup.\n\nScope: Active project or specific container",
+		Long:         "devcontainer-cli info — displays comprehensive details including name, image, status, timestamps, ports, volumes, and IP addresses for the active workspace, or a specific container using the --container flag.\n\nThis is extremely helpful for debugging connection issues, verifying that ports are exposed correctly, and understanding the current state and resource mapping of your devcontainer setup.\n\nScope: Active workspace or specific container\n\nExamples:\n  devcontainer-cli info\n  devcontainer-cli info -w my-workspace\n  devcontainer-cli info -c database",
 		SilenceUsage: true,
 		RunE:         runInfo,
 	}
@@ -54,7 +54,7 @@ func runInfo(cmd *cobra.Command, _ []string) error {
 	paths := project.ProjectPaths(cwd, workspace)
 	services := service.ReadComposeServices(paths.ComposeFile)
 	if services == nil {
-		return fmt.Errorf("no active project compose file found at %s. Run 'devcontainer-cli' to generate one first, or target a specific container via --container", paths.ComposeFile)
+		return fmt.Errorf("no active workspace compose file found at %s. Run 'devcontainer-cli' to generate one first, or target a specific container via --container", paths.ComposeFile)
 	}
 
 	console.NewLine()
