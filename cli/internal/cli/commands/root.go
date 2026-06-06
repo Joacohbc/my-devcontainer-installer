@@ -13,7 +13,7 @@ func NewRootCommand(v string) *cobra.Command {
 	root := &cobra.Command{
 		Use:   "devcontainer-cli",
 		Short: "Generate and manage devcontainer environments",
-		Long:  "devcontainer CLI — generates Dockerfile and docker-compose.yml files, and manages devcontainer environments.\n\nThis is the main entry point for the CLI. Running it without subcommands initiates the interactive generation wizard.",
+		Long:  "devcontainer CLI — generates Dockerfile and docker-compose.yml files, and manages devcontainer environments.\n\nThis is the main entry point for the CLI. Running it without subcommands initiates the interactive generation wizard.\n\nScope: Global CLI",
 		// Run the generate flow when no subcommand is given.
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,

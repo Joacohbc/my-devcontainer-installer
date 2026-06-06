@@ -20,7 +20,7 @@ func newPresetCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "preset",
 		Short: "Manage configuration presets",
-		Long:  "devcontainer-cli preset — manage reusable configuration templates.\n\nPresets allow you to quickly apply standardized environments (like Node.js + MongoDB or Python + PostgreSQL) across multiple projects without having to manually select the same options every time.",
+		Long:  "devcontainer-cli preset — manage reusable configuration templates.\n\nPresets allow you to quickly apply standardized environments (like Node.js + MongoDB or Python + PostgreSQL) across multiple projects without having to manually select the same options every time.\n\nScope: Global CLI",
 	}
 	cmd.AddCommand(newPresetListCommand())
 	cmd.AddCommand(newPresetCreateCommand())

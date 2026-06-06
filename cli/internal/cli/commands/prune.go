@@ -17,6 +17,8 @@ func newPruneCommand() *cobra.Command {
 
 This helps maintain a clean Docker environment and reclaims disk space by garbage collecting artifacts left behind by deleted projects.
 
+Scope: Global CLI
+
 By default, it removes only orphaned resources (where the project directory is gone).
 Use --all to remove all devcontainer resources regardless of their project status.`,
 		SilenceUsage: true,

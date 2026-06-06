@@ -21,6 +21,8 @@ func newCopyCommand() *cobra.Command {
 
 This simplifies the process of transferring files (like data dumps, temporary scripts, or build artifacts) in and out of your devcontainer without needing to rely on complex docker commands or external tools.
 
+Scope: Container
+
 A path prefixed with ':' refers to a path inside the container (the container is
 resolved automatically, so you don't type its name). Exactly one of src/dest may
 be a container path; the direction is inferred from where the ':' is:

@@ -17,6 +17,8 @@ func newUpgradeCliCommand() *cobra.Command {
 
 This provides a seamless, self-updating mechanism, ensuring you always have access to the latest features, bug fixes, and performance improvements of the devcontainer-cli tool itself.
 
+Scope: Global CLI
+
 By default this installs the latest stable release. Pre-releases
 are opt-in: when one is newer than the installed version you are
 asked whether to install it, otherwise the latest stable is used. Pass

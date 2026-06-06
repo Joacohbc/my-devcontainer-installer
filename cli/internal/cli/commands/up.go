@@ -16,6 +16,8 @@ func newUpCommand() *cobra.Command {
 
 Use this command to apply configuration changes, rebuild images after modifying Dockerfiles, or simply to ensure your entire project environment is running and up-to-date.
 
+Scope: Active project
+
 Runs: docker compose -f .dc_<workspace>/build/docker-compose.yml up -d`,
 		SilenceUsage: true,
 		RunE:         runUp,

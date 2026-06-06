@@ -17,6 +17,8 @@ func newDownCommand() *cobra.Command {
 
 This is the standard way to stop working on a project. It shuts down the environment cleanly and frees up system resources (CPU/RAM) without deleting your configuration files or persistent data (unless you explicitly use flags).
 
+Scope: Active project
+
 Runs: docker compose -f .dc_<workspace>/build/docker-compose.yml down
 Add -v/--volumes to also remove named volumes (deletes data). --yes only
 skips the volume prompt; it never deletes volumes on its own.`,

@@ -19,7 +19,7 @@ func newStatusCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:          "status",
 		Short:        "Show container status for the active project",
-		Long:         "devcontainer-cli status — lists containers, states, and port mappings for the active workspace.\n\nProvides a quick overview of which services are currently running and accessible, similar to 'docker compose ps' but tailored to the devcontainer environment.",
+		Long:         "devcontainer-cli status — lists containers, states, and port mappings for the active workspace.\n\nProvides a quick overview of which services are currently running and accessible, similar to 'docker compose ps' but tailored to the devcontainer environment.\n\nScope: Active project",
 		SilenceUsage: true,
 		RunE:         runStatus,
 	}
