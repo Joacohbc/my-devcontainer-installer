@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/log"
 	"github.com/goccy/go-yaml"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/logger"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/pick"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/catalog"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
@@ -768,6 +769,68 @@ func TestAllCommands_HaveContainerFlag(t *testing.T) {
 		if target.Flags().Lookup("container") == nil {
 			t.Errorf("expected command %q to have --container flag", name)
 		}
+	}
+}
+
+func TestFilterContainerNames_ByState(t *testing.T) {
+	containers := []pick.Container{
+		{Name: "ws-devcontainer-ssh", State: "running"},
+		{Name: "ws-postgres", State: "exited"},
+		{Name: "other", State: "created"},
+	}
+
+	all := filterContainerNames(containers, "", nil)
+	if len(all) != 3 {
+		t.Fatalf("nil keep: got %d names, want 3: %v", len(all), all)
+	}
+
+	running := filterContainerNames(containers, "", containerRunning)
+	if len(running) != 1 || running[0] != "ws-devcontainer-ssh" {
+		t.Errorf("running filter: got %v, want [ws-devcontainer-ssh]", running)
+	}
+
+	stopped := filterContainerNames(containers, "", func(c pick.Container) bool { return !containerRunning(c) })
+	if len(stopped) != 2 {
+		t.Errorf("stopped filter: got %v, want 2", stopped)
+	}
+
+	prefixed := filterContainerNames(containers, "ws-", nil)
+	if len(prefixed) != 2 {
+		t.Errorf("prefix filter: got %v, want 2 ws- names", prefixed)
+	}
+}
+
+func TestStartStopCompletion_FilterByState(t *testing.T) {
+	root := NewRootCommand("test")
+	byName := map[string]*cobra.Command{}
+	for _, c := range root.Commands() {
+		byName[c.Name()] = c
+	}
+	// start completes stopped containers, stop completes running ones; both
+	// register a flag completion func for --container.
+	for _, name := range []string{"start", "stop"} {
+		cmd := byName[name]
+		if cmd == nil {
+			t.Fatalf("command %q not found", name)
+		}
+		if _, ok := cmd.GetFlagCompletionFunc("container"); !ok {
+			t.Errorf("expected %q to register --container completion", name)
+		}
+	}
+}
+
+func TestContainerChoiceLabel_ContainsFields(t *testing.T) {
+	c := pick.Container{Name: "ws-devcontainer-ssh", Image: "img:latest", State: "running", Status: "Up", Workspace: "ws"}
+	label := containerChoiceLabel(c)
+	for _, want := range []string{"ws-devcontainer-ssh", "ws", "img:latest"} {
+		if !strings.Contains(label, want) {
+			t.Errorf("label %q missing %q", label, want)
+		}
+	}
+
+	// Unmanaged container (no workspace) still renders a non-empty tag.
+	if tag := workspaceTag(pick.Container{}); tag == "" {
+		t.Error("workspaceTag for empty workspace should not be empty")
 	}
 }
 

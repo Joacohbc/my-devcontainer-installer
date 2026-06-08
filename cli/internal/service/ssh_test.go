@@ -51,7 +51,7 @@ func TestSshPublicAndPrivateKeyReads(t *testing.T) {
 func TestSshContainerRunning(t *testing.T) {
 	stdout := `{"Names":"alpha","Image":"img1","Status":"Up","State":"running","Labels":"","Ports":""}
 {"Names":"myws-devcontainer","Image":"img2","Status":"Up","State":"running","Labels":"","Ports":""}
-{"Names":"beta","Image":"img3","Status":"Up","State":"running","Labels":"","Ports":""}`
+{"Names":"stopped-one","Image":"img3","Status":"Exited (0)","State":"exited","Labels":"","Ports":""}`
 	runner := &fakeRunner{status: 0, stdout: stdout}
 	defer useFakeDocker(runner)()
 
@@ -61,6 +61,11 @@ func TestSshContainerRunning(t *testing.T) {
 	}
 	if svc.ContainerRunning("absent") {
 		t.Error("did not expect absent container to be running")
+	}
+	// Now that the list includes stopped containers, a non-running one must not
+	// be reported as running.
+	if svc.ContainerRunning("stopped-one") {
+		t.Error("did not expect a stopped container to be reported running")
 	}
 }
 

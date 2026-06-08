@@ -28,12 +28,12 @@ func (s SshService) CommandExists(bin string) bool {
 // ContainerRunning reports whether a container with the exact name is running.
 func (s SshService) ContainerRunning(name string) bool {
 	inspectSvc := InspectService{Report: s.Report}
-	containers, err := inspectSvc.ListContainers(false, false)
+	containers, err := inspectSvc.ListContainers(false)
 	if err != nil {
 		return false
 	}
 	for _, c := range containers {
-		if c.Name == name {
+		if c.Name == name && c.State == string(StateRunning) {
 			return true
 		}
 	}

@@ -73,17 +73,62 @@ func resolveContainer(cmd *cobra.Command, wsFlag string) (string, error) {
 	return resolveDevcontainerContainer(cwd, wsFlag)
 }
 
+// addContainerFlag registers --container with the generic (any-state) managed
+// container completion.
 func addContainerFlag(cmd *cobra.Command) {
-	cmd.Flags().StringP("container", "c", "", "Explicit target container name (managed by devcontainer-cli)")
-	_ = cmd.RegisterFlagCompletionFunc("container", completeContainers)
+	addContainerFlagFiltered(cmd, completeContainers)
 }
 
-func completeContainers(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+// containerCompletionFunc is the signature cobra expects for flag completion.
+type containerCompletionFunc func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective)
+
+// addContainerFlagFiltered registers --container with a state-specific
+// completion (e.g. start completes stopped containers, stop completes running
+// ones).
+func addContainerFlagFiltered(cmd *cobra.Command, complete containerCompletionFunc) {
+	cmd.Flags().StringP("container", "c", "", "Explicit target container name (managed by devcontainer-cli)")
+	_ = cmd.RegisterFlagCompletionFunc("container", complete)
+}
+
+// filterContainerNames returns the names of containers matching toComplete and,
+// when keep is non-nil, for which keep returns true.
+func filterContainerNames(containers []pick.Container, toComplete string, keep func(pick.Container) bool) []string {
 	var suggestions []string
-	for _, c := range pick.ListManaged() {
-		if strings.HasPrefix(c.Name, toComplete) {
-			suggestions = append(suggestions, c.Name)
+	for _, c := range containers {
+		if !strings.HasPrefix(c.Name, toComplete) {
+			continue
 		}
+		if keep != nil && !keep(c) {
+			continue
+		}
+		suggestions = append(suggestions, c.Name)
 	}
-	return suggestions, cobra.ShellCompDirectiveNoFileComp
+	return suggestions
+}
+
+// managedContainerNames suggests managed container names matching toComplete,
+// keeping only those for which keep returns true. A nil keep accepts all.
+func managedContainerNames(toComplete string, keep func(pick.Container) bool) ([]string, cobra.ShellCompDirective) {
+	return filterContainerNames(pick.ListManaged(), toComplete, keep), cobra.ShellCompDirectiveNoFileComp
+}
+
+// containerRunning reports whether a container is in the running state, used as
+// the keep predicate for state-specific completion.
+func containerRunning(c pick.Container) bool { return c.State == "running" }
+
+// completeContainers completes managed containers in any state.
+func completeContainers(_ *cobra.Command, _ []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	return managedContainerNames(toComplete, nil)
+}
+
+// completeRunningContainers completes managed containers that are running
+// (used by stop).
+func completeRunningContainers(_ *cobra.Command, _ []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	return managedContainerNames(toComplete, containerRunning)
+}
+
+// completeStoppedContainers completes managed containers that are not running
+// (used by start).
+func completeStoppedContainers(_ *cobra.Command, _ []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	return managedContainerNames(toComplete, func(c pick.Container) bool { return !containerRunning(c) })
 }
