@@ -23,7 +23,8 @@ Run a subcommand to target a single resource type:
   prune network   remove managed networks
   prune volume    remove managed volumes
 
-See also the top-level 'rm' (containers) and 'rmi' (images) commands.`,
+See also the top-level 'remove-container' (alias rm) and 'remove-image'
+(alias rmi) commands.`,
 		SilenceUsage: true,
 		RunE:         runPruneAll,
 	}

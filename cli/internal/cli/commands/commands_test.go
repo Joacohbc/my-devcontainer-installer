@@ -4,6 +4,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -25,7 +26,7 @@ func TestNewRootCommand_RegistersAllSubcommands(t *testing.T) {
 		"setup-ssh", "port-forward", "run", "down", "destroy",
 		"start", "stop", "restart", "prune", "update",
 		"upgrade-cli", "config", "cleanup-tips", "shell", "logs", "copy",
-		"up", "status", "ls", "info", "rm", "rmi",
+		"up", "status", "ls", "info", "remove-container", "remove-image",
 	}
 	have := map[string]bool{}
 	for _, c := range root.Commands() {
@@ -35,6 +36,24 @@ func TestNewRootCommand_RegistersAllSubcommands(t *testing.T) {
 		if !have[name] {
 			t.Errorf("expected subcommand %q to be registered", name)
 		}
+	}
+}
+
+func TestRemoveCommands_HaveShortAliases(t *testing.T) {
+	root := NewRootCommand("test")
+	want := map[string]string{"remove-container": "rm", "remove-image": "rmi"}
+	for _, c := range root.Commands() {
+		alias, ok := want[c.Name()]
+		if !ok {
+			continue
+		}
+		if !slices.Contains(c.Aliases, alias) {
+			t.Errorf("expected command %q to have alias %q, got %v", c.Name(), alias, c.Aliases)
+		}
+		delete(want, c.Name())
+	}
+	for name := range want {
+		t.Errorf("command %q not registered", name)
 	}
 }
 
@@ -68,7 +87,7 @@ func TestPruneAndRemovalCommands_HaveAllFlag(t *testing.T) {
 		byName[c.Name()] = c
 	}
 	// Top-level commands carrying --all.
-	for _, name := range []string{"prune", "rm", "rmi"} {
+	for _, name := range []string{"prune", "remove-container", "remove-image"} {
 		cmd := byName[name]
 		if cmd == nil {
 			t.Errorf("command %q not registered", name)

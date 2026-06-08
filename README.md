@@ -239,7 +239,7 @@ docker compose -f .dc_mi-proyecto/build/docker-compose.yml up -d
 
 Eso genera el `Dockerfile`, `docker-compose.yml`, `.env` y scripts auxiliares dentro de `.dc_<workspace>/`.
 
-> 📖 Para el flujo no-interactivo, todos los subcomandos (`run`, `port-forward`, `update`, `down`, `prune`, `rm`, `rmi`, `config`…), los modos de build y la estructura generada, ver **[DOC_CLI.md](DOC_CLI.md)**.
+> 📖 Para el flujo no-interactivo, todos los subcomandos (`run`, `port-forward`, `update`, `down`, `prune`, `remove-container`, `remove-image`, `config`…), los modos de build y la estructura generada, ver **[DOC_CLI.md](DOC_CLI.md)**.
 
 ## Acceso y Uso
 
