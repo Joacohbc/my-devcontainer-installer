@@ -87,7 +87,7 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 		t := table.New().
 			Border(lipgloss.NormalBorder()).
 			BorderStyle(lipgloss.NewStyle().Foreground(ui.ColorSubtle)).
-			Headers("CONTAINER NAME", "STATUS", "PORTS", "IMAGE").
+			Headers("CONTAINER NAME", "WORKSPACE", "STATUS", "PORTS", "IMAGE").
 			StyleFunc(func(row, col int) lipgloss.Style {
 				if row == 0 {
 					return ui.StyleBold.Foreground(ui.ColorPrimary)
@@ -101,7 +101,7 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 			return nil
 		}
 		for _, c := range managed {
-			t.Row(c.Name, pick.StatusLabel(c), c.Ports, c.Image)
+			t.Row(c.Name, workspaceTag(c), pick.StatusLabel(c), c.Ports, c.Image)
 		}
 		console.Print(t.String())
 		console.NewLine()

@@ -405,7 +405,7 @@ func (s InspectService) ContainerNames() []string {
 	if !docker.IsDockerAvailable() {
 		return nil
 	}
-	containers, err := s.ListContainers(true, false)
+	containers, err := s.ListContainers(false)
 	if err != nil {
 		return nil
 	}
@@ -450,12 +450,13 @@ func (s InspectService) ListDir(name, dir string) ([]string, error) {
 
 // Container represents a high-level Docker container listed by InspectService.
 type Container struct {
-	Name    string
-	Image   string
-	Status  string
-	State   string
-	Managed bool
-	Ports   string
+	Name      string
+	Image     string
+	Status    string
+	State     string
+	Managed   bool
+	Ports     string
+	Workspace string // workspace name, "standalone" for quick-run, "" if unmanaged
 }
 
 type dockerPSLine struct {
@@ -485,28 +486,59 @@ func parsePSLines(stdout string) []dockerPSLine {
 	return out
 }
 
-// ListManaged returns all containers carrying the CLI managed label. Docker
-// errors yield an empty list.
+// ListManaged returns every container carrying the CLI managed label (running
+// and stopped). Docker errors yield an empty list.
 func (s InspectService) ListManaged() []Container {
-	containers, _ := s.ListContainers(true, true)
+	containers, _ := s.ListContainers(true)
 	return containers
 }
 
-// ListAll returns running containers regardless of label, flagging which are
-// CLI-managed devcontainers.
+// ListAll returns every container regardless of label (running and stopped),
+// flagging which are CLI-managed devcontainers.
 func (s InspectService) ListAll() []Container {
-	containers, _ := s.ListContainers(false, false)
+	containers, _ := s.ListContainers(false)
 	return containers
 }
 
-// ListContainers queries the Docker daemon for containers.
-// If 'all' is true, stopped containers are included (adds -a).
-// If 'managedOnly' is true, only containers with the CLI managed label are returned.
-func (s InspectService) ListContainers(all bool, managedOnly bool) ([]Container, error) {
-	args := []string{"ps", "--format", "{{json .}}"}
-	if all {
-		args = append(args, "-a")
+// composeProjectLabel is the label docker compose stamps on every container with
+// the project name. The generator sets COMPOSE_PROJECT_NAME to the workspace, so
+// for managed devcontainers this label carries the workspace name.
+const composeProjectLabel = "com.docker.compose.project"
+
+// parseLabels turns docker's comma-separated "k=v,k=v" label string into a map.
+func parseLabels(s string) map[string]string {
+	out := map[string]string{}
+	for _, pair := range strings.Split(s, ",") {
+		pair = strings.TrimSpace(pair)
+		if pair == "" {
+			continue
+		}
+		k, v, _ := strings.Cut(pair, "=")
+		out[strings.TrimSpace(k)] = strings.TrimSpace(v)
 	}
+	return out
+}
+
+// deriveWorkspace returns the workspace name for a managed devcontainer (from the
+// compose project label), "standalone" for a quick-run container, or "" when the
+// container is not CLI-managed.
+func deriveWorkspace(labels map[string]string) string {
+	if proj := labels[composeProjectLabel]; proj != "" {
+		return proj
+	}
+	if _, ok := labels[types.LabelQuickRun]; ok {
+		return "standalone"
+	}
+	return ""
+}
+
+// ListContainers queries the Docker daemon for every container, running and
+// stopped (always passes -a). When managedOnly is true only containers carrying
+// the CLI managed label are returned. The result is uniform across callers;
+// each command filters by State for its own needs (e.g. start wants stopped
+// containers, stop wants running ones).
+func (s InspectService) ListContainers(managedOnly bool) ([]Container, error) {
+	args := []string{"ps", "-a", "--format", "{{json .}}"}
 	if managedOnly {
 		args = append(args, "--filter", "label="+types.LabelManaged+"=true")
 	}
@@ -522,27 +554,17 @@ func (s InspectService) ListContainers(all bool, managedOnly bool) ([]Container,
 		return nil, nil
 	}
 
-	managedLabel := types.LabelManaged + "=true"
 	var out []Container
 	for _, l := range parsePSLines(stdout) {
-		managed := false
-		if managedOnly {
-			managed = true
-		} else {
-			for _, lab := range strings.Split(l.Labels, ",") {
-				if strings.TrimSpace(lab) == managedLabel {
-					managed = true
-					break
-				}
-			}
-		}
+		labels := parseLabels(l.Labels)
 		out = append(out, Container{
-			Name:    l.Names,
-			Image:   l.Image,
-			Status:  l.Status,
-			State:   l.State,
-			Managed: managed,
-			Ports:   l.Ports,
+			Name:      l.Names,
+			Image:     l.Image,
+			Status:    l.Status,
+			State:     l.State,
+			Managed:   managedOnly || labels[types.LabelManaged] == "true",
+			Ports:     l.Ports,
+			Workspace: deriveWorkspace(labels),
 		})
 	}
 	return out, nil

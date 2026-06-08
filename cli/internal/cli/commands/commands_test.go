@@ -4,12 +4,14 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/charmbracelet/log"
 	"github.com/goccy/go-yaml"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/logger"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/pick"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/catalog"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
@@ -25,7 +27,7 @@ func TestNewRootCommand_RegistersAllSubcommands(t *testing.T) {
 		"setup-ssh", "port-forward", "run", "down", "destroy",
 		"start", "stop", "restart", "prune", "update",
 		"upgrade-cli", "config", "cleanup-tips", "shell", "logs", "copy",
-		"up", "status", "ls", "info",
+		"up", "status", "ls", "info", "remove-container", "remove-image",
 	}
 	have := map[string]bool{}
 	for _, c := range root.Commands() {
@@ -34,6 +36,122 @@ func TestNewRootCommand_RegistersAllSubcommands(t *testing.T) {
 	for _, name := range want {
 		if !have[name] {
 			t.Errorf("expected subcommand %q to be registered", name)
+		}
+	}
+}
+
+func TestRemoveCommands_HaveShortAliases(t *testing.T) {
+	root := NewRootCommand("test")
+	want := map[string]string{"remove-container": "rm", "remove-image": "rmi"}
+	for _, c := range root.Commands() {
+		alias, ok := want[c.Name()]
+		if !ok {
+			continue
+		}
+		if !slices.Contains(c.Aliases, alias) {
+			t.Errorf("expected command %q to have alias %q, got %v", c.Name(), alias, c.Aliases)
+		}
+		delete(want, c.Name())
+	}
+	for name := range want {
+		t.Errorf("command %q not registered", name)
+	}
+}
+
+func TestSelectByNames(t *testing.T) {
+	images := []service.LocalImage{
+		{Ref: "devcontainer-cli/a:latest", ID: "ID1"},
+		{Ref: "devcontainer-cli/b:latest", ID: "ID2"},
+		{Ref: "ghcr.io/o/devcontainer-go:latest", ID: "ID3"},
+	}
+	nameOf := func(i service.LocalImage) string { return i.Ref }
+
+	selected, missing := selectByNames(images, []string{"devcontainer-cli/b:latest", "ghcr.io/o/devcontainer-go:latest"}, nameOf)
+	if len(missing) != 0 {
+		t.Fatalf("unexpected missing: %v", missing)
+	}
+	if len(selected) != 2 || selected[0].Ref != "devcontainer-cli/b:latest" || selected[1].Ref != "ghcr.io/o/devcontainer-go:latest" {
+		t.Fatalf("selected mismatch (order should follow names): %+v", selected)
+	}
+
+	selected, missing = selectByNames(images, []string{"devcontainer-cli/a:latest", "nope:latest"}, nameOf)
+	if len(selected) != 1 || selected[0].Ref != "devcontainer-cli/a:latest" {
+		t.Errorf("expected only the matching image, got %+v", selected)
+	}
+	if len(missing) != 1 || missing[0] != "nope:latest" {
+		t.Errorf("expected missing [nope:latest], got %v", missing)
+	}
+}
+
+func TestRemoveCommands_AcceptArgsAndComplete(t *testing.T) {
+	root := NewRootCommand("test")
+	byName := map[string]*cobra.Command{}
+	for _, c := range root.Commands() {
+		byName[c.Name()] = c
+	}
+	for _, name := range []string{"remove-container", "remove-image"} {
+		cmd := byName[name]
+		if cmd == nil {
+			t.Fatalf("command %q not registered", name)
+		}
+		// Positional args must be accepted (default arbitrary args, no validator
+		// that rejects them).
+		if cmd.Args != nil {
+			if err := cmd.Args(cmd, []string{"some-name"}); err != nil {
+				t.Errorf("%s should accept a positional arg: %v", name, err)
+			}
+		}
+		if cmd.ValidArgsFunction == nil {
+			t.Errorf("%s should register positional-arg completion", name)
+		}
+	}
+}
+
+func TestPruneCommand_HasResourceSubcommands(t *testing.T) {
+	root := NewRootCommand("test")
+	var prune *cobra.Command
+	for _, c := range root.Commands() {
+		if c.Name() == "prune" {
+			prune = c
+			break
+		}
+	}
+	if prune == nil {
+		t.Fatal("prune command not registered")
+	}
+	have := map[string]bool{}
+	for _, c := range prune.Commands() {
+		have[c.Name()] = true
+	}
+	for _, name := range []string{"images", "network", "volume"} {
+		if !have[name] {
+			t.Errorf("expected prune subcommand %q", name)
+		}
+	}
+}
+
+func TestPruneAndRemovalCommands_HaveAllFlag(t *testing.T) {
+	root := NewRootCommand("test")
+	byName := map[string]*cobra.Command{}
+	for _, c := range root.Commands() {
+		byName[c.Name()] = c
+	}
+	// Top-level commands carrying --all.
+	for _, name := range []string{"prune", "remove-container", "remove-image"} {
+		cmd := byName[name]
+		if cmd == nil {
+			t.Errorf("command %q not registered", name)
+			continue
+		}
+		if cmd.Flags().Lookup("all") == nil {
+			t.Errorf("expected command %q to have --all flag", name)
+		}
+	}
+	// prune subcommands carrying --all.
+	prune := byName["prune"]
+	for _, sub := range prune.Commands() {
+		if sub.Flags().Lookup("all") == nil {
+			t.Errorf("expected prune subcommand %q to have --all flag", sub.Name())
 		}
 	}
 }
@@ -700,6 +818,68 @@ func TestAllCommands_HaveContainerFlag(t *testing.T) {
 		if target.Flags().Lookup("container") == nil {
 			t.Errorf("expected command %q to have --container flag", name)
 		}
+	}
+}
+
+func TestFilterContainerNames_ByState(t *testing.T) {
+	containers := []pick.Container{
+		{Name: "ws-devcontainer-ssh", State: "running"},
+		{Name: "ws-postgres", State: "exited"},
+		{Name: "other", State: "created"},
+	}
+
+	all := filterContainerNames(containers, "", nil)
+	if len(all) != 3 {
+		t.Fatalf("nil keep: got %d names, want 3: %v", len(all), all)
+	}
+
+	running := filterContainerNames(containers, "", containerRunning)
+	if len(running) != 1 || running[0] != "ws-devcontainer-ssh" {
+		t.Errorf("running filter: got %v, want [ws-devcontainer-ssh]", running)
+	}
+
+	stopped := filterContainerNames(containers, "", func(c pick.Container) bool { return !containerRunning(c) })
+	if len(stopped) != 2 {
+		t.Errorf("stopped filter: got %v, want 2", stopped)
+	}
+
+	prefixed := filterContainerNames(containers, "ws-", nil)
+	if len(prefixed) != 2 {
+		t.Errorf("prefix filter: got %v, want 2 ws- names", prefixed)
+	}
+}
+
+func TestStartStopCompletion_FilterByState(t *testing.T) {
+	root := NewRootCommand("test")
+	byName := map[string]*cobra.Command{}
+	for _, c := range root.Commands() {
+		byName[c.Name()] = c
+	}
+	// start completes stopped containers, stop completes running ones; both
+	// register a flag completion func for --container.
+	for _, name := range []string{"start", "stop"} {
+		cmd := byName[name]
+		if cmd == nil {
+			t.Fatalf("command %q not found", name)
+		}
+		if _, ok := cmd.GetFlagCompletionFunc("container"); !ok {
+			t.Errorf("expected %q to register --container completion", name)
+		}
+	}
+}
+
+func TestContainerChoiceLabel_ContainsFields(t *testing.T) {
+	c := pick.Container{Name: "ws-devcontainer-ssh", Image: "img:latest", State: "running", Status: "Up", Workspace: "ws"}
+	label := containerChoiceLabel(c)
+	for _, want := range []string{"ws-devcontainer-ssh", "ws", "img:latest"} {
+		if !strings.Contains(label, want) {
+			t.Errorf("label %q missing %q", label, want)
+		}
+	}
+
+	// Unmanaged container (no workspace) still renders a non-empty tag.
+	if tag := workspaceTag(pick.Container{}); tag == "" {
+		t.Error("workspaceTag for empty workspace should not be empty")
 	}
 }
 

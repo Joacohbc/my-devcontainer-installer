@@ -234,25 +234,15 @@ func jumpHostAliases(containers []pick.Container, aliases []string) []string {
 	return result
 }
 
-func pickContainerFromList(containers []pick.Container, message string) (pick.Container, error) {
-	choices := make([]service.Option, len(containers))
-	for i, c := range containers {
-		tag := "              "
-		if c.Managed {
-			tag = console.SuccessS("(devcontainer)")
-		}
-		choices[i] = service.Option{Value: c.Name, Label: fmt.Sprintf("%s  %s  %s  %s", c.Name, tag, console.Subtle(c.Image), pick.StatusLabel(c))}
-	}
-	chosen, err := console.Select(message, choices, choices[0])
-	if err != nil {
-		return pick.Container{}, err
-	}
+// runningContainers filters a container list down to the running ones.
+func runningContainers(containers []pick.Container) []pick.Container {
+	var out []pick.Container
 	for _, c := range containers {
-		if c.Name == chosen.Value {
-			return c, nil
+		if c.State == "running" {
+			out = append(out, c)
 		}
 	}
-	return containers[0], nil
+	return out
 }
 
 func resolveTarget(container pick.Container, aliases []string, containers []pick.Container, jumpHost *string, interactive bool) (alias, targetHost string, err error) {
@@ -300,7 +290,9 @@ func resolveTarget(container pick.Container, aliases []string, containers []pick
 }
 
 func buildTunnelsInteractive(flagAlias string, interactive bool) ([]service.Tunnel, error) {
-	containers := pick.ListAll()
+	// You can only forward into a running container, so filter the unified list
+	// down to running ones here.
+	containers := runningContainers(pick.ListAll())
 	if len(containers) == 0 {
 		return nil, fmt.Errorf("no running containers found. Start a container with 'devcontainer-cli' first")
 	}
@@ -309,20 +301,9 @@ func buildTunnelsInteractive(flagAlias string, interactive bool) ([]service.Tunn
 	jumpHost := flagAlias
 
 	for {
-		var container pick.Container
-		var err error
-		if len(containers) == 1 {
-			container = containers[0]
-			tag := ""
-			if container.Managed {
-				tag = " (devcontainer)"
-			}
-			console.Info("Using container: %s%s", container.Name, tag)
-		} else {
-			container, err = pickContainerFromList(containers, "Select a container to forward from:")
-			if err != nil {
-				return nil, err
-			}
+		container, err := pickContainer(containers, "Select a container to forward from:", pickContainerOptions{Interactive: interactive})
+		if err != nil {
+			return nil, err
 		}
 
 		alias, targetHost, terr := resolveTarget(container, aliases, containers, &jumpHost, interactive)
@@ -420,7 +401,7 @@ func runPortForward(cmd *cobra.Command, args []string) error {
 		containerName = mapping.targetHost
 	}
 	if alias == "" {
-		container, perr := pick.PickManaged("Select devcontainer to forward into:", pick.PickOptions{Interactive: interactive})
+		container, perr := pickManagedContainer("Select devcontainer to forward into:", pickContainerOptions{Interactive: interactive})
 		if perr != nil {
 			return perr
 		}

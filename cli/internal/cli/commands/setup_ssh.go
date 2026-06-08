@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/pick"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/sshdefaults"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/service"
@@ -95,7 +94,7 @@ func resolveTargetService(f *setupSshFlags) (service.ComposeTarget, error) {
 	composePath := filepath.Join(cwd, f.composeFile)
 	services := service.ReadComposeServices(composePath)
 	if services == nil {
-		picked, err := pick.PickManaged("Select devcontainer to set up SSH for:", pick.PickOptions{
+		picked, err := pickManagedContainer("Select devcontainer to set up SSH for:", pickContainerOptions{
 			Interactive: !f.assumeYes,
 			AssumeYes:   f.assumeYes,
 		})

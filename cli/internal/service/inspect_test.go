@@ -385,7 +385,7 @@ func TestInspectListContainers(t *testing.T) {
 	defer useFakeDocker(runner)()
 
 	svc := InspectService{Report: nopReporter{}}
-	containers, err := svc.ListContainers(true, false)
+	containers, err := svc.ListContainers(false)
 	if err != nil {
 		t.Fatalf("ListContainers error: %v", err)
 	}
@@ -412,5 +412,45 @@ func TestInspectListContainers(t *testing.T) {
 	}
 	if !foundA {
 		t.Errorf("expected -a flag in docker ps call: %v", call)
+	}
+}
+
+func TestInspectListContainersWorkspace(t *testing.T) {
+	// A compose-managed devcontainer (workspace from the compose project label),
+	// a quick-run standalone container, and an unmanaged container.
+	stdout := `{"Names":"myws-devcontainer-ssh","Image":"img1","Status":"Up","State":"running","Labels":"dev.devcontainer-installer.managed=true,com.docker.compose.project=myws","Ports":""}
+{"Names":"quick-node","Image":"img2","Status":"Exited (0)","State":"exited","Labels":"dev.devcontainer-installer.managed=true,dev.devcontainer-installer.quick-run=nodejs","Ports":""}
+{"Names":"other","Image":"img3","Status":"Up","State":"running","Labels":"foo=bar","Ports":""}`
+	runner := &fakeRunner{status: 0, stdout: stdout}
+	defer useFakeDocker(runner)()
+
+	svc := InspectService{Report: nopReporter{}}
+	containers, err := svc.ListContainers(false)
+	if err != nil {
+		t.Fatalf("ListContainers error: %v", err)
+	}
+	if len(containers) != 3 {
+		t.Fatalf("expected 3 containers, got %d", len(containers))
+	}
+	want := map[string]struct {
+		workspace string
+		managed   bool
+	}{
+		"myws-devcontainer-ssh": {"myws", true},
+		"quick-node":            {"standalone", true},
+		"other":                 {"", false},
+	}
+	for _, c := range containers {
+		w, ok := want[c.Name]
+		if !ok {
+			t.Errorf("unexpected container %q", c.Name)
+			continue
+		}
+		if c.Workspace != w.workspace {
+			t.Errorf("%s: Workspace = %q, want %q", c.Name, c.Workspace, w.workspace)
+		}
+		if c.Managed != w.managed {
+			t.Errorf("%s: Managed = %v, want %v", c.Name, c.Managed, w.managed)
+		}
 	}
 }

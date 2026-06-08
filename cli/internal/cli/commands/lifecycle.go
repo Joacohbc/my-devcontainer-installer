@@ -36,7 +36,8 @@ func newStartCommand() *cobra.Command {
 		RunE:         runStart,
 	}
 	addWorkspaceFlag(cmd)
-	addContainerFlag(cmd)
+	// start targets a stopped container, so complete only the stopped ones.
+	addContainerFlagFiltered(cmd, completeStoppedContainers)
 	return cmd
 }
 
@@ -70,7 +71,8 @@ func newStopCommand() *cobra.Command {
 		RunE:         runStop,
 	}
 	addWorkspaceFlag(cmd)
-	addContainerFlag(cmd)
+	// stop targets a running container, so complete only the running ones.
+	addContainerFlagFiltered(cmd, completeRunningContainers)
 	return cmd
 }
 
