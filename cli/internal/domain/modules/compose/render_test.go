@@ -118,6 +118,33 @@ func TestDevcontainerRender_NoPersistVolumesKeepsWorkspace(t *testing.T) {
 	}
 }
 
+func TestDevcontainerRender_Ports(t *testing.T) {
+	def := compose.DevcontainerService.Render(compose.RenderContext{
+		ImageName:         "img",
+		EnabledServiceIDs: []string{"devcontainer"},
+		Ports:             []string{"127.0.0.1:8080:80", "0.0.0.0:9090:90"},
+	})
+	want := []string{"127.0.0.1:8080:80", "0.0.0.0:9090:90"}
+	if len(def.Ports) != len(want) {
+		t.Fatalf("Ports = %v, want %v", def.Ports, want)
+	}
+	for i, p := range want {
+		if def.Ports[i] != p {
+			t.Errorf("Ports[%d] = %q, want %q", i, def.Ports[i], p)
+		}
+	}
+}
+
+func TestDevcontainerRender_NoPortsByDefault(t *testing.T) {
+	def := compose.DevcontainerService.Render(compose.RenderContext{
+		ImageName:         "img",
+		EnabledServiceIDs: []string{"devcontainer"},
+	})
+	if len(def.Ports) != 0 {
+		t.Errorf("expected no ports without RenderContext.Ports, got %v", def.Ports)
+	}
+}
+
 func TestDevcontainerRender_NoDatabasesNoDependsOn(t *testing.T) {
 	def := compose.DevcontainerService.Render(compose.RenderContext{
 		ImageName:         "img",

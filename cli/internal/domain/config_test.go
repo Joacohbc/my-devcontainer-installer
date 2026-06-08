@@ -3,6 +3,7 @@ package domain_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
@@ -24,6 +25,7 @@ func TestSaveAndLoadConfig_RoundTrip(t *testing.T) {
 	want := domain.DefaultConfig(dir)
 	want.Image = "myimg:local"
 	want.Env = map[string]string{"FOO": "bar"}
+	want.Compose.Ports = []string{"8080:80", "0.0.0.0:5432:5432"}
 
 	if err := domain.SaveConfig(want, dir); err != nil {
 		t.Fatalf("SaveConfig: %v", err)
@@ -47,6 +49,9 @@ func TestSaveAndLoadConfig_RoundTrip(t *testing.T) {
 	}
 	if got.Mode != types.BuildModeLocalCached {
 		t.Errorf("Mode = %q, want %q", got.Mode, types.BuildModeLocalCached)
+	}
+	if strings.Join(got.Compose.Ports, ",") != strings.Join(want.Compose.Ports, ",") {
+		t.Errorf("Ports = %v, want %v", got.Compose.Ports, want.Compose.Ports)
 	}
 }
 

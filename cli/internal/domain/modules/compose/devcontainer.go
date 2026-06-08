@@ -28,6 +28,7 @@ var DevcontainerService = &ServiceSpec{
 			Command:       "sleep infinity",
 			Restart:       "unless-stopped",
 			Volumes:       volumes,
+			Ports:         ctx.Ports,
 			Networks:      []string{"local-network"},
 		}
 

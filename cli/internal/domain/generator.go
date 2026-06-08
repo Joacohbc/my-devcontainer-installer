@@ -118,6 +118,20 @@ func persistVolumes(config *types.DevcontainerConfig) (mounts []string, declared
 	return mounts, declared
 }
 
+// devcontainerPorts returns the published port mappings for the devcontainer
+// service, with each spec bound to 127.0.0.1 unless it already carries an
+// explicit host IP. Returns nil when no ports are configured.
+func devcontainerPorts(config *types.DevcontainerConfig) []string {
+	if len(config.Compose.Ports) == 0 {
+		return nil
+	}
+	ports := make([]string, len(config.Compose.Ports))
+	for i, p := range config.Compose.Ports {
+		ports[i] = BindLoopback(p)
+	}
+	return ports
+}
+
 func prefixContainer(workspace, base string) string {
 	if base == workspace || strings.HasPrefix(base, workspace+"-") {
 		return base
@@ -245,6 +259,7 @@ func GenerateCompose(config *types.DevcontainerConfig) (string, error) {
 		}
 		if svc.ID == types.ServiceDevcontainer {
 			rc.PersistVolumeMounts = persistMounts
+			rc.Ports = devcontainerPorts(config)
 		}
 		rendered := svc.Render(rc)
 		if rendered == nil {

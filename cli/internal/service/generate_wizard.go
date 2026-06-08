@@ -3,6 +3,7 @@ package service
 import (
 	"fmt"
 	"path/filepath"
+	"strings"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/catalog"
@@ -21,6 +22,7 @@ const (
 	stepKeyImage     = "image"
 	stepKeySubnet    = "subnet"
 	stepKeyPersist   = "persist"
+	stepKeyPorts     = "ports"
 )
 
 func categoryStepKey(c types.UICategory) string  { return "cat:" + string(c) }
@@ -213,8 +215,36 @@ func (w wizardContext) steps(s *State) []Step {
 	}
 	steps = append(steps, w.subnetStep())
 	steps = append(steps, w.persistStep())
+	steps = append(steps, w.portsStep())
 	steps = append(steps, w.envSteps(s)...)
 	return steps
+}
+
+// parsePortsCSV splits a comma-separated list of docker port specs, trimming
+// blanks. Specs are stored verbatim; the generator binds those without an
+// explicit host IP to 127.0.0.1.
+func parsePortsCSV(raw string) []string {
+	var out []string
+	for _, p := range strings.Split(raw, ",") {
+		if t := strings.TrimSpace(p); t != "" {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
+func (w wizardContext) portsStep() Step {
+	return Step{Key: stepKeyPorts, Build: func(s *State) Field {
+		initial := strings.Join(w.base.Compose.Ports, ",")
+		if s.Has(stepKeyPorts) {
+			initial = s.String(stepKeyPorts)
+		}
+		return Field{
+			Kind:    FieldInput,
+			Title:   "Puertos a publicar en el devcontainer (ej. 8080:80,5432:5432 — bind a 127.0.0.1; vacío para ninguno):",
+			Initial: initial,
+		}
+	}}
 }
 
 func basePersistIDs(base *types.DevcontainerConfig) []string {
@@ -468,6 +498,12 @@ func (w wizardContext) reduce(s *State) *types.DevcontainerConfig {
 		draft.Compose.PersistVolumes = &persist
 	} else {
 		draft.Compose.PersistVolumes = w.base.Compose.PersistVolumes
+	}
+
+	if s.Has(stepKeyPorts) {
+		draft.Compose.Ports = parsePortsCSV(s.String(stepKeyPorts))
+	} else {
+		draft.Compose.Ports = w.base.Compose.Ports
 	}
 
 	if mode == types.BuildModeRemote {

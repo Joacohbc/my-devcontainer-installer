@@ -416,6 +416,54 @@ func topLevelVolumes(t *testing.T, yml string) map[string]any {
 	return parsed["volumes"].(map[string]any)
 }
 
+func devcontainerPorts(t *testing.T, yml string) []string {
+	t.Helper()
+	var parsed map[string]any
+	if err := yaml.Unmarshal([]byte(yml), &parsed); err != nil {
+		t.Fatalf("invalid YAML: %v\n%s", err, yml)
+	}
+	services := parsed["services"].(map[string]any)
+	devSvc := services["devcontainer-ssh"].(map[string]any)
+	raw, _ := devSvc["ports"].([]any)
+	out := make([]string, len(raw))
+	for i, v := range raw {
+		out[i] = v.(string)
+	}
+	return out
+}
+
+func TestGenerateCompose_NoPortsByDefault(t *testing.T) {
+	yml := mustGenerateCompose(t, makeConfig())
+	if ports := devcontainerPorts(t, yml); len(ports) != 0 {
+		t.Errorf("expected no ports by default, got %v", ports)
+	}
+	assertNotContainsStr(t, yml, "ports:", "no ports key when unset")
+}
+
+func TestGenerateCompose_PortsBoundToLoopback(t *testing.T) {
+	cfg := makeConfig(func(c *types.DevcontainerConfig) {
+		c.Compose.Ports = []string{"8080:80", "5432:5432"}
+	})
+	yml := mustGenerateCompose(t, cfg)
+	got := devcontainerPorts(t, yml)
+	want := []string{"127.0.0.1:8080:80", "127.0.0.1:5432:5432"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Errorf("ports = %v, want %v", got, want)
+	}
+}
+
+func TestGenerateCompose_PortsRespectExplicitIP(t *testing.T) {
+	cfg := makeConfig(func(c *types.DevcontainerConfig) {
+		c.Compose.Ports = []string{"0.0.0.0:8080:80", "9090:90"}
+	})
+	yml := mustGenerateCompose(t, cfg)
+	got := devcontainerPorts(t, yml)
+	want := []string{"0.0.0.0:8080:80", "127.0.0.1:9090:90"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Errorf("ports = %v, want %v", got, want)
+	}
+}
+
 func TestGenerateCompose_PersistVolumesDefaultAll(t *testing.T) {
 	// A nil PersistVolumes (legacy/unset) mounts all three persistence volumes.
 	yml := mustGenerateCompose(t, makeConfig())
