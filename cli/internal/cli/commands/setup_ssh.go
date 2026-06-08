@@ -314,51 +314,111 @@ func buildConfigBlock(mode sshdefaults.Mode, f *setupSshFlags, inst installResul
 	})
 }
 
-// updateSshConfig writes the freshly built Host block into ~/.ssh/config,
-// appending it or (after confirmation) replacing an existing block for the
-// alias. All file parsing/IO lives in the service layer.
-func updateSshConfig(ssh service.SshService, f *setupSshFlags, mode sshdefaults.Mode, inst installResult, workspace string) error {
-	newBlock, err := buildConfigBlock(mode, f, inst, workspace)
-	if err != nil {
-		return err
+// aliasAction is the user's decision when the target Host alias already exists
+// in ~/.ssh/config.
+type aliasAction int
+
+const (
+	aliasOverwrite aliasAction = iota // replace the existing block in place
+	aliasRename                       // write the block under a different alias
+	aliasSkip                         // leave the config untouched
+)
+
+// aliasPrompter is the subset of the console used to resolve an existing-alias
+// conflict; carving it out lets tests script the overwrite/rename/skip decision
+// without a real terminal.
+type aliasPrompter interface {
+	Select(prompt string, choices []service.Option, initial service.Option) (service.Option, error)
+	AskDefault(prompt string, initial string, validate func(string) error) (string, error)
+}
+
+// resolveAliasConflict asks the user how to handle an already-defined Host alias:
+// overwrite it, write the block under a new alias, or skip the config update.
+// On aliasRename it updates f.alias to the freshly chosen name. In assume-yes
+// mode it overwrites without prompting, preserving the non-interactive default.
+func resolveAliasConflict(p aliasPrompter, f *setupSshFlags) (aliasAction, error) {
+	if f.assumeYes {
+		return aliasOverwrite, nil
 	}
+	choice, err := p.Select(
+		fmt.Sprintf("Host '%s' already exists. What do you want to do?", f.alias),
+		[]service.Option{
+			{Value: "overwrite", Label: "Overwrite the existing alias"},
+			{Value: "rename", Label: "Choose a new alias"},
+			{Value: "skip", Label: "Skip ssh config update"},
+		},
+		service.Option{Value: "overwrite", Label: "Overwrite the existing alias"},
+	)
+	if err != nil {
+		return aliasSkip, err
+	}
+	switch choice.Value {
+	case "rename":
+		alias, aerr := p.AskDefault("New SSH connection name (alias):", f.alias, validateAliasName)
+		if aerr != nil {
+			return aliasSkip, aerr
+		}
+		f.alias = strings.TrimSpace(alias)
+		return aliasRename, nil
+	case "skip":
+		return aliasSkip, nil
+	default:
+		return aliasOverwrite, nil
+	}
+}
+
+// updateSshConfig writes the freshly built Host block into ~/.ssh/config,
+// appending it when the alias is free or, when it collides, letting the user
+// overwrite the existing block or pick a new alias (re-checking the new name for
+// a fresh conflict). All file parsing/IO lives in the service layer.
+func updateSshConfig(ssh service.SshService, f *setupSshFlags, mode sshdefaults.Mode, inst installResult, workspace string) error {
 	configPath, current, err := ssh.ReadSSHConfig()
 	if err != nil {
 		return err
 	}
 
-	if !service.HasHostAlias(current, f.alias) {
-		if err := ssh.AppendHostBlock(configPath, current, newBlock); err != nil {
-			return err
+	for {
+		newBlock, berr := buildConfigBlock(mode, f, inst, workspace)
+		if berr != nil {
+			return berr
 		}
-		console.Ok(fmt.Sprintf("Appended Host '%s' to %s", f.alias, configPath))
-		return nil
-	}
 
-	console.Warn("Host '%s' already defined in %s", f.alias, configPath)
-	console.Info("---- existing ----")
-	console.Print(service.ExtractHostBlock(current, f.alias) + "\n")
-	console.Info("---- proposed ----")
-	console.Print(newBlock + "\n")
-	replace := true
-	if !f.assumeYes {
-		ok, cerr := console.ConfirmDefault(fmt.Sprintf("Replace existing block for Host '%s'?", f.alias), false)
-		if cerr != nil {
-			return cerr
+		if !service.HasHostAlias(current, f.alias) {
+			if err := ssh.AppendHostBlock(configPath, current, newBlock); err != nil {
+				return err
+			}
+			console.Ok(fmt.Sprintf("Appended Host '%s' to %s", f.alias, configPath))
+			return nil
 		}
-		replace = ok
+
+		console.Warn("Host '%s' already defined in %s", f.alias, configPath)
+		console.Info("---- existing ----")
+		console.Print(service.ExtractHostBlock(current, f.alias) + "\n")
+		console.Info("---- proposed ----")
+		console.Print(newBlock + "\n")
+
+		action, aerr := resolveAliasConflict(console, f)
+		if aerr != nil {
+			return aerr
+		}
+		switch action {
+		case aliasRename:
+			// Re-loop: rebuild the block for the new alias and re-check for a
+			// collision against the (still unmodified) config.
+			continue
+		case aliasSkip:
+			console.Warn("Skipping ssh config update.")
+			return nil
+		default: // aliasOverwrite
+			backupPath, rerr := ssh.ReplaceHostBlock(configPath, current, f.alias, newBlock)
+			if rerr != nil {
+				return rerr
+			}
+			console.Ok(fmt.Sprintf("Backup saved: %s", backupPath))
+			console.Ok(fmt.Sprintf("Replaced Host '%s' in %s", f.alias, configPath))
+			return nil
+		}
 	}
-	if !replace {
-		console.Warn("Skipping ssh config update.")
-		return nil
-	}
-	backupPath, err := ssh.ReplaceHostBlock(configPath, current, f.alias, newBlock)
-	if err != nil {
-		return err
-	}
-	console.Ok(fmt.Sprintf("Backup saved: %s", backupPath))
-	console.Ok(fmt.Sprintf("Replaced Host '%s' in %s", f.alias, configPath))
-	return nil
 }
 
 func testConnection(ssh service.SshService, alias string) {
@@ -440,12 +500,7 @@ func runSetupSsh(cmd *cobra.Command, _ []string) error {
 	}
 
 	if f.remote == "" && !f.assumeYes {
-		alias, err := console.AskDefault("SSH connection name (alias):", f.alias, func(v string) error {
-			if strings.TrimSpace(v) == "" {
-				return fmt.Errorf("name cannot be empty")
-			}
-			return nil
-		})
+		alias, err := console.AskDefault("SSH connection name (alias):", f.alias, validateAliasName)
 		if err != nil {
 			return err
 		}
@@ -540,6 +595,15 @@ func emitRemoteConfig(ssh service.SshService, f *setupSshFlags, workspace string
 	console.NewLine()
 
 	console.Success("Then connect with:  ssh %s", f.alias)
+	return nil
+}
+
+// validateAliasName rejects a blank SSH alias; it is shared by the upfront alias
+// prompt and the rename branch of resolveAliasConflict.
+func validateAliasName(v string) error {
+	if strings.TrimSpace(v) == "" {
+		return fmt.Errorf("name cannot be empty")
+	}
 	return nil
 }
 
