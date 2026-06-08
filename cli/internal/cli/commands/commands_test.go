@@ -1119,3 +1119,112 @@ func TestPresetCopy(t *testing.T) {
 		t.Error("expected copied preset to have modules from 'nodejs' preset")
 	}
 }
+
+// scriptedAliasPrompter is a fake aliasPrompter: it returns a canned Select
+// choice and, for the rename branch, a canned alias from AskDefault.
+type scriptedAliasPrompter struct {
+	selectValue string
+	renameTo    string
+	selectErr   error
+}
+
+func (p scriptedAliasPrompter) Select(_ string, _ []service.Option, initial service.Option) (service.Option, error) {
+	if p.selectErr != nil {
+		return service.Option{}, p.selectErr
+	}
+	return service.Option{Value: p.selectValue}, nil
+}
+
+func (p scriptedAliasPrompter) AskDefault(_ string, initial string, validate func(string) error) (string, error) {
+	val := p.renameTo
+	if val == "" {
+		val = initial
+	}
+	if validate != nil {
+		if err := validate(val); err != nil {
+			return "", err
+		}
+	}
+	return val, nil
+}
+
+// In assume-yes mode an existing alias is overwritten without prompting,
+// preserving the previous non-interactive default.
+func TestResolveAliasConflict_AssumeYesOverwrites(t *testing.T) {
+	f := &setupSshFlags{alias: "myws", assumeYes: true}
+	// A prompter that would explode if consulted proves assume-yes short-circuits.
+	got, err := resolveAliasConflict(scriptedAliasPrompter{selectErr: errProbe}, f)
+	if err != nil {
+		t.Fatalf("resolveAliasConflict: %v", err)
+	}
+	if got != aliasOverwrite {
+		t.Errorf("assume-yes action = %v, want aliasOverwrite", got)
+	}
+	if f.alias != "myws" {
+		t.Errorf("assume-yes must not rename alias, got %q", f.alias)
+	}
+}
+
+var errProbe = fmtError("prompter should not be consulted")
+
+type fmtError string
+
+func (e fmtError) Error() string { return string(e) }
+
+func TestResolveAliasConflict_Overwrite(t *testing.T) {
+	f := &setupSshFlags{alias: "myws"}
+	got, err := resolveAliasConflict(scriptedAliasPrompter{selectValue: "overwrite"}, f)
+	if err != nil {
+		t.Fatalf("resolveAliasConflict: %v", err)
+	}
+	if got != aliasOverwrite {
+		t.Errorf("action = %v, want aliasOverwrite", got)
+	}
+	if f.alias != "myws" {
+		t.Errorf("overwrite must keep alias, got %q", f.alias)
+	}
+}
+
+func TestResolveAliasConflict_Skip(t *testing.T) {
+	f := &setupSshFlags{alias: "myws"}
+	got, err := resolveAliasConflict(scriptedAliasPrompter{selectValue: "skip"}, f)
+	if err != nil {
+		t.Fatalf("resolveAliasConflict: %v", err)
+	}
+	if got != aliasSkip {
+		t.Errorf("action = %v, want aliasSkip", got)
+	}
+}
+
+// Choosing "rename" prompts for a new alias and updates f.alias so the caller
+// rebuilds (and re-checks) the block under the new name.
+func TestResolveAliasConflict_RenameUpdatesAlias(t *testing.T) {
+	f := &setupSshFlags{alias: "myws"}
+	got, err := resolveAliasConflict(scriptedAliasPrompter{selectValue: "rename", renameTo: "myws-2"}, f)
+	if err != nil {
+		t.Fatalf("resolveAliasConflict: %v", err)
+	}
+	if got != aliasRename {
+		t.Errorf("action = %v, want aliasRename", got)
+	}
+	if f.alias != "myws-2" {
+		t.Errorf("rename should set alias to %q, got %q", "myws-2", f.alias)
+	}
+}
+
+func TestValidateAliasName(t *testing.T) {
+	cases := []struct {
+		in      string
+		wantErr bool
+	}{
+		{"myws", false},
+		{"", true},
+		{"   ", true},
+	}
+	for _, c := range cases {
+		err := validateAliasName(c.in)
+		if (err != nil) != c.wantErr {
+			t.Errorf("validateAliasName(%q) err=%v, wantErr=%v", c.in, err, c.wantErr)
+		}
+	}
+}
