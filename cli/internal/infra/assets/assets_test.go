@@ -3,6 +3,7 @@ package assets_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/assets"
@@ -74,6 +75,23 @@ func TestValidateRequiredFiles(t *testing.T) {
 	}
 	if missing := assets.ValidateRequiredFiles([]string{"local-only.sh"}, dir); len(missing) != 0 {
 		t.Errorf("file resolvable from lookIn should validate, got %v", missing)
+	}
+}
+
+// entrypoint.sh must align devuser's UID/GID with the /workspace owner instead
+// of rewriting ACLs on the bind mount, so the host's original permissions stay
+// untouched.
+func TestEntrypointAlignsUIDInsteadOfChangingWorkspaceACLs(t *testing.T) {
+	body, err := os.ReadFile(embeddedScript)
+	if err != nil {
+		t.Fatalf("reading %s: %v", embeddedScript, err)
+	}
+	script := string(body)
+	if !strings.Contains(script, "usermod -u") {
+		t.Error("entrypoint must remap devuser's UID to the workspace owner (usermod -u)")
+	}
+	if strings.Contains(script, "setfacl -R") {
+		t.Error("entrypoint must not run a recursive setfacl that mutates host permissions")
 	}
 }
 

@@ -224,7 +224,7 @@ func TestModuleRunLayerCounts(t *testing.T) {
 		{"python with uv", dockerfile.PythonModule, map[string]any{"uv": true}, 2}, // install+uv + shell-init
 		{"python no uv", dockerfile.PythonModule, map[string]any{"uv": false}, 1},
 		{"rust", dockerfile.RustModule, nil, 2}, // install+rustup + shell-init
-		{"pnpm", dockerfile.PnpmModule, nil, 1}, // install+pnpm
+		{"pnpm", dockerfile.PnpmModule, nil, 2}, // install+pnpm + shell-init
 		{"bun", dockerfile.BunModule, nil, 2},   // install + shell-init
 		{"sqlite", dockerfile.SqliteModule, nil, 1},
 		{"tmux", dockerfile.TmuxModule, nil, 1},

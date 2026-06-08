@@ -17,8 +17,12 @@ var PnpmModule = &ModuleSpec{
 ## PNPM (devuser)
 ##
 RUN apt-get update && apt-get install -y --no-install-recommends libatomic1 && \
-    su - devuser -c 'wget -qO- https://get.pnpm.io/install.sh | ENV="$HOME/.profile" SHELL="$(which zsh)" zsh -' && \
+    su - devuser -c 'export PNPM_HOME="$HOME/.local/share/pnpm" && wget -qO- https://get.pnpm.io/install.sh | ENV="$HOME/.profile" SHELL="$(which zsh)" zsh - && export PATH="$PNPM_HOME:$PATH" && pnpm config set store-dir "$HOME/.local/share/pnpm/store" --global' && \
     %s
-`, aptCleanup())
+%s
+`, aptCleanup(), emitShellInit(".pnpm_init.sh", []string{
+			`export PNPM_HOME="$HOME/.local/share/pnpm"`,
+			`export PATH="$PNPM_HOME:$PATH"`,
+		}))
 	},
 }

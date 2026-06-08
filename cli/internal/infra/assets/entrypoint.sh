@@ -34,10 +34,20 @@ else
     echo "initial root password: $INITIAL_PASSWORD"
 fi
 
-# Grant devuser full ACL access to /workspace so it owns the directory by default
+# Align devuser's UID/GID with the owner of the mounted /workspace so the
+# container can read/write the bind mount WITHOUT ever modifying the host's
+# original permissions (no chown/setfacl on /workspace).
 if [ -d /workspace ]; then
-    setfacl -R -m u:devuser:rwx /workspace 2>/dev/null || true
-    setfacl -d -m u:devuser:rwx /workspace 2>/dev/null || true
+    WS_UID=$(stat -c %u /workspace)
+    WS_GID=$(stat -c %g /workspace)
+    CUR_UID=$(id -u devuser)
+    CUR_GID=$(id -g devuser)
+    if [ "$WS_UID" != "0" ] && { [ "$WS_UID" != "$CUR_UID" ] || [ "$WS_GID" != "$CUR_GID" ]; }; then
+        groupmod -g "$WS_GID" devuser 2>/dev/null || true
+        usermod -u "$WS_UID" -g "$WS_GID" devuser 2>/dev/null || true
+        # Re-own devuser's home (persisted volume); never touch /workspace.
+        chown -R "$WS_UID:$WS_GID" /home/devuser 2>/dev/null || true
+    fi
 fi
 
 if [ -S /var/run/docker.sock ]; then
