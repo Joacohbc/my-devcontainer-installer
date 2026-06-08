@@ -286,8 +286,8 @@ is Cobra-native.
 | `destroy` | `destroy.go` | down + delete `.dc_<ws>/` + config (confirmation) |
 | `start`/`stop`/`restart` | `lifecycle.go` | `docker compose start`/`stop`/`restart` |
 | `prune` | `prune.go` | Remove managed images+networks+volumes by label; subcommands `prune images`/`network`/`volume`; `--all` (all) vs default (unused) |
-| `remove-container` (alias `rm`) | `remove_container.go` | Remove managed containers by label; `--all` (all) vs default (non-running) |
-| `remove-image` (alias `rmi`) | `remove_image.go` | Remove managed images by label; `--all` (all) vs default (unused) |
+| `remove-container` (alias `rm`) | `remove_container.go` | Remove managed containers by label; positional `name...` (tab-completed) removes just those, else `--all` (all) vs default (non-running) |
+| `remove-image` (alias `rmi`) | `remove_image.go` | Remove managed images by label; positional `ref...` (tab-completed) removes just those, else `--all` (all) vs default (unused) |
 | `update` | `update.go` | Pull/rebuild images; `--all`; per-mode dispatch |
 | `upgrade-cli` | `upgrade_cli.go` | Binary self-update from a GitHub release |
 | `config` | `config.go` | Read/write global config (subcommand `registry`) |

@@ -3,6 +3,7 @@ package commands
 import (
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/pick"
@@ -115,6 +116,31 @@ func managedContainerNames(toComplete string, keep func(pick.Container) bool) ([
 // containerRunning reports whether a container is in the running state, used as
 // the keep predicate for state-specific completion.
 func containerRunning(c pick.Container) bool { return c.State == "running" }
+
+// completeManagedContainerArgs completes positional managed container names for
+// remove-container, skipping names already present on the command line.
+func completeManagedContainerArgs(_ *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	var out []string
+	for _, name := range filterContainerNames(pick.ListManaged(), toComplete, nil) {
+		if !slices.Contains(args, name) {
+			out = append(out, name)
+		}
+	}
+	return out, cobra.ShellCompDirectiveNoFileComp
+}
+
+// completeManagedImageArgs completes positional managed image references for
+// remove-image, skipping refs already present on the command line.
+func completeManagedImageArgs(_ *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	images, _ := service.PruneService{Report: console}.SelectImages(true)
+	var out []string
+	for _, img := range images {
+		if strings.HasPrefix(img.Ref, toComplete) && !slices.Contains(args, img.Ref) {
+			out = append(out, img.Ref)
+		}
+	}
+	return out, cobra.ShellCompDirectiveNoFileComp
+}
 
 // completeContainers completes managed containers in any state.
 func completeContainers(_ *cobra.Command, _ []string, toComplete string) ([]string, cobra.ShellCompDirective) {

@@ -2,6 +2,7 @@ package commands
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/service"
 	"github.com/spf13/cobra"
@@ -67,7 +68,55 @@ func pruneOne[T any](
 		console.Warn("Use --all to remove every managed %s.", kind)
 		return nil
 	}
+	return confirmAndRemove(cmd, kind, items, label, removeFn)
+}
 
+// removeNamed removes exactly the managed items whose name matches one of names,
+// erroring if any name does not match a managed resource. It powers the
+// positional-argument form of remove-container/remove-image.
+func removeNamed[T any](
+	cmd *cobra.Command,
+	kind string,
+	names []string,
+	selectFn func(bool) ([]T, bool),
+	nameOf func(T) string,
+	label func(T) string,
+	removeFn func([]T) (int, int),
+) error {
+	managed, _ := selectFn(true)
+	selected, missing := selectByNames(managed, names, nameOf)
+	if len(missing) > 0 {
+		return fmt.Errorf("no managed %s found matching: %s", kind, strings.Join(missing, ", "))
+	}
+	return confirmAndRemove(cmd, kind, selected, label, removeFn)
+}
+
+// selectByNames partitions items into those whose name matches one of names
+// (preserving the order of names) and the names that matched nothing.
+func selectByNames[T any](items []T, names []string, nameOf func(T) string) (selected []T, missing []string) {
+	byName := make(map[string]T, len(items))
+	for _, it := range items {
+		byName[nameOf(it)] = it
+	}
+	for _, n := range names {
+		if it, ok := byName[n]; ok {
+			selected = append(selected, it)
+		} else {
+			missing = append(missing, n)
+		}
+	}
+	return selected, missing
+}
+
+// confirmAndRemove lists items, asks for confirmation (honoring --yes /
+// --no-interactive) and removes them, reporting the result.
+func confirmAndRemove[T any](
+	cmd *cobra.Command,
+	kind string,
+	items []T,
+	label func(T) string,
+	removeFn func([]T) (int, int),
+) error {
 	console.Warn("\n%s to remove (%d):", kind, len(items))
 	for _, it := range items {
 		console.Info("  %s", label(it))
@@ -112,9 +161,7 @@ func newPruneImagesCommand() *cobra.Command {
 
 func runPruneImages(cmd *cobra.Command, _ []string) error {
 	svc := service.PruneService{Report: console}
-	return pruneOne(cmd, "images", svc.SelectImages,
-		func(i service.LocalImage) string { return fmt.Sprintf("%s  (%s)", i.Ref, i.ID) },
-		svc.Remove)
+	return pruneOne(cmd, "images", svc.SelectImages, imageLabel, svc.Remove)
 }
 
 func newPruneNetworkCommand() *cobra.Command {

@@ -58,6 +58,55 @@ func TestRemoveCommands_HaveShortAliases(t *testing.T) {
 	}
 }
 
+func TestSelectByNames(t *testing.T) {
+	images := []service.LocalImage{
+		{Ref: "devcontainer-cli/a:latest", ID: "ID1"},
+		{Ref: "devcontainer-cli/b:latest", ID: "ID2"},
+		{Ref: "ghcr.io/o/devcontainer-go:latest", ID: "ID3"},
+	}
+	nameOf := func(i service.LocalImage) string { return i.Ref }
+
+	selected, missing := selectByNames(images, []string{"devcontainer-cli/b:latest", "ghcr.io/o/devcontainer-go:latest"}, nameOf)
+	if len(missing) != 0 {
+		t.Fatalf("unexpected missing: %v", missing)
+	}
+	if len(selected) != 2 || selected[0].Ref != "devcontainer-cli/b:latest" || selected[1].Ref != "ghcr.io/o/devcontainer-go:latest" {
+		t.Fatalf("selected mismatch (order should follow names): %+v", selected)
+	}
+
+	selected, missing = selectByNames(images, []string{"devcontainer-cli/a:latest", "nope:latest"}, nameOf)
+	if len(selected) != 1 || selected[0].Ref != "devcontainer-cli/a:latest" {
+		t.Errorf("expected only the matching image, got %+v", selected)
+	}
+	if len(missing) != 1 || missing[0] != "nope:latest" {
+		t.Errorf("expected missing [nope:latest], got %v", missing)
+	}
+}
+
+func TestRemoveCommands_AcceptArgsAndComplete(t *testing.T) {
+	root := NewRootCommand("test")
+	byName := map[string]*cobra.Command{}
+	for _, c := range root.Commands() {
+		byName[c.Name()] = c
+	}
+	for _, name := range []string{"remove-container", "remove-image"} {
+		cmd := byName[name]
+		if cmd == nil {
+			t.Fatalf("command %q not registered", name)
+		}
+		// Positional args must be accepted (default arbitrary args, no validator
+		// that rejects them).
+		if cmd.Args != nil {
+			if err := cmd.Args(cmd, []string{"some-name"}); err != nil {
+				t.Errorf("%s should accept a positional arg: %v", name, err)
+			}
+		}
+		if cmd.ValidArgsFunction == nil {
+			t.Errorf("%s should register positional-arg completion", name)
+		}
+	}
+}
+
 func TestPruneCommand_HasResourceSubcommands(t *testing.T) {
 	root := NewRootCommand("test")
 	var prune *cobra.Command

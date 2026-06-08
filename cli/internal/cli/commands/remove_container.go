@@ -9,15 +9,17 @@ func init() { register(newRemoveContainerCommand()) }
 
 func newRemoveContainerCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "remove-container",
+		Use:     "remove-container [name...]",
 		Aliases: []string{"rm"},
 		Short:   "Remove managed containers by label",
 		Long: `devcontainer-cli remove-container — remove CLI-managed containers selected by the managed label
 
-By default only removes containers that are not running. Use --all to remove
-every managed container (running ones are force-removed).`,
-		SilenceUsage: true,
-		RunE:         runRemoveContainer,
+With one or more container names, removes exactly those (tab-completion
+suggests managed container names). With no names, removes containers that are
+not running, or every managed container with --all.`,
+		SilenceUsage:      true,
+		RunE:              runRemoveContainer,
+		ValidArgsFunction: completeManagedContainerArgs,
 	}
 	addAllFlag(cmd)
 	addYesFlag(cmd)
@@ -25,14 +27,19 @@ every managed container (running ones are force-removed).`,
 	return cmd
 }
 
-func runRemoveContainer(cmd *cobra.Command, _ []string) error {
+func containerLabel(c service.LocalContainer) string {
+	if c.State != "" {
+		return c.Name + "  (" + c.State + ")"
+	}
+	return c.Name
+}
+
+func runRemoveContainer(cmd *cobra.Command, args []string) error {
 	svc := service.PruneService{Report: console}
-	return pruneOne(cmd, "containers", svc.SelectContainers,
-		func(c service.LocalContainer) string {
-			if c.State != "" {
-				return c.Name + "  (" + c.State + ")"
-			}
-			return c.Name
-		},
-		svc.RemoveContainers)
+	if len(args) > 0 {
+		return removeNamed(cmd, "containers", args, svc.SelectContainers,
+			func(c service.LocalContainer) string { return c.Name },
+			containerLabel, svc.RemoveContainers)
+	}
+	return pruneOne(cmd, "containers", svc.SelectContainers, containerLabel, svc.RemoveContainers)
 }
