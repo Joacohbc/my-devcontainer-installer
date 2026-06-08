@@ -25,7 +25,7 @@ func TestNewRootCommand_RegistersAllSubcommands(t *testing.T) {
 		"setup-ssh", "port-forward", "run", "down", "destroy",
 		"start", "stop", "restart", "prune", "update",
 		"upgrade-cli", "config", "cleanup-tips", "shell", "logs", "copy",
-		"up", "status", "ls", "info",
+		"up", "status", "ls", "info", "rm", "rmi",
 	}
 	have := map[string]bool{}
 	for _, c := range root.Commands() {
@@ -34,6 +34,55 @@ func TestNewRootCommand_RegistersAllSubcommands(t *testing.T) {
 	for _, name := range want {
 		if !have[name] {
 			t.Errorf("expected subcommand %q to be registered", name)
+		}
+	}
+}
+
+func TestPruneCommand_HasResourceSubcommands(t *testing.T) {
+	root := NewRootCommand("test")
+	var prune *cobra.Command
+	for _, c := range root.Commands() {
+		if c.Name() == "prune" {
+			prune = c
+			break
+		}
+	}
+	if prune == nil {
+		t.Fatal("prune command not registered")
+	}
+	have := map[string]bool{}
+	for _, c := range prune.Commands() {
+		have[c.Name()] = true
+	}
+	for _, name := range []string{"images", "network", "volume"} {
+		if !have[name] {
+			t.Errorf("expected prune subcommand %q", name)
+		}
+	}
+}
+
+func TestPruneAndRemovalCommands_HaveAllFlag(t *testing.T) {
+	root := NewRootCommand("test")
+	byName := map[string]*cobra.Command{}
+	for _, c := range root.Commands() {
+		byName[c.Name()] = c
+	}
+	// Top-level commands carrying --all.
+	for _, name := range []string{"prune", "rm", "rmi"} {
+		cmd := byName[name]
+		if cmd == nil {
+			t.Errorf("command %q not registered", name)
+			continue
+		}
+		if cmd.Flags().Lookup("all") == nil {
+			t.Errorf("expected command %q to have --all flag", name)
+		}
+	}
+	// prune subcommands carrying --all.
+	prune := byName["prune"]
+	for _, sub := range prune.Commands() {
+		if sub.Flags().Lookup("all") == nil {
+			t.Errorf("expected prune subcommand %q to have --all flag", sub.Name())
 		}
 	}
 }

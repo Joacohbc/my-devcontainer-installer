@@ -285,7 +285,9 @@ is Cobra-native.
 | `down` | `down.go` | `docker compose down [-v]` |
 | `destroy` | `destroy.go` | down + delete `.dc_<ws>/` + config (confirmation) |
 | `start`/`stop`/`restart` | `lifecycle.go` | `docker compose start`/`stop`/`restart` |
-| `prune` | `prune.go` | Remove orphan `devcontainer-cli/*` images |
+| `prune` | `prune.go` | Remove managed images+networks+volumes by label; subcommands `prune images`/`network`/`volume`; `--all` (all) vs default (unused) |
+| `rm` | `rm.go` | Remove managed containers by label; `--all` (all) vs default (non-running) |
+| `rmi` | `rmi.go` | Remove managed images by label; `--all` (all) vs default (unused) |
 | `update` | `update.go` | Pull/rebuild images; `--all`; per-mode dispatch |
 | `upgrade-cli` | `upgrade_cli.go` | Binary self-update from a GitHub release |
 | `config` | `config.go` | Read/write global config (subcommand `registry`) |

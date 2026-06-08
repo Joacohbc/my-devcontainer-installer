@@ -1,12 +1,7 @@
 package service
 
 import (
-	"os"
-	"path/filepath"
 	"testing"
-
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 )
 
 func TestPruneSelectAllParsesImages(t *testing.T) {
@@ -45,27 +40,18 @@ func TestPruneSelectAllParsesRemoteImages(t *testing.T) {
 	}
 }
 
-func TestPruneSelectOrphanRemoteImages(t *testing.T) {
-	tmp := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", tmp)
-	t.Setenv("APPDATA", tmp)
-
-	liveDir := filepath.Join(tmp, "proj")
-	if err := os.MkdirAll(liveDir, 0o755); err != nil {
-		t.Fatal(err)
+func TestFilterUnusedImages(t *testing.T) {
+	images := []LocalImage{
+		{Ref: "devcontainer-cli/abc:latest", ID: "ID1"},
+		{Ref: "devcontainer-cli/def:latest", ID: "ID2"},
+		{Ref: "ghcr.io/joacohbc/devcontainer-go:latest", ID: "ID3"},
 	}
-	domain.RecordProject(liveDir, &types.DevcontainerConfig{Workspace: "ws"}, "ghcr.io/joacohbc/devcontainer-nodejs:latest")
+	// abc is in use by ref, def by ID; go is unused.
+	inUse := map[string]bool{"devcontainer-cli/abc:latest": true, "ID2": true}
 
-	runner := &fakeRunner{status: 0, stdout: "ghcr.io/joacohbc/devcontainer-nodejs:latest\tID1\nghcr.io/joacohbc/devcontainer-go:latest\tID2"}
-	defer useFakeDocker(runner)()
-
-	svc := PruneService{Report: nopReporter{}}
-	toRemove, anyExist := svc.SelectImages(false)
-	if !anyExist {
-		t.Fatal("expected anyExist=true")
-	}
-	if len(toRemove) != 1 || toRemove[0].Ref != "ghcr.io/joacohbc/devcontainer-go:latest" {
-		t.Errorf("expected only the untracked remote image, got %v", toRemove)
+	got := filterUnusedImages(images, inUse)
+	if len(got) != 1 || got[0].Ref != "ghcr.io/joacohbc/devcontainer-go:latest" {
+		t.Fatalf("expected only the unused go image, got %v", got)
 	}
 }
 
@@ -79,30 +65,6 @@ func TestPruneSelectNoneWhenNoImages(t *testing.T) {
 	}
 }
 
-func TestPruneSelectOrphansOnly(t *testing.T) {
-	tmp := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", tmp)
-	t.Setenv("APPDATA", tmp)
-
-	liveDir := filepath.Join(tmp, "proj")
-	if err := os.MkdirAll(liveDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	domain.RecordProject(liveDir, &types.DevcontainerConfig{Workspace: "ws"}, "devcontainer-cli/abc:latest")
-
-	runner := &fakeRunner{status: 0, stdout: "devcontainer-cli/abc:latest\tID1\ndevcontainer-cli/orphan:latest\tID2"}
-	defer useFakeDocker(runner)()
-
-	svc := PruneService{Report: nopReporter{}}
-	toRemove, anyExist := svc.SelectImages(false)
-	if !anyExist {
-		t.Fatal("expected anyExist=true")
-	}
-	if len(toRemove) != 1 || toRemove[0].Ref != "devcontainer-cli/orphan:latest" {
-		t.Errorf("expected only the orphan image, got %v", toRemove)
-	}
-}
-
 func TestPruneRemoveCounts(t *testing.T) {
 	images := []LocalImage{{Ref: "devcontainer-cli/a:latest"}, {Ref: "devcontainer-cli/b:latest"}}
 
@@ -111,6 +73,9 @@ func TestPruneRemoveCounts(t *testing.T) {
 	svc := PruneService{Report: nopReporter{}}
 	if removed, failed := svc.Remove(images); removed != 2 || failed != 0 {
 		t.Errorf("ok runner: removed=%d failed=%d, want 2/0", removed, failed)
+	}
+	if call := okRunner.callContaining("rmi"); call == nil {
+		t.Error("expected an rmi call")
 	}
 	restore()
 
@@ -121,8 +86,64 @@ func TestPruneRemoveCounts(t *testing.T) {
 	}
 }
 
+func TestPruneSelectContainers(t *testing.T) {
+	runner := &fakeRunner{status: 0, stdout: "c1\trunning\nc2\texited\nc3\tcreated"}
+	defer useFakeDocker(runner)()
+
+	svc := PruneService{Report: nopReporter{}}
+
+	all, anyExist := svc.SelectContainers(true)
+	if !anyExist {
+		t.Fatal("expected anyExist=true")
+	}
+	if len(all) != 3 {
+		t.Fatalf("all=true: got %d containers, want 3: %v", len(all), all)
+	}
+
+	unused, _ := svc.SelectContainers(false)
+	if len(unused) != 2 {
+		t.Fatalf("all=false: got %d containers, want 2 (non-running): %v", len(unused), unused)
+	}
+	for _, c := range unused {
+		if c.State == "running" {
+			t.Errorf("running container %q should not be selected when all=false", c.Name)
+		}
+	}
+}
+
+func TestPruneSelectContainersNone(t *testing.T) {
+	runner := &fakeRunner{status: 0, stdout: ""}
+	defer useFakeDocker(runner)()
+
+	svc := PruneService{Report: nopReporter{}}
+	if got, anyExist := svc.SelectContainers(false); anyExist || got != nil {
+		t.Errorf("expected no containers; got %v anyExist=%v", got, anyExist)
+	}
+}
+
+func TestPruneRemoveContainers(t *testing.T) {
+	containers := []LocalContainer{{Name: "c1"}, {Name: "c2"}}
+
+	okRunner := &fakeRunner{status: 0}
+	restore := useFakeDocker(okRunner)
+	svc := PruneService{Report: nopReporter{}}
+	if removed, failed := svc.RemoveContainers(containers); removed != 2 || failed != 0 {
+		t.Errorf("ok runner: removed=%d failed=%d, want 2/0", removed, failed)
+	}
+	if call := okRunner.callContaining("rm"); call == nil {
+		t.Error("expected an rm call")
+	}
+	restore()
+
+	failRunner := &fakeRunner{status: 1}
+	defer useFakeDocker(failRunner)()
+	if removed, failed := svc.RemoveContainers(containers); removed != 0 || failed != 2 {
+		t.Errorf("fail runner: removed=%d failed=%d, want 0/2", removed, failed)
+	}
+}
+
 func TestPruneSelectAllParsesNetworksAndVolumes(t *testing.T) {
-	netRunner := &fakeRunner{status: 0, stdout: "net1\tproj1\nnet2\tproj2"}
+	netRunner := &fakeRunner{status: 0, stdout: "net1\nnet2"}
 	restore := useFakeDocker(netRunner)
 
 	svc := PruneService{Report: nopReporter{}}
@@ -133,12 +154,12 @@ func TestPruneSelectAllParsesNetworksAndVolumes(t *testing.T) {
 	if len(networks) != 2 {
 		t.Fatalf("got %d networks, want 2: %v", len(networks), networks)
 	}
-	if networks[0].Name != "net1" || networks[0].Project != "proj1" {
+	if networks[0].Name != "net1" {
 		t.Errorf("unexpected first network: %+v", networks[0])
 	}
 	restore()
 
-	volRunner := &fakeRunner{status: 0, stdout: "vol1\tproj1\nvol2\tproj2"}
+	volRunner := &fakeRunner{status: 0, stdout: "vol1\nvol2"}
 	restore = useFakeDocker(volRunner)
 	volumes, anyExist := svc.SelectVolumes(true)
 	if !anyExist {
@@ -147,46 +168,33 @@ func TestPruneSelectAllParsesNetworksAndVolumes(t *testing.T) {
 	if len(volumes) != 2 {
 		t.Fatalf("got %d volumes, want 2: %v", len(volumes), volumes)
 	}
-	if volumes[0].Name != "vol1" || volumes[0].Project != "proj1" {
+	if volumes[0].Name != "vol1" {
 		t.Errorf("unexpected first volume: %+v", volumes[0])
 	}
 	restore()
 }
 
-func TestPruneSelectOrphanNetworksAndVolumes(t *testing.T) {
-	tmp := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", tmp)
-	t.Setenv("APPDATA", tmp)
+func TestFilterUnusedNetworks(t *testing.T) {
+	networks := []LocalNetwork{{Name: "net_used"}, {Name: "net_free"}}
+	inUse := map[string]bool{"net_used": true}
 
-	liveDir := filepath.Join(tmp, "proj")
-	if err := os.MkdirAll(liveDir, 0o755); err != nil {
-		t.Fatal(err)
+	got := filterUnusedNetworks(networks, inUse)
+	if len(got) != 1 || got[0].Name != "net_free" {
+		t.Fatalf("expected only net_free, got %v", got)
 	}
-	domain.RecordProject(liveDir, &types.DevcontainerConfig{Workspace: "ws"}, "devcontainer-cli/abc:latest")
+}
 
-	netRunner := &fakeRunner{status: 0, stdout: "net_live\tdevcontainer-cli_abc_latest\nnet_orphan\tdevcontainer-cli_orphan_latest\nnet_no_proj\t"}
-	restore := useFakeDocker(netRunner)
+func TestPruneSelectVolumesUnusedAppliesDanglingFilter(t *testing.T) {
+	runner := &fakeRunner{status: 0, stdout: "vol1\nvol2"}
+	defer useFakeDocker(runner)()
 
 	svc := PruneService{Report: nopReporter{}}
-	toRemoveNets, anyNets := svc.SelectNetworks(false)
-	if !anyNets {
-		t.Fatal("expected anyNets=true")
+	if _, anyExist := svc.SelectVolumes(false); !anyExist {
+		t.Fatal("expected anyExist=true")
 	}
-	if len(toRemoveNets) != 2 {
-		t.Fatalf("expected 2 orphan networks, got %v", toRemoveNets)
+	if call := runner.callContaining("dangling=true"); call == nil {
+		t.Error("expected the unused volume query to use the dangling=true filter")
 	}
-	restore()
-
-	volRunner := &fakeRunner{status: 0, stdout: "vol_live\tdevcontainer-cli_abc_latest\nvol_orphan\tdevcontainer-cli_orphan_latest\nvol_no_proj\t"}
-	restore = useFakeDocker(volRunner)
-	toRemoveVols, anyVols := svc.SelectVolumes(false)
-	if !anyVols {
-		t.Fatal("expected anyVols=true")
-	}
-	if len(toRemoveVols) != 2 {
-		t.Fatalf("expected 2 orphan volumes, got %v", toRemoveVols)
-	}
-	restore()
 }
 
 func TestPruneRemoveNetworksAndVolumes(t *testing.T) {
