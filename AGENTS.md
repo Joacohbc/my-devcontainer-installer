@@ -412,11 +412,16 @@ three plus `BuildModes` and tests.
 `cli/.goreleaser.yaml` produces one raw binary per target (no archives) named
 `devcontainer-cli-<triplet>[.exe]` plus a per-binary `<name>.sha256`
 (`checksum.split: true`). `.github/workflows/cli-release.yml` runs
-`goreleaser release` on `v*` tags. Validate locally with `goreleaser check` and
-`goreleaser release --snapshot --clean`.
+`goreleaser release` when you **publish a GitHub Release** (event
+`release: published`, from the UI or `gh release create`). Validate locally with
+`goreleaser check` and `goreleaser release --snapshot --clean`.
 
-**Pre-releases** — GitHub releases marked as pre-releases. `/releases/latest` excludes
-them, and `upgrade-cli` only offers them as an opt-in (see Self-update below).
+**Pre-releases** — the pre-release checkbox set when publishing the GitHub
+Release is the source of truth. GoReleaser always rewrites that flag from the tag
+name (`prerelease: auto`), so the release workflow has a final `gh release edit
+--prerelease=${{ github.event.release.prerelease }}` step that re-applies the
+manual choice. `/releases/latest` excludes pre-releases, and `upgrade-cli` only
+offers them as an opt-in (see Self-update below).
 
 ### Version injection
 
