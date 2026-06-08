@@ -153,6 +153,11 @@ func TestGenerateDockerfile_PnpmAutoAddNodejs(t *testing.T) {
 	df := mustGenerateDockerfile(t, cfg)
 	assertContainsStr(t, df, "nvm install", "pnpm pulls nodejs")
 	assertContainsStr(t, df, "get.pnpm.io/install.sh", "pnpm")
+	// pnpm must expose its global bin dir on PATH (zsh/bash/profile) and pin a
+	// store-dir on the persisted home so no stray store lands in the workspace.
+	assertContainsStr(t, df, "PNPM_HOME", "pnpm exports PNPM_HOME")
+	assertContainsStr(t, df, ".pnpm_init.sh", "pnpm uses emitShellInit")
+	assertContainsStr(t, df, "store-dir", "pnpm pins a store-dir")
 }
 
 func TestGenerateDockerfile_NodejsFnmManager(t *testing.T) {
