@@ -1,12 +1,13 @@
 name: CLI Release
 
 on:
-  push:
-    tags:
-      # Matches both stable tags (v1.4.0) and testing builds (v1.4.0-vt.N).
-      # GoReleaser's `prerelease: auto` flags the latter as a GitHub pre-release,
-      # so `upgrade-cli` only offers them as an opt-in.
-      - 'v*'
+  # Runs when you publish a GitHub Release (from the UI or `gh release create`).
+  # The pre-release checkbox you set there is the source of truth. GoReleaser
+  # always rewrites the release's prerelease flag from the tag name (via
+  # `prerelease: auto`), so the final step below re-applies the value you chose
+  # in the UI (`github.event.release.prerelease`).
+  release:
+    types: [published]
   workflow_dispatch:
 
 permissions:
@@ -40,3 +41,14 @@ jobs:
           workdir: cli
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # GoReleaser overwrites the release's prerelease flag from the tag name.
+      # Re-apply the value chosen in the GitHub UI so the manual checkbox wins.
+      - name: Restore pre-release flag from the GitHub release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: >-
+          gh release edit "${{ github.event.release.tag_name }}"
+          --repo "${{ github.repository }}"
+          --prerelease=${{ github.event.release.prerelease }}
