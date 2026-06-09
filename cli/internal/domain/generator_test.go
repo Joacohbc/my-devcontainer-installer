@@ -158,6 +158,10 @@ func TestGenerateDockerfile_PnpmAutoAddNodejs(t *testing.T) {
 	assertContainsStr(t, df, "PNPM_HOME", "pnpm exports PNPM_HOME")
 	assertContainsStr(t, df, ".pnpm_init.sh", "pnpm uses emitShellInit")
 	assertContainsStr(t, df, "store-dir", "pnpm pins a store-dir")
+	// The store-dir config runs in the same non-interactive shell that just
+	// installed pnpm, where the freshly-added PATH entry isn't resolvable yet, so
+	// pnpm must be invoked by its absolute installed path ($PNPM_HOME/pnpm).
+	assertContainsStr(t, df, `"$PNPM_HOME/pnpm" config set store-dir`, "pnpm config runs via absolute binary path")
 }
 
 func TestGenerateDockerfile_NodejsFnmManager(t *testing.T) {
