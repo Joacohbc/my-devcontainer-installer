@@ -218,6 +218,51 @@ func TestParseGenFlags_Persist(t *testing.T) {
 	}
 }
 
+func TestParseGenFlags_Ports(t *testing.T) {
+	cases := []struct {
+		name    string
+		args    []string
+		wantNil bool
+		want    []string
+	}{
+		{name: "unset", args: nil, wantNil: true},
+		{name: "none", args: []string{"--ports", "none"}, want: []string{}},
+		{name: "empty", args: []string{"--ports", ""}, want: []string{}},
+		{name: "list", args: []string{"--ports", "8080:80, 5432:5432"}, want: []string{"8080:80", "5432:5432"}},
+		{name: "explicit-ip", args: []string{"--ports", "0.0.0.0:8080:80"}, want: []string{"0.0.0.0:8080:80"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd := &cobra.Command{Use: "generate"}
+			addGenerateFlags(cmd)
+			if err := cmd.ParseFlags(tc.args); err != nil {
+				t.Fatalf("ParseFlags: %v", err)
+			}
+			flags, err := parseGenFlags(cmd)
+			if err != nil {
+				t.Fatalf("parseGenFlags: %v", err)
+			}
+			if tc.wantNil {
+				if flags.ports != nil {
+					t.Errorf("expected nil ports, got %v", *flags.ports)
+				}
+				return
+			}
+			if flags.ports == nil {
+				t.Fatalf("expected non-nil ports for args %v", tc.args)
+			}
+			if len(*flags.ports) != len(tc.want) {
+				t.Fatalf("ports = %v, want %v", *flags.ports, tc.want)
+			}
+			for i := range tc.want {
+				if (*flags.ports)[i] != tc.want[i] {
+					t.Errorf("ports[%d] = %q, want %q", i, (*flags.ports)[i], tc.want[i])
+				}
+			}
+		})
+	}
+}
+
 func TestConfigCommand_HasRegistrySubcommand(t *testing.T) {
 	root := NewRootCommand("test")
 	var config *cobra.Command

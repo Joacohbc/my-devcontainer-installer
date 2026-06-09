@@ -3,6 +3,7 @@ package service
 import (
 	"fmt"
 
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
 )
@@ -21,6 +22,10 @@ type QuickRunSpec struct {
 	Image         string
 	Volumes       []string // docker volume specs: name:/path or /host:/container
 	Ports         []string // docker port specs: hostport:containerport
+	// ExposeAll publishes ports on all interfaces (0.0.0.0). When false (the
+	// default), specs without an explicit host IP are bound to 127.0.0.1 so the
+	// port is not reachable from the local network.
+	ExposeAll bool
 }
 
 // Run reuses the container if it already exists (starting it when stopped),
@@ -54,6 +59,9 @@ func (s RunService) Run(spec QuickRunSpec) error {
 		args = append(args, "-v", v)
 	}
 	for _, p := range spec.Ports {
+		if !spec.ExposeAll {
+			p = domain.BindLoopback(p)
+		}
 		args = append(args, "-p", p)
 	}
 	args = append(args, spec.Image, "sleep", "infinity")

@@ -25,6 +25,9 @@ type RenderContext struct {
 	// "devcontainer_etc:/etc") to add to the devcontainer service, on top of the
 	// always-present workspace bind mount. Only the devcontainer service reads it.
 	PersistVolumeMounts []string
+	// Ports are the resolved docker port mappings (e.g. "127.0.0.1:8080:80") to
+	// publish on the devcontainer service. Only the devcontainer service reads it.
+	Ports []string
 }
 
 type ComposeDoc struct {
@@ -44,6 +47,7 @@ type ServiceDef struct {
 	Privileged    bool              `yaml:"privileged,omitempty"`
 	Environment   any               `yaml:"environment,omitempty"`
 	Volumes       []string          `yaml:"volumes,omitempty"`
+	Ports         []string          `yaml:"ports,omitempty"`
 	Networks      any               `yaml:"networks,omitempty"`
 	DependsOn     []string          `yaml:"depends_on,omitempty"`
 	Labels        map[string]string `yaml:"labels,omitempty"`

@@ -27,6 +27,7 @@ const (
 	flagImage          = "image"
 	flagWorkspace      = "workspace"
 	flagPersist        = "persist"
+	flagPorts          = "ports"
 	flagPreset         = "preset"
 	flagNoInteractive  = "no-interactive"
 	flagNonInteractive = "non-interactive"
@@ -48,6 +49,7 @@ func addGenerateFlags(cmd *cobra.Command) {
 	f.String(flagImage, "", "Image name (default: derived from fingerprint for local-cached)")
 	f.String(flagWorkspace, "", "Workspace name (default: current dir name)")
 	f.String(flagPersist, "", "Persistence volumes mounted in the devcontainer: comma-separated ids (etc,root,home), 'all', or 'none'")
+	f.String(flagPorts, "", "Ports to publish on the devcontainer (e.g. 8080:80,5432:5432); bound to 127.0.0.1 unless an IP is given; 'none' clears them")
 	f.String(flagPreset, "", "Apply a preset (modules + services). See 'preset list'.")
 	f.Bool(flagNoInteractive, false, "Fail if any value is missing instead of prompting")
 	f.Bool(flagNonInteractive, false, "Alias for --no-interactive")
@@ -107,6 +109,7 @@ type genFlags struct {
 	withModules []string
 	services    []string
 	persist     *[]string // nil = not set (keep existing/default)
+	ports       *[]string // nil = not set (keep existing); non-nil overrides
 	mode        string
 	variant     string
 	registry    string
@@ -141,6 +144,18 @@ func parsePersistFlag(get func(string) (string, error)) ([]string, error) {
 		}
 	}
 	return ids, nil
+}
+
+// parsePortsFlag reads the --ports CSV. "none" (or an empty value) clears the
+// published ports; otherwise each entry is a docker port spec stored verbatim
+// (the generator binds specs without an explicit IP to 127.0.0.1).
+func parsePortsFlag(get func(string) (string, error)) []string {
+	raw, _ := get(flagPorts)
+	specs := splitCSV(raw)
+	if len(specs) == 1 && specs[0] == "none" {
+		return []string{}
+	}
+	return specs
 }
 
 func parseGenFlags(cmd *cobra.Command) (*genFlags, error) {
@@ -191,6 +206,10 @@ func parseGenFlags(cmd *cobra.Command) (*genFlags, error) {
 			return nil, err
 		}
 		g.persist = &ids
+	}
+	if f.Changed(flagPorts) {
+		ports := parsePortsFlag(f.GetString)
+		g.ports = &ports
 	}
 
 	if g.mode != "" {
@@ -573,6 +592,9 @@ func applyGenFlags(config *types.DevcontainerConfig, flags *genFlags) {
 	}
 	if flags.persist != nil {
 		config.Compose.PersistVolumes = flags.persist
+	}
+	if flags.ports != nil {
+		config.Compose.Ports = *flags.ports
 	}
 	if flags.mode == string(types.BuildModeRemote) || config.Mode == types.BuildModeRemote {
 		variant := flags.variant

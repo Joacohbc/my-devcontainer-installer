@@ -101,7 +101,7 @@ func TestRunDoesNotMountDockerSocket(t *testing.T) {
 	}
 }
 
-func TestRunMapsPorts(t *testing.T) {
+func TestRunMapsPortsBoundToLoopback(t *testing.T) {
 	runner := &fakeRunner{status: 0, stdout: ""}
 	defer useFakeDocker(runner)()
 
@@ -118,9 +118,44 @@ func TestRunMapsPorts(t *testing.T) {
 	if call == nil {
 		t.Fatal("expected docker run call")
 	}
+	for _, p := range []string{"127.0.0.1:2222:22", "127.0.0.1:8080:80"} {
+		if !slices.Contains(call, p) {
+			t.Errorf("run call missing loopback-bound port mapping %q: %v", p, call)
+		}
+	}
+	for _, p := range []string{"2222:22", "8080:80"} {
+		if slices.Contains(call, p) {
+			t.Errorf("port mapping %q must be bound to 127.0.0.1, not published raw: %v", p, call)
+		}
+	}
+}
+
+func TestRunMapsPortsExposeAll(t *testing.T) {
+	runner := &fakeRunner{status: 0, stdout: ""}
+	defer useFakeDocker(runner)()
+
+	svc := RunService{Report: nopReporter{}}
+	err := svc.Run(QuickRunSpec{
+		ContainerName: "dc-ssh",
+		Image:         "img",
+		Ports:         []string{"2222:22", "8080:80"},
+		ExposeAll:     true,
+	})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	call := runner.callContaining("run")
+	if call == nil {
+		t.Fatal("expected docker run call")
+	}
 	for _, p := range []string{"2222:22", "8080:80"} {
 		if !slices.Contains(call, p) {
-			t.Errorf("run call missing port mapping %q: %v", p, call)
+			t.Errorf("with ExposeAll the raw port mapping %q must be published: %v", p, call)
+		}
+	}
+	for _, arg := range call {
+		if strings.HasPrefix(arg, "127.0.0.1:") {
+			t.Errorf("ExposeAll must not bind to 127.0.0.1: %v", call)
 		}
 	}
 }

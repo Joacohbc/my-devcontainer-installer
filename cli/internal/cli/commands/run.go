@@ -24,7 +24,8 @@ func newRunCommand() *cobra.Command {
 	cmd.Flags().String("variant", "", "Image variant (e.g. ssh, nodejs, python)")
 	cmd.Flags().String("name", "", "Container name (default: dc-<variant>)")
 	cmd.Flags().StringSlice("volumes", nil, "Volume mounts (e.g. myvol:/workspace); repeatable or comma-separated")
-	cmd.Flags().StringSlice("ports", nil, "Port mappings (e.g. 2222:22); repeatable or comma-separated")
+	cmd.Flags().StringSlice("ports", nil, "Port mappings (e.g. 2222:22); bound to 127.0.0.1 unless --expose-all; repeatable or comma-separated")
+	cmd.Flags().Bool("expose-all", false, "Publish ports on all interfaces (0.0.0.0) instead of binding to 127.0.0.1")
 	cmd.Flags().String("registry", "", "Registry prefix override")
 	addInteractiveFlag(cmd)
 
@@ -40,6 +41,7 @@ func runQuickRun(cmd *cobra.Command, _ []string) error {
 	name, _ := cmd.Flags().GetString("name")
 	volumes, _ := cmd.Flags().GetStringSlice("volumes")
 	ports, _ := cmd.Flags().GetStringSlice("ports")
+	exposeAll, _ := cmd.Flags().GetBool("expose-all")
 	registry, _ := cmd.Flags().GetString("registry")
 	interactive := interactiveFlag(cmd)
 
@@ -104,6 +106,11 @@ func runQuickRun(cmd *cobra.Command, _ []string) error {
 	}
 	if len(ports) > 0 {
 		console.Info("  Ports     : %s", strings.Join(ports, ", "))
+		if exposeAll {
+			console.Info("              (published on all interfaces / 0.0.0.0)")
+		} else {
+			console.Info("              (bound to 127.0.0.1; pass --expose-all for LAN access)")
+		}
 	}
 	console.NewLine()
 
@@ -114,6 +121,7 @@ func runQuickRun(cmd *cobra.Command, _ []string) error {
 		Image:         image,
 		Volumes:       volumes,
 		Ports:         ports,
+		ExposeAll:     exposeAll,
 	}); err != nil {
 		return err
 	}

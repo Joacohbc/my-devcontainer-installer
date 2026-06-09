@@ -197,6 +197,11 @@ type ComposeConfig struct {
 	// "unset" and is treated as all of them (the legacy default); a non-nil
 	// value — including an empty slice for "none" — is honored exactly.
 	PersistVolumes *[]string `json:"persistVolumes,omitempty" yaml:"persistVolumes,omitempty"`
+	// Ports are the docker port mappings published on the devcontainer service
+	// (e.g. "8080:80"). Specs without an explicit host IP are bound to 127.0.0.1
+	// in the generated compose so they are not reachable from the LAN; include an
+	// IP (e.g. "0.0.0.0:8080:80") to override. Empty/nil means no published ports.
+	Ports []string `json:"ports,omitempty" yaml:"ports,omitempty"`
 }
 
 // PersistVolumeSpec describes an optional named volume mounted into the
