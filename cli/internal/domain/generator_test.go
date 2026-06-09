@@ -158,10 +158,13 @@ func TestGenerateDockerfile_PnpmAutoAddNodejs(t *testing.T) {
 	assertContainsStr(t, df, "PNPM_HOME", "pnpm exports PNPM_HOME")
 	assertContainsStr(t, df, ".pnpm_init.sh", "pnpm uses emitShellInit")
 	assertContainsStr(t, df, "store-dir", "pnpm pins a store-dir")
-	// The store-dir config runs in the same non-interactive shell that just
-	// installed pnpm, where the freshly-added PATH entry isn't resolvable yet, so
-	// pnpm must be invoked by its absolute installed path ($PNPM_HOME/pnpm).
-	assertContainsStr(t, df, `"$PNPM_HOME/pnpm" config set store-dir`, "pnpm config runs via absolute binary path")
+	// `pnpm setup` drops the binary in a bin/ subdir of $PNPM_HOME, not on PATH
+	// nor directly in $PNPM_HOME, so the store-dir config must resolve the binary
+	// dynamically rather than relying on PATH in the same shell.
+	assertContainsStr(t, df, `PNPM_BIN="$(find "$PNPM_HOME" -name pnpm`, "pnpm config resolves the binary via find")
+	assertContainsStr(t, df, `"$PNPM_BIN" config set store-dir`, "pnpm config runs the resolved binary")
+	// Runtime shells need $PNPM_HOME/bin on PATH for `pnpm` to be found.
+	assertContainsStr(t, df, "PNPM_HOME/bin", "pnpm exposes its bin dir on PATH")
 }
 
 func TestGenerateDockerfile_NodejsFnmManager(t *testing.T) {
