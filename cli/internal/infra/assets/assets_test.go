@@ -21,6 +21,19 @@ func TestAssetExists(t *testing.T) {
 	}
 }
 
+func TestContent(t *testing.T) {
+	data, err := assets.Content(embeddedScript)
+	if err != nil {
+		t.Fatalf("Content(%q) failed: %v", embeddedScript, err)
+	}
+	if len(data) == 0 {
+		t.Errorf("expected non-empty content for %q", embeddedScript)
+	}
+	if _, err := assets.Content("definitely-not-real.sh"); err == nil {
+		t.Error("expected error for unknown asset")
+	}
+}
+
 func TestPreflight_CopiesEmbeddedScript(t *testing.T) {
 	dir := t.TempDir()
 	res := assets.Preflight([]string{embeddedScript}, dir)

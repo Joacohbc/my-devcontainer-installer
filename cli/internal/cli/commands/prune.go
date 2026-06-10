@@ -196,11 +196,13 @@ func newPruneVolumeCommand() *cobra.Command {
 	addAllFlag(cmd)
 	addYesFlag(cmd)
 	addInteractiveFlag(cmd)
+	cmd.Flags().Bool("shared", false, "Also remove the global shared tool-config volume (devcontainer-shared-config) — deletes saved logins/sessions for ALL containers")
 	return cmd
 }
 
 func runPruneVolume(cmd *cobra.Command, _ []string) error {
-	svc := service.PruneService{Report: console}
+	shared, _ := cmd.Flags().GetBool("shared")
+	svc := service.PruneService{Report: console, IncludeSharedConfig: shared}
 	return pruneOne(cmd, "volumes", svc.SelectVolumes,
 		func(v service.LocalVolume) string { return v.Name },
 		svc.RemoveVolumes)

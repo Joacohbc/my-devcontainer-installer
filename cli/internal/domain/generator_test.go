@@ -395,6 +395,11 @@ func TestGenerateCompose_VolumesHaveWorkspacePrefix(t *testing.T) {
 	}
 	volumes := parsed["volumes"].(map[string]any)
 	for k := range volumes {
+		// The shared tool-config volume is intentionally daemon-level (shared by
+		// every workspace), so it is not workspace-prefixed.
+		if k == types.SharedConfigVolumeName {
+			continue
+		}
 		if !strings.HasPrefix(k, "devcontainer_") {
 			t.Errorf("volume %q should have workspace prefix 'devcontainer_'", k)
 		}
@@ -521,8 +526,10 @@ func TestGenerateCompose_PersistVolumesSubset(t *testing.T) {
 }
 
 func TestGenerateCompose_PersistVolumesNone(t *testing.T) {
+	off := false
 	cfg := makeConfig(func(c *types.DevcontainerConfig) {
 		c.Compose.PersistVolumes = &[]string{}
+		c.Compose.SharedConfig = &off // isolate persist behavior from the shared mount
 	})
 	yml := mustGenerateCompose(t, cfg)
 	vols := devcontainerVolumes(t, yml)
@@ -535,6 +542,75 @@ func TestGenerateCompose_PersistVolumesNone(t *testing.T) {
 			t.Errorf("expected no persistence volumes declared, found %q", k)
 		}
 	}
+}
+
+func TestGenerateCompose_SharedConfigDefaultOn(t *testing.T) {
+	// A default config (nil SharedConfig) mounts the shared volume and declares
+	// it external, unprefixed by the workspace.
+	cfg := makeConfig(func(c *types.DevcontainerConfig) { c.Workspace = "myproj" })
+	yml := mustGenerateCompose(t, cfg)
+
+	vols := devcontainerVolumes(t, yml)
+	if !contains(vols, "devcontainer-shared-config:/mnt/shared-config") {
+		t.Errorf("expected shared-config mount in devcontainer volumes, got %v", vols)
+	}
+
+	top := topLevelVolumes(t, yml)
+	decl, ok := top["devcontainer-shared-config"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected top-level devcontainer-shared-config volume, got %v", top)
+	}
+	if decl["external"] != true {
+		t.Errorf("shared-config volume must be external, got %v", decl)
+	}
+	// Must NOT be workspace-prefixed.
+	assertNotContainsStr(t, yml, "myproj_devcontainer-shared-config", "shared volume not prefixed")
+	assertNotContainsStr(t, yml, "myproj-shared-config", "shared volume not prefixed")
+}
+
+func TestGenerateCompose_SharedConfigDisabled(t *testing.T) {
+	off := false
+	cfg := makeConfig(func(c *types.DevcontainerConfig) { c.Compose.SharedConfig = &off })
+	yml := mustGenerateCompose(t, cfg)
+
+	vols := devcontainerVolumes(t, yml)
+	if contains(vols, "devcontainer-shared-config:/mnt/shared-config") {
+		t.Errorf("shared-config mount must be absent when disabled, got %v", vols)
+	}
+	if top := topLevelVolumes(t, yml); top["devcontainer-shared-config"] != nil {
+		t.Errorf("shared-config volume must not be declared when disabled, got %v", top)
+	}
+}
+
+func TestGenerateCompose_SharedConfigRemoteMode(t *testing.T) {
+	cfg := makeConfig(func(c *types.DevcontainerConfig) {
+		c.Mode = types.BuildModeRemote
+		c.Remote = &types.RemoteConfig{Variant: "nodejs"}
+	})
+	yml := mustGenerateCompose(t, cfg)
+	if !contains(devcontainerVolumes(t, yml), "devcontainer-shared-config:/mnt/shared-config") {
+		t.Error("expected shared-config mount in remote mode too")
+	}
+}
+
+func TestPlannedComposeNames_ExcludesSharedConfig(t *testing.T) {
+	cfg := makeConfig(func(c *types.DevcontainerConfig) { c.Workspace = "myproj" })
+	_, _, volumes, err := domain.PlannedComposeNames(cfg)
+	if err != nil {
+		t.Fatalf("PlannedComposeNames failed: %v", err)
+	}
+	if contains(volumes, types.SharedConfigVolumeName) {
+		t.Errorf("planned volumes must not include the shared volume, got %v", volumes)
+	}
+}
+
+func contains(haystack []string, needle string) bool {
+	for _, h := range haystack {
+		if h == needle {
+			return true
+		}
+	}
+	return false
 }
 
 func TestGenerateCompose_NetworkNamedAfterWorkspace(t *testing.T) {

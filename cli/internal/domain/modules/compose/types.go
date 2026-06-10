@@ -28,6 +28,10 @@ type RenderContext struct {
 	// Ports are the resolved docker port mappings (e.g. "127.0.0.1:8080:80") to
 	// publish on the devcontainer service. Only the devcontainer service reads it.
 	Ports []string
+	// SharedConfigMount is the global shared tool-config volume spec (e.g.
+	// "devcontainer-shared-config:/mnt/shared-config"). Empty means disabled.
+	// Only the devcontainer service reads it.
+	SharedConfigMount string
 }
 
 type ComposeDoc struct {
@@ -60,7 +64,8 @@ type NetworkDef struct {
 }
 
 type VolumeDef struct {
-	Labels map[string]string `yaml:"labels,omitempty"`
+	External bool              `yaml:"external,omitempty"`
+	Labels   map[string]string `yaml:"labels,omitempty"`
 }
 
 type IPAMConfig struct {

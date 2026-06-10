@@ -16,13 +16,14 @@ var modeLabels = map[types.BuildMode]string{
 }
 
 const (
-	stepKeyWorkspace = "workspace"
-	stepKeyMode      = "mode"
-	stepKeyVariant   = "variant"
-	stepKeyImage     = "image"
-	stepKeySubnet    = "subnet"
-	stepKeyPersist   = "persist"
-	stepKeyPorts     = "ports"
+	stepKeyWorkspace    = "workspace"
+	stepKeyMode         = "mode"
+	stepKeyVariant      = "variant"
+	stepKeyImage        = "image"
+	stepKeySubnet       = "subnet"
+	stepKeyPersist      = "persist"
+	stepKeyPorts        = "ports"
+	stepKeySharedConfig = "sharedConfig"
 )
 
 func categoryStepKey(c types.UICategory) string  { return "cat:" + string(c) }
@@ -215,6 +216,7 @@ func (w wizardContext) steps(s *State) []Step {
 	}
 	steps = append(steps, w.subnetStep())
 	steps = append(steps, w.persistStep())
+	steps = append(steps, w.sharedConfigStep())
 	steps = append(steps, w.portsStep())
 	steps = append(steps, w.envSteps(s)...)
 	return steps
@@ -268,6 +270,20 @@ func (w wizardContext) persistStep() Step {
 			Kind:    FieldMultiselect,
 			Title:   "Volúmenes persistentes a montar (Espacio para seleccionar, Enter para confirmar):",
 			Choices: choices,
+			Initial: initial,
+		}
+	}}
+}
+
+func (w wizardContext) sharedConfigStep() Step {
+	return Step{Key: stepKeySharedConfig, Build: func(s *State) Field {
+		initial := types.SharedConfigEnabled(w.base)
+		if s.Has(stepKeySharedConfig) {
+			initial = s.Bool(stepKeySharedConfig)
+		}
+		return Field{
+			Kind:    FieldConfirm,
+			Title:   "¿Compartir la configuración de herramientas IA/dev (Claude, Codex, Antigravity, gh) entre todos los contenedores?",
 			Initial: initial,
 		}
 	}}
@@ -504,6 +520,13 @@ func (w wizardContext) reduce(s *State) *types.DevcontainerConfig {
 		draft.Compose.Ports = parsePortsCSV(s.String(stepKeyPorts))
 	} else {
 		draft.Compose.Ports = w.base.Compose.Ports
+	}
+
+	if s.Has(stepKeySharedConfig) {
+		v := s.Bool(stepKeySharedConfig)
+		draft.Compose.SharedConfig = &v
+	} else {
+		draft.Compose.SharedConfig = w.base.Compose.SharedConfig
 	}
 
 	if mode == types.BuildModeRemote {

@@ -28,6 +28,7 @@ const (
 	flagWorkspace      = "workspace"
 	flagPersist        = "persist"
 	flagPorts          = "ports"
+	flagSharedConfig   = "shared-config"
 	flagPreset         = "preset"
 	flagNoInteractive  = "no-interactive"
 	flagNonInteractive = "non-interactive"
@@ -50,6 +51,7 @@ func addGenerateFlags(cmd *cobra.Command) {
 	f.String(flagWorkspace, "", "Workspace name (default: current dir name)")
 	f.String(flagPersist, "", "Persistence volumes mounted in the devcontainer: comma-separated ids (etc,root,home), 'all', or 'none'")
 	f.String(flagPorts, "", "Ports to publish on the devcontainer (e.g. 8080:80,5432:5432); bound to 127.0.0.1 unless an IP is given; 'none' clears them")
+	f.Bool(flagSharedConfig, true, "Mount the global shared AI/dev tool config volume (devcontainer-shared-config) so logins/sessions persist across containers; --shared-config=false to opt out")
 	f.String(flagPreset, "", "Apply a preset (modules + services). See 'preset list'.")
 	f.Bool(flagNoInteractive, false, "Fail if any value is missing instead of prompting")
 	f.Bool(flagNonInteractive, false, "Alias for --no-interactive")
@@ -100,20 +102,21 @@ func presetsDir() string {
 }
 
 type genFlags struct {
-	interactive bool
-	forcePrompt bool
-	force       bool
-	build       *bool // nil = ask
-	image       string
-	workspace   string
-	withModules []string
-	services    []string
-	persist     *[]string // nil = not set (keep existing/default)
-	ports       *[]string // nil = not set (keep existing); non-nil overrides
-	mode        string
-	variant     string
-	registry    string
-	preset      string
+	interactive  bool
+	forcePrompt  bool
+	force        bool
+	build        *bool // nil = ask
+	image        string
+	workspace    string
+	withModules  []string
+	services     []string
+	persist      *[]string // nil = not set (keep existing/default)
+	ports        *[]string // nil = not set (keep existing); non-nil overrides
+	sharedConfig *bool     // nil = not set (keep existing/default-on)
+	mode         string
+	variant      string
+	registry     string
+	preset       string
 }
 
 func splitCSV(s string) []string {
@@ -210,6 +213,10 @@ func parseGenFlags(cmd *cobra.Command) (*genFlags, error) {
 	if f.Changed(flagPorts) {
 		ports := parsePortsFlag(f.GetString)
 		g.ports = &ports
+	}
+	if f.Changed(flagSharedConfig) {
+		v, _ := f.GetBool(flagSharedConfig)
+		g.sharedConfig = &v
 	}
 
 	if g.mode != "" {
@@ -497,6 +504,14 @@ func saveAndPostProcess(cwd string, config *types.DevcontainerConfig, plan *serv
 	}
 	console.Success("Saved devcontainer.config.json")
 
+	// The shared tool-config volume is declared external in the compose file, so
+	// create it now (best-effort) before any `docker compose up`.
+	if types.SharedConfigEnabled(config) {
+		if err := svc.EnsureSharedConfigVolume(); err != nil {
+			console.Warn("Could not ensure shared-config volume: %v", err)
+		}
+	}
+
 	if flags.interactive {
 		if err := maybeUpdateGitignore(cwd, config.Workspace); err != nil {
 			return err
@@ -595,6 +610,9 @@ func applyGenFlags(config *types.DevcontainerConfig, flags *genFlags) {
 	}
 	if flags.ports != nil {
 		config.Compose.Ports = *flags.ports
+	}
+	if flags.sharedConfig != nil {
+		config.Compose.SharedConfig = flags.sharedConfig
 	}
 	if flags.mode == string(types.BuildModeRemote) || config.Mode == types.BuildModeRemote {
 		variant := flags.variant

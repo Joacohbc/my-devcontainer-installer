@@ -202,6 +202,11 @@ type ComposeConfig struct {
 	// in the generated compose so they are not reachable from the LAN; include an
 	// IP (e.g. "0.0.0.0:8080:80") to override. Empty/nil means no published ports.
 	Ports []string `json:"ports,omitempty" yaml:"ports,omitempty"`
+	// SharedConfig toggles mounting the global shared tool-config volume
+	// (devcontainer-shared-config) and the entrypoint symlinks into devuser's
+	// home. A nil value means "unset" and is treated as enabled (the default,
+	// including legacy configs); set it to false to opt out.
+	SharedConfig *bool `json:"sharedConfig,omitempty" yaml:"sharedConfig,omitempty"`
 }
 
 // PersistVolumeSpec describes an optional named volume mounted into the

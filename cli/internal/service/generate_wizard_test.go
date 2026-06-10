@@ -59,6 +59,52 @@ func TestConfigureReducesPorts(t *testing.T) {
 	}
 }
 
+func TestConfigureReducesSharedConfigOptOut(t *testing.T) {
+	defer useFakeDocker(&fakeRunner{status: 0})()
+
+	svc := GenerateService{Report: nopReporter{}}
+	base := &types.DevcontainerConfig{Env: map[string]string{}}
+	prompter := scriptedPrompter{answers: map[string]any{
+		stepKeyWorkspace:    "testws",
+		stepKeyMode:         string(types.BuildModeLocalCached),
+		stepKeySubnet:       "172.45.0.0/16",
+		stepKeySharedConfig: false,
+	}}
+
+	cfg, err := svc.Configure(base, "/home/user/proj", prompter)
+	if err != nil {
+		t.Fatalf("Configure: %v", err)
+	}
+	if cfg.Compose.SharedConfig == nil {
+		t.Fatal("expected SharedConfig to be set explicitly")
+	}
+	if *cfg.Compose.SharedConfig {
+		t.Errorf("SharedConfig = true, want false (opted out)")
+	}
+}
+
+func TestConfigureSharedConfigDefaultsEnabled(t *testing.T) {
+	defer useFakeDocker(&fakeRunner{status: 0})()
+
+	svc := GenerateService{Report: nopReporter{}}
+	base := &types.DevcontainerConfig{Env: map[string]string{}}
+	// No answer for the shared-config step → the scripted prompter falls back to
+	// the field's seeded default (enabled).
+	prompter := scriptedPrompter{answers: map[string]any{
+		stepKeyWorkspace: "testws",
+		stepKeyMode:      string(types.BuildModeLocalCached),
+		stepKeySubnet:    "172.45.0.0/16",
+	}}
+
+	cfg, err := svc.Configure(base, "/home/user/proj", prompter)
+	if err != nil {
+		t.Fatalf("Configure: %v", err)
+	}
+	if !types.SharedConfigEnabled(cfg) {
+		t.Errorf("expected shared-config enabled by default, got %v", cfg.Compose.SharedConfig)
+	}
+}
+
 func TestVariantChoicesCoversRemoteVariants(t *testing.T) {
 	choices := VariantChoices()
 	if len(choices) != len(types.RemoteVariants) {

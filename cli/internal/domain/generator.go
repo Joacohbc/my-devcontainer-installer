@@ -260,6 +260,9 @@ func GenerateCompose(config *types.DevcontainerConfig) (string, error) {
 		if svc.ID == types.ServiceDevcontainer {
 			rc.PersistVolumeMounts = persistMounts
 			rc.Ports = devcontainerPorts(config)
+			if types.SharedConfigEnabled(config) {
+				rc.SharedConfigMount = types.SharedConfigMount()
+			}
 		}
 		rendered := svc.Render(rc)
 		if rendered == nil {
@@ -333,6 +336,11 @@ func GenerateCompose(config *types.DevcontainerConfig) (string, error) {
 	volumes := make(map[string]*compose.VolumeDef)
 	for v := range declaredVolumes {
 		volumes[prefixVolume(workspace, v)] = &compose.VolumeDef{Labels: copyLabels(labels)}
+	}
+	// The shared tool-config volume is daemon-level (shared by every workspace),
+	// so it is declared external (never prefixed, never removed by compose down -v).
+	if types.SharedConfigEnabled(config) {
+		volumes[types.SharedConfigVolumeName] = &compose.VolumeDef{External: true}
 	}
 
 	networks := make(map[string]*compose.NetworkDef)

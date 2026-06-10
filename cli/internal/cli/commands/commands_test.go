@@ -263,6 +263,76 @@ func TestParseGenFlags_Ports(t *testing.T) {
 	}
 }
 
+func TestParseGenFlags_SharedConfig(t *testing.T) {
+	cases := []struct {
+		name    string
+		args    []string
+		wantNil bool
+		want    bool
+	}{
+		{name: "unset", args: nil, wantNil: true},
+		{name: "explicit-true", args: []string{"--shared-config=true"}, want: true},
+		{name: "explicit-false", args: []string{"--shared-config=false"}, want: false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd := &cobra.Command{Use: "generate"}
+			addGenerateFlags(cmd)
+			if err := cmd.ParseFlags(tc.args); err != nil {
+				t.Fatalf("ParseFlags: %v", err)
+			}
+			flags, err := parseGenFlags(cmd)
+			if err != nil {
+				t.Fatalf("parseGenFlags: %v", err)
+			}
+			if tc.wantNil {
+				if flags.sharedConfig != nil {
+					t.Errorf("expected nil sharedConfig, got %v", *flags.sharedConfig)
+				}
+				return
+			}
+			if flags.sharedConfig == nil {
+				t.Fatalf("expected non-nil sharedConfig for args %v", tc.args)
+			}
+			if *flags.sharedConfig != tc.want {
+				t.Errorf("sharedConfig = %v, want %v", *flags.sharedConfig, tc.want)
+			}
+		})
+	}
+}
+
+func TestRunCommand_HasSharedConfigFlag(t *testing.T) {
+	cmd := newRunCommand()
+	if cmd.Flags().Lookup("shared-config") == nil {
+		t.Error("expected run --shared-config flag")
+	}
+}
+
+func TestPruneVolumeCommand_HasSharedFlag(t *testing.T) {
+	root := NewRootCommand("test")
+	var prune *cobra.Command
+	for _, c := range root.Commands() {
+		if c.Name() == "prune" {
+			prune = c
+		}
+	}
+	if prune == nil {
+		t.Fatal("prune command not found")
+	}
+	var vol *cobra.Command
+	for _, c := range prune.Commands() {
+		if c.Name() == "volume" {
+			vol = c
+		}
+	}
+	if vol == nil {
+		t.Fatal("prune volume subcommand not found")
+	}
+	if vol.Flags().Lookup("shared") == nil {
+		t.Error("expected prune volume --shared flag")
+	}
+}
+
 func TestConfigCommand_HasRegistrySubcommand(t *testing.T) {
 	root := NewRootCommand("test")
 	var config *cobra.Command

@@ -118,6 +118,36 @@ func TestDevcontainerRender_NoPersistVolumesKeepsWorkspace(t *testing.T) {
 	}
 }
 
+func TestDevcontainerRender_SharedConfigMount(t *testing.T) {
+	def := compose.DevcontainerService.Render(compose.RenderContext{
+		ImageName:           "img",
+		EnabledServiceIDs:   []string{"devcontainer"},
+		PersistVolumeMounts: []string{"devcontainer_etc:/etc"},
+		SharedConfigMount:   "devcontainer-shared-config:/mnt/shared-config",
+	})
+	want := []string{"../..:/workspace", "devcontainer_etc:/etc", "devcontainer-shared-config:/mnt/shared-config"}
+	if len(def.Volumes) != len(want) {
+		t.Fatalf("Volumes = %v, want %v", def.Volumes, want)
+	}
+	for i, v := range want {
+		if def.Volumes[i] != v {
+			t.Errorf("Volumes[%d] = %q, want %q", i, def.Volumes[i], v)
+		}
+	}
+}
+
+func TestDevcontainerRender_NoSharedConfigByDefault(t *testing.T) {
+	def := compose.DevcontainerService.Render(compose.RenderContext{
+		ImageName:         "img",
+		EnabledServiceIDs: []string{"devcontainer"},
+	})
+	for _, v := range def.Volumes {
+		if v == "devcontainer-shared-config:/mnt/shared-config" {
+			t.Errorf("shared-config mount must be absent without RenderContext.SharedConfigMount, got %v", def.Volumes)
+		}
+	}
+}
+
 func TestDevcontainerRender_Ports(t *testing.T) {
 	def := compose.DevcontainerService.Render(compose.RenderContext{
 		ImageName:         "img",

@@ -18,6 +18,16 @@ func (s GenerateService) NameConflicts(config *types.DevcontainerConfig) []domai
 	return domain.FindConflicts(config, docker.IsDockerAvailable(), captureFunc())
 }
 
+// EnsureSharedConfigVolume creates the shared tool-config volume if missing.
+// It is best-effort: with docker unavailable it does nothing so generation of
+// the project files never fails on a stopped daemon.
+func (s GenerateService) EnsureSharedConfigVolume() error {
+	if !docker.IsDockerAvailable() {
+		return nil
+	}
+	return EnsureSharedConfigVolume(s.Report)
+}
+
 // GenerateService turns a resolved DevcontainerConfig into the rendered build
 // artifacts and runs the optional build/pull. The cli layer resolves every
 // decision (flags, wizard, confirmations) and feeds the finished config in;
