@@ -138,7 +138,8 @@ and `infra`, **never `cli`** (no `cli/ui`, no `cli/pick`).
 `generate.go`+`generate_wizard.go`, `run.go`, `destroy.go`, `update.go`,
 `lifecycle.go` (up/down/start/stop/restart), `prune.go`, `inspect.go`
 (shell/logs/status/copy/copy-asset/ls + completions), `config.go` (config/export/import/preset),
-`ssh.go` (setup-ssh), `portforward.go`, `upgrade.go`. `service.CleanupStaleUpdate()`
+`ssh.go` (setup-ssh), `portforward.go`, `network.go` (network connect/disconnect),
+`upgrade.go`. `service.CleanupStaleUpdate()`
 is called from `main.go` — keep that call.
 
 **Exceptions that still touch docker from `cli`:** `cli/pick` (container-picker UI) and
@@ -292,6 +293,7 @@ is Cobra-native.
 | `upgrade-cli` | `upgrade_cli.go` | Binary self-update from a GitHub release |
 | `config` | `config.go` | Read/write global config (subcommand `registry`) |
 | `cleanup-tips` | `cleanup_tips.go` | Print docker cleanup commands |
+| `network` | `network.go` | Attach/detach any container to the workspace network; subcommands `network connect`/`network disconnect <container...>` (tab-completed) |
 | `completion` | _(Cobra built-in)_ | Print shell completion script |
 
 ---
