@@ -135,7 +135,7 @@ Detalles de la configuración del túnel en [CLOUDFLARE_TUNNEL.md](CLOUDFLARE_TU
   * **Java:** Temurin (default 17+21) u OpenJDK (default 17), Maven opcional. Versiones 11/17/21 disponibles.
   * **Python:** Python 3 + pip, con `uv` (Astral) opcional.
   * **Node.js:** `nvm` (default) o `fnm`. Versión: LTS, 22 o 24.
-  * **pnpm / Bun:** instaladores oficiales como módulos opcionales.
+  * **pnpm / Yarn / Bun:** gestores de paquetes como módulos opcionales (Yarn vía Corepack, requiere Node.js).
   * **Go:** Última versión (instalada vía script utilitario, módulo `go`).
   * **SQLite:** sqlite3 (módulo `sqlite`).
   * **Tmux:** tmux (módulo `tmux`).
