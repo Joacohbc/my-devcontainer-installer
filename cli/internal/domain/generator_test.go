@@ -158,12 +158,14 @@ func TestGenerateDockerfile_PnpmAutoAddNodejs(t *testing.T) {
 	assertContainsStr(t, df, "PNPM_HOME", "pnpm exports PNPM_HOME")
 	assertContainsStr(t, df, ".pnpm_init.sh", "pnpm uses emitShellInit")
 	assertContainsStr(t, df, "store-dir", "pnpm pins a store-dir")
-	// pnpm installs its CLI into $PNPM_HOME/bin and refuses to run any command
-	// (including `config set`) unless that dir is on PATH, so the build step must
-	// add $PNPM_HOME/bin to PATH before invoking pnpm.
-	assertContainsStr(t, df, `export PATH="$PNPM_HOME/bin:$PATH" && pnpm config set store-dir`, "pnpm config runs with bin dir on PATH")
-	// Runtime shells need the same $PNPM_HOME/bin on PATH for `pnpm` to be found.
-	assertContainsStr(t, df, "PNPM_HOME/bin", "pnpm exposes its bin dir on PATH")
+	// pnpm aborts every command (even `config set`) when its configured global
+	// bin dir is not on PATH, and that dir has moved between pnpm releases
+	// ($PNPM_HOME vs $PNPM_HOME/bin), so the build step must put both
+	// candidates on PATH before invoking pnpm. The store-dir must go through
+	// `pnpm config set --global` (pnpm >= 11 ignores a hand-written legacy rc).
+	assertContainsStr(t, df, `export PATH="$PNPM_HOME/bin:$PNPM_HOME:$PATH" && pnpm config set store-dir`, "pnpm config runs with both bin dirs on PATH")
+	// Runtime shells need the same dirs on PATH for `pnpm` to be found.
+	assertContainsStr(t, df, `\$PNPM_HOME/bin:\$PNPM_HOME:\$PATH`, "pnpm exposes its bin dirs on PATH")
 }
 
 func TestGenerateDockerfile_NodejsFnmManager(t *testing.T) {

@@ -43,11 +43,31 @@ if [ -d /workspace ]; then
     CUR_UID=$(id -u devuser)
     CUR_GID=$(id -g devuser)
     if [ "$WS_UID" != "0" ] && { [ "$WS_UID" != "$CUR_UID" ] || [ "$WS_GID" != "$CUR_GID" ]; }; then
-        groupmod -g "$WS_GID" devuser 2>/dev/null || true
-        usermod -u "$WS_UID" -g "$WS_GID" devuser 2>/dev/null || true
-        # Re-own devuser's home (persisted volume); never touch /workspace.
-        chown -R "$WS_UID:$WS_GID" /home/devuser 2>/dev/null || true
+        # Ubuntu >= 23.10 ships a stock "ubuntu" user that already holds
+        # UID/GID 1000, which makes the usermod below fail silently; remove any
+        # account squatting on the target UID before remapping.
+        CONFLICT_USER=$(getent passwd "$WS_UID" | cut -d: -f1)
+        if [ -n "$CONFLICT_USER" ] && [ "$CONFLICT_USER" != "devuser" ]; then
+            userdel -r "$CONFLICT_USER" 2>/dev/null || userdel "$CONFLICT_USER" 2>/dev/null || true
+        fi
+        # Renumber devuser's own group only when the target GID is free;
+        # otherwise adopt the existing group as primary via usermod -g.
+        if ! getent group "$WS_GID" >/dev/null; then
+            groupmod -g "$WS_GID" devuser 2>/dev/null || true
+        fi
+        usermod -u "$WS_UID" -g "$WS_GID" devuser 2>/dev/null || usermod -u "$WS_UID" devuser 2>/dev/null || true
     fi
+fi
+
+# Re-own the persisted home to devuser's ACTUAL UID/GID, and only when it
+# drifted: this finishes a successful remap and repairs homes left owned by a
+# foreign UID after a failed one (which broke every shell rc on SSH login).
+# The home must never be chowned to a UID devuser does not really have, and
+# /workspace is never touched.
+DEV_UID=$(id -u devuser)
+DEV_GID=$(id -g devuser)
+if [ "$(stat -c %u /home/devuser)" != "$DEV_UID" ] || [ "$(stat -c %g /home/devuser)" != "$DEV_GID" ]; then
+    chown -R "$DEV_UID:$DEV_GID" /home/devuser 2>/dev/null || true
 fi
 
 if [ -S /var/run/docker.sock ]; then
