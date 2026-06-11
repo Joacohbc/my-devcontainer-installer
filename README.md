@@ -122,7 +122,7 @@ Detalles de la configuración del túnel en [CLOUDFLARE_TUNNEL.md](CLOUDFLARE_TU
 
 ## Características Principales
 
-* **Sistema Base:** Ubuntu 24.04 LTS (Noble) por defecto. 22.04 (Jammy) seleccionable.
+* **Sistema Base:** Ubuntu 24.04 LTS (Noble).
 * **Conexión SSH:** Acceso seguro mediante OpenSSH Server. Ideal para usar con VS Code Remote - SSH o tu terminal favorita.
 * **Persistencia y Sincronización:**
   * El directorio del repositorio se monta en `/workspaces/<workspace>` dentro del contenedor (con `/workspace` como alias de compatibilidad). La ruta única por proyecto evita que el historial de herramientas como Claude Code o Antigravity (indexado por ruta) se mezcle entre proyectos al compartir el volumen de configuración.

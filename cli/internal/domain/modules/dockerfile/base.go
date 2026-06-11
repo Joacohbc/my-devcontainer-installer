@@ -6,29 +6,17 @@ import (
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 )
 
+// UbuntuLTS is the single Ubuntu LTS release every image is built on. Pinned
+// (not user-selectable) so the base stays predictable across all containers.
+const UbuntuLTS = "24.04"
+
 var BaseModule = &ModuleSpec{
 	ID:        types.ModuleBase,
-	Label:     "Base (Ubuntu + SSH + zsh + sudo)",
+	Label:     "Base (Ubuntu " + UbuntuLTS + " LTS + SSH + zsh + sudo)",
 	Category:  types.CategoryBase,
 	Always:    true,
 	CopyFiles: []string{"zsh-installer.sh"},
-	Options: []types.ModuleOption{
-		{
-			ID:    "ubuntu",
-			Label: "Ubuntu version",
-			Type:  types.ModuleOptionSelect,
-			Choices: []types.ModuleOptionChoice{
-				{Value: "24.04", Label: "24.04 (Noble)"},
-				{Value: "22.04", Label: "22.04 (Jammy)"},
-			},
-			Default: "24.04",
-		},
-	},
 	Render: func(opts map[string]any) string {
-		ubuntu, _ := opts["ubuntu"].(string)
-		if ubuntu == "" {
-			ubuntu = "24.04"
-		}
 		return fmt.Sprintf(`# Use an Ubuntu base image
 FROM ubuntu:%s
 
@@ -63,6 +51,6 @@ COPY zsh-installer.sh /tmp/zsh-installer.sh
 RUN chmod +x /tmp/zsh-installer.sh && \
     su - devuser -c "/tmp/zsh-installer.sh" && \
     rm /tmp/zsh-installer.sh
-`, ubuntu, aptCleanup())
+`, UbuntuLTS, aptCleanup())
 	},
 }

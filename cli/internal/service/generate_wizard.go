@@ -215,8 +215,6 @@ func (w wizardContext) steps(s *State) []Step {
 		steps = append(steps, w.imageStep())
 	}
 	steps = append(steps, w.subnetStep())
-	steps = append(steps, w.persistStep())
-	steps = append(steps, w.sharedConfigStep())
 	steps = append(steps, w.portsStep())
 	steps = append(steps, w.envSteps(s)...)
 	return steps
@@ -244,46 +242,6 @@ func (w wizardContext) portsStep() Step {
 		return Field{
 			Kind:    FieldInput,
 			Title:   "Puertos a publicar en el devcontainer (ej. 8080:80,5432:5432 — bind a 127.0.0.1; vacío para ninguno):",
-			Initial: initial,
-		}
-	}}
-}
-
-func basePersistIDs(base *types.DevcontainerConfig) []string {
-	if base.Compose.PersistVolumes == nil {
-		return types.DefaultPersistVolumeIDs()
-	}
-	return *base.Compose.PersistVolumes
-}
-
-func (w wizardContext) persistStep() Step {
-	return Step{Key: stepKeyPersist, Build: func(s *State) Field {
-		initial := basePersistIDs(w.base)
-		if s.Has(stepKeyPersist) {
-			initial = s.Strings(stepKeyPersist)
-		}
-		choices := make([]Option, len(types.PersistVolumeSpecs))
-		for i, spec := range types.PersistVolumeSpecs {
-			choices[i] = Option{Value: spec.ID, Label: spec.Label}
-		}
-		return Field{
-			Kind:    FieldMultiselect,
-			Title:   "Volúmenes persistentes a montar (Espacio para seleccionar, Enter para confirmar):",
-			Choices: choices,
-			Initial: initial,
-		}
-	}}
-}
-
-func (w wizardContext) sharedConfigStep() Step {
-	return Step{Key: stepKeySharedConfig, Build: func(s *State) Field {
-		initial := types.SharedConfigEnabled(w.base)
-		if s.Has(stepKeySharedConfig) {
-			initial = s.Bool(stepKeySharedConfig)
-		}
-		return Field{
-			Kind:    FieldConfirm,
-			Title:   "¿Compartir la configuración de herramientas IA/dev (Claude, Codex, Antigravity, gh) entre todos los contenedores?",
 			Initial: initial,
 		}
 	}}
