@@ -184,7 +184,7 @@ func TestInspectContainerDetails(t *testing.T) {
 		],
 		"NetworkSettings": {
 			"Ports": {"22/tcp": [{"HostPort": "2222"}]},
-			"Networks": {"bridge": {"IPAddress": "172.17.0.2"}}
+			"Networks": {"bridge": {"IPAddress": "172.17.0.2", "Aliases": ["api", "web"]}}
 		}
 	}`
 	runner := &fakeRunner{status: 0, stdout: jsonOut}
@@ -218,6 +218,9 @@ func TestInspectContainerDetails(t *testing.T) {
 	}
 	if len(info.IPs) != 1 || info.IPs[0].Network != "bridge" || info.IPs[0].IP != "172.17.0.2" {
 		t.Errorf("IPs = %v, want [{bridge 172.17.0.2}]", info.IPs)
+	}
+	if !slices.Equal(info.IPs[0].Aliases, []string{"api", "web"}) {
+		t.Errorf("IPs[0].Aliases = %v, want [api web]", info.IPs[0].Aliases)
 	}
 }
 

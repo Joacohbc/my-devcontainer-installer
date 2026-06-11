@@ -119,7 +119,11 @@ func printContainerInfoBlock(svc service.InspectService, name string) {
 
 	var ips []string
 	for _, ip := range info.IPs {
-		ips = append(ips, ip.Network+" "+ip.IP)
+		line := ip.Network + " " + ip.IP
+		if len(ip.Aliases) > 0 {
+			line += console.Subtle(" (aliases: " + strings.Join(ip.Aliases, ", ") + ")")
+		}
+		ips = append(ips, line)
 	}
 	printInfoMulti(keyStr("IPs"), cont, ips)
 }
