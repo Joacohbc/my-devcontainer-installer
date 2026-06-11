@@ -11,11 +11,16 @@ import (
 func TestBaseModuleRender(t *testing.T) {
 	out := dockerfile.BaseModule.Render(nil)
 	if !strings.Contains(out, "FROM ubuntu:24.04") {
-		t.Errorf("default base should pin ubuntu 24.04:\n%s", out)
+		t.Errorf("base should pin the Ubuntu LTS (24.04):\n%s", out)
+	}
+	// The Ubuntu version is no longer user-selectable: options are ignored and
+	// the LTS is always used.
+	if dockerfile.BaseModule.Options != nil {
+		t.Errorf("base module must not expose user options, got %v", dockerfile.BaseModule.Options)
 	}
 	out = dockerfile.BaseModule.Render(map[string]any{"ubuntu": "22.04"})
-	if !strings.Contains(out, "FROM ubuntu:22.04") {
-		t.Errorf("base should honor ubuntu option:\n%s", out)
+	if !strings.Contains(out, "FROM ubuntu:24.04") {
+		t.Errorf("base must ignore any ubuntu option and stay on the LTS:\n%s", out)
 	}
 	// chmod + run + rm of the zsh installer must be a single consolidated RUN so
 	// the script is removed in the same layer it is used.

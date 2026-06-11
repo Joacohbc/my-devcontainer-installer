@@ -26,6 +26,7 @@ func newRunCommand() *cobra.Command {
 	cmd.Flags().StringSlice("volumes", nil, "Volume mounts (e.g. myvol:/workspace); repeatable or comma-separated")
 	cmd.Flags().StringSlice("ports", nil, "Port mappings (e.g. 2222:22); bound to 127.0.0.1 unless --expose-all; repeatable or comma-separated")
 	cmd.Flags().Bool("expose-all", false, "Publish ports on all interfaces (0.0.0.0) instead of binding to 127.0.0.1")
+	cmd.Flags().Bool("shared-config", true, "Mount the global shared AI/dev tool config volume (devcontainer-shared-config) so logins/sessions persist across containers; --shared-config=false to opt out")
 	cmd.Flags().String("registry", "", "Registry prefix override")
 	addInteractiveFlag(cmd)
 
@@ -42,6 +43,7 @@ func runQuickRun(cmd *cobra.Command, _ []string) error {
 	volumes, _ := cmd.Flags().GetStringSlice("volumes")
 	ports, _ := cmd.Flags().GetStringSlice("ports")
 	exposeAll, _ := cmd.Flags().GetBool("expose-all")
+	sharedConfig, _ := cmd.Flags().GetBool("shared-config")
 	registry, _ := cmd.Flags().GetString("registry")
 	interactive := interactiveFlag(cmd)
 
@@ -122,6 +124,7 @@ func runQuickRun(cmd *cobra.Command, _ []string) error {
 		Volumes:       volumes,
 		Ports:         ports,
 		ExposeAll:     exposeAll,
+		SharedConfig:  sharedConfig,
 	}); err != nil {
 		return err
 	}

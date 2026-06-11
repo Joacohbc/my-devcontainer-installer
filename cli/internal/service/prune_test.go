@@ -174,6 +174,42 @@ func TestPruneSelectAllParsesNetworksAndVolumes(t *testing.T) {
 	restore()
 }
 
+func TestPruneSelectVolumesExcludesSharedConfigByDefault(t *testing.T) {
+	runner := &fakeRunner{status: 0, stdout: "devcontainer-shared-config\nmyproj_devcontainer_etc"}
+	defer useFakeDocker(runner)()
+
+	svc := PruneService{Report: nopReporter{}}
+	volumes, anyExist := svc.SelectVolumes(true)
+	if !anyExist {
+		t.Fatal("expected anyExist=true")
+	}
+	for _, v := range volumes {
+		if v.Name == "devcontainer-shared-config" {
+			t.Errorf("shared-config volume must be excluded by default, got %v", volumes)
+		}
+	}
+	if len(volumes) != 1 || volumes[0].Name != "myproj_devcontainer_etc" {
+		t.Errorf("expected only the persistence volume, got %v", volumes)
+	}
+}
+
+func TestPruneSelectVolumesIncludesSharedConfigWhenAsked(t *testing.T) {
+	runner := &fakeRunner{status: 0, stdout: "devcontainer-shared-config\nmyproj_devcontainer_etc"}
+	defer useFakeDocker(runner)()
+
+	svc := PruneService{Report: nopReporter{}, IncludeSharedConfig: true}
+	volumes, _ := svc.SelectVolumes(true)
+	var found bool
+	for _, v := range volumes {
+		if v.Name == "devcontainer-shared-config" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected shared-config volume to be included, got %v", volumes)
+	}
+}
+
 func TestFilterUnusedNetworks(t *testing.T) {
 	networks := []LocalNetwork{{Name: "net_used"}, {Name: "net_free"}}
 	inUse := map[string]bool{"net_used": true}

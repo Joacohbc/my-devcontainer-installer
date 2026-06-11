@@ -26,6 +26,9 @@ type QuickRunSpec struct {
 	// default), specs without an explicit host IP are bound to 127.0.0.1 so the
 	// port is not reachable from the local network.
 	ExposeAll bool
+	// SharedConfig mounts the global shared tool-config volume
+	// (devcontainer-shared-config) so logins/sessions persist across containers.
+	SharedConfig bool
 }
 
 // Run reuses the container if it already exists (starting it when stopped),
@@ -54,6 +57,14 @@ func (s RunService) Run(spec QuickRunSpec) error {
 		"--restart", "unless-stopped",
 		"--label", types.LabelManaged + "=true",
 		"--label", types.LabelQuickRun + "=" + spec.Variant,
+	}
+	if spec.SharedConfig {
+		// Best-effort: ensure the volume carries the managed labels. Even if this
+		// fails, `docker run -v` will create it (unlabeled) so the mount still works.
+		if err := EnsureSharedConfigVolume(s.Report); err != nil {
+			s.Report.Warn("Could not ensure shared-config volume: %v", err)
+		}
+		args = append(args, "-v", types.SharedConfigMount())
 	}
 	for _, v := range spec.Volumes {
 		args = append(args, "-v", v)

@@ -77,6 +77,46 @@ func TestRunMountsVolumes(t *testing.T) {
 	}
 }
 
+func TestRunMountsSharedConfig(t *testing.T) {
+	runner := &fakeRunner{status: 0, stdout: ""}
+	defer useFakeDocker(runner)()
+
+	svc := RunService{Report: nopReporter{}}
+	err := svc.Run(QuickRunSpec{
+		ContainerName: "dc-ssh",
+		Image:         "img",
+		SharedConfig:  true,
+	})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	call := runner.callContaining("run")
+	if call == nil {
+		t.Fatal("expected docker run call")
+	}
+	if !slices.Contains(call, "devcontainer-shared-config:/mnt/shared-config") {
+		t.Errorf("run call missing shared-config mount: %v", call)
+	}
+}
+
+func TestRunNoSharedConfigByDefault(t *testing.T) {
+	runner := &fakeRunner{status: 0, stdout: ""}
+	defer useFakeDocker(runner)()
+
+	svc := RunService{Report: nopReporter{}}
+	err := svc.Run(QuickRunSpec{ContainerName: "dc-ssh", Image: "img"})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	call := runner.callContaining("run")
+	if call == nil {
+		t.Fatal("expected docker run call")
+	}
+	if slices.Contains(call, "devcontainer-shared-config:/mnt/shared-config") {
+		t.Errorf("shared-config mount must be absent when SharedConfig=false: %v", call)
+	}
+}
+
 func TestRunDoesNotMountDockerSocket(t *testing.T) {
 	runner := &fakeRunner{status: 0, stdout: ""}
 	defer useFakeDocker(runner)()

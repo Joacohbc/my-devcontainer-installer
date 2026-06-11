@@ -19,7 +19,14 @@ var DevcontainerService = &ServiceSpec{
 			}
 		}
 
-		volumes := append([]string{"../..:/workspace"}, ctx.PersistVolumeMounts...)
+		workspaceDir := ctx.WorkspaceDir
+		if workspaceDir == "" {
+			workspaceDir = "/workspace"
+		}
+		volumes := append([]string{"../..:" + workspaceDir}, ctx.PersistVolumeMounts...)
+		if ctx.SharedConfigMount != "" {
+			volumes = append(volumes, ctx.SharedConfigMount)
+		}
 
 		svc := &ServiceDef{
 			Image:         ctx.ImageName,

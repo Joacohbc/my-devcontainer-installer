@@ -60,6 +60,18 @@ const (
 // module inside every generated container.
 const DevUserHome = "/home/devuser"
 const PostScriptDir = DevUserHome + "/post-script"
+
+// WorkspaceRoot is the parent dir the project is mounted under. Each project
+// gets a unique /workspaces/<workspace> path (entrypoint aliases /workspace to
+// it) so the path-keyed history of Claude Code/Antigravity does not collide in
+// the shared config volume.
+const WorkspaceRoot = "/workspaces"
+
+// WorkspaceDir returns the in-container mount path for a workspace.
+func WorkspaceDir(workspace string) string {
+	return WorkspaceRoot + "/" + workspace
+}
+
 const DefaultSSHHostPort = 2222
 
 // SSHKeyName is the filename of the single shared SSH key reused by every
@@ -203,11 +215,16 @@ type ComposeConfig struct {
 	// in the generated compose so they are not reachable from the LAN; include an
 	// IP (e.g. "0.0.0.0:8080:80") to override. Empty/nil means no published ports.
 	Ports []string `json:"ports,omitempty" yaml:"ports,omitempty"`
+	// SharedConfig toggles mounting the global shared tool-config volume
+	// (devcontainer-shared-config) and the entrypoint symlinks into devuser's
+	// home. A nil value means "unset" and is treated as enabled (the default,
+	// including legacy configs); set it to false to opt out.
+	SharedConfig *bool `json:"sharedConfig,omitempty" yaml:"sharedConfig,omitempty"`
 }
 
 // PersistVolumeSpec describes an optional named volume mounted into the
 // devcontainer to persist state across rebuilds. The workspace bind mount
-// (../..:/workspace) is always present and is NOT part of this set.
+// (../..:/workspaces/<workspace>) is always present and is NOT part of this set.
 type PersistVolumeSpec struct {
 	ID     string // short id stored in config (e.g. "etc")
 	Volume string // docker volume name before workspace prefixing

@@ -21,6 +21,19 @@ func TestAssetExists(t *testing.T) {
 	}
 }
 
+func TestContent(t *testing.T) {
+	data, err := assets.Content(embeddedScript)
+	if err != nil {
+		t.Fatalf("Content(%q) failed: %v", embeddedScript, err)
+	}
+	if len(data) == 0 {
+		t.Errorf("expected non-empty content for %q", embeddedScript)
+	}
+	if _, err := assets.Content("definitely-not-real.sh"); err == nil {
+		t.Error("expected error for unknown asset")
+	}
+}
+
 func TestPreflight_CopiesEmbeddedScript(t *testing.T) {
 	dir := t.TempDir()
 	res := assets.Preflight([]string{embeddedScript}, dir)
@@ -99,6 +112,15 @@ func TestEntrypointAlignsUIDInsteadOfChangingWorkspaceACLs(t *testing.T) {
 	// (breaking every shell rc on SSH login).
 	if !strings.Contains(script, `getent passwd "$WS_UID"`) || !strings.Contains(script, "userdel") {
 		t.Error("entrypoint must remove the user squatting on the workspace UID before remapping")
+	}
+	// The project mount is at /workspaces/<name> (unique per project so tool
+	// history does not collide in the shared volume) with /workspace aliased to
+	// it; the UID remap must operate on the resolved dir, not a hardcoded path.
+	if !strings.Contains(script, "for _ws in /workspaces/*") {
+		t.Error("entrypoint must resolve the project mount under /workspaces/")
+	}
+	if !strings.Contains(script, "ln -s \"$_ws\" /workspace") {
+		t.Error("entrypoint must alias /workspace to the resolved project dir")
 	}
 	// The home may only ever be chowned to devuser's ACTUAL UID/GID, never to
 	// the workspace owner directly (the remap may have failed).

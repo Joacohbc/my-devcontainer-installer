@@ -14,6 +14,11 @@ import (
 // docker calls; the cli handles listing output and the confirmation prompt.
 type PruneService struct {
 	Report Reporter
+	// IncludeSharedConfig allows the single shared tool-config volume
+	// (devcontainer-shared-config) to be selected for removal. It is excluded by
+	// default so a routine prune never destroys the logins/sessions shared by
+	// every container.
+	IncludeSharedConfig bool
 }
 
 // managedFilter is the docker filter that scopes a query to resources this CLI
@@ -304,14 +309,30 @@ func listCliVolumes(unusedOnly bool) []LocalVolume {
 // exists. With all=false only volumes not referenced by any container are
 // selected; with all=true every managed volume is selected.
 func (s PruneService) SelectVolumes(all bool) (toRemove []LocalVolume, anyExist bool) {
-	volumes := listCliVolumes(false)
+	volumes := s.filterSharedConfig(listCliVolumes(false))
 	if len(volumes) == 0 {
 		return nil, false
 	}
 	if all {
 		return volumes, true
 	}
-	return listCliVolumes(true), true
+	return s.filterSharedConfig(listCliVolumes(true)), true
+}
+
+// filterSharedConfig drops the shared tool-config volume unless the service was
+// configured to include it, protecting cross-container logins from routine prunes.
+func (s PruneService) filterSharedConfig(volumes []LocalVolume) []LocalVolume {
+	if s.IncludeSharedConfig {
+		return volumes
+	}
+	var out []LocalVolume
+	for _, v := range volumes {
+		if v.Name == types.SharedConfigVolumeName {
+			continue
+		}
+		out = append(out, v)
+	}
+	return out
 }
 
 // RemoveVolumes deletes the given volumes.

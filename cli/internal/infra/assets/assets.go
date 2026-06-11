@@ -33,6 +33,13 @@ func AssetExists(file string) bool {
 	return err == nil
 }
 
+// Content returns the embedded bytes of the named script, or an error if it is
+// not embedded. Used to assert the embedded scripts stay in sync with the Go
+// catalogs that reference them.
+func Content(file string) ([]byte, error) {
+	return embedded.ReadFile(file)
+}
+
 // Preflight materializes each required script into dir, skipping ones already
 // present. A script that is neither present nor embedded is reported missing.
 func Preflight(requiredFiles []string, dir string) PreflightResult {
