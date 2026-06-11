@@ -9,10 +9,16 @@ import (
 
 func TestAuthorizedKeysInstallScript(t *testing.T) {
 	got := sshdefaults.AuthorizedKeysInstallScript()
-	for _, frag := range []string{"~/.ssh", "authorized_keys", "chmod 600"} {
+	// The home must be resolved from the container's live /etc/passwd (with a
+	// /home/devuser fallback), never via ~: docker exec delivers a stale HOME=/
+	// after the entrypoint's runtime UID remap, which turned ~/.ssh into //.ssh.
+	for _, frag := range []string{`getent passwd "$(id -u)"`, "/home/devuser", `"$H/.ssh"`, "authorized_keys", "chmod 600"} {
 		if !strings.Contains(got, frag) {
 			t.Errorf("install script missing %q: %s", frag, got)
 		}
+	}
+	if strings.Contains(got, "~/.ssh") {
+		t.Errorf("install script must not rely on ~ expansion (stale HOME under docker exec): %s", got)
 	}
 }
 

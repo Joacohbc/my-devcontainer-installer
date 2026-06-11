@@ -24,13 +24,15 @@ func TestInspectContainerStateAndImage(t *testing.T) {
 
 func TestInspectShellBuildsExecArgs(t *testing.T) {
 	cases := []struct {
-		name     string
-		user     string
-		command  []string
-		wantUser bool
+		name      string
+		user      string
+		shellType string
+		command   []string
+		wantUser  bool
 	}{
-		{"default shell", "", nil, false},
-		{"as root with cmd", "root", []string{"echo", "hi"}, true},
+		{"default shell", "", "", nil, false},
+		{"typed shell", "devuser", "zsh", nil, true},
+		{"as root with cmd", "root", "", []string{"echo", "hi"}, true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -38,7 +40,7 @@ func TestInspectShellBuildsExecArgs(t *testing.T) {
 			defer useFakeDocker(runner)()
 
 			svc := InspectService{Report: nopReporter{}}
-			if err := svc.Shell("c1", c.user, c.command); err != nil {
+			if err := svc.Shell("c1", c.user, c.shellType, c.command); err != nil {
 				t.Fatalf("Shell: %v", err)
 			}
 			call := runner.callContaining("exec")
@@ -49,10 +51,18 @@ func TestInspectShellBuildsExecArgs(t *testing.T) {
 				t.Errorf("-u presence = %v, want %v (call %v)", !c.wantUser, c.wantUser, call)
 			}
 			// With no command, launch a login shell so profiles/rc files load.
+			// HOME must be re-exported from the live passwd entry: docker exec
+			// delivers a stale HOME=/ after the entrypoint's runtime UID remap.
 			if len(c.command) == 0 {
 				joined := strings.Join(call, " ")
 				if !strings.Contains(joined, "exec \"$SH\" -l") || !strings.Contains(joined, "getent passwd") {
 					t.Errorf("expected login-shell launcher, got %v", call)
+				}
+				if !strings.Contains(joined, `export HOME="$H"`) {
+					t.Errorf("launcher must re-export HOME from passwd, got %v", call)
+				}
+				if c.shellType != "" && !strings.Contains(joined, "command -v "+c.shellType) {
+					t.Errorf("launcher must resolve the typed shell %q, got %v", c.shellType, call)
 				}
 			}
 		})
@@ -64,7 +74,7 @@ func TestInspectShellFailsWhenNotRunning(t *testing.T) {
 	defer useFakeDocker(runner)()
 
 	svc := InspectService{Report: nopReporter{}}
-	if err := svc.Shell("c1", "", nil); err == nil {
+	if err := svc.Shell("c1", "", "", nil); err == nil {
 		t.Error("expected error when container is not running")
 	}
 }
