@@ -31,12 +31,20 @@ type SharedConfigEntry struct {
 // SharedConfigEntries is the catalog of tool configs persisted across containers.
 // Adding a future tool is one new row here PLUS one matching row in the shell
 // table inside internal/infra/assets/entrypoint.sh (a test keeps them in sync).
+//
+// Note: the "gemini" entry (~/.gemini) is also the documented config home of
+// the Antigravity CLI (agy) — settings (antigravity-cli/settings.json), plugins
+// (antigravity-cli/plugins/), skills and MCP config all live under it (see
+// antigravity.google/docs/cli-settings and /docs/cli-plugins). Do not add a
+// nested entry for ~/.gemini/antigravity-cli: symlinking a subpath of an
+// already-symlinked dir would break. The agy binary itself installs to
+// ~/.local/bin (docs/cli-install) and is intentionally NOT shared.
 var SharedConfigEntries = []SharedConfigEntry{
 	{ID: "claude", Target: ".claude", Kind: SharedConfigDir},
 	{ID: "claude.json", Target: ".claude.json", Kind: SharedConfigFile},
 	{ID: "antigravity", Target: ".antigravity", Kind: SharedConfigDir},
 	{ID: "antigravity-config", Target: ".config/antigravity", Kind: SharedConfigDir},
-	{ID: "gemini", Target: ".gemini", Kind: SharedConfigDir},
+	{ID: "gemini", Target: ".gemini", Kind: SharedConfigDir}, // Gemini CLI creds + Antigravity CLI settings/plugins/skills/MCP
 	{ID: "codex", Target: ".codex", Kind: SharedConfigDir},
 	{ID: "gh", Target: ".config/gh", Kind: SharedConfigDir},
 }
