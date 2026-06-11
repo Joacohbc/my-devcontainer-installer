@@ -50,6 +50,7 @@ RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
     git \
     wget \
     unzip \
+    rsync \
     apt-transport-https \
     && %s
 

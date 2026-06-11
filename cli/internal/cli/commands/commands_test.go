@@ -333,6 +333,35 @@ func TestPruneVolumeCommand_HasSharedFlag(t *testing.T) {
 	}
 }
 
+func TestSyncConfigCommand_FlagsAndArgs(t *testing.T) {
+	root := NewRootCommand("test")
+	var sync *cobra.Command
+	for _, c := range root.Commands() {
+		if c.Name() == "sync-config" {
+			sync = c
+		}
+	}
+	if sync == nil {
+		t.Fatal("sync-config command not found")
+	}
+	for _, name := range []string{"force", "yes", "no-interactive"} {
+		if sync.Flags().Lookup(name) == nil {
+			t.Errorf("expected sync-config flag --%s", name)
+		}
+	}
+
+	if _, err := resolveSharedConfigArgs(nil); err != nil {
+		t.Errorf("no args should resolve to all entries: %v", err)
+	}
+	entries, err := resolveSharedConfigArgs([]string{"claude", "gh"})
+	if err != nil || len(entries) != 2 {
+		t.Errorf("expected claude+gh to resolve, got %v / %v", entries, err)
+	}
+	if _, err := resolveSharedConfigArgs([]string{"bogus"}); err == nil {
+		t.Error("expected error for unknown tool id")
+	}
+}
+
 func TestConfigCommand_HasRegistrySubcommand(t *testing.T) {
 	root := NewRootCommand("test")
 	var config *cobra.Command

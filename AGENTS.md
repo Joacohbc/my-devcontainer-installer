@@ -280,6 +280,7 @@ is Cobra-native.
 |---|---|---|
 | _(default)_ | `root.go` (+ `generate_prompts.go`) | Generate Dockerfile + compose + .env |
 | `setup-ssh` | `setup_ssh.go` | Automated SSH key + config |
+| `sync-config` | `sync_config.go` | Seed the shared tool-config volume from host configs (`~/.claude`, `~/.config/gh`, …); `--force` replaces |
 | `port-forward` | `port_forward.go` | Forward host ports into the running container |
 | `run` | `run.go` | `docker run` from a remote image, no project files |
 | `down` | `down.go` | `docker compose down [-v]` |

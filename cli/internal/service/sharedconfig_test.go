@@ -2,6 +2,8 @@ package service
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -72,4 +74,111 @@ func sliceHas(ss []string, want string) bool {
 		}
 	}
 	return false
+}
+
+func TestSyncFromHostCopiesViaRunningCarrier(t *testing.T) {
+	// fakeRunner stdout "dc-x" makes `docker ps` report a running carrier; the
+	// emptiness checks return the same string (≠ "nonempty") so entries copy.
+	r := &fakeRunner{status: 0, stdout: "dc-x"}
+	defer useFakeDocker(r)()
+
+	home := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, ".claude", "settings.json"), []byte("{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	svc := SharedConfigService{Report: nopReporter{}}
+	entry, _ := types.SharedConfigEntryByID("claude")
+	res, err := svc.SyncFromHost([]types.SharedConfigEntry{entry}, home, false)
+	if err != nil {
+		t.Fatalf("SyncFromHost: %v", err)
+	}
+	if len(res.Copied) != 1 || res.Copied[0] != "claude" {
+		t.Fatalf("Copied = %v, want [claude]", res.Copied)
+	}
+
+	cp := r.callContaining("cp")
+	if cp == nil {
+		t.Fatalf("expected a docker cp call, got %v", r.calls)
+	}
+	wantDst := "dc-x:" + types.SharedConfigMountPath + "/claude"
+	if !sliceHas(cp, wantDst) {
+		t.Errorf("cp call missing destination %q: %v", wantDst, cp)
+	}
+	if chown := r.callContaining("devuser:devuser"); chown == nil {
+		t.Errorf("expected chown to devuser on managed carrier, calls=%v", r.calls)
+	}
+	if helper := r.callContaining(syncHelperName); helper != nil {
+		t.Errorf("must not start a helper when a carrier is running: %v", helper)
+	}
+}
+
+func TestSyncFromHostSkipsNonEmptyWithoutForce(t *testing.T) {
+	// stdout "nonempty" doubles as the carrier name from `docker ps` and as the
+	// emptiness probe result, so every entry is skipped.
+	r := &fakeRunner{status: 0, stdout: "nonempty"}
+	defer useFakeDocker(r)()
+
+	home := t.TempDir()
+	if err := os.WriteFile(filepath.Join(home, ".claude.json"), []byte("{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	svc := SharedConfigService{Report: nopReporter{}}
+	entry, _ := types.SharedConfigEntryByID("claude.json")
+	res, err := svc.SyncFromHost([]types.SharedConfigEntry{entry}, home, false)
+	if err != nil {
+		t.Fatalf("SyncFromHost: %v", err)
+	}
+	if len(res.Skipped) != 1 || len(res.Copied) != 0 {
+		t.Fatalf("expected one skipped entry, got %+v", res)
+	}
+	if cp := r.callContaining("cp"); cp != nil {
+		t.Errorf("must not docker cp a non-empty entry without force: %v", cp)
+	}
+}
+
+func TestSyncFromHostReportsMissingHostConfig(t *testing.T) {
+	r := &fakeRunner{status: 0, stdout: "dc-x"}
+	defer useFakeDocker(r)()
+
+	svc := SharedConfigService{Report: nopReporter{}}
+	entry, _ := types.SharedConfigEntryByID("codex")
+	res, err := svc.SyncFromHost([]types.SharedConfigEntry{entry}, t.TempDir(), false)
+	if err != nil {
+		t.Fatalf("SyncFromHost: %v", err)
+	}
+	if len(res.Missing) != 1 || res.Missing[0] != "codex" {
+		t.Fatalf("Missing = %v, want [codex]", res.Missing)
+	}
+	if cp := r.callContaining("cp"); cp != nil {
+		t.Errorf("must not docker cp an entry absent on the host: %v", cp)
+	}
+}
+
+func TestSyncFromHostStartsHelperWhenNoCarrier(t *testing.T) {
+	// Empty stdout: `docker ps` finds no carrier, so a temporary helper runs and
+	// is removed afterwards.
+	r := &fakeRunner{status: 0, stdout: ""}
+	defer useFakeDocker(r)()
+
+	home := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(home, ".config", "gh"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	svc := SharedConfigService{Report: nopReporter{}}
+	entry, _ := types.SharedConfigEntryByID("gh")
+	if _, err := svc.SyncFromHost([]types.SharedConfigEntry{entry}, home, false); err != nil {
+		t.Fatalf("SyncFromHost: %v", err)
+	}
+	if run := r.callContaining(syncHelperImage); run == nil {
+		t.Errorf("expected a helper `docker run` with %s, calls=%v", syncHelperImage, r.calls)
+	}
+	if rm := r.callContaining("rm"); rm == nil || !sliceHas(rm, syncHelperName) {
+		t.Errorf("expected the helper to be removed, calls=%v", r.calls)
+	}
 }

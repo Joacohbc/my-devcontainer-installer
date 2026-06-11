@@ -41,6 +41,25 @@ var SharedConfigEntries = []SharedConfigEntry{
 	{ID: "gh", Target: ".config/gh", Kind: SharedConfigDir},
 }
 
+// SharedConfigEntryByID returns the entry for an id and whether it exists.
+func SharedConfigEntryByID(id string) (SharedConfigEntry, bool) {
+	for _, e := range SharedConfigEntries {
+		if e.ID == id {
+			return e, true
+		}
+	}
+	return SharedConfigEntry{}, false
+}
+
+// SharedConfigIDs returns every entry id in display order.
+func SharedConfigIDs() []string {
+	ids := make([]string, len(SharedConfigEntries))
+	for i, e := range SharedConfigEntries {
+		ids[i] = e.ID
+	}
+	return ids
+}
+
 // SharedConfigVolumeName is the ONE daemon-level volume shared by every
 // workspace/container. It must never be passed through prefixVolume().
 const SharedConfigVolumeName = "devcontainer-shared-config"

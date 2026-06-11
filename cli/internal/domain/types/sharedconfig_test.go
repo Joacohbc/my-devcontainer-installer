@@ -54,6 +54,19 @@ func TestSharedConfigEntries(t *testing.T) {
 	}
 }
 
+func TestSharedConfigEntryByID(t *testing.T) {
+	e, ok := SharedConfigEntryByID("claude")
+	if !ok || e.Target != ".claude" {
+		t.Errorf("unexpected claude entry: %+v ok=%v", e, ok)
+	}
+	if _, ok := SharedConfigEntryByID("nope"); ok {
+		t.Error("expected unknown id to be reported as missing")
+	}
+	if got, want := len(SharedConfigIDs()), len(SharedConfigEntries); got != want {
+		t.Errorf("SharedConfigIDs() has %d ids, want %d", got, want)
+	}
+}
+
 func TestSharedConfigMount(t *testing.T) {
 	if got, want := SharedConfigMount(), "devcontainer-shared-config:/mnt/shared-config"; got != want {
 		t.Errorf("SharedConfigMount() = %q, want %q", got, want)
