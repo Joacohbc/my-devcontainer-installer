@@ -79,7 +79,9 @@ fi
 # for AI/dev tools so logins persist across every container. Each entry below is
 # materialized inside the volume and symlinked into devuser's home. The whole
 # block no-ops when the mount is absent (opt-out, or an image built before the
-# mount existed), which keeps it safe for quick-run on older images.
+# mount existed), which keeps it safe for quick-run on older images. Pre-existing
+# real config in the home is never destroyed; seed the volume from the host with
+# 'devcontainer-cli sync-config'.
 # Each row: "<volume-subpath> <dir|file> <home-relative-target>".
 # Keep in sync with types.SharedConfigEntries (internal/domain/types/sharedconfig.go).
 SHARED_CONFIG_DIR="/mnt/shared-config"
@@ -110,31 +112,12 @@ if [ -d "$SHARED_CONFIG_DIR" ]; then
             chown "$DEV_UID:$DEV_GID" "$destparent" 2>/dev/null || true
         fi
 
-        # 3. Link, adopting pre-existing real content when the volume side is empty.
+        # 3. Link. A stale symlink is repointed and a missing target is created;
+        #    pre-existing real config is kept untouched (never destroyed).
         if [ -L "$dest" ]; then
-            ln -sfn "$src" "$dest"                                 # repair/repoint
-        elif [ -d "$dest" ]; then
-            if [ -n "$(ls -A "$src" 2>/dev/null)" ]; then
-                if [ -z "$(ls -A "$dest" 2>/dev/null)" ]; then
-                    rmdir "$dest" && ln -s "$src" "$dest"          # replace empty real dir
-                else
-                    echo "shared-config: keeping non-empty $dest (volume already has data)" >&2
-                fi
-            else
-                cp -a "$dest/." "$src/" 2>/dev/null || true        # adopt into empty volume
-                chown -R "$DEV_UID:$DEV_GID" "$src" 2>/dev/null || true
-                rm -rf "$dest" && ln -s "$src" "$dest"
-            fi
-        elif [ -f "$dest" ]; then
-            if [ ! -s "$src" ] && [ -s "$dest" ]; then
-                cat "$dest" > "$src" 2>/dev/null || true           # adopt file content
-                chown "$DEV_UID:$DEV_GID" "$src" 2>/dev/null || true
-            fi
-            if [ ! -s "$dest" ] || [ ! -s "$src" ] || cmp -s "$dest" "$src"; then
-                rm -f "$dest" && ln -s "$src" "$dest"
-            else
-                echo "shared-config: keeping $dest (both file and volume copy non-empty)" >&2
-            fi
+            ln -sfn "$src" "$dest"
+        elif [ -e "$dest" ]; then
+            echo "shared-config: keeping existing $dest (not a symlink); run 'devcontainer-cli sync-config' to seed the volume" >&2
         else
             ln -s "$src" "$dest"
         fi

@@ -76,10 +76,9 @@ func sliceHas(ss []string, want string) bool {
 	return false
 }
 
-func TestSyncFromHostCopiesViaRunningCarrier(t *testing.T) {
-	// fakeRunner stdout "dc-x" makes `docker ps` report a running carrier; the
-	// emptiness checks return the same string (≠ "nonempty") so entries copy.
-	r := &fakeRunner{status: 0, stdout: "dc-x"}
+func TestSyncFromHostCopiesViaHelper(t *testing.T) {
+	// The helper prints COPIED on stdout, so the entry is classified as copied.
+	r := &fakeRunner{status: 0, stdout: "COPIED"}
 	defer useFakeDocker(r)()
 
 	home := t.TempDir()
@@ -100,26 +99,25 @@ func TestSyncFromHostCopiesViaRunningCarrier(t *testing.T) {
 		t.Fatalf("Copied = %v, want [claude]", res.Copied)
 	}
 
-	cp := r.callContaining("cp")
-	if cp == nil {
-		t.Fatalf("expected a docker cp call, got %v", r.calls)
+	run := r.callContaining("run")
+	if run == nil {
+		t.Fatalf("expected a docker run call, got %v", r.calls)
 	}
-	wantDst := "dc-x:" + types.SharedConfigMountPath + "/claude"
-	if !sliceHas(cp, wantDst) {
-		t.Errorf("cp call missing destination %q: %v", wantDst, cp)
-	}
-	if chown := r.callContaining("devuser:devuser"); chown == nil {
-		t.Errorf("expected chown to devuser on managed carrier, calls=%v", r.calls)
-	}
-	if helper := r.callContaining(syncHelperName); helper != nil {
-		t.Errorf("must not start a helper when a carrier is running: %v", helper)
+	for _, want := range []string{
+		types.SharedConfigVolumeName + ":/vol",
+		home + ":/host:ro",
+		"ENTRY_ID=claude",
+		syncHelperImage,
+	} {
+		if !sliceHas(run, want) {
+			t.Errorf("run call missing %q: %v", want, run)
+		}
 	}
 }
 
 func TestSyncFromHostSkipsNonEmptyWithoutForce(t *testing.T) {
-	// stdout "nonempty" doubles as the carrier name from `docker ps` and as the
-	// emptiness probe result, so every entry is skipped.
-	r := &fakeRunner{status: 0, stdout: "nonempty"}
+	// The helper prints SKIPPED when the volume entry already has data.
+	r := &fakeRunner{status: 0, stdout: "SKIPPED"}
 	defer useFakeDocker(r)()
 
 	home := t.TempDir()
@@ -136,13 +134,10 @@ func TestSyncFromHostSkipsNonEmptyWithoutForce(t *testing.T) {
 	if len(res.Skipped) != 1 || len(res.Copied) != 0 {
 		t.Fatalf("expected one skipped entry, got %+v", res)
 	}
-	if cp := r.callContaining("cp"); cp != nil {
-		t.Errorf("must not docker cp a non-empty entry without force: %v", cp)
-	}
 }
 
 func TestSyncFromHostReportsMissingHostConfig(t *testing.T) {
-	r := &fakeRunner{status: 0, stdout: "dc-x"}
+	r := &fakeRunner{status: 0, stdout: "COPIED"}
 	defer useFakeDocker(r)()
 
 	svc := SharedConfigService{Report: nopReporter{}}
@@ -154,15 +149,13 @@ func TestSyncFromHostReportsMissingHostConfig(t *testing.T) {
 	if len(res.Missing) != 1 || res.Missing[0] != "codex" {
 		t.Fatalf("Missing = %v, want [codex]", res.Missing)
 	}
-	if cp := r.callContaining("cp"); cp != nil {
-		t.Errorf("must not docker cp an entry absent on the host: %v", cp)
+	if run := r.callContaining("run"); run != nil {
+		t.Errorf("must not run the helper for an entry absent on the host: %v", run)
 	}
 }
 
-func TestSyncFromHostStartsHelperWhenNoCarrier(t *testing.T) {
-	// Empty stdout: `docker ps` finds no carrier, so a temporary helper runs and
-	// is removed afterwards.
-	r := &fakeRunner{status: 0, stdout: ""}
+func TestSyncFromHostForcePassesFlagToHelper(t *testing.T) {
+	r := &fakeRunner{status: 0, stdout: "COPIED"}
 	defer useFakeDocker(r)()
 
 	home := t.TempDir()
@@ -172,13 +165,11 @@ func TestSyncFromHostStartsHelperWhenNoCarrier(t *testing.T) {
 
 	svc := SharedConfigService{Report: nopReporter{}}
 	entry, _ := types.SharedConfigEntryByID("gh")
-	if _, err := svc.SyncFromHost([]types.SharedConfigEntry{entry}, home, false); err != nil {
+	if _, err := svc.SyncFromHost([]types.SharedConfigEntry{entry}, home, true); err != nil {
 		t.Fatalf("SyncFromHost: %v", err)
 	}
-	if run := r.callContaining(syncHelperImage); run == nil {
-		t.Errorf("expected a helper `docker run` with %s, calls=%v", syncHelperImage, r.calls)
-	}
-	if rm := r.callContaining("rm"); rm == nil || !sliceHas(rm, syncHelperName) {
-		t.Errorf("expected the helper to be removed, calls=%v", r.calls)
+	run := r.callContaining("run")
+	if run == nil || !sliceHas(run, "ENTRY_FORCE=1") {
+		t.Errorf("expected ENTRY_FORCE=1 in run call, got %v", run)
 	}
 }
