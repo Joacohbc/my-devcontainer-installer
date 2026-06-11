@@ -23,11 +23,7 @@ without redoing any setup.
 Tools: ` + strings.Join(types.SharedConfigIDs(), ", ") + ` (default: all of them).
 
 By default only entries with no data in the volume are copied; --force replaces
-existing volume data with the host copy.
-
-For ad-hoc folder syncing with a running container use rsync over SSH instead
-(rsync ships in the image): rsync -av -e ssh ./dir <ssh-alias>:/workspace/dir
-(run 'devcontainer-cli setup-ssh' first to register the alias).`,
+existing volume data with the host copy.`,
 		SilenceUsage: true,
 		RunE:         runSyncConfig,
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {

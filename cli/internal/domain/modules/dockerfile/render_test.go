@@ -17,11 +17,6 @@ func TestBaseModuleRender(t *testing.T) {
 	if !strings.Contains(out, "FROM ubuntu:22.04") {
 		t.Errorf("base should honor ubuntu option:\n%s", out)
 	}
-	// rsync ships in the base image so host↔container folder syncing over SSH
-	// works out of the box (used by sync-config docs and manual rsync flows).
-	if !strings.Contains(out, "rsync") {
-		t.Errorf("base image must install rsync:\n%s", out)
-	}
 	// chmod + run + rm of the zsh installer must be a single consolidated RUN so
 	// the script is removed in the same layer it is used.
 	if !strings.Contains(out, "RUN chmod +x /tmp/zsh-installer.sh && \\\n    su - devuser -c \"/tmp/zsh-installer.sh\" && \\\n    rm /tmp/zsh-installer.sh") {
