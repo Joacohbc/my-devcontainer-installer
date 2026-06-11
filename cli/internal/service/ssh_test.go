@@ -126,7 +126,9 @@ func TestSshContainerIPs(t *testing.T) {
 		t.Fatalf("ContainerIPs ok: %v", err)
 	}
 	want := []NetworkIP{{Network: "net1", IP: "172.18.0.2"}, {Network: "net2", IP: "172.19.0.2"}}
-	if !slices.Equal(entries, want) {
+	if !slices.EqualFunc(entries, want, func(a, b NetworkIP) bool {
+		return a.Network == b.Network && a.IP == b.IP && slices.Equal(a.Aliases, b.Aliases)
+	}) {
 		t.Errorf("ContainerIPs = %v, want %v", entries, want)
 	}
 

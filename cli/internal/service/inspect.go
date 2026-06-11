@@ -70,7 +70,8 @@ type dockerInspectRaw struct {
 			HostPort string `json:"HostPort"`
 		} `json:"Ports"`
 		Networks map[string]struct {
-			IPAddress string `json:"IPAddress"`
+			IPAddress string   `json:"IPAddress"`
+			Aliases   []string `json:"Aliases"`
 		} `json:"Networks"`
 	} `json:"NetworkSettings"`
 	Config struct {
@@ -164,6 +165,7 @@ func (s InspectService) ContainerDetails(name string) (*ContainerInfo, error) {
 			info.IPs = append(info.IPs, NetworkIP{
 				Network: netName,
 				IP:      net.IPAddress,
+				Aliases: net.Aliases,
 			})
 		}
 	}
@@ -367,10 +369,12 @@ func (s InspectService) ComposeLogs(composeFile string, follow bool, tail string
 	return nil
 }
 
-// NetworkIP pairs a docker network name with the container's IP on it.
+// NetworkIP pairs a docker network name with the container's IP on it and the
+// network-scoped DNS aliases (extra names) it answers to on that network.
 type NetworkIP struct {
 	Network string
 	IP      string
+	Aliases []string
 }
 
 // ContainerNetworkIPs returns structured NetworkIP pairs for a running container,

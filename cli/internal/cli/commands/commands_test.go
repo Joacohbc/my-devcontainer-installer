@@ -28,6 +28,7 @@ func TestNewRootCommand_RegistersAllSubcommands(t *testing.T) {
 		"start", "stop", "restart", "prune", "update",
 		"upgrade-cli", "config", "cleanup-tips", "shell", "logs", "copy",
 		"up", "status", "ls", "info", "remove-container", "remove-image",
+		"network",
 	}
 	have := map[string]bool{}
 	for _, c := range root.Commands() {
@@ -127,6 +128,43 @@ func TestPruneCommand_HasResourceSubcommands(t *testing.T) {
 		if !have[name] {
 			t.Errorf("expected prune subcommand %q", name)
 		}
+	}
+}
+
+func TestNetworkCommand_HasConnectAndDisconnect(t *testing.T) {
+	root := NewRootCommand("test")
+	var network *cobra.Command
+	for _, c := range root.Commands() {
+		if c.Name() == "network" {
+			network = c
+			break
+		}
+	}
+	if network == nil {
+		t.Fatal("network command not registered")
+	}
+	have := map[string]*cobra.Command{}
+	for _, c := range network.Commands() {
+		have[c.Name()] = c
+	}
+	for _, name := range []string{"connect", "disconnect"} {
+		sub := have[name]
+		if sub == nil {
+			t.Errorf("expected network subcommand %q", name)
+			continue
+		}
+		if sub.Flags().Lookup("workspace") == nil {
+			t.Errorf("network %s missing --workspace flag", name)
+		}
+		if err := sub.Args(sub, nil); err == nil {
+			t.Errorf("network %s should require at least one container argument", name)
+		}
+	}
+	if have["connect"].Flags().Lookup("alias") == nil {
+		t.Error("network connect missing --alias flag")
+	}
+	if have["disconnect"].Flags().Lookup("alias") != nil {
+		t.Error("network disconnect should not have an --alias flag")
 	}
 }
 
