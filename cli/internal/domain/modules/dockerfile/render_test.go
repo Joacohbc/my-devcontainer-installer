@@ -113,6 +113,22 @@ func TestRustModuleRender(t *testing.T) {
 	}
 }
 
+func TestYarnModuleRender(t *testing.T) {
+	out := dockerfile.YarnModule.Render(nil)
+	// Yarn is installed through Corepack, which ships with Node.
+	if !strings.Contains(out, "corepack enable") {
+		t.Errorf("expected yarn to enable corepack:\n%s", out)
+	}
+	if !strings.Contains(out, "corepack prepare yarn@stable --activate") {
+		t.Errorf("expected yarn to pin the stable release via corepack:\n%s", out)
+	}
+	// Build step must source the node init so node/corepack are on PATH,
+	// independent of whether nvm or fnm manages Node.
+	if !strings.Contains(out, ".nodejs_init.sh") {
+		t.Errorf("expected yarn to source the node init script:\n%s", out)
+	}
+}
+
 func TestDatabaseClientModulesRender(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -226,6 +242,7 @@ func TestModuleRunLayerCounts(t *testing.T) {
 		{"rust", dockerfile.RustModule, nil, 2}, // install+rustup + shell-init
 		{"pnpm", dockerfile.PnpmModule, nil, 2}, // install+pnpm + shell-init
 		{"bun", dockerfile.BunModule, nil, 2},   // install + shell-init
+		{"yarn", dockerfile.YarnModule, nil, 1}, // corepack enable + prepare (single RUN)
 		{"sqlite", dockerfile.SqliteModule, nil, 1},
 		{"tmux", dockerfile.TmuxModule, nil, 1},
 		{"github-cli", dockerfile.GithubCliModule, nil, 1},

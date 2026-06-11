@@ -23,6 +23,7 @@ const (
 	ModuleMongoClient    ModuleID = "mongo-client"
 	ModuleNodejs         ModuleID = "nodejs"
 	ModulePnpm           ModuleID = "pnpm"
+	ModuleYarn           ModuleID = "yarn"
 	ModuleBun            ModuleID = "bun"
 	ModuleClaudeCode     ModuleID = "claude-code"
 	ModuleOpencode       ModuleID = "opencode"

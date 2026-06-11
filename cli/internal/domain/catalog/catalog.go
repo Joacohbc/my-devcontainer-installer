@@ -22,6 +22,7 @@ var DockerfileModules = []*dockerfile.ModuleSpec{
 	dockerfile.MongoClientModule,
 	dockerfile.NodejsModule,
 	dockerfile.PnpmModule,
+	dockerfile.YarnModule,
 	dockerfile.BunModule,
 	dockerfile.ClaudeCodeModule,
 	dockerfile.OpencodeModule,

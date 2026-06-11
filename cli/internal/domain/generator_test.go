@@ -146,6 +146,18 @@ func TestGenerateDockerfile_BunShellInit(t *testing.T) {
 	assertContainsStr(t, df, "for f in .zshrc .bashrc .profile", "bun")
 }
 
+func TestGenerateDockerfile_YarnAutoAddNodejs(t *testing.T) {
+	cfg := makeConfig(func(c *types.DevcontainerConfig) {
+		c.Dockerfile.Modules = []types.SelectedModule{{ID: "yarn"}}
+	})
+	df := mustGenerateDockerfile(t, cfg)
+	// yarn requires nodejs, so the resolver must pull it in.
+	assertContainsStr(t, df, "nvm install", "yarn pulls nodejs")
+	// Yarn is provisioned through Corepack, sourcing the shared node init.
+	assertContainsStr(t, df, "corepack prepare yarn@stable --activate", "yarn")
+	assertContainsStr(t, df, ".nodejs_init.sh", "yarn sources node init")
+}
+
 func TestGenerateDockerfile_PnpmAutoAddNodejs(t *testing.T) {
 	cfg := makeConfig(func(c *types.DevcontainerConfig) {
 		c.Dockerfile.Modules = []types.SelectedModule{{ID: "pnpm"}}

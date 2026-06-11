@@ -34,7 +34,7 @@ it fits) — no third-party test framework.
 Applies to:
 
 - `internal/domain/modules/dockerfile/*.go` — Dockerfile modules (base, nodejs, python,
-  java_temurin, java_openjdk, golang, bun, pnpm, sqlite, dbclients, github_cli,
+  java_temurin, java_openjdk, golang, bun, pnpm, yarn, sqlite, dbclients, github_cli,
   ai_clis, tmux, cleanup, shell_init).
 - `internal/domain/modules/compose/*.go` — compose services (devcontainer, dind_engine,
   mongo, redis, postgres, tunnel).
