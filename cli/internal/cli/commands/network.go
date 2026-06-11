@@ -41,7 +41,24 @@ func newNetworkConnectCommand() *cobra.Command {
 		ValidArgsFunction: completeAnyContainerArgs,
 	}
 	addWorkspaceFlag(cmd)
+	cmd.Flags().StringSlice("alias", nil, "Extra DNS alias(es) to register for the container(s) on the network; repeatable or comma-separated")
+	addInteractiveFlag(cmd)
 	return cmd
+}
+
+// connectAliases resolves the network aliases for a connect: the --alias flag
+// when set, otherwise (in interactive mode) a single optional alias prompted
+// from the user. An empty answer skips aliasing.
+func connectAliases(cmd *cobra.Command) ([]string, error) {
+	aliases, _ := cmd.Flags().GetStringSlice("alias")
+	if len(aliases) > 0 || !interactiveFlag(cmd) {
+		return aliases, nil
+	}
+	answer, err := console.AskDefault("Network alias for the container(s) (optional, leave empty to skip):", "", nil)
+	if err != nil {
+		return nil, err
+	}
+	return splitCSV(answer), nil
 }
 
 func newNetworkDisconnectCommand() *cobra.Command {
@@ -73,7 +90,11 @@ func runNetworkOp(cmd *cobra.Command, args []string, verb string) error {
 
 	var ok, failed int
 	if verb == "connect" {
-		ok, failed, err = svc.Connect(workspace, args)
+		aliases, aerr := connectAliases(cmd)
+		if aerr != nil {
+			return aerr
+		}
+		ok, failed, err = svc.Connect(workspace, args, aliases)
 	} else {
 		ok, failed, err = svc.Disconnect(workspace, args)
 	}

@@ -58,7 +58,7 @@ func TestConnect_runsDockerNetworkConnect(t *testing.T) {
 	r := &fakeRunner{status: 0, stdout: "myws-network\n"}
 	defer useFakeDocker(r)()
 
-	ok, failed, err := NetworkService{Report: nopReporter{}}.Connect("myws", []string{"app", "db"})
+	ok, failed, err := NetworkService{Report: nopReporter{}}.Connect("myws", []string{"app", "db"}, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -72,6 +72,35 @@ func TestConnect_runsDockerNetworkConnect(t *testing.T) {
 	}
 	if !slices.Contains(call, "myws-network") || !slices.Contains(call, "app") {
 		t.Errorf("connect call missing network or container: %v", call)
+	}
+}
+
+func TestConnect_passesAliasesAsFlags(t *testing.T) {
+	r := &fakeRunner{status: 0, stdout: "myws-network\n"}
+	defer useFakeDocker(r)()
+
+	ok, _, err := NetworkService{Report: nopReporter{}}.Connect("myws", []string{"app"}, []string{"api", "web"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if ok != 1 {
+		t.Fatalf("ok=%d, want 1", ok)
+	}
+
+	call := r.callContaining("connect")
+	if call == nil {
+		t.Fatalf("expected a 'docker network connect' call, got %v", r.calls)
+	}
+	// Each alias is rendered as a "--alias <name>" pair before the network/container.
+	for _, want := range []string{"--alias", "api", "web"} {
+		if !slices.Contains(call, want) {
+			t.Errorf("connect call missing %q: %v", want, call)
+		}
+	}
+	netIdx := slices.Index(call, "myws-network")
+	aliasIdx := slices.Index(call, "api")
+	if netIdx < 0 || aliasIdx < 0 || aliasIdx > netIdx {
+		t.Errorf("aliases must precede the network/container: %v", call)
 	}
 }
 
@@ -116,7 +145,7 @@ func TestConnect_countsFailures(t *testing.T) {
 	docker.ResetDockerCache()
 	defer func() { docker.ResetRunner(); docker.ResetDockerCache() }()
 
-	ok, failed, err := NetworkService{Report: nopReporter{}}.Connect("myws", []string{"ghost", "phantom"})
+	ok, failed, err := NetworkService{Report: nopReporter{}}.Connect("myws", []string{"ghost", "phantom"}, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

@@ -58,28 +58,35 @@ func (s NetworkService) ResolveNetwork(workspace string) (string, error) {
 	}
 }
 
-// Connect attaches each container to the workspace network. It returns the
-// number connected and the number that failed.
-func (s NetworkService) Connect(workspace string, containers []string) (connected, failed int, err error) {
-	return s.apply("connect", workspace, containers)
+// Connect attaches each container to the workspace network, registering the
+// given network aliases (extra DNS names) on each. It returns the number
+// connected and the number that failed.
+func (s NetworkService) Connect(workspace string, containers, aliases []string) (connected, failed int, err error) {
+	return s.apply("connect", workspace, containers, aliases)
 }
 
 // Disconnect detaches each container from the workspace network. It returns the
 // number disconnected and the number that failed.
 func (s NetworkService) Disconnect(workspace string, containers []string) (disconnected, failed int, err error) {
-	return s.apply("disconnect", workspace, containers)
+	return s.apply("disconnect", workspace, containers, nil)
 }
 
 // apply resolves the workspace network and runs `docker network <verb>` for each
-// container, reporting per-container outcomes and tallying success/failure.
-func (s NetworkService) apply(verb, workspace string, containers []string) (ok, failed int, err error) {
+// container, reporting per-container outcomes and tallying success/failure. For
+// "connect", aliases are passed as --alias flags (ignored by "disconnect").
+func (s NetworkService) apply(verb, workspace string, containers, aliases []string) (ok, failed int, err error) {
 	network, err := s.ResolveNetwork(workspace)
 	if err != nil {
 		return 0, 0, err
 	}
 	s.Report.Warn("\nRunning 'docker network %s' on '%s'...", verb, network)
 	for _, c := range containers {
-		status, derr := docker.DockerInherit([]string{"network", verb, network, c})
+		args := []string{"network", verb}
+		for _, a := range aliases {
+			args = append(args, "--alias", a)
+		}
+		args = append(args, network, c)
+		status, derr := docker.DockerInherit(args)
 		if derr == nil && status == 0 {
 			s.Report.Success("  ✓ %s", c)
 			ok++

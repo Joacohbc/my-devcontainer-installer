@@ -160,6 +160,12 @@ func TestNetworkCommand_HasConnectAndDisconnect(t *testing.T) {
 			t.Errorf("network %s should require at least one container argument", name)
 		}
 	}
+	if have["connect"].Flags().Lookup("alias") == nil {
+		t.Error("network connect missing --alias flag")
+	}
+	if have["disconnect"].Flags().Lookup("alias") != nil {
+		t.Error("network disconnect should not have an --alias flag")
+	}
 }
 
 func TestPruneAndRemovalCommands_HaveAllFlag(t *testing.T) {

@@ -293,7 +293,7 @@ is Cobra-native.
 | `upgrade-cli` | `upgrade_cli.go` | Binary self-update from a GitHub release |
 | `config` | `config.go` | Read/write global config (subcommand `registry`) |
 | `cleanup-tips` | `cleanup_tips.go` | Print docker cleanup commands |
-| `network` | `network.go` | Attach/detach any container to the workspace network; subcommands `network connect`/`network disconnect <container...>` (tab-completed) |
+| `network` | `network.go` | Attach/detach any container to the workspace network; subcommands `network connect`/`network disconnect <container...>` (tab-completed); `connect` takes `--alias` (extra DNS names; prompted when interactive) |
 | `completion` | _(Cobra built-in)_ | Print shell completion script |
 
 ---
