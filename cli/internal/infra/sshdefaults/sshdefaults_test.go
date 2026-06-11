@@ -114,44 +114,6 @@ func TestBuildConfigBlock_LocalRequiresHostname(t *testing.T) {
 	}
 }
 
-func TestBuildConfigBlock_WindowsDefaults(t *testing.T) {
-	got, err := sshdefaults.BuildConfigBlock(sshdefaults.ConfigBlockOptions{
-		Mode:    sshdefaults.ModeWindows,
-		Alias:   "devcontainer",
-		User:    "devuser",
-		KeyPath: "k",
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !strings.Contains(got, "HostName localhost") {
-		t.Errorf("expected default hostname localhost:\n%s", got)
-	}
-	if !strings.Contains(got, "Port 2222") {
-		t.Errorf("expected default windows port 2222:\n%s", got)
-	}
-	if !strings.Contains(got, "IdentitiesOnly yes") {
-		t.Errorf("expected IdentitiesOnly yes:\n%s", got)
-	}
-}
-
-func TestBuildConfigBlock_WindowsCustomHostnameAndPort(t *testing.T) {
-	got, err := sshdefaults.BuildConfigBlock(sshdefaults.ConfigBlockOptions{
-		Mode:     sshdefaults.ModeWindows,
-		Alias:    "devcontainer",
-		User:     "devuser",
-		KeyPath:  "k",
-		Hostname: "192.168.1.5",
-		Port:     "2200",
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !strings.Contains(got, "HostName 192.168.1.5") || !strings.Contains(got, "Port 2200") {
-		t.Errorf("custom hostname/port not honored:\n%s", got)
-	}
-}
-
 func TestBuildConfigBlock_Remote(t *testing.T) {
 	got, err := sshdefaults.BuildConfigBlock(sshdefaults.ConfigBlockOptions{
 		Mode:      sshdefaults.ModeRemote,

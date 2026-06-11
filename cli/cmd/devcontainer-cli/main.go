@@ -12,7 +12,6 @@ import (
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/logger"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/ui"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/service"
 )
 
 // version is injected at build time via -ldflags "-X main.version=...".
@@ -25,7 +24,6 @@ func main() {
 	// Set the global context for infra/docker execution
 	docker.SetContext(ctx)
 
-	service.CleanupStaleUpdate()
 	root := commands.NewRootCommand(version)
 	if err := root.ExecuteContext(ctx); err != nil {
 		handleError(err)

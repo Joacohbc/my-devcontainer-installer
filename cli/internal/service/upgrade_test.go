@@ -68,7 +68,7 @@ func TestSwapBinary_Unix(t *testing.T) {
 	if err := os.WriteFile(tmp, []byte("new"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := swapBinary(exec, tmp, false); err != nil {
+	if err := swapBinary(exec, tmp); err != nil {
 		t.Fatalf("swapBinary: %v", err)
 	}
 	got, _ := os.ReadFile(exec)
@@ -77,50 +77,6 @@ func TestSwapBinary_Unix(t *testing.T) {
 	}
 	if _, err := os.Stat(tmp); !os.IsNotExist(err) {
 		t.Error("expected tmp file to be consumed by rename")
-	}
-}
-
-func TestSwapBinary_WindowsSuccess(t *testing.T) {
-	dir := t.TempDir()
-	exec := filepath.Join(dir, "cli.exe")
-	tmp := filepath.Join(dir, "new.exe")
-	if err := os.WriteFile(exec, []byte("old"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(tmp, []byte("new"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := swapBinary(exec, tmp, true); err != nil {
-		t.Fatalf("swapBinary: %v", err)
-	}
-	if got, _ := os.ReadFile(exec); string(got) != "new" {
-		t.Errorf("exec content = %q, want new", got)
-	}
-	if got, _ := os.ReadFile(exec + ".old"); string(got) != "old" {
-		t.Errorf("expected .old to retain previous binary, got %q", got)
-	}
-}
-
-func TestSwapBinary_WindowsRollback(t *testing.T) {
-	dir := t.TempDir()
-	exec := filepath.Join(dir, "cli.exe")
-	missingTmp := filepath.Join(dir, "does-not-exist.exe")
-	if err := os.WriteFile(exec, []byte("original"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	err := swapBinary(exec, missingTmp, true)
-	if err == nil {
-		t.Fatal("expected error when new binary is missing")
-	}
-	got, readErr := os.ReadFile(exec)
-	if readErr != nil {
-		t.Fatalf("original binary was not restored: %v", readErr)
-	}
-	if string(got) != "original" {
-		t.Errorf("rolled-back content = %q, want original", got)
-	}
-	if _, statErr := os.Stat(exec + ".old"); !os.IsNotExist(statErr) {
-		t.Error("expected .old to be consumed by rollback")
 	}
 }
 
@@ -178,7 +134,7 @@ func TestPickTargets_OnlyTesting(t *testing.T) {
 }
 
 func TestGetTargetTriplet(t *testing.T) {
-	triplet, _, err := getTargetTriplet()
+	triplet, err := getTargetTriplet()
 	if err != nil {
 		t.Skipf("unsupported platform for this test: %v", err)
 	}
@@ -195,14 +151,14 @@ func TestResolveAssetURL(t *testing.T) {
 			{Name: "devcontainer-cli-linux-x64.sha256", DownloadURL: "https://example.com/sum"},
 		},
 	}
-	bin, sum, err := resolveAssetURL(rel, "linux-x64", "")
+	bin, sum, err := resolveAssetURL(rel, "linux-x64")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if bin != "https://example.com/bin" || sum != "https://example.com/sum" {
 		t.Errorf("got bin=%q sum=%q", bin, sum)
 	}
-	if _, _, err := resolveAssetURL(rel, "darwin-arm64", ""); err == nil {
+	if _, _, err := resolveAssetURL(rel, "darwin-arm64"); err == nil {
 		t.Error("expected error for missing asset")
 	}
 }

@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"time"
 
@@ -20,7 +19,6 @@ type setupSshFlags struct {
 	remote            string
 	alias             string
 	key               string
-	port              string
 	assumeYes         bool
 	container         string
 	containerExplicit bool
@@ -40,7 +38,6 @@ func newSetupSshCommand() *cobra.Command {
 	f := cmd.Flags()
 	f.String("remote", "", "Configure remote-server access (ProxyCommand mode): USER@HOST")
 	f.String("key", "", "Private key path (default: the shared managed key under the CLI config dir)")
-	f.String("port", fmt.Sprintf("%d", domain.ResolveSSHHostPort()), "Port for Windows mode")
 	f.String("container", sshdefaults.ServiceName, "Container name (auto-detected from compose if omitted)")
 	f.String("user", sshdefaults.User, "SSH user inside container")
 	f.BoolP("yes", "y", false, `Assume "yes" to all prompts`)
@@ -68,7 +65,6 @@ func collectSetupSshFlags(cmd *cobra.Command) (*setupSshFlags, error) {
 	g.alias = sshdefaults.Alias
 	g.key, _ = f.GetString("key")
 	g.key = domain.ResolveSSHKeyPath(g.key)
-	g.port, _ = f.GetString("port")
 	g.container, _ = f.GetString("container")
 	g.containerExplicit = f.Changed("container")
 	g.service = sshdefaults.ServiceName
@@ -143,10 +139,6 @@ func selectComposeService(f *setupSshFlags, services map[string]service.ComposeS
 func detectMode(f *setupSshFlags) sshdefaults.Mode {
 	if f.remote != "" {
 		return sshdefaults.ModeRemote
-	}
-
-	if runtime.GOOS == "windows" {
-		return sshdefaults.ModeWindows
 	}
 
 	return sshdefaults.ModeLocal
@@ -258,7 +250,6 @@ func containerIP(ssh service.SshService, container string, f *setupSshFlags) (st
 
 type installResult struct {
 	hostname string
-	port     string
 }
 
 func installKey(ssh service.SshService, f *setupSshFlags, mode sshdefaults.Mode) (installResult, error) {
@@ -297,7 +288,7 @@ func installKey(ssh service.SshService, f *setupSshFlags, mode sshdefaults.Mode)
 	}); err != nil {
 		return installResult{}, err
 	}
-	return installResult{hostname: "localhost", port: f.port}, nil
+	return installResult{}, nil
 }
 
 func buildConfigBlock(mode sshdefaults.Mode, f *setupSshFlags, inst installResult, workspace string) (string, error) {
@@ -307,7 +298,6 @@ func buildConfigBlock(mode sshdefaults.Mode, f *setupSshFlags, inst installResul
 		User:      f.user,
 		KeyPath:   f.key,
 		Hostname:  inst.hostname,
-		Port:      inst.port,
 		Remote:    f.remote,
 		Container: f.container,
 		Workspace: workspace,

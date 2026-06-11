@@ -22,7 +22,6 @@ func newConfigCommand() *cobra.Command {
 	cmd.AddCommand(newConfigKeyCommand("registry", "image registry"))
 	cmd.AddCommand(newConfigKeyCommand("db-user", "DB user"))
 	cmd.AddCommand(newConfigKeyCommand("db-password", "DB password"))
-	cmd.AddCommand(newConfigKeyCommand("ssh-port", "host SSH port for windows mode"))
 	cmd.AddCommand(newConfigSSHKeyCommand())
 	cmd.AddCommand(newConfigExportCommand())
 	cmd.AddCommand(newConfigImportCommand())

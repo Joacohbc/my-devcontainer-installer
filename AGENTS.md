@@ -139,8 +139,7 @@ and `infra`, **never `cli`** (no `cli/ui`, no `cli/pick`).
 `lifecycle.go` (up/down/start/stop/restart), `prune.go`, `inspect.go`
 (shell/logs/status/copy/copy-asset/ls + completions), `config.go` (config/export/import/preset),
 `ssh.go` (setup-ssh), `portforward.go`, `network.go` (network connect/disconnect),
-`upgrade.go`. `service.CleanupStaleUpdate()`
-is called from `main.go` — keep that call.
+`upgrade.go`.
 
 **Exceptions that still touch docker from `cli`:** `cli/pick` (container-picker UI) and
 the `cleanup-tips` command (pure presentation — it prints docker commands, never runs
@@ -394,12 +393,12 @@ three plus `BuildModes` and tests.
    `build-variants` jobs `needs: build-base-cache` and `cache-from` it so the
    byte-identical Base leading layers are reused. `devcontainer-base` is **not**
    a `RemoteVariant` (don't add it to `types.go` or the variants matrix).
-3. **Release-asset naming** `devcontainer-cli-<triplet>[.exe]` — shared by
-   `cli/.goreleaser.yaml`, `getTargetTriplet()` in `commands/upgrade_cli.go`,
-   `cli/install.sh` and `cli/install.ps1`. Change one → change all four.
-   Triplets: `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`,
-   `windows-x64`. (`amd64`→`x64`; `arm64` stays `arm64`, including native
-   `darwin-arm64` — there is no Rosetta fallback.)
+3. **Release-asset naming** `devcontainer-cli-<triplet>` — shared by
+   `cli/.goreleaser.yaml`, `getTargetTriplet()` in `commands/upgrade_cli.go`
+   and `cli/install.sh`. Change one → change all three.
+   Triplets: `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`.
+   (`amd64`→`x64`; `arm64` stays `arm64`, including native `darwin-arm64` —
+   there is no Rosetta fallback.)
 4. **Build modes** — see above.
 5. **Fingerprint** (`local-cached`) — SHA-256 of normalized Dockerfile +
    copyFile contents + sorted module ids, first 12 chars → `image =
@@ -413,7 +412,7 @@ three plus `BuildModes` and tests.
 ### Release (goreleaser)
 
 `cli/.goreleaser.yaml` produces one raw binary per target (no archives) named
-`devcontainer-cli-<triplet>[.exe]` plus a per-binary `<name>.sha256`
+`devcontainer-cli-<triplet>` plus a per-binary `<name>.sha256`
 (`checksum.split: true`). `.github/workflows/cli-release.yml` runs
 `goreleaser release` when you **publish a GitHub Release** (event
 `release: published`, from the UI or `gh release create`). Validate locally with
@@ -443,35 +442,26 @@ it directly with `--pre-release`, or in `--no-interactive` mode falls back to
 `stable` unless `--pre-release` is passed). `Install()` then: `getTargetTriplet()`
 derives the triplet, `resolveAssetURL()` matches the asset + its `.sha256`,
 `verifyChecksum()` validates with a constant-time compare, and `replaceBinary()`
-swaps the file (on Windows it renames the running exe to `.exe.old`;
-`CleanupStaleUpdate()` is called on every `main()` to delete it — keep that call).
+swaps the file with an atomic rename.
 Only the GitHub host allowlist is fetched (`isAllowedHost`).
 
 Adding a new target: add it to the goreleaser `goos`/`goarch` (and `ignore` if
-needed), `getTargetTriplet()`, `install.sh`, `install.ps1` — all at once.
+needed), `getTargetTriplet()` and `install.sh` — all at once.
 
 ---
 
-## Installer script parity (sh ↔ ps1)
+## Installer scripts
 
-Install/uninstall ship in matched pairs in `cli/`:
+`cli/install.sh` and `cli/uninstall.sh` are the only installers (Linux/macOS;
+there is no Windows support). Releases are raw binaries (no tar/zip); the
+installer downloads the raw `devcontainer-cli-<triplet>`.
 
-- `install.sh` ↔ `install.ps1`
-- `uninstall.sh` ↔ `uninstall.ps1`
-
-**Change one in a pair → apply the equivalent change to its counterpart in the
-same PR.** Mirror the *behavior*, not the syntax. Releases are raw binaries
-(no tar/zip); both installers download the raw `devcontainer-cli-<triplet>[.exe]`.
-
-| Concern | sh (Linux/macOS) | ps1 (Windows) |
-|---|---|---|
-| Install dir | `$HOME/.local/share/devcontainer-cli` | `$env:LOCALAPPDATA\devcontainer-cli` |
-| PATH exposure | symlink in `$BIN_DIR` + rc `export PATH` | entry in user `Path` |
-| Completion | zsh/bash via `devcontainer-cli completion …` + managed rc block | not installed |
-| Opt-out | `SETUP_COMPLETION=0`, `KEEP_CONFIG=1` | `KEEP_CONFIG=1` |
-
-A feature with no Windows analogue (bash/zsh completion) legitimately skips on
-the ps1 side.
+| Concern | sh (Linux/macOS) |
+|---|---|
+| Install dir | `$HOME/.local/share/devcontainer-cli` |
+| PATH exposure | symlink in `$BIN_DIR` + rc `export PATH` |
+| Completion | zsh/bash via `devcontainer-cli completion …` + managed rc block |
+| Opt-out | `SETUP_COMPLETION=0`, `KEEP_CONFIG=1` |
 
 ---
 
@@ -481,6 +471,5 @@ the ps1 side.
 - [ ] No `infra/docker` or `os/exec` import in `internal/cli/commands` (logic belongs in a service).
 - [ ] `go test ./...` passes.
 - [ ] `go vet ./...` and `gofmt -l .` are clean.
-- [ ] Installer change mirrored to its `.sh`/`.ps1` counterpart.
 - [ ] Frozen contracts above kept in sync where touched.
 - [ ] CI green.

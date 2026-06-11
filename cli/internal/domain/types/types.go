@@ -72,8 +72,6 @@ func WorkspaceDir(workspace string) string {
 	return WorkspaceRoot + "/" + workspace
 }
 
-const DefaultSSHHostPort = 2222
-
 // SSHKeyName is the filename of the single shared SSH key reused by every
 // devcontainer (local and remote). The managed key lives under the CLI global
 // config dir; sshdefaults.KeyName aliases this value.

@@ -3,19 +3,13 @@ package service
 import (
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 )
 
-// setHomeDir points os.UserHomeDir() at dir, using the env var honored on the
-// current platform (HOME on Unix/macOS, USERPROFILE on Windows).
+// setHomeDir points os.UserHomeDir() at dir via the HOME env var.
 func setHomeDir(t *testing.T, dir string) {
 	t.Helper()
-	if runtime.GOOS == "windows" {
-		t.Setenv("USERPROFILE", dir)
-		return
-	}
 	t.Setenv("HOME", dir)
 }
 
