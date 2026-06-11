@@ -21,7 +21,6 @@ const (
 	stepKeyVariant      = "variant"
 	stepKeyImage        = "image"
 	stepKeySubnet       = "subnet"
-	stepKeyPersist      = "persist"
 	stepKeyPorts        = "ports"
 	stepKeySharedConfig = "sharedConfig"
 )
@@ -462,16 +461,6 @@ func (w wizardContext) reduce(s *State) *types.DevcontainerConfig {
 		Dockerfile: types.DockerfileConfig{Modules: modules},
 		Compose:    types.ComposeConfig{Services: services, Subnet: s.String(stepKeySubnet)},
 		Env:        env,
-	}
-
-	if s.Has(stepKeyPersist) {
-		persist := s.Strings(stepKeyPersist)
-		if persist == nil {
-			persist = []string{}
-		}
-		draft.Compose.PersistVolumes = &persist
-	} else {
-		draft.Compose.PersistVolumes = w.base.Compose.PersistVolumes
 	}
 
 	if s.Has(stepKeyPorts) {

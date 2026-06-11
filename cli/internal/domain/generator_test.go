@@ -482,55 +482,12 @@ func TestGenerateCompose_PortsRespectExplicitIP(t *testing.T) {
 	}
 }
 
-func TestGenerateCompose_PersistVolumesDefaultAll(t *testing.T) {
-	// A nil PersistVolumes (legacy/unset) mounts all three persistence volumes.
-	yml := mustGenerateCompose(t, makeConfig())
-	vols := devcontainerVolumes(t, yml)
-	for _, want := range []string{"../..:/workspaces/devcontainer", "devcontainer_etc:/etc", "devcontainer_root:/root", "devcontainer_home:/home"} {
-		found := false
-		for _, v := range vols {
-			if v == want {
-				found = true
-			}
-		}
-		if !found {
-			t.Errorf("expected devcontainer volume %q, got %v", want, vols)
-		}
-	}
-	top := topLevelVolumes(t, yml)
-	for _, v := range []string{"devcontainer_etc", "devcontainer_root", "devcontainer_home"} {
-		if top[v] == nil {
-			t.Errorf("expected top-level volume %q, got %v", v, top)
-		}
-	}
-}
-
-func TestGenerateCompose_PersistVolumesSubset(t *testing.T) {
-	cfg := makeConfig(func(c *types.DevcontainerConfig) {
-		c.Compose.PersistVolumes = &[]string{"home"}
-	})
-	yml := mustGenerateCompose(t, cfg)
-	vols := devcontainerVolumes(t, yml)
-	assertContainsStr(t, strings.Join(vols, "\n"), "../..:/workspaces/devcontainer", "subset workspace")
-	assertContainsStr(t, strings.Join(vols, "\n"), "devcontainer_home:/home", "subset home")
-	assertNotContainsStr(t, strings.Join(vols, "\n"), "devcontainer_etc:/etc", "subset no etc")
-	assertNotContainsStr(t, strings.Join(vols, "\n"), "devcontainer_root:/root", "subset no root")
-
-	top := topLevelVolumes(t, yml)
-	if top["devcontainer_home"] == nil {
-		t.Errorf("expected top-level devcontainer_home, got %v", top)
-	}
-	if top["devcontainer_etc"] != nil || top["devcontainer_root"] != nil {
-		t.Errorf("unselected persistence volumes must not be declared, got %v", top)
-	}
-}
-
-func TestGenerateCompose_PersistVolumesNone(t *testing.T) {
+func TestGenerateCompose_NoPersistVolumesByDefault(t *testing.T) {
+	// Persistence volumes are opt-in: a default config (nil PersistVolumes)
+	// mounts nothing besides the workspace — a stale /etc or /home snapshot must
+	// never survive image rebuilds unless the user explicitly asked for it.
 	off := false
-	cfg := makeConfig(func(c *types.DevcontainerConfig) {
-		c.Compose.PersistVolumes = &[]string{}
-		c.Compose.SharedConfig = &off // isolate persist behavior from the shared mount
-	})
+	cfg := makeConfig(func(c *types.DevcontainerConfig) { c.Compose.SharedConfig = &off })
 	yml := mustGenerateCompose(t, cfg)
 	vols := devcontainerVolumes(t, yml)
 	if len(vols) != 1 || vols[0] != "../..:/workspaces/devcontainer" {
@@ -540,6 +497,52 @@ func TestGenerateCompose_PersistVolumesNone(t *testing.T) {
 	for k := range top {
 		if strings.HasPrefix(k, "devcontainer_") {
 			t.Errorf("expected no persistence volumes declared, found %q", k)
+		}
+	}
+	assertNotContainsStr(t, yml, ":/etc", "no /etc volume")
+	assertNotContainsStr(t, yml, ":/root", "no /root volume")
+	assertNotContainsStr(t, yml, ":/home", "no /home volume")
+}
+
+func TestGenerateCompose_PersistVolumesUserMappings(t *testing.T) {
+	cfg := makeConfig(func(c *types.DevcontainerConfig) {
+		c.Workspace = "myproj"
+		c.Compose.PersistVolumes = &[]string{"cache:/var/cache", "data:/srv/data"}
+	})
+	yml := mustGenerateCompose(t, cfg)
+	vols := devcontainerVolumes(t, yml)
+	for _, want := range []string{"myproj_cache:/var/cache", "myproj_data:/srv/data"} {
+		if !contains(vols, want) {
+			t.Errorf("expected mount %q (workspace-prefixed), got %v", want, vols)
+		}
+	}
+	top := topLevelVolumes(t, yml)
+	for _, v := range []string{"myproj_cache", "myproj_data"} {
+		if top[v] == nil {
+			t.Errorf("expected top-level volume %q declared, got %v", v, top)
+		}
+	}
+}
+
+func TestGenerateCompose_PersistVolumesLegacyIDs(t *testing.T) {
+	// Configs written by older CLIs stored bare ids; they translate to the
+	// historical mounts.
+	cfg := makeConfig(func(c *types.DevcontainerConfig) {
+		c.Compose.PersistVolumes = &[]string{"home"}
+	})
+	yml := mustGenerateCompose(t, cfg)
+	if !contains(devcontainerVolumes(t, yml), "devcontainer_home:/home") {
+		t.Errorf("legacy id 'home' should mount devcontainer_home:/home, got %v", devcontainerVolumes(t, yml))
+	}
+}
+
+func TestGenerateCompose_PersistVolumesInvalidSpec(t *testing.T) {
+	for _, bad := range []string{"bogus", "cache:relative/path", ":/var/x"} {
+		cfg := makeConfig(func(c *types.DevcontainerConfig) {
+			c.Compose.PersistVolumes = &[]string{bad}
+		})
+		if _, err := domain.GenerateCompose(cfg); err == nil {
+			t.Errorf("expected error for persist spec %q", bad)
 		}
 	}
 }

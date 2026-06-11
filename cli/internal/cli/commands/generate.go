@@ -49,7 +49,7 @@ func addGenerateFlags(cmd *cobra.Command) {
 	f.String(flagServices, "", "Alias for --service")
 	f.String(flagImage, "", "Image name (default: derived from fingerprint for local-cached)")
 	f.String(flagWorkspace, "", "Workspace name (default: current dir name)")
-	f.String(flagPersist, "", "Persistence volumes mounted in the devcontainer: comma-separated ids (etc,root,home), 'all', or 'none'")
+	f.String(flagPersist, "", "Named-volume mounts persisted on the devcontainer, as <volume>:</path> CSV (e.g. cache:/var/cache,data:/srv); 'none' clears them. No volumes are mounted by default")
 	f.String(flagPorts, "", "Ports to publish on the devcontainer (e.g. 8080:80,5432:5432); bound to 127.0.0.1 unless an IP is given; 'none' clears them")
 	f.Bool(flagSharedConfig, true, "Mount the global shared AI/dev tool config volume (devcontainer-shared-config) so logins/sessions persist across containers; --shared-config=false to opt out")
 	f.String(flagPreset, "", "Apply a preset (modules + services). See 'preset list'.")
@@ -91,10 +91,6 @@ func addGenerateFlags(cmd *cobra.Command) {
 	}
 	_ = cmd.RegisterFlagCompletionFunc(flagService, completeServiceFunc)
 	_ = cmd.RegisterFlagCompletionFunc(flagServices, completeServiceFunc)
-	_ = cmd.RegisterFlagCompletionFunc(flagPersist, func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		ids := append([]string{"all", "none"}, types.DefaultPersistVolumeIDs()...)
-		return completeCSV(toComplete, ids), cobra.ShellCompDirectiveNoFileComp
-	})
 }
 
 func presetsDir() string {
@@ -110,7 +106,7 @@ type genFlags struct {
 	workspace    string
 	withModules  []string
 	services     []string
-	persist      *[]string // nil = not set (keep existing/default)
+	persist      *[]string // nil = not set (keep existing); non-nil overrides
 	ports        *[]string // nil = not set (keep existing); non-nil overrides
 	sharedConfig *bool     // nil = not set (keep existing/default-on)
 	mode         string
@@ -129,24 +125,21 @@ func splitCSV(s string) []string {
 	return out
 }
 
-// parsePersistFlag reads and validates the --persist value. "all" expands to
-// every volume, "none" (or an empty value) to no volumes; otherwise it is a CSV
-// of persistence volume ids.
+// parsePersistFlag reads and validates the --persist value: a CSV of
+// <volume>:</absolute/path> mounts (legacy ids etc/root/home still accepted).
+// "none" or an empty value clears them.
 func parsePersistFlag(get func(string) (string, error)) ([]string, error) {
 	raw, _ := get(flagPersist)
-	ids := splitCSV(raw)
-	switch {
-	case len(ids) == 0, len(ids) == 1 && ids[0] == "none":
+	specs := splitCSV(raw)
+	if len(specs) == 0 || (len(specs) == 1 && specs[0] == "none") {
 		return []string{}, nil
-	case len(ids) == 1 && ids[0] == "all":
-		return types.DefaultPersistVolumeIDs(), nil
 	}
-	for _, id := range ids {
-		if _, ok := types.PersistVolumeSpecByID(id); !ok {
-			return nil, fmt.Errorf("invalid --persist volume: %s. Expected ids (%s), 'all', or 'none'", id, strings.Join(types.DefaultPersistVolumeIDs(), ", "))
+	for _, spec := range specs {
+		if _, _, err := domain.ParsePersistVolumeSpec(spec); err != nil {
+			return nil, err
 		}
 	}
-	return ids, nil
+	return specs, nil
 }
 
 // parsePortsFlag reads the --ports CSV. "none" (or an empty value) clears the
@@ -204,11 +197,11 @@ func parseGenFlags(cmd *cobra.Command) (*genFlags, error) {
 		g.services = splitCSV(s)
 	}
 	if f.Changed(flagPersist) {
-		ids, err := parsePersistFlag(f.GetString)
+		specs, err := parsePersistFlag(f.GetString)
 		if err != nil {
 			return nil, err
 		}
-		g.persist = &ids
+		g.persist = &specs
 	}
 	if f.Changed(flagPorts) {
 		ports := parsePortsFlag(f.GetString)

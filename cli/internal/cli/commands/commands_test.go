@@ -174,11 +174,12 @@ func TestParseGenFlags_Persist(t *testing.T) {
 		wantErr bool
 	}{
 		{name: "unset", args: nil, wantNil: true},
-		{name: "all", args: []string{"--persist", "all"}, want: []string{"etc", "root", "home"}},
 		{name: "none", args: []string{"--persist", "none"}, want: []string{}},
 		{name: "empty", args: []string{"--persist", ""}, want: []string{}},
-		{name: "subset", args: []string{"--persist", "etc,home"}, want: []string{"etc", "home"}},
-		{name: "invalid", args: []string{"--persist", "etc,bogus"}, wantErr: true},
+		{name: "mappings", args: []string{"--persist", "cache:/var/cache, data:/srv/data"}, want: []string{"cache:/var/cache", "data:/srv/data"}},
+		{name: "legacy-ids", args: []string{"--persist", "etc,home"}, want: []string{"etc", "home"}},
+		{name: "no-colon", args: []string{"--persist", "bogus"}, wantErr: true},
+		{name: "relative-path", args: []string{"--persist", "cache:var/cache"}, wantErr: true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

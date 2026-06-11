@@ -83,39 +83,44 @@ func ResolveDevcontainerImageName(config *types.DevcontainerConfig) string {
 	return config.Image
 }
 
-// resolvePersistVolumeIDs returns the persistence volume ids enabled for the
-// config, in canonical order. A nil PersistVolumes means "unset" → all of them
-// (legacy default); a non-nil value is honored exactly (empty slice → none).
-func resolvePersistVolumeIDs(config *types.DevcontainerConfig) []string {
-	if config.Compose.PersistVolumes == nil {
-		return types.DefaultPersistVolumeIDs()
-	}
-	selected := make(map[string]bool, len(*config.Compose.PersistVolumes))
-	for _, id := range *config.Compose.PersistVolumes {
-		selected[id] = true
-	}
-	var out []string
-	for _, s := range types.PersistVolumeSpecs {
-		if selected[s.ID] {
-			out = append(out, s.ID)
-		}
-	}
-	return out
+// legacyPersistMounts maps the pre-mapping persistence ids written by older
+// CLIs to their historical volume specs so existing configs keep working.
+var legacyPersistMounts = map[string]string{
+	"etc":  "devcontainer_etc:/etc",
+	"root": "devcontainer_root:/root",
+	"home": "devcontainer_home:/home",
 }
 
-// persistVolumes returns the devcontainer mount strings (e.g.
-// "devcontainer_etc:/etc") and the bare volume names to declare for the enabled
-// persistence volumes.
-func persistVolumes(config *types.DevcontainerConfig) (mounts []string, declared []string) {
-	for _, id := range resolvePersistVolumeIDs(config) {
-		spec, ok := types.PersistVolumeSpecByID(id)
-		if !ok {
-			continue
-		}
-		mounts = append(mounts, spec.Volume+":"+spec.Mount)
-		declared = append(declared, spec.Volume)
+// ParsePersistVolumeSpec validates one user-supplied persistence mount
+// ("<volume>:</absolute/path>", or a legacy id) and returns the volume name and
+// container path. Used by the generator and by --persist flag validation.
+func ParsePersistVolumeSpec(spec string) (volume, path string, err error) {
+	if legacy, ok := legacyPersistMounts[spec]; ok {
+		spec = legacy
 	}
-	return mounts, declared
+	volume, path, ok := strings.Cut(spec, ":")
+	if !ok || !IsValidDockerName(volume) || !strings.HasPrefix(path, "/") {
+		return "", "", fmt.Errorf("invalid persist volume %q: expected <volume>:</absolute/path>", spec)
+	}
+	return volume, path, nil
+}
+
+// persistVolumes resolves the user-chosen persistence mounts into devcontainer
+// mount strings and the volume names to declare. Nil or empty means none —
+// there are no default persistence volumes.
+func persistVolumes(config *types.DevcontainerConfig) (mounts, declared []string, err error) {
+	if config.Compose.PersistVolumes == nil {
+		return nil, nil, nil
+	}
+	for _, spec := range *config.Compose.PersistVolumes {
+		volume, path, err := ParsePersistVolumeSpec(spec)
+		if err != nil {
+			return nil, nil, err
+		}
+		mounts = append(mounts, volume+":"+path)
+		declared = append(declared, volume)
+	}
+	return mounts, declared, nil
 }
 
 // devcontainerPorts returns the published port mappings for the devcontainer
@@ -214,7 +219,10 @@ func GenerateCompose(config *types.DevcontainerConfig) (string, error) {
 	}
 	devcontainerIP, _ := LastHost(subnet)
 
-	persistMounts, persistDeclared := persistVolumes(config)
+	persistMounts, persistDeclared, err := persistVolumes(config)
+	if err != nil {
+		return "", err
+	}
 
 	declaredVolumes := make(map[string]bool)
 	for _, v := range persistDeclared {
@@ -458,7 +466,10 @@ func PlannedComposeNames(config *types.DevcontainerConfig) (containers []string,
 	enabledIDs := result.enabledIDs
 	optionsByID := result.optionsByID
 
-	_, persistDeclared := persistVolumes(config)
+	_, persistDeclared, perr := persistVolumes(config)
+	if perr != nil {
+		return nil, "", nil, perr
+	}
 
 	declaredVolumes := make(map[string]bool)
 	for _, v := range persistDeclared {
