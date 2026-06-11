@@ -59,6 +59,18 @@ const (
 // module inside every generated container.
 const DevUserHome = "/home/devuser"
 const PostScriptDir = DevUserHome + "/post-script"
+
+// WorkspaceRoot is the parent dir the project is mounted under. Each project
+// gets a unique /workspaces/<workspace> path (entrypoint aliases /workspace to
+// it) so the path-keyed history of Claude Code/Antigravity does not collide in
+// the shared config volume.
+const WorkspaceRoot = "/workspaces"
+
+// WorkspaceDir returns the in-container mount path for a workspace.
+func WorkspaceDir(workspace string) string {
+	return WorkspaceRoot + "/" + workspace
+}
+
 const DefaultSSHHostPort = 2222
 
 // SSHKeyName is the filename of the single shared SSH key reused by every
@@ -211,7 +223,7 @@ type ComposeConfig struct {
 
 // PersistVolumeSpec describes an optional named volume mounted into the
 // devcontainer to persist state across rebuilds. The workspace bind mount
-// (../..:/workspace) is always present and is NOT part of this set.
+// (../..:/workspaces/<workspace>) is always present and is NOT part of this set.
 type PersistVolumeSpec struct {
 	ID     string // short id stored in config (e.g. "etc")
 	Volume string // docker volume name before workspace prefixing

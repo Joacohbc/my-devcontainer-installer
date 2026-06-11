@@ -260,6 +260,7 @@ func GenerateCompose(config *types.DevcontainerConfig) (string, error) {
 		if svc.ID == types.ServiceDevcontainer {
 			rc.PersistVolumeMounts = persistMounts
 			rc.Ports = devcontainerPorts(config)
+			rc.WorkspaceDir = types.WorkspaceDir(workspace)
 			if types.SharedConfigEnabled(config) {
 				rc.SharedConfigMount = types.SharedConfigMount()
 			}

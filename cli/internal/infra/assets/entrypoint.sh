@@ -34,12 +34,25 @@ else
     echo "initial root password: $INITIAL_PASSWORD"
 fi
 
-# Align devuser's UID/GID with the owner of the mounted /workspace so the
+# Resolve the project mount. New layouts mount it at /workspaces/<name> — a
+# unique path per project so the path-keyed history of Claude Code/Antigravity
+# never collides in the shared config volume — and keep /workspace as a stable
+# alias. Older images mounted directly at /workspace still work (the glob finds
+# nothing and WORKSPACE_DIR stays /workspace).
+WORKSPACE_DIR=/workspace
+for _ws in /workspaces/*; do
+    [ -d "$_ws" ] || continue
+    WORKSPACE_DIR="$_ws"
+    [ -e /workspace ] || ln -s "$_ws" /workspace
+    break
+done
+
+# Align devuser's UID/GID with the owner of the mounted project dir so the
 # container can read/write the bind mount WITHOUT ever modifying the host's
-# original permissions (no chown/setfacl on /workspace).
-if [ -d /workspace ]; then
-    WS_UID=$(stat -c %u /workspace)
-    WS_GID=$(stat -c %g /workspace)
+# original permissions (no chown/setfacl on the workspace).
+if [ -d "$WORKSPACE_DIR" ]; then
+    WS_UID=$(stat -c %u "$WORKSPACE_DIR")
+    WS_GID=$(stat -c %g "$WORKSPACE_DIR")
     CUR_UID=$(id -u devuser)
     CUR_GID=$(id -g devuser)
     if [ "$WS_UID" != "0" ] && { [ "$WS_UID" != "$CUR_UID" ] || [ "$WS_GID" != "$CUR_GID" ]; }; then
@@ -62,8 +75,8 @@ fi
 # Re-own the persisted home to devuser's ACTUAL UID/GID, and only when it
 # drifted: this finishes a successful remap and repairs homes left owned by a
 # foreign UID after a failed one (which broke every shell rc on SSH login).
-# The home must never be chowned to a UID devuser does not really have, and
-# /workspace is never touched.
+# The home must never be chowned to a UID devuser does not really have, and the
+# workspace is never touched.
 DEV_UID=$(id -u devuser)
 DEV_GID=$(id -g devuser)
 if [ "$(stat -c %u /home/devuser)" != "$DEV_UID" ] || [ "$(stat -c %g /home/devuser)" != "$DEV_GID" ]; then
@@ -86,9 +99,8 @@ fi
 # Keep in sync with types.SharedConfigEntries (internal/domain/types/sharedconfig.go).
 SHARED_CONFIG_DIR="/mnt/shared-config"
 if [ -d "$SHARED_CONFIG_DIR" ]; then
-    # Recursive chown only when the volume root drifted from devuser's real UID
-    # (cheap top-level chown happens per-entry below); mirrors the /home/devuser
-    # drift-repair above.
+    # Re-own the volume to devuser's real UID only when it drifted (mirrors the
+    # /home/devuser repair above); also fixes entries seeded by sync-config.
     if [ "$(stat -c %u "$SHARED_CONFIG_DIR")" != "$DEV_UID" ]; then
         chown -R "$DEV_UID:$DEV_GID" "$SHARED_CONFIG_DIR" 2>/dev/null || true
     fi
@@ -97,7 +109,7 @@ if [ -d "$SHARED_CONFIG_DIR" ]; then
         src="$SHARED_CONFIG_DIR/$entry_id"
         dest="/home/devuser/$entry_target"
 
-        # 1. Materialize the entry inside the volume.
+        # Materialize the entry inside the volume (dir, or empty file).
         if [ "$entry_kind" = "dir" ]; then
             mkdir -p "$src"
         elif [ ! -e "$src" ]; then
@@ -105,23 +117,16 @@ if [ -d "$SHARED_CONFIG_DIR" ]; then
         fi
         chown "$DEV_UID:$DEV_GID" "$src" 2>/dev/null || true
 
-        # 2. Ensure the target's parent exists (e.g. ~/.config for gh).
-        destparent=$(dirname "$dest")
-        if [ ! -d "$destparent" ]; then
-            mkdir -p "$destparent"
-            chown "$DEV_UID:$DEV_GID" "$destparent" 2>/dev/null || true
-        fi
-
-        # 3. Link. A stale symlink is repointed and a missing target is created;
-        #    pre-existing real config is kept untouched (never destroyed).
-        if [ -L "$dest" ]; then
-            ln -sfn "$src" "$dest"
-        elif [ -e "$dest" ]; then
+        # Link into the home, never clobbering pre-existing real (non-symlink)
+        # config. ln -sfn both creates a missing link and repoints a stale one.
+        if [ -e "$dest" ] && [ ! -L "$dest" ]; then
             echo "shared-config: keeping existing $dest (not a symlink); run 'devcontainer-cli sync-config' to seed the volume" >&2
-        else
-            ln -s "$src" "$dest"
+            continue
         fi
-        [ -L "$dest" ] && chown -h "$DEV_UID:$DEV_GID" "$dest" 2>/dev/null || true
+        destparent="$(dirname "$dest")"
+        [ -d "$destparent" ] || { mkdir -p "$destparent" && chown "$DEV_UID:$DEV_GID" "$destparent" 2>/dev/null; }
+        ln -sfn "$src" "$dest"
+        chown -h "$DEV_UID:$DEV_GID" "$dest" 2>/dev/null || true
     done <<'SHARED_CONFIG_ENTRIES'
 claude dir .claude
 claude.json file .claude.json

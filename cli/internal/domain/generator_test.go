@@ -486,7 +486,7 @@ func TestGenerateCompose_PersistVolumesDefaultAll(t *testing.T) {
 	// A nil PersistVolumes (legacy/unset) mounts all three persistence volumes.
 	yml := mustGenerateCompose(t, makeConfig())
 	vols := devcontainerVolumes(t, yml)
-	for _, want := range []string{"../..:/workspace", "devcontainer_etc:/etc", "devcontainer_root:/root", "devcontainer_home:/home"} {
+	for _, want := range []string{"../..:/workspaces/devcontainer", "devcontainer_etc:/etc", "devcontainer_root:/root", "devcontainer_home:/home"} {
 		found := false
 		for _, v := range vols {
 			if v == want {
@@ -511,7 +511,7 @@ func TestGenerateCompose_PersistVolumesSubset(t *testing.T) {
 	})
 	yml := mustGenerateCompose(t, cfg)
 	vols := devcontainerVolumes(t, yml)
-	assertContainsStr(t, strings.Join(vols, "\n"), "../..:/workspace", "subset workspace")
+	assertContainsStr(t, strings.Join(vols, "\n"), "../..:/workspaces/devcontainer", "subset workspace")
 	assertContainsStr(t, strings.Join(vols, "\n"), "devcontainer_home:/home", "subset home")
 	assertNotContainsStr(t, strings.Join(vols, "\n"), "devcontainer_etc:/etc", "subset no etc")
 	assertNotContainsStr(t, strings.Join(vols, "\n"), "devcontainer_root:/root", "subset no root")
@@ -533,7 +533,7 @@ func TestGenerateCompose_PersistVolumesNone(t *testing.T) {
 	})
 	yml := mustGenerateCompose(t, cfg)
 	vols := devcontainerVolumes(t, yml)
-	if len(vols) != 1 || vols[0] != "../..:/workspace" {
+	if len(vols) != 1 || vols[0] != "../..:/workspaces/devcontainer" {
 		t.Errorf("expected only the workspace mount, got %v", vols)
 	}
 	top := topLevelVolumes(t, yml)
@@ -542,6 +542,16 @@ func TestGenerateCompose_PersistVolumesNone(t *testing.T) {
 			t.Errorf("expected no persistence volumes declared, found %q", k)
 		}
 	}
+}
+
+func TestGenerateCompose_WorkspaceMountIsUniquePerProject(t *testing.T) {
+	cfg := makeConfig(func(c *types.DevcontainerConfig) { c.Workspace = "myproj" })
+	yml := mustGenerateCompose(t, cfg)
+	vols := devcontainerVolumes(t, yml)
+	if !contains(vols, "../..:/workspaces/myproj") {
+		t.Errorf("expected project mount at /workspaces/myproj, got %v", vols)
+	}
+	assertNotContainsStr(t, strings.Join(vols, "\n"), "../..:/workspace\n", "no bare /workspace mount")
 }
 
 func TestGenerateCompose_SharedConfigDefaultOn(t *testing.T) {

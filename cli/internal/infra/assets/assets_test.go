@@ -113,6 +113,15 @@ func TestEntrypointAlignsUIDInsteadOfChangingWorkspaceACLs(t *testing.T) {
 	if !strings.Contains(script, `getent passwd "$WS_UID"`) || !strings.Contains(script, "userdel") {
 		t.Error("entrypoint must remove the user squatting on the workspace UID before remapping")
 	}
+	// The project mount is at /workspaces/<name> (unique per project so tool
+	// history does not collide in the shared volume) with /workspace aliased to
+	// it; the UID remap must operate on the resolved dir, not a hardcoded path.
+	if !strings.Contains(script, "for _ws in /workspaces/*") {
+		t.Error("entrypoint must resolve the project mount under /workspaces/")
+	}
+	if !strings.Contains(script, "ln -s \"$_ws\" /workspace") {
+		t.Error("entrypoint must alias /workspace to the resolved project dir")
+	}
 	// The home may only ever be chowned to devuser's ACTUAL UID/GID, never to
 	// the workspace owner directly (the remap may have failed).
 	if strings.Contains(script, `chown -R "$WS_UID:$WS_GID" /home/devuser`) {
