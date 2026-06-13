@@ -46,11 +46,13 @@ func runShell(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	// With explicit args, --type prepends the shell to the raw command line;
+	// with no args it picks the login shell the service launcher opens.
 	command := args
-	if shellType != "" {
+	if shellType != "" && len(args) > 0 {
 		command = append([]string{shellType}, args...)
 	}
 
 	svc := service.InspectService{Report: ui.Console{}}
-	return svc.Shell(containerName, userFlag, command)
+	return svc.Shell(containerName, userFlag, shellType, command)
 }

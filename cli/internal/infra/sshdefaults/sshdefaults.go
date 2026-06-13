@@ -31,8 +31,17 @@ func ManagedComment(workspace string) string {
 	return fmt.Sprintf("# %s workspace=%s", ManagedMarker, workspace)
 }
 
+// AuthorizedKeysInstallScript returns the sh script that installs a public key
+// (piped on stdin) into the exec user's ~/.ssh/authorized_keys. It resolves the
+// home from the container's live /etc/passwd instead of trusting ~/$HOME:
+// docker exec delivers a stale HOME=/ when the entrypoint renumbered devuser's
+// UID at runtime (the workspace-owner remap), which turned ~/.ssh into //.ssh.
 func AuthorizedKeysInstallScript() string {
-	return "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && sort -u ~/.ssh/authorized_keys -o ~/.ssh/authorized_keys && chmod 700 ~/.ssh && chmod 600 ~/.ssh/authorized_keys"
+	return `H="$(getent passwd "$(id -u)" 2>/dev/null | cut -d: -f6)"; ` +
+		`[ -d "$H" ] || H="$HOME"; { [ -n "$H" ] && [ "$H" != "/" ]; } || H=` + types.DevUserHome + `; ` +
+		`mkdir -p "$H/.ssh" && cat >> "$H/.ssh/authorized_keys" && ` +
+		`sort -u "$H/.ssh/authorized_keys" -o "$H/.ssh/authorized_keys" && ` +
+		`chmod 700 "$H/.ssh" && chmod 600 "$H/.ssh/authorized_keys"`
 }
 
 // RemoteExportOptions carries everything RemoteExportScript embeds into the

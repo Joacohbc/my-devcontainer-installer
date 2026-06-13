@@ -189,20 +189,33 @@ func (s InspectService) ensureRunning(name string) error {
 	return nil
 }
 
-// loginShellLauncher resolves the current user's configured login shell (from
-// /etc/passwd, falling back to $SHELL, then bash, then sh) and execs it as a
-// login shell (-l) so that /etc/profile and the user's profile/rc files are
-// loaded — a fully interactive login session, not a bare shell.
-const loginShellLauncher = `SH="$(getent passwd "$(id -u)" 2>/dev/null | cut -d: -f7)"; ` +
-	`[ -x "$SH" ] || SH="$SHELL"; ` +
-	`[ -x "$SH" ] || SH="$(command -v bash)"; ` +
-	`[ -x "$SH" ] || SH="$(command -v sh)"; ` +
-	`exec "$SH" -l`
+// shellLauncher renders the sh script that opens an interactive login shell:
+// the named shell when shellType is non-empty, otherwise the user's configured
+// login shell from /etc/passwd, falling back to $SHELL, then bash, then sh.
+// The -l makes /etc/profile and the user's profile/rc files load — a fully
+// interactive login session, not a bare shell. HOME is re-exported from the
+// live passwd entry because docker exec delivers a stale HOME=/ after the
+// entrypoint's runtime UID remap, which made the shell look for its rc files
+// under / and start bare.
+func shellLauncher(shellType string) string {
+	resolve := `SH="$(printf %s "$P" | cut -d: -f7)"; `
+	if shellType != "" {
+		resolve = `SH="$(command -v ` + shellType + `)"; `
+	}
+	return `P="$(getent passwd "$(id -u)" 2>/dev/null)"; ` +
+		`H="$(printf %s "$P" | cut -d: -f6)"; [ -d "$H" ] && export HOME="$H"; ` +
+		resolve +
+		`[ -x "$SH" ] || SH="$SHELL"; ` +
+		`[ -x "$SH" ] || SH="$(command -v bash)"; ` +
+		`[ -x "$SH" ] || SH="$(command -v sh)"; ` +
+		`exec "$SH" -l`
+}
 
 // Shell opens an interactive login shell (or runs command) in the running
-// container. With no command it launches the user's configured login shell so
-// profiles and rc files are sourced.
-func (s InspectService) Shell(name, user string, command []string) error {
+// container. With no command it launches a login shell — the shellType one
+// when given, else the user's configured shell — so profiles and rc files are
+// sourced. A non-empty command is exec'd verbatim and shellType is ignored.
+func (s InspectService) Shell(name, user, shellType string, command []string) error {
 	if err := s.ensureRunning(name); err != nil {
 		return err
 	}
@@ -214,7 +227,7 @@ func (s InspectService) Shell(name, user string, command []string) error {
 	if len(command) > 0 {
 		execArgs = append(execArgs, command...)
 	} else {
-		execArgs = append(execArgs, "sh", "-c", loginShellLauncher)
+		execArgs = append(execArgs, "sh", "-c", shellLauncher(shellType))
 	}
 	exitCode, err := docker.DockerInherit(execArgs)
 	if err != nil {
