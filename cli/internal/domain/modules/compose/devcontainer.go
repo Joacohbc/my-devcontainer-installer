@@ -23,7 +23,7 @@ var DevcontainerService = &ServiceSpec{
 		if workspaceDir == "" {
 			workspaceDir = "/workspace"
 		}
-		volumes := append([]string{"../..:" + workspaceDir}, ctx.PersistVolumeMounts...)
+		volumes := []string{"../..:" + workspaceDir}
 		if ctx.SharedConfigMount != "" {
 			volumes = append(volumes, ctx.SharedConfigMount)
 		}

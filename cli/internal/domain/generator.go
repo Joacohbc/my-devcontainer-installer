@@ -83,41 +83,6 @@ func ResolveDevcontainerImageName(config *types.DevcontainerConfig) string {
 	return config.Image
 }
 
-// resolvePersistVolumeIDs returns the persistence volume ids enabled for the
-// config, in canonical order. A nil PersistVolumes means "unset" → all of them
-// (legacy default); a non-nil value is honored exactly (empty slice → none).
-func resolvePersistVolumeIDs(config *types.DevcontainerConfig) []string {
-	if config.Compose.PersistVolumes == nil {
-		return types.DefaultPersistVolumeIDs()
-	}
-	selected := make(map[string]bool, len(*config.Compose.PersistVolumes))
-	for _, id := range *config.Compose.PersistVolumes {
-		selected[id] = true
-	}
-	var out []string
-	for _, s := range types.PersistVolumeSpecs {
-		if selected[s.ID] {
-			out = append(out, s.ID)
-		}
-	}
-	return out
-}
-
-// persistVolumes returns the devcontainer mount strings (e.g.
-// "devcontainer_etc:/etc") and the bare volume names to declare for the enabled
-// persistence volumes.
-func persistVolumes(config *types.DevcontainerConfig) (mounts []string, declared []string) {
-	for _, id := range resolvePersistVolumeIDs(config) {
-		spec, ok := types.PersistVolumeSpecByID(id)
-		if !ok {
-			continue
-		}
-		mounts = append(mounts, spec.Volume+":"+spec.Mount)
-		declared = append(declared, spec.Volume)
-	}
-	return mounts, declared
-}
-
 // devcontainerPorts returns the published port mappings for the devcontainer
 // service, with each spec bound to 127.0.0.1 unless it already carries an
 // explicit host IP. Returns nil when no ports are configured.
@@ -214,12 +179,7 @@ func GenerateCompose(config *types.DevcontainerConfig) (string, error) {
 	}
 	devcontainerIP, _ := LastHost(subnet)
 
-	persistMounts, persistDeclared := persistVolumes(config)
-
 	declaredVolumes := make(map[string]bool)
-	for _, v := range persistDeclared {
-		declaredVolumes[v] = true
-	}
 	for _, id := range enabledIDs {
 		svc := catalog.GetComposeService(types.ServiceID(id))
 		if svc == nil {
@@ -258,7 +218,6 @@ func GenerateCompose(config *types.DevcontainerConfig) (string, error) {
 			DefaultDBPassword: dbPass,
 		}
 		if svc.ID == types.ServiceDevcontainer {
-			rc.PersistVolumeMounts = persistMounts
 			rc.Ports = devcontainerPorts(config)
 			rc.WorkspaceDir = types.WorkspaceDir(workspace)
 			if types.SharedConfigEnabled(config) {
@@ -458,12 +417,7 @@ func PlannedComposeNames(config *types.DevcontainerConfig) (containers []string,
 	enabledIDs := result.enabledIDs
 	optionsByID := result.optionsByID
 
-	_, persistDeclared := persistVolumes(config)
-
 	declaredVolumes := make(map[string]bool)
-	for _, v := range persistDeclared {
-		declaredVolumes[v] = true
-	}
 	for _, id := range enabledIDs {
 		svc := catalog.GetComposeService(types.ServiceID(id))
 		if svc == nil {

@@ -21,10 +21,6 @@ type RenderContext struct {
 	Options           map[string]any
 	DefaultDBUser     string
 	DefaultDBPassword string
-	// PersistVolumeMounts are the optional persistence volume mounts (e.g.
-	// "devcontainer_etc:/etc") to add to the devcontainer service, on top of the
-	// always-present workspace bind mount. Only the devcontainer service reads it.
-	PersistVolumeMounts []string
 	// Ports are the resolved docker port mappings (e.g. "127.0.0.1:8080:80") to
 	// publish on the devcontainer service. Only the devcontainer service reads it.
 	Ports []string

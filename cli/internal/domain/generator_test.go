@@ -494,68 +494,6 @@ func TestGenerateCompose_PortsRespectExplicitIP(t *testing.T) {
 	}
 }
 
-func TestGenerateCompose_PersistVolumesDefaultAll(t *testing.T) {
-	// A nil PersistVolumes (legacy/unset) mounts all three persistence volumes.
-	yml := mustGenerateCompose(t, makeConfig())
-	vols := devcontainerVolumes(t, yml)
-	for _, want := range []string{"../..:/workspaces/devcontainer", "devcontainer_etc:/etc", "devcontainer_root:/root", "devcontainer_home:/home"} {
-		found := false
-		for _, v := range vols {
-			if v == want {
-				found = true
-			}
-		}
-		if !found {
-			t.Errorf("expected devcontainer volume %q, got %v", want, vols)
-		}
-	}
-	top := topLevelVolumes(t, yml)
-	for _, v := range []string{"devcontainer_etc", "devcontainer_root", "devcontainer_home"} {
-		if top[v] == nil {
-			t.Errorf("expected top-level volume %q, got %v", v, top)
-		}
-	}
-}
-
-func TestGenerateCompose_PersistVolumesSubset(t *testing.T) {
-	cfg := makeConfig(func(c *types.DevcontainerConfig) {
-		c.Compose.PersistVolumes = &[]string{"home"}
-	})
-	yml := mustGenerateCompose(t, cfg)
-	vols := devcontainerVolumes(t, yml)
-	assertContainsStr(t, strings.Join(vols, "\n"), "../..:/workspaces/devcontainer", "subset workspace")
-	assertContainsStr(t, strings.Join(vols, "\n"), "devcontainer_home:/home", "subset home")
-	assertNotContainsStr(t, strings.Join(vols, "\n"), "devcontainer_etc:/etc", "subset no etc")
-	assertNotContainsStr(t, strings.Join(vols, "\n"), "devcontainer_root:/root", "subset no root")
-
-	top := topLevelVolumes(t, yml)
-	if top["devcontainer_home"] == nil {
-		t.Errorf("expected top-level devcontainer_home, got %v", top)
-	}
-	if top["devcontainer_etc"] != nil || top["devcontainer_root"] != nil {
-		t.Errorf("unselected persistence volumes must not be declared, got %v", top)
-	}
-}
-
-func TestGenerateCompose_PersistVolumesNone(t *testing.T) {
-	off := false
-	cfg := makeConfig(func(c *types.DevcontainerConfig) {
-		c.Compose.PersistVolumes = &[]string{}
-		c.Compose.SharedConfig = &off // isolate persist behavior from the shared mount
-	})
-	yml := mustGenerateCompose(t, cfg)
-	vols := devcontainerVolumes(t, yml)
-	if len(vols) != 1 || vols[0] != "../..:/workspaces/devcontainer" {
-		t.Errorf("expected only the workspace mount, got %v", vols)
-	}
-	top := topLevelVolumes(t, yml)
-	for k := range top {
-		if strings.HasPrefix(k, "devcontainer_") {
-			t.Errorf("expected no persistence volumes declared, found %q", k)
-		}
-	}
-}
-
 func TestGenerateCompose_WorkspaceMountIsUniquePerProject(t *testing.T) {
 	cfg := makeConfig(func(c *types.DevcontainerConfig) { c.Workspace = "myproj" })
 	yml := mustGenerateCompose(t, cfg)
