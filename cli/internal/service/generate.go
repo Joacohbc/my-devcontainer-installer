@@ -2,11 +2,39 @@ package service
 
 import (
 	"fmt"
+	"os"
+	"strconv"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
 )
+
+// resolveHostBuildIDs records the host user's UID/GID on the config so a
+// local-cached image bakes them (matching the workspace owner without a runtime
+// remap). They are transient — resolved fresh on every Plan, never persisted —
+// and only set when not already provided (so callers/tests can override).
+func resolveHostBuildIDs(config *types.DevcontainerConfig) {
+	if config.BuildUID == 0 {
+		config.BuildUID = os.Getuid()
+	}
+	if config.BuildGID == 0 {
+		config.BuildGID = os.Getgid()
+	}
+}
+
+// buildArgs returns the Dockerfile build args derived from the host ids, or nil
+// when they are unset (the Dockerfile ARG defaults then apply). It is the single
+// source for both the compose build block and the image fingerprint.
+func buildArgs(config *types.DevcontainerConfig) map[string]string {
+	if config.BuildUID <= 0 || config.BuildGID <= 0 {
+		return nil
+	}
+	return map[string]string{
+		"USER_UID": strconv.Itoa(config.BuildUID),
+		"USER_GID": strconv.Itoa(config.BuildGID),
+	}
+}
 
 // UsedSubnets returns the Docker subnets already in use, for conflict detection.
 func (s GenerateService) UsedSubnets() []domain.CidrRange {
@@ -53,6 +81,8 @@ type GeneratePlan struct {
 // maps each referenced build-helper file to its on-disk content so the
 // fingerprint reflects the scripts baked into the image.
 func (s GenerateService) Plan(config *types.DevcontainerConfig, copyContents map[string]string) (GeneratePlan, error) {
+	resolveHostBuildIDs(config)
+
 	dockerfile, err := domain.GenerateDockerfile(config)
 	if err != nil {
 		return GeneratePlan{}, err
@@ -75,7 +105,7 @@ func (s GenerateService) Plan(config *types.DevcontainerConfig, copyContents map
 		for _, m := range config.Dockerfile.Modules {
 			moduleIDs = append(moduleIDs, string(m.ID))
 		}
-		plan.Fingerprint = domain.ComputeFingerprint(dockerfile, copyContents, moduleIDs)
+		plan.Fingerprint = domain.ComputeFingerprint(dockerfile, copyContents, moduleIDs, buildArgs(config))
 		plan.Image = domain.FingerprintTag(plan.Fingerprint)
 		plan.CachedImageHit = domain.LocalImageExists(plan.Image, captureFunc())
 	}

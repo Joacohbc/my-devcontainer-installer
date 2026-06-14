@@ -30,7 +30,7 @@ var DevcontainerService = &ServiceSpec{
 
 		svc := &ServiceDef{
 			Image:         ctx.ImageName,
-			Build:         ".",
+			Build:         &BuildDef{Context: "."},
 			ContainerName: SSHServiceName,
 			Command:       "sleep infinity",
 			Restart:       "unless-stopped",

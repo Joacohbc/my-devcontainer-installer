@@ -42,9 +42,17 @@ type ComposeDoc struct {
 	Volumes  map[string]*VolumeDef  `yaml:"volumes"`
 }
 
+// BuildDef is the long-form compose `build:` block, used when the build needs
+// build args (e.g. the host UID/GID baked into a local-cached image). A bare
+// context string is also valid for `Build`, but local-cached always carries args.
+type BuildDef struct {
+	Context string            `yaml:"context"`
+	Args    map[string]string `yaml:"args,omitempty"`
+}
+
 type ServiceDef struct {
 	Image         string            `yaml:"image,omitempty"`
-	Build         string            `yaml:"build,omitempty"`
+	Build         any               `yaml:"build,omitempty"`
 	ContainerName string            `yaml:"container_name"`
 	Hostname      string            `yaml:"hostname,omitempty"`
 	Command       string            `yaml:"command,omitempty"`
