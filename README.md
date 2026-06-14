@@ -124,7 +124,7 @@ Detalles de la configuración del túnel en [CLOUDFLARE_TUNNEL.md](CLOUDFLARE_TU
 * **Conexión SSH:** Acceso seguro mediante OpenSSH Server. Ideal para usar con VS Code Remote - SSH o tu terminal favorita.
 * **Persistencia y Sincronización:**
   * El directorio del repositorio se monta en `/workspaces/<workspace>` dentro del contenedor (con `/workspace` como alias de compatibilidad). La ruta única por proyecto evita que el historial de herramientas como Claude Code o Antigravity (indexado por ruta) se mezcle entre proyectos al compartir el volumen de configuración.
-  * Los archivos de configuración y datos de usuario (`/home`, `/root`, `/etc`) se persisten en volúmenes Docker.
+  * **Volumen de config compartida (opcional):** un volumen global que sincroniza logins y sesiones de herramientas (`.claude`, `.claude.json`, `.codex`, `.gemini`, `.antigravity`, `.config/gh`) entre todos los contenedores. Se siembra desde el host con `devcontainer-cli sync-config` (ver [Sembrar logins desde el host](#sembrar-logins-desde-el-host-sync-config)).
 * **Bases de Datos (Dockerizadas, versión configurable por la CLI):**
   * MongoDB — default `8.0` (opciones: `7.0`, `8.0`, `8.3`).
   * Redis — default `7.4-alpine` (opciones: `7.4-alpine`, `8.0-alpine`, `8.6-alpine`).
@@ -135,11 +135,15 @@ Detalles de la configuración del túnel en [CLOUDFLARE_TUNNEL.md](CLOUDFLARE_TU
   * **Node.js:** `nvm` (default) o `fnm`. Versión: LTS, 22 o 24.
   * **pnpm / Yarn / Bun:** gestores de paquetes como módulos opcionales (Yarn vía Corepack, requiere Node.js).
   * **Go:** Última versión (instalada vía script utilitario, módulo `go`).
+  * **Rust:** `rustup` + toolchain estable (módulo `rust`).
+  * **C / C++:** GCC, Clang, CMake, GDB y `build-essential` (módulo `c-cpp`).
+  * **PHP:** PHP (PPA de Ondřej) + Composer (módulo `php`).
   * **SQLite:** sqlite3 (módulo `sqlite`).
   * **Tmux:** tmux (módulo `tmux`).
+  * **Docker CLI (DoD):** cliente `docker` dentro del contenedor usando el socket montado del host (módulo `dod`).
   * **Clientes de DB en el devcontainer:** `psql`, `redis-tools`, `mongosh` (módulo `dbclients`, seleccionables individualmente).
   * **GitHub CLI:** `gh` + `jq` (módulo `github-cli`, incluido por defecto).
-  * **AI CLIs (opcionales, módulos `claude-code`, `opencode`, `codex-cli`, `antigravity-cli`, `copilot-cli`):** scripts de instalación embebidos seleccionables de forma independiente.
+  * **AI CLIs (opcionales, módulos `claude-code`, `opencode`, `codex-cli`, `antigravity-cli`, `copilot-cli`):** scripts de instalación embebidos seleccionables de forma independiente. También están disponibles `caveman` (compresión de salida de agentes + hooks) y `graphify` (grafos de conocimiento del código).
 * **Herramientas base:** `git`, `nano`, `wget`, `curl`, `unzip`, `ca-certificates` — siempre presentes.
 * **Terminal Mejorada:** ZSH preconfigurado con frameworks y plugins útiles.
 
@@ -175,6 +179,16 @@ curl -fsSL https://raw.githubusercontent.com/Joacohbc/my-devcontainer-installer/
 
 **Descarga manual** (alternativa): https://github.com/Joacohbc/my-devcontainer-installer/releases/latest — binarios disponibles: `devcontainer-cli-linux-x64`, `-linux-arm64`, `-darwin-x64` y `-darwin-arm64`. Son ejecutables únicos (assets embebidos via `go:embed`); descargás, `chmod +x` y listo.
 
+### Actualizar la CLI
+
+La propia CLI se actualiza desde la última release de GitHub:
+
+```bash
+devcontainer-cli upgrade-cli            # actualiza a la última versión estable
+devcontainer-cli upgrade-cli --check    # solo informa si hay una versión nueva
+devcontainer-cli upgrade-cli --pre-release  # incluye pre-releases
+```
+
 ### Desinstalación
 
 Si deseas eliminar la CLI y sus configuraciones:
@@ -185,7 +199,9 @@ curl -fsSL https://raw.githubusercontent.com/Joacohbc/my-devcontainer-installer/
 
 ### Autocompletado
 
-El instalador configura el autocompletado automáticamente en `.zshrc` y `.bashrc`/`.bash_profile`. Si por algún motivo falla, podés habilitarlo a mano:
+**El autocompletado se instala por defecto:** `install.sh` lo configura automáticamente en `.zshrc` y `.bashrc`/`.bash_profile` durante la instalación, así que normalmente no tenés que hacer nada. Para optar por no configurarlo, instalá con `SETUP_COMPLETION=0`.
+
+Solo si por algún motivo falla, podés habilitarlo a mano:
 
 ```bash
 # Zsh
@@ -199,8 +215,6 @@ devcontainer-cli completion bash > ~/.local/share/devcontainer-cli/completions/d
 # Agregar a ~/.bashrc:
 #   source ~/.local/share/devcontainer-cli/completions/devcontainer-cli.bash
 ```
-
-> Para deshabilitar la configuración automática al instalar: `SETUP_COMPLETION=0 sh install.sh`
 
 ## Uso rápido
 
@@ -226,104 +240,142 @@ Primero, obtén la contraseña generada durante la instalación. La necesitarás
 docker compose logs devcontainer-ssh | grep "devuser password" | tail -n 1
 ```
 
-### 2. Configurar el acceso SSH
+### 2. Configurar el acceso SSH con `setup-ssh`
 
-#### Opción A: Modo automático (recomendado)
-
-La CLI genera la clave, la copia al contenedor y deja listo el bloque `~/.ssh/config` por ti:
+El comando `setup-ssh` automatiza todo el flujo de extremo a extremo, sin pasos manuales:
 
 ```bash
 devcontainer-cli setup-ssh
 ```
 
-Detecta el `container_name` y el modo (`local`, `remote`) automáticamente.
+**Qué hace por debajo:**
 
-#### Opción B: Manual
+1. **Levanta el stack** si el contenedor objetivo todavía no está corriendo (te pide confirmación) y autodetecta el `devcontainer-ssh` del proyecto desde el `docker-compose.yml`.
+2. **Genera (una sola vez) una clave SSH gestionada y compartida.** La CLI mantiene **una única clave** reutilizada por todos los workspaces, almacenada fuera de `~/.ssh` en `~/.config/devcontainer-cli/ssh/id_devcontainer`. Si ya existe, la reutiliza. Podés apuntar a otra clave con `--key <ruta>`.
+3. **Instala la clave pública** dentro del contenedor (vía `docker exec`), agregándola a `~/.ssh/authorized_keys` del usuario `devuser`.
+4. **Escribe un bloque `Host` en tu `~/.ssh/config`** con un comentario marcador (`# devcontainer-cli:managed workspace=<ws>`) para que `destroy` pueda limpiarlo después. Si el alias ya existe, te ofrece sobrescribir, renombrar o saltar (guardando un backup al sobrescribir).
+5. **Prueba la conexión** (`ssh <alias> echo OK`) y te muestra el comando final para conectarte.
 
-Sigue estos pasos desde tu máquina local (tu PC o Laptop) para autorizar tu acceso sin contraseña.
+#### Modo Local (por defecto)
 
-##### A. Generar par de claves (si no tienes una)
-
-```bash
-ssh-keygen -t ed25519 -f ~/.ssh/id_devcontainer -N "" -q
-```
-
-##### B. Instalar la clave en el contenedor
-
-**Opción 1: Entorno Local**
-(Si Docker corre en la misma máquina que estás usando)
-
-> El `container_name` real se prefija con el `workspace` configurado (ej: `mi-proyecto-devcontainer-ssh`). Reemplaza `<workspace>` por el nombre que elegiste en la CLI (o consulta `docker ps`).
-
-```bash
-# 1. Obtener IP del contenedor
-# Nota: si el contenedor está en varias redes Docker, inspect devuelve una IP
-# por línea; `head -n1` se queda con la primera.
-IP_SSH=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{"\n"}}{{end}}' <workspace>-devcontainer-ssh | head -n1)
-
-# 2. Copiar clave (te pedirá la contraseña obtenida en el paso 1)
-ssh-copy-id -i ~/.ssh/id_devcontainer.pub devuser@$IP_SSH
-
-# 3. Guardar configuración en tu SSH config
-cat <<EOF >> ~/.ssh/config
-Host devcontainer
-    HostName $IP_SSH
-    IdentityFile ~/.ssh/id_devcontainer
-    User devuser
-EOF
-```
-
-**Opción 2: Entorno Remoto**
-(Si Docker corre en un servidor y tú estás en tu laptop)
-
-Sustituye `usuario@servidor` por los datos de conexión a tu servidor físico.
-
-```bash
-cat ~/.ssh/id_devcontainer.pub | ssh usuario@servidor "docker exec -i -u devuser <workspace>-devcontainer-ssh sh -c 'mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 700 ~/.ssh && chmod 600 ~/.ssh/authorized_keys'"
-```
-
-Para conectar fácilmente, añade esto a tu `~/.ssh/config`:
+Cuando Docker corre en la misma máquina desde la que te conectás. La CLI resuelve la **IP privada del contenedor** y genera un bloque directo:
 
 ```ssh
-Host devcontainer-remote
+Host <workspace>
+    HostName 172.25.0.2        # IP del contenedor, detectada automáticamente
+    User devuser
+    IdentityFile ~/.config/devcontainer-cli/ssh/id_devcontainer
+    IdentitiesOnly yes
+```
+
+Si el contenedor está en varias redes, te deja elegir cuál IP usar.
+
+#### Modo Remoto (Docker en otro servidor)
+
+Cuando Docker corre en un servidor (Raspberry Pi, mini PC, etc.) y vos te conectás desde tu laptop. Pasá el host SSH del servidor:
+
+```bash
+devcontainer-cli setup-ssh --remote usuario@servidor
+```
+
+En este modo la CLI instala la clave en el contenedor del servidor y luego **imprime un snippet autocontenido** para pegar **en la máquina desde la que te conectás**. Ese snippet escribe la clave compartida (privada + pública) en `~/.ssh/` de esa máquina y agrega un bloque `Host` con `ProxyCommand`, que salta por SSH al servidor y reenvía el tráfico al contenedor con `netcat`:
+
+```ssh
+Host <workspace>
     User devuser
     IdentityFile ~/.ssh/id_devcontainer
-    ProxyCommand ssh usuario@servidor "nc -q0 \$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{\"\n\"}}{{end}}' <workspace>-devcontainer-ssh | head -n1) 22"
+    IdentitiesOnly yes
+    ProxyCommand ssh usuario@servidor "nc -q0 $(docker inspect -f '...' <workspace>-devcontainer-ssh | head -n1) 22"
 ```
+
+> ⚠️ El snippet de modo remoto contiene una **clave privada**; tratalo como un secreto.
+
+#### Flags útiles
+
+| Flag | Descripción |
+|---|---|
+| `--remote USER@HOST` | Activa el modo remoto (ProxyCommand vía ese host). |
+| `--container <nombre>` | Apunta a un contenedor concreto (omite la detección por compose). |
+| `--user <usuario>` | Usuario SSH dentro del contenedor (default `devuser`). |
+| `--key <ruta>` | Usa otra clave privada en vez de la gestionada. |
+| `-y`, `--yes` | Asume "sí" en todas las confirmaciones (no interactivo). |
 
 ### 3. Conectarse
 
-Ahora puedes conectar simplemente con el alias que hayas configurado:
+Una vez configurado, conectate con el alias (por defecto el nombre del workspace):
 
 ```bash
-ssh devcontainer
-# O
-ssh devcontainer-remote
+ssh <workspace>
 ```
+
+## Copiar archivos y assets (`copy`)
+
+El comando `copy` (alias `cp`) copia archivos o directorios entre el host y el contenedor, **resolviendo el contenedor automáticamente**. Una ruta prefijada con `:` es una ruta *dentro del contenedor*; la dirección se infiere según dónde esté el `:`:
+
+```bash
+devcontainer-cli copy ./app.go :/home/devuser/app.go    # host  -> contenedor
+devcontainer-cli copy :/home/devuser/out.log ./out.log  # contenedor -> host
+devcontainer-cli copy ./app.go /home/devuser/app.go     # host -> contenedor (':' opcional en el destino)
+```
+
+Soporta autocompletado dinámico de rutas dentro del contenedor.
+
+### Copiar un asset embebido (`--asset`)
+
+Con `--asset <nombre>` materializa uno de los scripts horneados en la CLI (por ejemplo, un instalador de CLI de IA) directamente en el home de `devuser`, dejándolo ejecutable y con el owner correcto. Útil para ejecutar un instalador en un contenedor que ya está corriendo sin haberlo incluido como módulo:
+
+```bash
+devcontainer-cli copy --asset install-claude-code        # cae en el home de devuser
+devcontainer-cli copy --asset login-github-cli /tmp/login.sh   # destino opcional
+```
+
+Assets disponibles: `install-claude-code`, `install-codex-cli`, `install-copilot`, `install-opencode`, `install-antigravity`, `install-caveman`, `install-graphify`, `login-github-cli` (autocompletables con TAB).
+
+## Sembrar logins desde el host (`sync-config`)
+
+Si activaste el **volumen de config compartida**, podés copiar los logins y sesiones que ya tenés en tu host hacia ese volumen, para que los contenedores arranquen ya autenticados (sin repetir `gh auth login`, login de Claude Code, etc.). El comando corre **en el host**:
+
+```bash
+devcontainer-cli sync-config            # siembra todas las herramientas detectadas
+devcontainer-cli sync-config gh claude  # solo herramientas específicas
+devcontainer-cli sync-config --force    # reemplaza lo que ya exista en el volumen
+```
+
+Herramientas reconocidas (se copian desde tu `$HOME` si existen): `claude` (`.claude` + `.claude.json`), `codex` (`.codex`), `gemini` (`.gemini`), `antigravity` (`.antigravity`, `.config/antigravity`) y `gh` (`.config/gh`). Tras sembrar, reiniciá o levantá los contenedores para que tomen los symlinks.
 
 ## Pasos Post-Instalación
 
-Una vez dentro del contenedor puedes terminar de preparar tu entorno: login de GitHub CLI, actualizar Go, instalar CLIs de IA, backups de base de datos, etc. Los scripts viven horneados en `~/post-script/`.
+Una vez dentro del contenedor puedes terminar de preparar tu entorno: cambiar la contraseña del DevUser, actualizar Go, ejecutar los instaladores de CLIs de IA, backups de base de datos, etc. Los scripts viven horneados en `~/post-script/`.
+
+> 💡 El login de GitHub CLI y los logins/configs de las CLIs de IA ya **no requieren pasos manuales** si usás [`sync-config`](#sembrar-logins-desde-el-host-sync-config): se siembran desde el host. Y cualquier instalador horneado puede materializarse en un contenedor en marcha con `devcontainer-cli copy --asset <nombre>`.
 
 Consulta **[POST_INSTALL_STEPS.md](POST_INSTALL_STEPS.md)** para el detalle.
 
-## Agregar Servicios Extra (Docker Run)
+## Conectar Servicios Extra a la Red (`network`)
 
-Para levantar un contenedor nuevo (por ejemplo, una base de datos extra o un servicio temporal) asegurando que el DevContainer pueda verlo y conectarse a él, es necesario que ambos compartan la misma red Docker.
-
-La red Docker generada se llama `<workspace>-network` (donde `<workspace>` es el nombre que configuraste en la CLI). Puedes usar el siguiente comando, que detecta automáticamente el nombre de la red del proyecto y conecta el nuevo servicio:
+Para que un contenedor existente (una base de datos extra, un servicio temporal, etc.) pueda comunicarse con el DevContainer, ambos deben compartir la misma red Docker (`<workspace>-network`). En lugar de buscar el ID de la red a mano, usá el subcomando `network`, que resuelve la red del workspace automáticamente:
 
 ```bash
-docker run -d \
-  --name <nombre-del-servicio> \
-  --network $(docker network ls -q -f name=<workspace>-network) \
-  <imagen>
+# Levantá tu contenedor normalmente
+docker run -d --name mi-servicio <imagen>
+
+# Conectalo a la red del workspace
+devcontainer-cli network connect mi-servicio
+
+# Para desconectarlo
+devcontainer-cli network disconnect mi-servicio
 ```
 
-**Explicación de las banderas:**
+Acepta **varios contenedores** a la vez y autocompleta sus nombres (gestionados por la CLI o no). Una vez conectado, desde dentro del DevContainer podés alcanzarlo por su nombre (ej: `ping mi-servicio`).
 
-*   `--network $(...)`: Busca dinámicamente el ID de la red `<workspace>-network` del proyecto.
-*   `--name`: Asigna el hostname. Esto permite que, desde dentro del DevContainer, puedas hacer ping o conectarte usando este nombre (ej: `ping <nombre-del-servicio>`).
+```bash
+devcontainer-cli network connect svc-a svc-b svc-c
+```
+
+**Flags útiles:**
+
+*   `--alias <nombre>`: registra nombres DNS extra para el contenedor en la red (repetible o separado por comas; se pregunta en modo interactivo).
+*   `--workspace <ws>`: fuerza el workspace cuya red usar (por defecto se deriva del directorio/config actual).
 
 ## Solución de Problemas (Troubleshooting)
 
