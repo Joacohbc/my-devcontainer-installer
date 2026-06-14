@@ -49,20 +49,16 @@ done
 
 # Align devuser's UID/GID with the owner of the mounted project dir so the
 # container can read/write the bind mount WITHOUT ever modifying the host's
-# original permissions (no chown/setfacl on the workspace).
+# original permissions (no chown/setfacl on the workspace). A local-cached image
+# already bakes the host UID/GID at build time, so this is a no-op there; it only
+# fires for prebuilt 'remote' images run on a host whose UID is not the baked
+# default (the image has no other account squatting on the target id).
 if [ -d "$WORKSPACE_DIR" ]; then
     WS_UID=$(stat -c %u "$WORKSPACE_DIR")
     WS_GID=$(stat -c %g "$WORKSPACE_DIR")
     CUR_UID=$(id -u devuser)
     CUR_GID=$(id -g devuser)
     if [ "$WS_UID" != "0" ] && { [ "$WS_UID" != "$CUR_UID" ] || [ "$WS_GID" != "$CUR_GID" ]; }; then
-        # Ubuntu >= 23.10 ships a stock "ubuntu" user that already holds
-        # UID/GID 1000, which makes the usermod below fail silently; remove any
-        # account squatting on the target UID before remapping.
-        CONFLICT_USER=$(getent passwd "$WS_UID" | cut -d: -f1)
-        if [ -n "$CONFLICT_USER" ] && [ "$CONFLICT_USER" != "devuser" ]; then
-            userdel -r "$CONFLICT_USER" 2>/dev/null || userdel "$CONFLICT_USER" 2>/dev/null || true
-        fi
         # Renumber devuser's own group only when the target GID is free;
         # otherwise adopt the existing group as primary via usermod -g.
         if ! getent group "$WS_GID" >/dev/null; then
@@ -74,13 +70,14 @@ fi
 
 # Re-own the persisted home to devuser's ACTUAL UID/GID, and only when it
 # drifted: this finishes a successful remap and repairs homes left owned by a
-# foreign UID after a failed one (which broke every shell rc on SSH login).
-# The home must never be chowned to a UID devuser does not really have, and the
-# workspace is never touched.
+# foreign UID after a failed one. A silent failure here breaks every shell rc on
+# SSH login, so surface it instead of swallowing the error. The home must never
+# be chowned to a UID devuser does not really have, and the workspace is never
+# touched.
 DEV_UID=$(id -u devuser)
 DEV_GID=$(id -g devuser)
 if [ "$(stat -c %u /home/devuser)" != "$DEV_UID" ] || [ "$(stat -c %g /home/devuser)" != "$DEV_GID" ]; then
-    chown -R "$DEV_UID:$DEV_GID" /home/devuser 2>/dev/null || true
+    chown -R "$DEV_UID:$DEV_GID" /home/devuser || echo "warning: could not fully chown /home/devuser to $DEV_UID:$DEV_GID; shell rc files may not load" >&2
 fi
 
 if [ -S /var/run/docker.sock ]; then
