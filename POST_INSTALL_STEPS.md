@@ -1,6 +1,6 @@
 # Pasos Post-Instalación
 
-Acciones que se ejecutan **dentro del contenedor** una vez levantado. Para instalar la CLI y configurar el acceso SSH, ver [README.md](README.md); para los subcomandos de la CLI, [DOC_CLI.md](DOC_CLI.md).
+Acciones que se ejecutan **dentro del contenedor** una vez levantado. Para instalar la CLI y configurar el acceso SSH, ver [README.md](README.md).
 
 ## Cambiar la contraseña del DevUser (opcional)
 

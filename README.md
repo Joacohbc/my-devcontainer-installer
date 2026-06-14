@@ -6,8 +6,6 @@ El entorno ofrece un contenedor principal (`devcontainer-ssh`) accesible vía SS
 
 Todo se genera y administra con la CLI `devcontainer-cli`.
 
-> 📖 **Referencia completa de la CLI** (todos los subcomandos, flags y modos de build): [DOC_CLI.md](DOC_CLI.md).
-
 ## Arquitectura
 
 El siguiente diagrama ilustra cómo interactúan los componentes del entorno:
@@ -216,8 +214,6 @@ docker compose -f .dc_mi-proyecto/build/docker-compose.yml up -d
 
 Eso genera el `Dockerfile`, `docker-compose.yml`, `.env` y scripts auxiliares dentro de `.dc_<workspace>/`.
 
-> 📖 Para el flujo no-interactivo, todos los subcomandos (`run`, `port-forward`, `update`, `down`, `prune`, `remove-container`, `remove-image`, `config`…), los modos de build y la estructura generada, ver **[DOC_CLI.md](DOC_CLI.md)**.
-
 ## Acceso y Uso
 
 La forma recomendada y más segura de acceder es mediante **Claves SSH**. El uso de contraseñas debería limitarse únicamente a la configuración inicial.
@@ -240,7 +236,7 @@ La CLI genera la clave, la copia al contenedor y deja listo el bloque `~/.ssh/co
 devcontainer-cli setup-ssh
 ```
 
-Detecta el `container_name` y el modo (`local`, `remote`) automáticamente. Detalles y flags en **[DOC_CLI.md → Configurar acceso SSH](DOC_CLI.md#configurar-acceso-ssh-setup-ssh)**.
+Detecta el `container_name` y el modo (`local`, `remote`) automáticamente.
 
 #### Opción B: Manual
 
