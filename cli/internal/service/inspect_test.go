@@ -28,11 +28,13 @@ func TestInspectShellBuildsExecArgs(t *testing.T) {
 		user      string
 		shellType string
 		command   []string
+		noTTY     bool
 		wantUser  bool
 	}{
-		{"default shell", "", "", nil, false},
-		{"typed shell", "devuser", "zsh", nil, true},
-		{"as root with cmd", "root", "", []string{"echo", "hi"}, true},
+		{"default shell", "", "", nil, false, false},
+		{"typed shell", "devuser", "zsh", nil, false, true},
+		{"as root with cmd", "root", "", []string{"echo", "hi"}, false, true},
+		{"no-tty with cmd", "", "", []string{"pg_dump", "devdb"}, true, false},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -40,12 +42,20 @@ func TestInspectShellBuildsExecArgs(t *testing.T) {
 			defer useFakeDocker(runner)()
 
 			svc := InspectService{Report: nopReporter{}}
-			if err := svc.Shell("c1", c.user, c.shellType, c.command); err != nil {
+			if err := svc.Shell("c1", c.user, c.shellType, c.command, c.noTTY); err != nil {
 				t.Fatalf("Shell: %v", err)
 			}
 			call := runner.callContaining("exec")
-			if call == nil || !slices.Contains(call, "-it") || !slices.Contains(call, "c1") {
+			if call == nil || !slices.Contains(call, "c1") {
 				t.Fatalf("unexpected exec call: %v", call)
+			}
+			// stdin stays open in both modes (-i); the TTY (-t) is dropped only
+			// when noTTY is set, so a redirected stream isn't mangled.
+			if !slices.Contains(call, "-i") {
+				t.Errorf("expected -i in exec call: %v", call)
+			}
+			if hasTTY := slices.Contains(call, "-t"); hasTTY == c.noTTY {
+				t.Errorf("-t presence = %v, want %v (noTTY=%v, call %v)", hasTTY, !c.noTTY, c.noTTY, call)
 			}
 			if slices.Contains(call, "-u") != c.wantUser {
 				t.Errorf("-u presence = %v, want %v (call %v)", !c.wantUser, c.wantUser, call)
@@ -74,7 +84,7 @@ func TestInspectShellFailsWhenNotRunning(t *testing.T) {
 	defer useFakeDocker(runner)()
 
 	svc := InspectService{Report: nopReporter{}}
-	if err := svc.Shell("c1", "", "", nil); err == nil {
+	if err := svc.Shell("c1", "", "", nil, false); err == nil {
 		t.Error("expected error when container is not running")
 	}
 }

@@ -12,12 +12,18 @@ func newShellCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "shell [flags] [-- command args...]",
 		Short: "Open an interactive shell in the devcontainer",
-		Long:  `devcontainer-cli shell — shortcut for docker exec -it <container> <shell>`,
-		RunE:  runShell,
+		Long: `devcontainer-cli shell — shortcut for docker exec -it <container> <shell>
+
+Pass -T/--no-tty to drop the pseudo-TTY (docker exec -i) when piping a command's
+output to a file, e.g.:
+
+  devcontainer-cli shell -c <ws>-postgres -T -- pg_dump -U devuser devdb > dump.sql`,
+		RunE: runShell,
 	}
 	addWorkspaceFlag(cmd)
 	cmd.Flags().String("user", "", "User to run the command as (e.g. root)")
 	cmd.Flags().String("type", "", "Shell to open: bash, zsh or sh (default: auto-detect)")
+	cmd.Flags().BoolP("no-tty", "T", false, "Disable pseudo-TTY allocation (use when piping output to a file, e.g. a DB dump)")
 	addContainerFlag(cmd)
 
 	_ = cmd.RegisterFlagCompletionFunc("type", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
@@ -40,6 +46,7 @@ func runShell(cmd *cobra.Command, args []string) error {
 	wsFlag := workspaceFlag(cmd)
 	userFlag, _ := cmd.Flags().GetString("user")
 	shellType, _ := cmd.Flags().GetString("type")
+	noTTY, _ := cmd.Flags().GetBool("no-tty")
 
 	containerName, err := resolveContainer(cmd, wsFlag)
 	if err != nil {
@@ -54,5 +61,5 @@ func runShell(cmd *cobra.Command, args []string) error {
 	}
 
 	svc := service.InspectService{Report: ui.Console{}}
-	return svc.Shell(containerName, userFlag, shellType, command)
+	return svc.Shell(containerName, userFlag, shellType, command, noTTY)
 }

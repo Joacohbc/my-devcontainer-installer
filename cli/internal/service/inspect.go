@@ -215,11 +215,19 @@ func shellLauncher(shellType string) string {
 // container. With no command it launches a login shell — the shellType one
 // when given, else the user's configured shell — so profiles and rc files are
 // sourced. A non-empty command is exec'd verbatim and shellType is ignored.
-func (s InspectService) Shell(name, user, shellType string, command []string) error {
+//
+// noTTY drops the pseudo-TTY (`-i` instead of `-it`): use it when piping the
+// command's output to a file or another process, since a TTY mangles the stream
+// (e.g. injecting `\r`, corrupting a redirected pg_dump). It only makes sense
+// with an explicit command — a bare login shell needs the TTY to be usable.
+func (s InspectService) Shell(name, user, shellType string, command []string, noTTY bool) error {
 	if err := s.ensureRunning(name); err != nil {
 		return err
 	}
-	execArgs := []string{"exec", "-it"}
+	execArgs := []string{"exec", "-i"}
+	if !noTTY {
+		execArgs = append(execArgs, "-t")
+	}
 	if user != "" {
 		execArgs = append(execArgs, "-u", user)
 	}

@@ -733,10 +733,13 @@ func TestShellCommand_HasFlags(t *testing.T) {
 	if shell == nil {
 		t.Fatal("shell command not found")
 	}
-	for _, name := range []string{"workspace", "user"} {
+	for _, name := range []string{"workspace", "user", "no-tty"} {
 		if shell.Flags().Lookup(name) == nil {
 			t.Errorf("expected shell flag --%s", name)
 		}
+	}
+	if shell.Flags().ShorthandLookup("T") == nil {
+		t.Error("expected shell flag shorthand -T for --no-tty")
 	}
 }
 
