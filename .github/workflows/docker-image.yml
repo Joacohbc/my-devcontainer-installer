@@ -67,6 +67,9 @@ jobs:
             --image ghcr.io/${{ env.REPO_OWNER }}/devcontainer-base:latest \
             --no-build
 
+      # No build-args are passed, so the Dockerfile's USER_UID/USER_GID default
+      # to 1000: prebuilt remote images bake devuser at UID 1000 and rely on the
+      # entrypoint's runtime remap for hosts whose UID differs.
       - name: Build and push base image
         uses: docker/build-push-action@v7
         with:

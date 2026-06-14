@@ -401,9 +401,14 @@ three plus `BuildModes` and tests.
    there is no Rosetta fallback.)
 4. **Build modes** — see above.
 5. **Fingerprint** (`local-cached`) — SHA-256 of normalized Dockerfile +
-   copyFile contents + sorted module ids, first 12 chars → `image =
+   copyFile contents + sorted module ids + sorted build args (the resolved host
+   `USER_UID`/`USER_GID`), first 12 chars → `image =
    devcontainer-cli/<fp12>:latest`. Derived from the **Dockerfile**, not the
-   compose, so YAML key ordering doesn't affect image sharing.
+   compose, so YAML key ordering doesn't affect image sharing. The build args are
+   folded in because the Dockerfile's `ARG …=1000` defaults are static, so two
+   users with different host ids would otherwise share one image baked for a
+   single UID. `ComputeFingerprint` and the compose `build.args` must stay in
+   sync (both derive from `config.BuildUID/BuildGID`, resolved in `service.Plan`).
 
 ---
 
