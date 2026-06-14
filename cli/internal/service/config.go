@@ -3,7 +3,6 @@ package service
 import (
 	"fmt"
 	"path/filepath"
-	"strconv"
 
 	"github.com/goccy/go-yaml"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
@@ -21,7 +20,6 @@ type ConfigService struct {
 const (
 	fallbackDBUser     = "devuser"
 	fallbackDBPassword = "devpass"
-	fallbackSSHPort    = "2222"
 )
 
 func defaulted(stored, fallback string) (value string, customized bool, err error) {
@@ -49,11 +47,6 @@ func (s ConfigService) GetGlobalDefault(key string) (value string, customized bo
 		return defaulted(globalDefaults(cfg).DBUser, fallbackDBUser)
 	case "db-password":
 		return defaulted(globalDefaults(cfg).DBPassword, fallbackDBPassword)
-	case "ssh-port":
-		if port := globalDefaults(cfg).SSHHostPort; port != 0 {
-			return strconv.Itoa(port), true, nil
-		}
-		return fallbackSSHPort, false, nil
 	case "ssh-key":
 		return defaulted(globalDefaults(cfg).SSHKeyPath, domain.DefaultManagedSSHKeyPath())
 	}
@@ -72,13 +65,6 @@ func (s ConfigService) SetGlobalDefault(key, value string) error {
 	case "db-password":
 		ensureDefaults(&cfg)
 		cfg.Defaults.DBPassword = value
-	case "ssh-port":
-		port, err := strconv.Atoi(value)
-		if err != nil || port < 1 || port > 65535 {
-			return fmt.Errorf("invalid port: %s (must be between 1 and 65535)", value)
-		}
-		ensureDefaults(&cfg)
-		cfg.Defaults.SSHHostPort = port
 	case "ssh-key":
 		ensureDefaults(&cfg)
 		cfg.Defaults.SSHKeyPath = value
@@ -108,10 +94,6 @@ func (s ConfigService) UnsetGlobalDefault(key string) error {
 		ensureDefaults(&cfg)
 		cfg.Defaults.DBPassword = ""
 		fallback = fallbackDBPassword
-	case "ssh-port":
-		ensureDefaults(&cfg)
-		cfg.Defaults.SSHHostPort = 0
-		fallback = fallbackSSHPort
 	case "ssh-key":
 		ensureDefaults(&cfg)
 		cfg.Defaults.SSHKeyPath = ""

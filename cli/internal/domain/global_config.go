@@ -4,17 +4,15 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 )
 
 type Defaults struct {
-	DBUser      string `json:"dbUser,omitempty"`
-	DBPassword  string `json:"dbPassword,omitempty"`
-	SSHHostPort int    `json:"sshHostPort,omitempty"`
-	SSHKeyPath  string `json:"sshKeyPath,omitempty"`
+	DBUser     string `json:"dbUser,omitempty"`
+	DBPassword string `json:"dbPassword,omitempty"`
+	SSHKeyPath string `json:"sshKeyPath,omitempty"`
 }
 
 type GlobalConfig struct {
@@ -28,13 +26,6 @@ func GlobalConfigDir() string {
 	// Read XDG_CONFIG_HOME at call time so tests can override it with os.Setenv.
 	if xdgConfigHome := os.Getenv("XDG_CONFIG_HOME"); xdgConfigHome != "" {
 		return filepath.Join(xdgConfigHome, "devcontainer-cli")
-	}
-	if runtime.GOOS == "windows" {
-		appdata := os.Getenv("APPDATA")
-		if appdata != "" {
-			return filepath.Join(appdata, "devcontainer-cli")
-		}
-		return filepath.Join(os.Getenv("USERPROFILE"), "AppData", "Roaming", "devcontainer-cli")
 	}
 	home, _ := os.UserHomeDir()
 	return filepath.Join(home, ".config", "devcontainer-cli")
@@ -113,14 +104,6 @@ func ResolveDBCredentials() (user, password string) {
 		password = fallbackDBPassword
 	}
 	return user, password
-}
-
-func ResolveSSHHostPort() int {
-	cfg := LoadGlobalConfig()
-	if cfg.Defaults != nil && cfg.Defaults.SSHHostPort != 0 {
-		return cfg.Defaults.SSHHostPort
-	}
-	return types.DefaultSSHHostPort
 }
 
 // DefaultManagedSSHKeyPath is the path of the single shared SSH key managed by

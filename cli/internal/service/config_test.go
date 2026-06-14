@@ -34,23 +34,6 @@ func TestConfigGlobalDefaultsRoundTrip(t *testing.T) {
 	}
 }
 
-func TestConfigSSHPortValidation(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	svc := ConfigService{Report: nopReporter{}}
-
-	if err := svc.SetGlobalDefault("ssh-port", "9000"); err != nil {
-		t.Fatalf("valid port: %v", err)
-	}
-	if v, _, _ := svc.GetGlobalDefault("ssh-port"); v != "9000" {
-		t.Errorf("ssh-port = %q, want 9000", v)
-	}
-	for _, bad := range []string{"abc", "0", "70000"} {
-		if err := svc.SetGlobalDefault("ssh-port", bad); err == nil {
-			t.Errorf("expected error for invalid port %q", bad)
-		}
-	}
-}
-
 func TestConfigSSHKeyRoundTrip(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	svc := ConfigService{Report: nopReporter{}}

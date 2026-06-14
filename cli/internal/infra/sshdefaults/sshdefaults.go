@@ -14,7 +14,6 @@ const (
 	ServiceName = "devcontainer-ssh"
 	Alias       = "devcontainer"
 	KeyName     = types.SSHKeyName
-	WindowsPort = types.DefaultSSHHostPort
 	// DockerIPFormat emits one IP per line so a container on several networks
 	// does not concatenate addresses with no separator.
 	DockerIPFormat = `{{range .NetworkSettings.Networks}}{{.IPAddress}}{{"\n"}}{{end}}`
@@ -95,9 +94,6 @@ const (
 	// ModeLocal: the container is reachable by its IP from the same host running
 	// the CLI (HostName = container IP).
 	ModeLocal Mode = "local"
-	// ModeWindows: the container is reached over a forwarded port on localhost
-	// (HostName = localhost, Port = forwarded port).
-	ModeWindows Mode = "windows"
 	// ModeRemote: the container lives on a remote docker host, reached via an ssh
 	// hop to that host (ProxyCommand).
 	ModeRemote Mode = "remote"
@@ -116,11 +112,8 @@ type ConfigBlockOptions struct {
 	// KeyPath is the path to the private key, rendered as "IdentityFile".
 	KeyPath string
 	// Hostname is the target for "HostName": required in ModeLocal (the container
-	// IP); in ModeWindows it defaults to "localhost"; unused in ModeRemote.
+	// IP); unused in ModeRemote.
 	Hostname string
-	// Port is the host port rendered as "Port"; ModeWindows only, defaulting to
-	// WindowsPort when empty.
-	Port string
 	// Remote is the "USER@HOST" of the docker host used in the ProxyCommand ssh
 	// hop; required in ModeRemote, unused otherwise.
 	Remote string
@@ -160,22 +153,6 @@ func buildStanza(opts ConfigBlockOptions) (string, error) {
     User %s
     IdentityFile %s
     IdentitiesOnly yes`, opts.Alias, opts.Hostname, opts.User, opts.KeyPath), nil
-
-	case ModeWindows:
-		hostname := opts.Hostname
-		if hostname == "" {
-			hostname = "localhost"
-		}
-		port := opts.Port
-		if port == "" {
-			port = fmt.Sprintf("%d", WindowsPort)
-		}
-		return fmt.Sprintf(`Host %s
-    HostName %s
-    Port %s
-    User %s
-    IdentityFile %s
-    IdentitiesOnly yes`, opts.Alias, hostname, port, opts.User, opts.KeyPath), nil
 
 	case ModeRemote:
 		if opts.Remote == "" {

@@ -184,35 +184,3 @@ func TestResolveSSHKeyPath(t *testing.T) {
 		}
 	})
 }
-
-func TestResolveSSHHostPort(t *testing.T) {
-	// Case 1: Empty / no config
-	withTempXDGDir(t, func() {
-		port := domain.ResolveSSHHostPort()
-		if port != 2222 {
-			t.Errorf("expected port 2222, got %d", port)
-		}
-	})
-
-	// Case 2: Config with ssh-port set to 0 or empty
-	withTempXDGDir(t, func() {
-		_ = domain.SaveGlobalConfig(domain.GlobalConfig{
-			Defaults: &domain.Defaults{SSHHostPort: 0},
-		})
-		port := domain.ResolveSSHHostPort()
-		if port != 2222 {
-			t.Errorf("expected port 2222, got %d", port)
-		}
-	})
-
-	// Case 3: Config with custom port
-	withTempXDGDir(t, func() {
-		_ = domain.SaveGlobalConfig(domain.GlobalConfig{
-			Defaults: &domain.Defaults{SSHHostPort: 3333},
-		})
-		port := domain.ResolveSSHHostPort()
-		if port != 3333 {
-			t.Errorf("expected port 3333, got %d", port)
-		}
-	})
-}

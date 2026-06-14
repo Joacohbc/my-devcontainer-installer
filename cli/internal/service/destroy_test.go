@@ -10,7 +10,6 @@ import (
 func TestDestroyRemovesArtifactsAndDownsStack(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", tmp)
-	t.Setenv("APPDATA", tmp)
 
 	runner := &fakeRunner{status: 0}
 	restore := useFakeDocker(runner)
@@ -53,7 +52,6 @@ func TestDestroyRemovesArtifactsAndDownsStack(t *testing.T) {
 func TestDestroyRemovesManagedSSHBlock(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", tmp)
-	t.Setenv("APPDATA", tmp)
 
 	home := t.TempDir()
 	setHomeDir(t, home)
@@ -104,7 +102,6 @@ Host keepme
 func TestDestroyLeavesUntaggedSSHBlock(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", tmp)
-	t.Setenv("APPDATA", tmp)
 
 	home := t.TempDir()
 	setHomeDir(t, home)
@@ -142,7 +139,6 @@ func TestDestroyLeavesUntaggedSSHBlock(t *testing.T) {
 func TestDestroySkipsDownWhenNoComposeFile(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", tmp)
-	t.Setenv("APPDATA", tmp)
 
 	runner := &fakeRunner{status: 0}
 	restore := useFakeDocker(runner)

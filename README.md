@@ -151,13 +151,6 @@ Detalles de la configuración del túnel en [CLOUDFLARE_TUNNEL.md](CLOUDFLARE_TU
 * Cliente SSH (OpenSSH) instalado en tu máquina local.
 * Conocimiento básico de terminal.
 
-### Nota Importante para Windows
-
-Si estás utilizando **Windows**, se recomienda encarecidamente usar **Git Bash** como terminal. Esto garantiza la compatibilidad con los comandos de Linux (`grep`, `tail`, `ssh-copy-id`, etc.) y facilita la configuración.
-
-1.  **Formato de Archivos (LF vs CRLF):** Los scripts y archivos de configuración deben tener terminaciones de línea estilo UNIX (`LF`). Se ha incluido un archivo `.gitattributes` para manejar esto automáticamente.
-2.  **Firewall:** Para conectarte al contenedor, es necesario que el firewall de Windows permita las conexiones al puerto expuesto (por defecto `2222`).
-
 ## Instalación de la CLI
 
 **Linux / macOS:**
@@ -168,21 +161,13 @@ curl -fsSL https://raw.githubusercontent.com/Joacohbc/my-devcontainer-installer/
 
 Detecta OS/arch automáticamente. Descarga el binario (single executable con assets embebidos) en `~/.local/share/devcontainer-cli/` y lo enlaza en `~/.local/bin/devcontainer-cli`.
 
-**Windows (PowerShell):**
-
-```powershell
-irm https://raw.githubusercontent.com/Joacohbc/my-devcontainer-installer/main/cli/install.ps1 | iex
-```
-
-Instala en `%LOCALAPPDATA%\devcontainer-cli` y agrega al PATH del usuario.
-
 **Variables opcionales:**
 
-| Var          | Default                                  | Descripción                       |
-|--------------|------------------------------------------|-----------------------------------|
-| `VERSION`    | `latest`                                 | Tag específico (ej. `v1.0.0`)     |
-| `INSTALL_DIR`| `~/.local/share/devcontainer-cli` (unix) | Carpeta del binario               |
-| `BIN_DIR`    | `~/.local/bin` (unix)                    | Symlink al binario                |
+| Var          | Default                           | Descripción                       |
+|--------------|-----------------------------------|-----------------------------------|
+| `VERSION`    | `latest`                          | Tag específico (ej. `v1.0.0`)     |
+| `INSTALL_DIR`| `~/.local/share/devcontainer-cli` | Carpeta del binario               |
+| `BIN_DIR`    | `~/.local/bin`                    | Symlink al binario                |
 
 Ejemplo versión fija:
 
@@ -190,22 +175,14 @@ Ejemplo versión fija:
 curl -fsSL https://raw.githubusercontent.com/Joacohbc/my-devcontainer-installer/main/cli/install.sh | VERSION=v1.0.0 sh
 ```
 
-**Descarga manual** (alternativa): https://github.com/Joacohbc/my-devcontainer-installer/releases/latest — binarios disponibles: `devcontainer-cli-linux-x64`, `-linux-arm64`, `-darwin-x64`, `-darwin-arm64` y `-windows-x64.exe`. Son ejecutables únicos (assets embebidos via `go:embed`); descargás, `chmod +x` y listo.
+**Descarga manual** (alternativa): https://github.com/Joacohbc/my-devcontainer-installer/releases/latest — binarios disponibles: `devcontainer-cli-linux-x64`, `-linux-arm64`, `-darwin-x64` y `-darwin-arm64`. Son ejecutables únicos (assets embebidos via `go:embed`); descargás, `chmod +x` y listo.
 
 ### Desinstalación
 
 Si deseas eliminar la CLI y sus configuraciones:
 
-**Linux / macOS:**
-
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Joacohbc/my-devcontainer-installer/main/cli/uninstall.sh | sh
-```
-
-**Windows (PowerShell):**
-
-```powershell
-irm https://raw.githubusercontent.com/Joacohbc/my-devcontainer-installer/main/cli/uninstall.ps1 | iex
 ```
 
 ### Autocompletado
@@ -263,7 +240,7 @@ La CLI genera la clave, la copia al contenedor y deja listo el bloque `~/.ssh/co
 devcontainer-cli setup-ssh
 ```
 
-Detecta el `container_name` y el modo (`local`, `windows`, `remote`) automáticamente. Detalles y flags en **[DOC_CLI.md → Configurar acceso SSH](DOC_CLI.md#configurar-acceso-ssh-setup-ssh)**.
+Detecta el `container_name` y el modo (`local`, `remote`) automáticamente. Detalles y flags en **[DOC_CLI.md → Configurar acceso SSH](DOC_CLI.md#configurar-acceso-ssh-setup-ssh)**.
 
 #### Opción B: Manual
 
@@ -277,7 +254,7 @@ ssh-keygen -t ed25519 -f ~/.ssh/id_devcontainer -N "" -q
 
 ##### B. Instalar la clave en el contenedor
 
-**Opción 1: Entorno Local (Linux/Mac)**
+**Opción 1: Entorno Local**
 (Si Docker corre en la misma máquina que estás usando)
 
 > El `container_name` real se prefija con el `workspace` configurado (ej: `mi-proyecto-devcontainer-ssh`). Reemplaza `<workspace>` por el nombre que elegiste en la CLI (o consulta `docker ps`).
@@ -300,28 +277,7 @@ Host devcontainer
 EOF
 ```
 
-**Opción 2: Entorno Local (Windows con Git Bash)**
-(Usando el puerto expuesto 2222)
-
-```bash
-# 1. Copiar clave pública al contenedor (te pedirá la contraseña)
-# Nota: Git Bash suele incluir ssh-copy-id, si no, usa el comando manual:
-ssh-copy-id -p 2222 -i ~/.ssh/id_devcontainer.pub devuser@localhost
-
-# Alternativa manual si ssh-copy-id no está disponible:
-# cat ~/.ssh/id_devcontainer.pub | ssh -p 2222 devuser@localhost "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 700 ~/.ssh && chmod 600 ~/.ssh/authorized_keys"
-
-# 2. Añadir a config (Ejecuta esto en Git Bash)
-cat <<EOF >> ~/.ssh/config
-Host devcontainer
-    HostName localhost
-    Port 2222
-    User devuser
-    IdentityFile ~/.ssh/id_devcontainer
-EOF
-```
-
-**Opción 3: Entorno Remoto**
+**Opción 2: Entorno Remoto**
 (Si Docker corre en un servidor y tú estás en tu laptop)
 
 Sustituye `usuario@servidor` por los datos de conexión a tu servidor físico.
@@ -384,7 +340,6 @@ docker run -d \
 
 * Verifica que el contenedor esté corriendo: `docker compose ps`.
 * Si usas IP dinámica (Local), asegúrate de que la IP no haya cambiado. Si reiniciaste el contenedor, es posible que necesites actualizar la IP en tu `~/.ssh/config`.
-* **Windows:** Verifica que el Firewall de Windows permita conexiones entrantes al puerto 2222.
 
 ### Problemas con Docker dentro del contenedor
 
@@ -394,7 +349,7 @@ docker run -d \
 
 ### Conflicto de Puertos
 
-* Si Docker falla al iniciar porque un puerto (ej. 27017, 5432, 2222) ya está en uso, detén el servicio local que lo ocupa en tu máquina host o modifica el mapeo de puertos en `.dc_<workspace>/build/docker-compose.yml`.
+* Si Docker falla al iniciar porque un puerto (ej. 27017, 5432) ya está en uso, detén el servicio local que lo ocupa en tu máquina host o modifica el mapeo de puertos en `.dc_<workspace>/build/docker-compose.yml`.
 
 ## Bases de Datos
 

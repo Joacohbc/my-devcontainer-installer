@@ -1,7 +1,7 @@
 # goreleaser config for the Go devcontainer CLI.
-# Produces one raw binary per target named devcontainer-cli-<triplet>[.exe]
+# Produces one raw binary per target named devcontainer-cli-<triplet>
 # plus a per-binary <name>.sha256 checksum file. This naming is a contract
-# shared with install.sh, install.ps1 and the upgrade-cli self-updater
+# shared with install.sh and the upgrade-cli self-updater
 # (getTargetTriplet); changing it here means changing all of those too.
 version: 2
 
@@ -24,13 +24,9 @@ builds:
     goos:
       - linux
       - darwin
-      - windows
     goarch:
       - amd64
       - arm64
-    ignore:
-      - goos: windows
-        goarch: arm64
     mod_timestamp: '{{ .CommitTimestamp }}'
 
 # Ship raw binaries (no tar/zip), matching the release-asset contract.

@@ -382,7 +382,7 @@ func TestConfigCommand_HasDefaultsSubcommands(t *testing.T) {
 	if config == nil {
 		t.Fatal("config command not found")
 	}
-	wants := []string{"db-user", "db-password", "ssh-port", "ssh-key"}
+	wants := []string{"db-user", "db-password", "ssh-key"}
 	have := map[string]bool{}
 	for _, sub := range config.Commands() {
 		have[sub.Name()] = true
@@ -540,12 +540,9 @@ func TestCompleteCSV(t *testing.T) {
 func TestListSshHosts_ReadsConfig(t *testing.T) {
 	tempDir := t.TempDir()
 	origHome := os.Getenv("HOME")
-	origUserProfile := os.Getenv("USERPROFILE")
 	os.Setenv("HOME", tempDir)
-	os.Setenv("USERPROFILE", tempDir)
 	defer func() {
 		os.Setenv("HOME", origHome)
-		os.Setenv("USERPROFILE", origUserProfile)
 	}()
 
 	sshDir := filepath.Join(tempDir, ".ssh")

@@ -49,17 +49,15 @@ type Release struct {
 	Assets     []ReleaseAsset `json:"assets"`
 }
 
-func getTargetTriplet() (triplet, ext string, err error) {
+func getTargetTriplet() (triplet string, err error) {
 	var osName string
 	switch runtime.GOOS {
 	case "linux":
 		osName = "linux"
 	case "darwin":
 		osName = "darwin"
-	case "windows":
-		osName = "windows"
 	default:
-		return "", "", fmt.Errorf("unsupported platform: %s", runtime.GOOS)
+		return "", fmt.Errorf("unsupported platform: %s", runtime.GOOS)
 	}
 	var archName string
 	switch runtime.GOARCH {
@@ -68,12 +66,9 @@ func getTargetTriplet() (triplet, ext string, err error) {
 	case "amd64":
 		archName = "x64"
 	default:
-		return "", "", fmt.Errorf("unsupported arch: %s", runtime.GOARCH)
+		return "", fmt.Errorf("unsupported arch: %s", runtime.GOARCH)
 	}
-	if osName == "windows" {
-		ext = ".exe"
-	}
-	return osName + "-" + archName, ext, nil
+	return osName + "-" + archName, nil
 }
 
 func splitVersion(s string) (main []string, pre string, hasPre bool) {
@@ -265,8 +260,8 @@ func (s UpgradeService) UpgradeTargets() (top, stable *Release, err error) {
 	return top, stable, nil
 }
 
-func resolveAssetURL(rel *Release, triplet, ext string) (binary, checksum string, err error) {
-	name := fmt.Sprintf("devcontainer-cli-%s%s", triplet, ext)
+func resolveAssetURL(rel *Release, triplet string) (binary, checksum string, err error) {
+	name := "devcontainer-cli-" + triplet
 	var bURL string
 	for _, a := range rel.Assets {
 		if a.Name == name {
@@ -398,55 +393,26 @@ func replaceBinary(tmpPath string) error {
 	if err != nil {
 		return err
 	}
-	return swapBinary(execPath, tmpPath, runtime.GOOS == "windows")
+	return swapBinary(execPath, tmpPath)
 }
 
-// swapBinary replaces the binary at execPath with the one at tmpPath. On
-// Windows the running exe cannot be overwritten, so the original is renamed
-// aside to <exe>.old first; if the move-in of the new binary then fails, the
-// original is rolled back into place so the user is never left without a
-// working binary. On Unix the replacement is a single atomic rename, which
-// already leaves the original untouched on failure.
-func swapBinary(execPath, tmpPath string, windows bool) error {
-	if windows {
-		oldPath := execPath + ".old"
-		_ = os.Remove(oldPath)
-		if err := os.Rename(execPath, oldPath); err != nil {
-			return err
-		}
-		if err := os.Rename(tmpPath, execPath); err != nil {
-			if rbErr := os.Rename(oldPath, execPath); rbErr != nil {
-				return fmt.Errorf("update failed (%v) and rollback failed (%v); restore manually from %s", err, rbErr, oldPath)
-			}
-			return fmt.Errorf("update failed, original binary restored: %w", err)
-		}
-		return nil
-	}
+// swapBinary replaces the binary at execPath with the one at tmpPath via a
+// single atomic rename, which leaves the original untouched on failure.
+func swapBinary(execPath, tmpPath string) error {
 	if err := os.Chmod(tmpPath, 0o755); err != nil {
 		return err
 	}
 	return os.Rename(tmpPath, execPath)
 }
 
-// CleanupStaleUpdate removes a leftover <exe>.old from a previous Windows
-// in-place update. No-op on other platforms.
-func CleanupStaleUpdate() {
-	if runtime.GOOS != "windows" {
-		return
-	}
-	if execPath, err := os.Executable(); err == nil {
-		_ = os.Remove(execPath + ".old")
-	}
-}
-
 // Install downloads the release asset for this platform, verifies its checksum
 // and swaps it in for the running binary. It reports progress along the way.
 func (s UpgradeService) Install(rel *Release) error {
-	triplet, ext, err := getTargetTriplet()
+	triplet, err := getTargetTriplet()
 	if err != nil {
 		return err
 	}
-	binaryURL, checksumURL, err := resolveAssetURL(rel, triplet, ext)
+	binaryURL, checksumURL, err := resolveAssetURL(rel, triplet)
 	if err != nil {
 		return err
 	}
