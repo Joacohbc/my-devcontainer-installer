@@ -41,8 +41,22 @@ RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
     apt-transport-https \
     && %s
 
-# Create devuser with sudo privileges
-RUN useradd -m -s /bin/zsh devuser && \
+# Create devuser with sudo privileges. USER_UID/USER_GID are build args so a
+# local-cached image bakes the host owner of the bind-mounted workspace and the
+# container never has to renumber the user at runtime. Remote prebuilt images
+# leave the 1000 default. Ubuntu >= 23.10 ships a stock "ubuntu" user/group on
+# UID/GID 1000, removed here so the target ids are free and devuser owns them.
+ARG USER_UID=1000
+ARG USER_GID=1000
+RUN userdel -r ubuntu 2>/dev/null || true; \
+    groupdel ubuntu 2>/dev/null || true; \
+    existing_group="$(getent group "${USER_GID}" | cut -d: -f1)"; \
+    if [ -z "$existing_group" ]; then \
+        groupadd -g "${USER_GID}" devuser; \
+    elif [ "$existing_group" != "devuser" ]; then \
+        groupmod -n devuser "$existing_group"; \
+    fi; \
+    useradd -m -u "${USER_UID}" -g "${USER_GID}" -s /bin/zsh devuser && \
     usermod -aG sudo devuser && \
     echo "devuser ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 

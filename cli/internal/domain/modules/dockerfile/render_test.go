@@ -27,6 +27,14 @@ func TestBaseModuleRender(t *testing.T) {
 	if !strings.Contains(out, "RUN chmod +x /tmp/zsh-installer.sh && \\\n    su - devuser -c \"/tmp/zsh-installer.sh\" && \\\n    rm /tmp/zsh-installer.sh") {
 		t.Errorf("zsh installer chmod/run/rm should be a single RUN:\n%s", out)
 	}
+	// devuser's UID/GID come from build args so a local-cached image can match
+	// the host owner of the workspace without a runtime remap; the stock Ubuntu
+	// "ubuntu" user squatting on 1000 is removed so the ids are free.
+	for _, frag := range []string{"ARG USER_UID=1000", "ARG USER_GID=1000", `useradd -m -u "${USER_UID}" -g "${USER_GID}" -s /bin/zsh devuser`, "userdel -r ubuntu"} {
+		if !strings.Contains(out, frag) {
+			t.Errorf("base must contain %q:\n%s", frag, out)
+		}
+	}
 }
 
 func TestNodejsModuleRender(t *testing.T) {
