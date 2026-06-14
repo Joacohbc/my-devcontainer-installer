@@ -59,9 +59,9 @@ func TestConfigureReducesPorts(t *testing.T) {
 	}
 }
 
-// The wizard no longer prompts for shared-config or persist volumes (those are
-// flag/config-only now), so Configure must carry the base values through
-// unchanged: a nil base stays enabled-by-default and an explicit opt-out survives.
+// The wizard prompts for shared-config (defaulting to the base's current value),
+// but when the step is left at its seeded default Configure must carry the base
+// value through: a nil base stays enabled-by-default and an explicit opt-out survives.
 func TestConfigureKeepsBaseSharedConfig(t *testing.T) {
 	defer useFakeDocker(&fakeRunner{status: 0})()
 
@@ -89,6 +89,48 @@ func TestConfigureKeepsBaseSharedConfig(t *testing.T) {
 	}
 	if cfg.Compose.SharedConfig == nil || *cfg.Compose.SharedConfig {
 		t.Errorf("explicit opt-out must survive the wizard, got %v", cfg.Compose.SharedConfig)
+	}
+}
+
+// The shared-config prompt defaults to on, but an explicit answer must win in
+// either direction: opting out from an enabled base, and opting in from an
+// opted-out base.
+func TestConfigureHonorsSharedConfigAnswer(t *testing.T) {
+	defer useFakeDocker(&fakeRunner{status: 0})()
+
+	base := map[string]any{
+		stepKeyWorkspace: "testws",
+		stepKeyMode:      string(types.BuildModeLocalCached),
+		stepKeySubnet:    "172.45.0.0/16",
+	}
+	svc := GenerateService{Report: nopReporter{}}
+
+	// Answering false on an enabled (nil) base opts out.
+	answers := map[string]any{stepKeySharedConfig: false}
+	for k, v := range base {
+		answers[k] = v
+	}
+	cfg, err := svc.Configure(&types.DevcontainerConfig{Env: map[string]string{}}, "/home/user/proj", scriptedPrompter{answers: answers})
+	if err != nil {
+		t.Fatalf("Configure: %v", err)
+	}
+	if types.SharedConfigEnabled(cfg) {
+		t.Errorf("answering false must opt out, got %v", cfg.Compose.SharedConfig)
+	}
+
+	// Answering true on an opted-out base re-enables it.
+	off := false
+	answers = map[string]any{stepKeySharedConfig: true}
+	for k, v := range base {
+		answers[k] = v
+	}
+	optedOut := &types.DevcontainerConfig{Env: map[string]string{}, Compose: types.ComposeConfig{SharedConfig: &off}}
+	cfg, err = svc.Configure(optedOut, "/home/user/proj", scriptedPrompter{answers: answers})
+	if err != nil {
+		t.Fatalf("Configure: %v", err)
+	}
+	if !types.SharedConfigEnabled(cfg) {
+		t.Errorf("answering true must opt in, got %v", cfg.Compose.SharedConfig)
 	}
 }
 

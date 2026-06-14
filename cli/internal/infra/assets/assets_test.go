@@ -106,12 +106,10 @@ func TestEntrypointAlignsUIDInsteadOfChangingWorkspaceACLs(t *testing.T) {
 	if strings.Contains(script, "setfacl -R") {
 		t.Error("entrypoint must not run a recursive setfacl that mutates host permissions")
 	}
-	// Ubuntu >= 23.10 ships a stock "ubuntu" user already holding UID 1000: the
-	// entrypoint must evict any account squatting on the target UID, or usermod
-	// fails silently and the chown below hands the home to a foreign UID
-	// (breaking every shell rc on SSH login).
-	if !strings.Contains(script, `getent passwd "$WS_UID"`) || !strings.Contains(script, "userdel") {
-		t.Error("entrypoint must remove the user squatting on the workspace UID before remapping")
+	// The stock Ubuntu "ubuntu" user squatting on 1000 is now removed at build
+	// time (see base module), so the runtime remap must not delete accounts.
+	if strings.Contains(script, "userdel") {
+		t.Error("entrypoint must not userdel at runtime; the squatter is removed at build time")
 	}
 	// The project mount is at /workspaces/<name> (unique per project so tool
 	// history does not collide in the shared volume) with /workspace aliased to

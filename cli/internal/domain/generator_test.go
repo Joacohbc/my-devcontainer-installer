@@ -697,8 +697,32 @@ func TestGenerateCompose_FingerprintUsedAsImageName(t *testing.T) {
 	if devSvc["image"] != "devcontainer-cli/abc123def456:latest" {
 		t.Errorf("expected fingerprint image, got %v", devSvc["image"])
 	}
-	if devSvc["build"] != "." {
-		t.Errorf("expected build='.' in local-cached mode, got %v", devSvc["build"])
+	build, ok := devSvc["build"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected long-form build block in local-cached mode, got %v", devSvc["build"])
+	}
+	if build["context"] != "." {
+		t.Errorf("expected build context '.', got %v", build["context"])
+	}
+}
+
+func TestGenerateCompose_LocalCachedBakesHostUIDAsBuildArgs(t *testing.T) {
+	cfg := makeConfig(func(c *types.DevcontainerConfig) {
+		c.Mode = types.BuildModeLocalCached
+		c.BuildUID = 1234
+		c.BuildGID = 5678
+	})
+	yml := mustGenerateCompose(t, cfg)
+	var parsed map[string]any
+	if err := yaml.Unmarshal([]byte(yml), &parsed); err != nil {
+		t.Fatalf("invalid YAML: %v", err)
+	}
+	services := parsed["services"].(map[string]any)
+	devSvc := services["devcontainer-ssh"].(map[string]any)
+	build := devSvc["build"].(map[string]any)
+	args := build["args"].(map[string]any)
+	if args["USER_UID"] != "1234" || args["USER_GID"] != "5678" {
+		t.Errorf("expected USER_UID=1234/USER_GID=5678 build args, got %v", args)
 	}
 }
 

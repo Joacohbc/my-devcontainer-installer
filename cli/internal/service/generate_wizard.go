@@ -215,6 +215,7 @@ func (w wizardContext) steps(s *State) []Step {
 	}
 	steps = append(steps, w.subnetStep())
 	steps = append(steps, w.portsStep())
+	steps = append(steps, w.sharedConfigStep())
 	steps = append(steps, w.envSteps(s)...)
 	return steps
 }
@@ -241,6 +242,20 @@ func (w wizardContext) portsStep() Step {
 		return Field{
 			Kind:    FieldInput,
 			Title:   "Puertos a publicar en el devcontainer (ej. 8080:80,5432:5432 — bind a 127.0.0.1; vacío para ninguno):",
+			Initial: initial,
+		}
+	}}
+}
+
+func (w wizardContext) sharedConfigStep() Step {
+	return Step{Key: stepKeySharedConfig, Build: func(s *State) Field {
+		initial := types.SharedConfigEnabled(w.base)
+		if s.Has(stepKeySharedConfig) {
+			initial = s.Bool(stepKeySharedConfig)
+		}
+		return Field{
+			Kind:    FieldConfirm,
+			Title:   "Montar el volumen global de config compartida (logins/sesiones de Claude, gh, codex… persisten entre contenedores)?",
 			Initial: initial,
 		}
 	}}

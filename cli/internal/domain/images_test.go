@@ -7,32 +7,32 @@ import (
 )
 
 func TestComputeFingerprint_sameContentProducesSameResult(t *testing.T) {
-	fp1 := domain.ComputeFingerprint("FROM ubuntu:24.04\nRUN apt-get update", nil, []string{"base"})
-	fp2 := domain.ComputeFingerprint("FROM ubuntu:24.04\nRUN apt-get update", nil, []string{"base"})
+	fp1 := domain.ComputeFingerprint("FROM ubuntu:24.04\nRUN apt-get update", nil, []string{"base"}, nil)
+	fp2 := domain.ComputeFingerprint("FROM ubuntu:24.04\nRUN apt-get update", nil, []string{"base"}, nil)
 	if fp1 != fp2 {
 		t.Errorf("expected identical fingerprints, got %q and %q", fp1, fp2)
 	}
 }
 
 func TestComputeFingerprint_labelChangeDoesNotAffectResult(t *testing.T) {
-	withoutLabel := domain.ComputeFingerprint("FROM ubuntu:24.04\nRUN apt-get update", nil, nil)
-	withLabel := domain.ComputeFingerprint("FROM ubuntu:24.04\nRUN apt-get update\nLABEL foo=\"bar\"", nil, nil)
+	withoutLabel := domain.ComputeFingerprint("FROM ubuntu:24.04\nRUN apt-get update", nil, nil, nil)
+	withLabel := domain.ComputeFingerprint("FROM ubuntu:24.04\nRUN apt-get update\nLABEL foo=\"bar\"", nil, nil, nil)
 	if withoutLabel != withLabel {
 		t.Errorf("LABEL change should not affect fingerprint: %q vs %q", withoutLabel, withLabel)
 	}
 }
 
 func TestComputeFingerprint_multilineLabelStripped(t *testing.T) {
-	withoutLabel := domain.ComputeFingerprint("FROM ubuntu:24.04", nil, nil)
-	withMultilineLabel := domain.ComputeFingerprint("FROM ubuntu:24.04\nLABEL foo=\"bar\" \\\n      baz=\"qux\"", nil, nil)
+	withoutLabel := domain.ComputeFingerprint("FROM ubuntu:24.04", nil, nil, nil)
+	withMultilineLabel := domain.ComputeFingerprint("FROM ubuntu:24.04\nLABEL foo=\"bar\" \\\n      baz=\"qux\"", nil, nil, nil)
 	if withoutLabel != withMultilineLabel {
 		t.Errorf("multiline LABEL should be stripped: %q vs %q", withoutLabel, withMultilineLabel)
 	}
 }
 
 func TestComputeFingerprint_differentDockerfileProducesDifferentResult(t *testing.T) {
-	fp1 := domain.ComputeFingerprint("FROM ubuntu:24.04", nil, nil)
-	fp2 := domain.ComputeFingerprint("FROM ubuntu:22.04", nil, nil)
+	fp1 := domain.ComputeFingerprint("FROM ubuntu:24.04", nil, nil, nil)
+	fp2 := domain.ComputeFingerprint("FROM ubuntu:22.04", nil, nil, nil)
 	if fp1 == fp2 {
 		t.Error("different Dockerfiles should produce different fingerprints")
 	}
@@ -41,26 +41,43 @@ func TestComputeFingerprint_differentDockerfileProducesDifferentResult(t *testin
 func TestComputeFingerprint_differentCopyFilesProducesDifferentResult(t *testing.T) {
 	files1 := map[string]string{"script.sh": "echo hello"}
 	files2 := map[string]string{"script.sh": "echo world"}
-	fp1 := domain.ComputeFingerprint("FROM ubuntu:24.04", files1, nil)
-	fp2 := domain.ComputeFingerprint("FROM ubuntu:24.04", files2, nil)
+	fp1 := domain.ComputeFingerprint("FROM ubuntu:24.04", files1, nil, nil)
+	fp2 := domain.ComputeFingerprint("FROM ubuntu:24.04", files2, nil, nil)
 	if fp1 == fp2 {
 		t.Error("different copy file contents should produce different fingerprints")
 	}
 }
 
 func TestComputeFingerprint_differentModuleIDsProducesDifferentResult(t *testing.T) {
-	fp1 := domain.ComputeFingerprint("FROM ubuntu:24.04", nil, []string{"base", "nodejs"})
-	fp2 := domain.ComputeFingerprint("FROM ubuntu:24.04", nil, []string{"base", "python"})
+	fp1 := domain.ComputeFingerprint("FROM ubuntu:24.04", nil, []string{"base", "nodejs"}, nil)
+	fp2 := domain.ComputeFingerprint("FROM ubuntu:24.04", nil, []string{"base", "python"}, nil)
 	if fp1 == fp2 {
 		t.Error("different module IDs should produce different fingerprints")
 	}
 }
 
 func TestComputeFingerprint_moduleIDOrderDoesNotMatter(t *testing.T) {
-	fp1 := domain.ComputeFingerprint("FROM ubuntu:24.04", nil, []string{"nodejs", "base"})
-	fp2 := domain.ComputeFingerprint("FROM ubuntu:24.04", nil, []string{"base", "nodejs"})
+	fp1 := domain.ComputeFingerprint("FROM ubuntu:24.04", nil, []string{"nodejs", "base"}, nil)
+	fp2 := domain.ComputeFingerprint("FROM ubuntu:24.04", nil, []string{"base", "nodejs"}, nil)
 	if fp1 != fp2 {
 		t.Errorf("module ID order should not affect fingerprint: %q vs %q", fp1, fp2)
+	}
+}
+
+func TestComputeFingerprint_differentBuildArgsProduceDifferentResult(t *testing.T) {
+	fp1 := domain.ComputeFingerprint("FROM ubuntu:24.04", nil, nil, map[string]string{"USER_UID": "1000", "USER_GID": "1000"})
+	fp2 := domain.ComputeFingerprint("FROM ubuntu:24.04", nil, nil, map[string]string{"USER_UID": "1001", "USER_GID": "1001"})
+	if fp1 == fp2 {
+		t.Error("different build args (host UID/GID) should produce different fingerprints")
+	}
+}
+
+func TestComputeFingerprint_sameBuildArgsProduceSameResult(t *testing.T) {
+	args := map[string]string{"USER_UID": "1000", "USER_GID": "1000"}
+	fp1 := domain.ComputeFingerprint("FROM ubuntu:24.04", nil, nil, args)
+	fp2 := domain.ComputeFingerprint("FROM ubuntu:24.04", nil, nil, map[string]string{"USER_UID": "1000", "USER_GID": "1000"})
+	if fp1 != fp2 {
+		t.Errorf("identical build args should produce identical fingerprints: %q vs %q", fp1, fp2)
 	}
 }
 

@@ -2,6 +2,7 @@ package domain
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/goccy/go-yaml"
@@ -81,6 +82,22 @@ func ResolveDevcontainerImageName(config *types.DevcontainerConfig) string {
 		return types.ImageNamespace + "/" + fp + ":latest"
 	}
 	return config.Image
+}
+
+// devcontainerBuild returns the compose `build:` block for a local-cached
+// devcontainer. It bakes the host UID/GID (resolved by the service layer) as
+// build args so the image's devuser owns the bind-mounted workspace without a
+// runtime remap. With no host ids resolved it falls back to a context-only
+// build (the Dockerfile's ARG defaults apply).
+func devcontainerBuild(config *types.DevcontainerConfig) *compose.BuildDef {
+	build := &compose.BuildDef{Context: "."}
+	if config.BuildUID > 0 && config.BuildGID > 0 {
+		build.Args = map[string]string{
+			"USER_UID": strconv.Itoa(config.BuildUID),
+			"USER_GID": strconv.Itoa(config.BuildGID),
+		}
+	}
+	return build
 }
 
 // devcontainerPorts returns the published port mappings for the devcontainer
@@ -242,8 +259,13 @@ func GenerateCompose(config *types.DevcontainerConfig) (string, error) {
 			}
 		}
 
-		if svc.ID == types.ServiceDevcontainer && config.Mode == types.BuildModeRemote {
-			rendered.Build = ""
+		if svc.ID == types.ServiceDevcontainer {
+			switch config.Mode {
+			case types.BuildModeRemote:
+				rendered.Build = nil
+			default:
+				rendered.Build = devcontainerBuild(config)
+			}
 		}
 
 		if svc.ID == types.ServiceDevcontainer {

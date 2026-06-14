@@ -126,7 +126,12 @@ func sha256Hex(s string) string {
 	return hex.EncodeToString(h[:])
 }
 
-func ComputeFingerprint(dockerfileContent string, copyFileContents map[string]string, selectedModuleIDs []string) string {
+// ComputeFingerprint hashes everything that distinguishes one built image from
+// another: the normalized Dockerfile, the copied helper scripts, the selected
+// module ids, and the build args (the Dockerfile's ARG defaults are static, so
+// the resolved host UID/GID must be folded in here — otherwise two users with
+// different host ids would collide on a single image baked for one of them).
+func ComputeFingerprint(dockerfileContent string, copyFileContents map[string]string, selectedModuleIDs []string, buildArgs map[string]string) string {
 	normalized := strings.TrimSpace(strings.ReplaceAll(stripLabelBlocks(dockerfileContent), "\r\n", "\n"))
 	parts := []string{normalized}
 
@@ -142,6 +147,15 @@ func ComputeFingerprint(dockerfileContent string, copyFileContents map[string]st
 	sortedModuleIDs := append([]string{}, selectedModuleIDs...)
 	sort.Strings(sortedModuleIDs)
 	parts = append(parts, "MODULES\x00"+strings.Join(sortedModuleIDs, ","))
+
+	argKeys := make([]string, 0, len(buildArgs))
+	for k := range buildArgs {
+		argKeys = append(argKeys, k)
+	}
+	sort.Strings(argKeys)
+	for _, k := range argKeys {
+		parts = append(parts, "ARG\x00"+k+"="+buildArgs[k])
+	}
 
 	return sha256Hex(strings.Join(parts, "\n"))
 }

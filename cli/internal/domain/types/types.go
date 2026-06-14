@@ -225,6 +225,12 @@ type DevcontainerConfig struct {
 	Env         map[string]string `json:"env" yaml:"env"`
 	Remote      *RemoteConfig     `json:"remote,omitempty" yaml:"remote,omitempty"`
 	Fingerprint string            `json:"fingerprint,omitempty" yaml:"fingerprint,omitempty"`
+	// BuildUID/BuildGID are the host owner ids baked into a local-cached image so
+	// devuser matches the bind-mounted workspace. They are resolved fresh at
+	// generate time (never persisted) and feed both the compose build args and the
+	// image fingerprint. Zero means "unset" — the Dockerfile ARG defaults apply.
+	BuildUID int `json:"-" yaml:"-"`
+	BuildGID int `json:"-" yaml:"-"`
 }
 
 const ConfigFile = "devcontainer.config.json"
