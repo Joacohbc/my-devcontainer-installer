@@ -35,7 +35,7 @@ Applies to:
 
 - `internal/domain/modules/dockerfile/*.go` — Dockerfile modules (base, nodejs, python,
   java_temurin, java_openjdk, golang, bun, pnpm, yarn, sqlite, dbclients, github_cli,
-  ai_clis, tmux, cleanup, shell_init).
+  ai_clis, zellij, cleanup, shell_init).
 - `internal/domain/modules/compose/*.go` — compose services (devcontainer, dind_engine,
   mongo, redis, postgres, tunnel).
 - `internal/domain/catalog/catalog.go` — the module/service catalog.

@@ -139,7 +139,7 @@ Detalles de la configuración del túnel en [CLOUDFLARE_TUNNEL.md](CLOUDFLARE_TU
   * **C / C++:** GCC, Clang, CMake, GDB y `build-essential` (módulo `c-cpp`).
   * **PHP:** PHP (PPA de Ondřej) + Composer (módulo `php`).
   * **SQLite:** sqlite3 (módulo `sqlite`).
-  * **Tmux:** tmux (módulo `tmux`).
+  * **Zellij:** zellij (módulo `zellij`).
   * **Docker CLI (DoD):** cliente `docker` dentro del contenedor usando el socket montado del host (módulo `dod`).
   * **Clientes de DB en el devcontainer:** `psql`, `redis-tools`, `mongosh` (módulo `dbclients`, seleccionables individualmente).
   * **GitHub CLI:** `gh` + `jq` (módulo `github-cli`, incluido por defecto).

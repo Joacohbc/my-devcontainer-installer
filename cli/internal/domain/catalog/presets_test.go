@@ -36,8 +36,8 @@ func TestBasePreset(t *testing.T) {
 	if !slices.Contains(p.Modules, "github-cli") {
 		t.Errorf("expected base preset to contain github-cli, got %v", p.Modules)
 	}
-	if !slices.Contains(p.Modules, "tmux") {
-		t.Errorf("expected base preset to contain tmux, got %v", p.Modules)
+	if !slices.Contains(p.Modules, "zellij") {
+		t.Errorf("expected base preset to contain zellij, got %v", p.Modules)
 	}
 }
 

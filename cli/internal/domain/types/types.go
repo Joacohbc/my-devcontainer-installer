@@ -33,7 +33,7 @@ const (
 	ModuleCopilotCli     ModuleID = "copilot-cli"
 	ModuleGraphify       ModuleID = "graphify"
 	ModuleCaveman        ModuleID = "caveman"
-	ModuleTmux           ModuleID = "tmux"
+	ModuleZellij         ModuleID = "zellij"
 	ModuleDod            ModuleID = "dod"
 	ModuleCleanup        ModuleID = "cleanup"
 )

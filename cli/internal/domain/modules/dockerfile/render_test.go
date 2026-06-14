@@ -213,7 +213,6 @@ func TestAptModulesIncludeStandardCleanup(t *testing.T) {
 	}{
 		{"base", dockerfile.BaseModule, nil},
 		{"python", dockerfile.PythonModule, nil},
-		{"tmux", dockerfile.TmuxModule, nil},
 		{"php", dockerfile.PhpModule, nil},
 		{"rust", dockerfile.RustModule, nil},
 		{"c-cpp", dockerfile.CCppModule, nil},
@@ -272,7 +271,7 @@ func TestModuleRunLayerCounts(t *testing.T) {
 		{"bun", dockerfile.BunModule, nil, 2},   // install + shell-init
 		{"yarn", dockerfile.YarnModule, nil, 1}, // corepack enable + prepare (single RUN)
 		{"sqlite", dockerfile.SqliteModule, nil, 1},
-		{"tmux", dockerfile.TmuxModule, nil, 1},
+		{"zellij", dockerfile.ZellijModule, nil, 1},
 		{"github-cli", dockerfile.GithubCliModule, nil, 1},
 		{"dod", dockerfile.DodModule, nil, 1},
 		{"java-temurin", dockerfile.JavaTemurinModule, nil, 1},

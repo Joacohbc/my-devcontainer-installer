@@ -18,70 +18,70 @@ type Preset struct {
 	Source   string          `yaml:"-"`
 }
 
-// github-cli and tmux are listed first in every preset so their Dockerfile
+// github-cli and zellij are listed first in every preset so their Dockerfile
 // layers are shared with the base cache image (devcontainer-base), maximising
 // Docker layer cache hits across all variant builds in CI.
 var BuiltinPresets = []Preset{
 	{
 		ID:    "base",
-		Label: "Base (GitHub CLI, Tmux)",
+		Label: "Base (GitHub CLI, Zellij)",
 		Modules: []string{
 			string(types.ModuleGithubCli),
-			string(types.ModuleTmux),
+			string(types.ModuleZellij),
 		},
 	},
 	{
 		ID:    "nodejs",
-		Label: "Node.js (pnpm, GitHub CLI, Tmux)",
+		Label: "Node.js (pnpm, GitHub CLI, Zellij)",
 		Modules: []string{
 			string(types.ModuleGithubCli),
-			string(types.ModuleTmux),
+			string(types.ModuleZellij),
 			string(types.ModuleNodejs),
 			string(types.ModulePnpm),
 		},
 	},
 	{
 		ID:    "bun",
-		Label: "Bun (GitHub CLI, Tmux)",
+		Label: "Bun (GitHub CLI, Zellij)",
 		Modules: []string{
 			string(types.ModuleGithubCli),
-			string(types.ModuleTmux),
+			string(types.ModuleZellij),
 			string(types.ModuleBun),
 		},
 	},
 	{
 		ID:    "java-temurin",
-		Label: "Java Temurin (GitHub CLI, Tmux)",
+		Label: "Java Temurin (GitHub CLI, Zellij)",
 		Modules: []string{
 			string(types.ModuleGithubCli),
-			string(types.ModuleTmux),
+			string(types.ModuleZellij),
 			string(types.ModuleJavaTemurin),
 		},
 	},
 	{
 		ID:    "python",
-		Label: "Python (GitHub CLI, Tmux)",
+		Label: "Python (GitHub CLI, Zellij)",
 		Modules: []string{
 			string(types.ModuleGithubCli),
-			string(types.ModuleTmux),
+			string(types.ModuleZellij),
 			string(types.ModulePython),
 		},
 	},
 	{
 		ID:    "go",
-		Label: "Go (GitHub CLI, Tmux)",
+		Label: "Go (GitHub CLI, Zellij)",
 		Modules: []string{
 			string(types.ModuleGithubCli),
-			string(types.ModuleTmux),
+			string(types.ModuleZellij),
 			string(types.ModuleGolang),
 		},
 	},
 	{
 		ID:    "node-go",
-		Label: "Node.js + Go (pnpm, GitHub CLI, Tmux)",
+		Label: "Node.js + Go (pnpm, GitHub CLI, Zellij)",
 		Modules: []string{
 			string(types.ModuleGithubCli),
-			string(types.ModuleTmux),
+			string(types.ModuleZellij),
 			string(types.ModuleNodejs),
 			string(types.ModulePnpm),
 			string(types.ModuleGolang),
@@ -89,10 +89,10 @@ var BuiltinPresets = []Preset{
 	},
 	{
 		ID:    "node-python",
-		Label: "Node.js + Python (pnpm, GitHub CLI, Tmux)",
+		Label: "Node.js + Python (pnpm, GitHub CLI, Zellij)",
 		Modules: []string{
 			string(types.ModuleGithubCli),
-			string(types.ModuleTmux),
+			string(types.ModuleZellij),
 			string(types.ModuleNodejs),
 			string(types.ModulePnpm),
 			string(types.ModulePython),
@@ -100,10 +100,10 @@ var BuiltinPresets = []Preset{
 	},
 	{
 		ID:    "node-java-temurin",
-		Label: "Node.js + Java Temurin (pnpm, GitHub CLI, Tmux)",
+		Label: "Node.js + Java Temurin (pnpm, GitHub CLI, Zellij)",
 		Modules: []string{
 			string(types.ModuleGithubCli),
-			string(types.ModuleTmux),
+			string(types.ModuleZellij),
 			string(types.ModuleNodejs),
 			string(types.ModulePnpm),
 			string(types.ModuleJavaTemurin),
@@ -111,30 +111,30 @@ var BuiltinPresets = []Preset{
 	},
 	{
 		ID:    "bun-go",
-		Label: "Bun + Go (GitHub CLI, Tmux)",
+		Label: "Bun + Go (GitHub CLI, Zellij)",
 		Modules: []string{
 			string(types.ModuleGithubCli),
-			string(types.ModuleTmux),
+			string(types.ModuleZellij),
 			string(types.ModuleBun),
 			string(types.ModuleGolang),
 		},
 	},
 	{
 		ID:    "bun-python",
-		Label: "Bun + Python (GitHub CLI, Tmux)",
+		Label: "Bun + Python (GitHub CLI, Zellij)",
 		Modules: []string{
 			string(types.ModuleGithubCli),
-			string(types.ModuleTmux),
+			string(types.ModuleZellij),
 			string(types.ModuleBun),
 			string(types.ModulePython),
 		},
 	},
 	{
 		ID:    "bun-java-temurin",
-		Label: "Bun + Java Temurin (GitHub CLI, Tmux)",
+		Label: "Bun + Java Temurin (GitHub CLI, Zellij)",
 		Modules: []string{
 			string(types.ModuleGithubCli),
-			string(types.ModuleTmux),
+			string(types.ModuleZellij),
 			string(types.ModuleBun),
 			string(types.ModuleJavaTemurin),
 		},

@@ -500,8 +500,8 @@ Host *.wildcard
 }
 
 func TestSplitCSV(t *testing.T) {
-	got := splitCSV("nodejs, golang ,, tmux")
-	want := []string{"nodejs", "golang", "tmux"}
+	got := splitCSV("nodejs, golang ,, zellij")
+	want := []string{"nodejs", "golang", "zellij"}
 	if len(got) != len(want) {
 		t.Fatalf("got %v, want %v", got, want)
 	}
@@ -513,7 +513,7 @@ func TestSplitCSV(t *testing.T) {
 }
 
 func TestCompleteCSV(t *testing.T) {
-	allModules := []string{"nodejs", "python", "golang", "tmux", "bun"}
+	allModules := []string{"nodejs", "python", "golang", "zellij", "bun"}
 	cases := []struct {
 		toComplete string
 		want       []string
@@ -521,7 +521,7 @@ func TestCompleteCSV(t *testing.T) {
 		{toComplete: "no", want: []string{"nodejs"}},
 		{toComplete: "nodejs,go", want: []string{"nodejs,golang"}},
 		{toComplete: "nodejs, python, g", want: []string{"nodejs, python,golang"}},
-		{toComplete: "nodejs,python,tmux,bun,c", want: []string{}},
+		{toComplete: "nodejs,python,zellij,bun,c", want: []string{}},
 	}
 	for _, c := range cases {
 		got := completeCSV(c.toComplete, allModules)

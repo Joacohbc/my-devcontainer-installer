@@ -75,7 +75,7 @@ func TestRedisRender(t *testing.T) {
 func TestDevcontainerRender_DependsOnEnabledDatabases(t *testing.T) {
 	def := compose.DevcontainerService.Render(compose.RenderContext{
 		ImageName:         "myimg:local",
-		EnabledServiceIDs: []string{"devcontainer", "postgres", "redis", "tmux"},
+		EnabledServiceIDs: []string{"devcontainer", "postgres", "redis", "zellij"},
 	})
 	if def.Image != "myimg:local" {
 		t.Errorf("Image = %q, want myimg:local", def.Image)

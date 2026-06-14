@@ -80,7 +80,7 @@ func TestGenerateDockerfile_AllSelectedModules(t *testing.T) {
 			{ID: "mongo-client"},
 			{ID: "nodejs"},
 			{ID: "bun"},
-			{ID: "tmux"},
+			{ID: "zellij"},
 			{ID: "php"},
 			{ID: "rust"},
 		}
@@ -95,17 +95,18 @@ func TestGenerateDockerfile_AllSelectedModules(t *testing.T) {
 	assertContainsStr(t, df, "mongodb-mongosh", "full dockerfile")
 	assertContainsStr(t, df, "nvm install --lts", "full dockerfile")
 	assertContainsStr(t, df, "bun.sh/install", "full dockerfile")
-	assertContainsStr(t, df, "tmux", "full dockerfile")
+	assertContainsStr(t, df, "zellij", "full dockerfile")
 	assertContainsStr(t, df, "ppa:ondrej/php", "full dockerfile")
 	assertContainsStr(t, df, "rustup.rs", "full dockerfile")
 }
 
-func TestGenerateDockerfile_TmuxModule(t *testing.T) {
+func TestGenerateDockerfile_ZellijModule(t *testing.T) {
 	cfg := makeConfig(func(c *types.DevcontainerConfig) {
-		c.Dockerfile.Modules = []types.SelectedModule{{ID: "tmux"}}
+		c.Dockerfile.Modules = []types.SelectedModule{{ID: "zellij"}}
 	})
 	df := mustGenerateDockerfile(t, cfg)
-	assertContainsStr(t, df, "RUN apt-get update && apt-get install -y tmux && apt-get autoremove -y && apt-get autoclean && rm -rf /var/lib/apt/lists/*", "tmux")
+	assertContainsStr(t, df, "releases/latest/download/zellij-${ZELLIJ_ARCH}.tar.gz", "zellij")
+	assertContainsStr(t, df, "tar -xzf /tmp/zellij.tar.gz -C /usr/local/bin zellij", "zellij")
 }
 
 func TestGenerateDockerfile_DodModule(t *testing.T) {

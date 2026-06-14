@@ -32,7 +32,7 @@ var DockerfileModules = []*dockerfile.ModuleSpec{
 	dockerfile.CopilotCliModule,
 	dockerfile.GraphifyModule,
 	dockerfile.CavemanModule,
-	dockerfile.TmuxModule,
+	dockerfile.ZellijModule,
 	dockerfile.DodModule,
 	dockerfile.CleanupModule,
 }

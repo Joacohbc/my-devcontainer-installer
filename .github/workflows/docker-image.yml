@@ -17,7 +17,7 @@ jobs:
   # ── Build the shared base image once ──
   # Every variant's Dockerfile starts with the identical Base layers (FROM
   # ubuntu, apt install, useradd devuser, zsh). We build a base image using the
-  # "base" preset (always-on base + cleanup + GitHub CLI + Tmux) and publish it
+  # "base" preset (always-on base + cleanup + GitHub CLI + Zellij) and publish it
   # with an inline cache so the variant builds below can `cache-from` it and
   # skip rebuilding those shared layers. This is not a RemoteVariant — it's a
   # cache/base image only.
@@ -82,7 +82,7 @@ jobs:
             ghcr.io/${{ env.REPO_OWNER }}/devcontainer-base:${{ env.SHORT_SHA }}-${{ env.TIMESTAMP }}
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
-            org.opencontainers.image.description=Shared base image (Ubuntu + devuser + zsh + GitHub CLI + Tmux) for devcontainer variants
+            org.opencontainers.image.description=Shared base image (Ubuntu + devuser + zsh + GitHub CLI + Zellij) for devcontainer variants
 
   # ── Build CLI-generated devcontainer variants ──
   build-variants:
