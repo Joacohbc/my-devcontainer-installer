@@ -27,6 +27,7 @@ const (
 	flagImage          = "image"
 	flagWorkspace      = "workspace"
 	flagPorts          = "ports"
+	flagVolumes        = "volumes"
 	flagSharedConfig   = "shared-config"
 	flagPreset         = "preset"
 	flagNoInteractive  = "no-interactive"
@@ -49,6 +50,7 @@ func addGenerateFlags(cmd *cobra.Command) {
 	f.String(flagImage, "", "Image name (default: derived from fingerprint for local-cached)")
 	f.String(flagWorkspace, "", "Workspace name (default: current dir name)")
 	f.String(flagPorts, "", "Ports to publish on the devcontainer (e.g. 8080:80,5432:5432); bound to 127.0.0.1 unless an IP is given; 'none' clears them")
+	f.String(flagVolumes, "", "Extra volume mounts on the devcontainer (e.g. myvol:/data,./cache:/cache); 'none' clears them")
 	f.Bool(flagSharedConfig, true, "Mount the global shared AI/dev tool config volume (devcontainer-shared-config) so logins/sessions persist across containers; --shared-config=false to opt out")
 	f.String(flagPreset, "", "Apply a preset (modules + services). See 'preset list'.")
 	f.Bool(flagNoInteractive, false, "Fail if any value is missing instead of prompting")
@@ -105,6 +107,7 @@ type genFlags struct {
 	withModules  []string
 	services     []string
 	ports        *[]string // nil = not set (keep existing); non-nil overrides
+	volumes      *[]string // nil = not set (keep existing); non-nil overrides
 	sharedConfig *bool     // nil = not set (keep existing/default-on)
 	mode         string
 	variant      string
@@ -122,16 +125,22 @@ func splitCSV(s string) []string {
 	return out
 }
 
+// parseClearableCSV reads a CSV flag where the literal "none" clears the list
+// (returns an empty, non-nil slice). Entries are trimmed and stored verbatim.
+func parseClearableCSV(get func(string) (string, error), flag string) []string {
+	raw, _ := get(flag)
+	items := splitCSV(raw)
+	if len(items) == 1 && items[0] == "none" {
+		return []string{}
+	}
+	return items
+}
+
 // parsePortsFlag reads the --ports CSV. "none" (or an empty value) clears the
 // published ports; otherwise each entry is a docker port spec stored verbatim
 // (the generator binds specs without an explicit IP to 127.0.0.1).
 func parsePortsFlag(get func(string) (string, error)) []string {
-	raw, _ := get(flagPorts)
-	specs := splitCSV(raw)
-	if len(specs) == 1 && specs[0] == "none" {
-		return []string{}
-	}
-	return specs
+	return parseClearableCSV(get, flagPorts)
 }
 
 func parseGenFlags(cmd *cobra.Command) (*genFlags, error) {
@@ -179,6 +188,10 @@ func parseGenFlags(cmd *cobra.Command) (*genFlags, error) {
 	if f.Changed(flagPorts) {
 		ports := parsePortsFlag(f.GetString)
 		g.ports = &ports
+	}
+	if f.Changed(flagVolumes) {
+		volumes := parseClearableCSV(f.GetString, flagVolumes)
+		g.volumes = &volumes
 	}
 	if f.Changed(flagSharedConfig) {
 		v, _ := f.GetBool(flagSharedConfig)
@@ -573,6 +586,9 @@ func applyGenFlags(config *types.DevcontainerConfig, flags *genFlags) {
 	}
 	if flags.ports != nil {
 		config.Compose.Ports = *flags.ports
+	}
+	if flags.volumes != nil {
+		config.Compose.Volumes = *flags.volumes
 	}
 	if flags.sharedConfig != nil {
 		config.Compose.SharedConfig = flags.sharedConfig

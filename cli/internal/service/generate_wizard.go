@@ -22,6 +22,7 @@ const (
 	stepKeyImage        = "image"
 	stepKeySubnet       = "subnet"
 	stepKeyPorts        = "ports"
+	stepKeyVolumes      = "volumes"
 	stepKeySharedConfig = "sharedConfig"
 )
 
@@ -215,6 +216,7 @@ func (w wizardContext) steps(s *State) []Step {
 	}
 	steps = append(steps, w.subnetStep())
 	steps = append(steps, w.portsStep())
+	steps = append(steps, w.volumesStep())
 	steps = append(steps, w.sharedConfigStep())
 	steps = append(steps, w.envSteps(s)...)
 	return steps
@@ -242,6 +244,33 @@ func (w wizardContext) portsStep() Step {
 		return Field{
 			Kind:    FieldInput,
 			Title:   "Puertos a publicar en el devcontainer (ej. 8080:80,5432:5432 — bind a 127.0.0.1; vacío para ninguno):",
+			Initial: initial,
+		}
+	}}
+}
+
+// parseVolumesCSV splits a comma-separated list of docker volume specs,
+// trimming blanks. Specs are stored verbatim and threaded into the devcontainer
+// service by the generator.
+func parseVolumesCSV(raw string) []string {
+	var out []string
+	for _, v := range strings.Split(raw, ",") {
+		if t := strings.TrimSpace(v); t != "" {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
+func (w wizardContext) volumesStep() Step {
+	return Step{Key: stepKeyVolumes, Build: func(s *State) Field {
+		initial := strings.Join(w.base.Compose.Volumes, ",")
+		if s.Has(stepKeyVolumes) {
+			initial = s.String(stepKeyVolumes)
+		}
+		return Field{
+			Kind:    FieldInput,
+			Title:   "Volúmenes extra a montar en el devcontainer (ej. myvol:/data,./cache:/cache — vacío para ninguno):",
 			Initial: initial,
 		}
 	}}
@@ -482,6 +511,12 @@ func (w wizardContext) reduce(s *State) *types.DevcontainerConfig {
 		draft.Compose.Ports = parsePortsCSV(s.String(stepKeyPorts))
 	} else {
 		draft.Compose.Ports = w.base.Compose.Ports
+	}
+
+	if s.Has(stepKeyVolumes) {
+		draft.Compose.Volumes = parseVolumesCSV(s.String(stepKeyVolumes))
+	} else {
+		draft.Compose.Volumes = w.base.Compose.Volumes
 	}
 
 	if s.Has(stepKeySharedConfig) {

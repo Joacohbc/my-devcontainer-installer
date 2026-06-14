@@ -128,6 +128,23 @@ func prefixVolume(workspace, base string) string {
 	return workspace + "_" + base
 }
 
+// userNamedVolume reports whether a user-supplied mount spec ("src:dst[:opts]")
+// references a named volume (as opposed to a host bind mount). It returns the
+// volume name when so. Sources beginning with '/', '.', '~' or '$' are treated
+// as host paths and need no top-level declaration.
+func userNamedVolume(mount string) (string, bool) {
+	colon := strings.Index(mount, ":")
+	if colon <= 0 {
+		return "", false
+	}
+	src := mount[:colon]
+	switch src[0] {
+	case '/', '.', '~', '$':
+		return "", false
+	}
+	return src, true
+}
+
 func remapVolumeMount(workspace string, declared map[string]bool, mount string) string {
 	colon := strings.Index(mount, ":")
 	if colon <= 0 {
@@ -257,6 +274,9 @@ func GenerateCompose(config *types.DevcontainerConfig) (string, error) {
 			if hasDod {
 				rendered.Volumes = append(rendered.Volumes, "/var/run/docker.sock:/var/run/docker.sock")
 			}
+			// User-defined extra mounts are appended verbatim; named-volume
+			// sources are declared in the top-level volumes section below.
+			rendered.Volumes = append(rendered.Volumes, config.Compose.Volumes...)
 		}
 
 		if svc.ID == types.ServiceDevcontainer {
@@ -318,6 +338,16 @@ func GenerateCompose(config *types.DevcontainerConfig) (string, error) {
 	volumes := make(map[string]*compose.VolumeDef)
 	for v := range declaredVolumes {
 		volumes[prefixVolume(workspace, v)] = &compose.VolumeDef{Labels: copyLabels(labels)}
+	}
+	// Declare named-volume sources from the user's extra mounts so compose does
+	// not reject them as undefined. Bind-mount sources (host paths) need no
+	// declaration. Names are kept verbatim (compose prefixes them by project).
+	for _, mount := range config.Compose.Volumes {
+		if name, ok := userNamedVolume(mount); ok {
+			if _, exists := volumes[name]; !exists {
+				volumes[name] = &compose.VolumeDef{Labels: copyLabels(labels)}
+			}
+		}
 	}
 	// The shared tool-config volume is daemon-level (shared by every workspace),
 	// so it is declared external (never prefixed, never removed by compose down -v).

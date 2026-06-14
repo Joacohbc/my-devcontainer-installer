@@ -248,6 +248,81 @@ func TestParseGenFlags_Ports(t *testing.T) {
 	}
 }
 
+func TestCleanupInstructionLines(t *testing.T) {
+	cfg := &types.DevcontainerConfig{Workspace: "myws"}
+	out := strings.Join(cleanupInstructionLines(cfg), "\n")
+
+	// Native commands must be surfaced as the primary action.
+	for _, native := range []string{
+		"devcontainer-cli ls",
+		"devcontainer-cli down -v",
+		"devcontainer-cli destroy",
+		"devcontainer-cli remove-container",
+		"devcontainer-cli remove-image",
+		"devcontainer-cli prune",
+		"devcontainer-cli update",
+	} {
+		if !strings.Contains(out, native) {
+			t.Errorf("expected cleanup tips to mention native command %q", native)
+		}
+	}
+
+	// The raw docker equivalents must still be shown for reference.
+	for _, raw := range []string{
+		"docker compose down -v",
+		"docker image prune -a",
+		"docker compose build --no-cache",
+	} {
+		if !strings.Contains(out, raw) {
+			t.Errorf("expected cleanup tips to keep docker equivalent %q", raw)
+		}
+	}
+}
+
+func TestParseGenFlags_Volumes(t *testing.T) {
+	cases := []struct {
+		name    string
+		args    []string
+		wantNil bool
+		want    []string
+	}{
+		{name: "unset", args: nil, wantNil: true},
+		{name: "none", args: []string{"--volumes", "none"}, want: []string{}},
+		{name: "empty", args: []string{"--volumes", ""}, want: []string{}},
+		{name: "list", args: []string{"--volumes", "myvol:/data, ./cache:/cache"}, want: []string{"myvol:/data", "./cache:/cache"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd := &cobra.Command{Use: "generate"}
+			addGenerateFlags(cmd)
+			if err := cmd.ParseFlags(tc.args); err != nil {
+				t.Fatalf("ParseFlags: %v", err)
+			}
+			flags, err := parseGenFlags(cmd)
+			if err != nil {
+				t.Fatalf("parseGenFlags: %v", err)
+			}
+			if tc.wantNil {
+				if flags.volumes != nil {
+					t.Errorf("expected nil volumes, got %v", *flags.volumes)
+				}
+				return
+			}
+			if flags.volumes == nil {
+				t.Fatalf("expected non-nil volumes for args %v", tc.args)
+			}
+			if len(*flags.volumes) != len(tc.want) {
+				t.Fatalf("volumes = %v, want %v", *flags.volumes, tc.want)
+			}
+			for i := range tc.want {
+				if (*flags.volumes)[i] != tc.want[i] {
+					t.Errorf("volumes[%d] = %q, want %q", i, (*flags.volumes)[i], tc.want[i])
+				}
+			}
+		})
+	}
+}
+
 func TestParseGenFlags_SharedConfig(t *testing.T) {
 	cases := []struct {
 		name    string

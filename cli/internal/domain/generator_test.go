@@ -332,6 +332,49 @@ func TestGenerateCompose_NoDependsOnWithoutDB(t *testing.T) {
 	}
 }
 
+func TestGenerateCompose_UserVolumes(t *testing.T) {
+	cfg := makeConfig(func(c *types.DevcontainerConfig) {
+		c.Compose.Volumes = []string{"myvol:/data", "./cache:/cache"}
+	})
+	yml := mustGenerateCompose(t, cfg)
+	var parsed map[string]any
+	if err := yaml.Unmarshal([]byte(yml), &parsed); err != nil {
+		t.Fatalf("invalid YAML: %v", err)
+	}
+
+	services := parsed["services"].(map[string]any)
+	devSvc := services["devcontainer-ssh"].(map[string]any)
+	mounts := devSvc["volumes"].([]any)
+	var got []string
+	for _, m := range mounts {
+		got = append(got, m.(string))
+	}
+	for _, want := range []string{"myvol:/data", "./cache:/cache"} {
+		found := false
+		for _, m := range got {
+			if m == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("expected devcontainer volumes to contain %q, got %v", want, got)
+		}
+	}
+
+	// The named volume must be declared at the top level; the bind mount must not.
+	volumes, _ := parsed["volumes"].(map[string]any)
+	if _, ok := volumes["myvol"]; !ok {
+		t.Errorf("expected named volume 'myvol' declared in top-level volumes, got %v", volumes)
+	}
+	if _, ok := volumes["./cache"]; ok {
+		t.Errorf("bind-mount source must not be declared as a named volume, got %v", volumes)
+	}
+	if _, ok := volumes["cache"]; ok {
+		t.Errorf("bind-mount source must not be declared as a named volume, got %v", volumes)
+	}
+}
+
 func TestGenerateCompose_StaticIPFromSubnet(t *testing.T) {
 	cfg := makeConfig(func(c *types.DevcontainerConfig) {
 		c.Compose.Services = []any{}

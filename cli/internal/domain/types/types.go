@@ -209,6 +209,12 @@ type ComposeConfig struct {
 	// in the generated compose so they are not reachable from the LAN; include an
 	// IP (e.g. "0.0.0.0:8080:80") to override. Empty/nil means no published ports.
 	Ports []string `json:"ports,omitempty" yaml:"ports,omitempty"`
+	// Volumes are extra volume mounts added to the devcontainer service
+	// (e.g. "myvol:/data" or "./cache:/cache"). Named-volume sources (those that
+	// are not host paths) are also declared in the compose top-level volumes
+	// section. Bind-mount sources are resolved relative to the compose file
+	// location (.dc_<workspace>/build/). Empty/nil means no extra mounts.
+	Volumes []string `json:"volumes,omitempty" yaml:"volumes,omitempty"`
 	// SharedConfig toggles mounting the global shared tool-config volume
 	// (devcontainer-shared-config) and the entrypoint symlinks into devuser's
 	// home. A nil value means "unset" and is treated as enabled (the default,

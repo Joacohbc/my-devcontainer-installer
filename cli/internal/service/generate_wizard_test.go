@@ -59,6 +59,33 @@ func TestConfigureReducesPorts(t *testing.T) {
 	}
 }
 
+func TestConfigureReducesVolumes(t *testing.T) {
+	defer useFakeDocker(&fakeRunner{status: 0})()
+
+	svc := GenerateService{Report: nopReporter{}}
+	base := &types.DevcontainerConfig{Env: map[string]string{}}
+	prompter := scriptedPrompter{answers: map[string]any{
+		stepKeyWorkspace: "testws",
+		stepKeyMode:      string(types.BuildModeLocalCached),
+		stepKeySubnet:    "172.45.0.0/16",
+		stepKeyVolumes:   "myvol:/data, ./cache:/cache",
+	}}
+
+	cfg, err := svc.Configure(base, "/home/user/proj", prompter)
+	if err != nil {
+		t.Fatalf("Configure: %v", err)
+	}
+	want := []string{"myvol:/data", "./cache:/cache"}
+	if len(cfg.Compose.Volumes) != len(want) {
+		t.Fatalf("Volumes = %v, want %v", cfg.Compose.Volumes, want)
+	}
+	for i, v := range want {
+		if cfg.Compose.Volumes[i] != v {
+			t.Errorf("Volumes[%d] = %q, want %q", i, cfg.Compose.Volumes[i], v)
+		}
+	}
+}
+
 // The wizard prompts for shared-config (defaulting to the base's current value),
 // but when the step is left at its seeded default Configure must carry the base
 // value through: a nil base stays enabled-by-default and an explicit opt-out survives.
