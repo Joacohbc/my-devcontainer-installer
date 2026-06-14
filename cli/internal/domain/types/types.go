@@ -18,6 +18,7 @@ const (
 	ModuleGolang         ModuleID = "go"
 	ModulePhp            ModuleID = "php"
 	ModuleRust           ModuleID = "rust"
+	ModuleCCpp           ModuleID = "c-cpp"
 	ModulePostgresClient ModuleID = "postgres-client"
 	ModuleRedisClient    ModuleID = "redis-client"
 	ModuleMongoClient    ModuleID = "mongo-client"

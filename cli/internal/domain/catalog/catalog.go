@@ -17,6 +17,7 @@ var DockerfileModules = []*dockerfile.ModuleSpec{
 	dockerfile.GolangModule,
 	dockerfile.PhpModule,
 	dockerfile.RustModule,
+	dockerfile.CCppModule,
 	dockerfile.PostgresClientModule,
 	dockerfile.RedisClientModule,
 	dockerfile.MongoClientModule,

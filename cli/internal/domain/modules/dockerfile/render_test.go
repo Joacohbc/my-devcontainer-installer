@@ -118,6 +118,19 @@ func TestRustModuleRender(t *testing.T) {
 	}
 }
 
+func TestCCppModuleRender(t *testing.T) {
+	out := dockerfile.CCppModule.Render(nil)
+	for _, pkg := range []string{"build-essential", "gdb", "cmake", "clang"} {
+		if !strings.Contains(out, pkg) {
+			t.Errorf("expected C/C++ module to install %q:\n%s", pkg, out)
+		}
+	}
+	// Single install layer with inline cleanup.
+	if got := strings.Count(out, "RUN "); got != 1 {
+		t.Errorf("expected a single RUN layer, got %d:\n%s", got, out)
+	}
+}
+
 func TestYarnModuleRender(t *testing.T) {
 	out := dockerfile.YarnModule.Render(nil)
 	// Yarn is installed through Corepack, which ships with Node.
@@ -195,6 +208,7 @@ func TestAptModulesIncludeStandardCleanup(t *testing.T) {
 		{"tmux", dockerfile.TmuxModule, nil},
 		{"php", dockerfile.PhpModule, nil},
 		{"rust", dockerfile.RustModule, nil},
+		{"c-cpp", dockerfile.CCppModule, nil},
 		{"sqlite", dockerfile.SqliteModule, nil},
 		{"pnpm", dockerfile.PnpmModule, nil},
 		{"github-cli", dockerfile.GithubCliModule, nil},
@@ -245,6 +259,7 @@ func TestModuleRunLayerCounts(t *testing.T) {
 		{"python with uv", dockerfile.PythonModule, map[string]any{"uv": true}, 2}, // install+uv + shell-init
 		{"python no uv", dockerfile.PythonModule, map[string]any{"uv": false}, 1},
 		{"rust", dockerfile.RustModule, nil, 2}, // install+rustup + shell-init
+		{"c-cpp", dockerfile.CCppModule, nil, 1},
 		{"pnpm", dockerfile.PnpmModule, nil, 2}, // install+pnpm + shell-init
 		{"bun", dockerfile.BunModule, nil, 2},   // install + shell-init
 		{"yarn", dockerfile.YarnModule, nil, 1}, // corepack enable + prepare (single RUN)
