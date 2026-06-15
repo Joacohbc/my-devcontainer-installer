@@ -155,6 +155,13 @@ func TestYarnModuleRender(t *testing.T) {
 	}
 }
 
+func TestFfmpegModuleRender(t *testing.T) {
+	out := dockerfile.FfmpegModule.Render(nil)
+	if !strings.Contains(out, "apt-get install -y ffmpeg") {
+		t.Errorf("ffmpeg module must install the ffmpeg package:\n%s", out)
+	}
+}
+
 func TestDatabaseClientModulesRender(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -217,6 +224,7 @@ func TestAptModulesIncludeStandardCleanup(t *testing.T) {
 		{"rust", dockerfile.RustModule, nil},
 		{"c-cpp", dockerfile.CCppModule, nil},
 		{"sqlite", dockerfile.SqliteModule, nil},
+		{"ffmpeg", dockerfile.FfmpegModule, nil},
 		{"pnpm", dockerfile.PnpmModule, nil},
 		{"github-cli", dockerfile.GithubCliModule, nil},
 		{"dod", dockerfile.DodModule, nil},
@@ -271,6 +279,7 @@ func TestModuleRunLayerCounts(t *testing.T) {
 		{"bun", dockerfile.BunModule, nil, 2},   // install + shell-init
 		{"yarn", dockerfile.YarnModule, nil, 1}, // corepack enable + prepare (single RUN)
 		{"sqlite", dockerfile.SqliteModule, nil, 1},
+		{"ffmpeg", dockerfile.FfmpegModule, nil, 1},
 		{"zellij", dockerfile.ZellijModule, nil, 1},
 		{"github-cli", dockerfile.GithubCliModule, nil, 1},
 		{"dod", dockerfile.DodModule, nil, 1},
