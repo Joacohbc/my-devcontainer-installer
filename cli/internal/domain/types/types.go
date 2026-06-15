@@ -34,6 +34,7 @@ const (
 	ModuleGraphify       ModuleID = "graphify"
 	ModuleCaveman        ModuleID = "caveman"
 	ModuleZellij         ModuleID = "zellij"
+	ModuleFfmpeg         ModuleID = "ffmpeg"
 	ModuleDod            ModuleID = "dod"
 	ModuleCleanup        ModuleID = "cleanup"
 )

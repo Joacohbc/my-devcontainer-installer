@@ -81,6 +81,7 @@ func TestGenerateDockerfile_AllSelectedModules(t *testing.T) {
 			{ID: "nodejs"},
 			{ID: "bun"},
 			{ID: "zellij"},
+			{ID: "ffmpeg"},
 			{ID: "php"},
 			{ID: "rust"},
 		}
@@ -96,6 +97,7 @@ func TestGenerateDockerfile_AllSelectedModules(t *testing.T) {
 	assertContainsStr(t, df, "nvm install --lts", "full dockerfile")
 	assertContainsStr(t, df, "bun.sh/install", "full dockerfile")
 	assertContainsStr(t, df, "zellij", "full dockerfile")
+	assertContainsStr(t, df, "install -y ffmpeg", "full dockerfile")
 	assertContainsStr(t, df, "ppa:ondrej/php", "full dockerfile")
 	assertContainsStr(t, df, "rustup.rs", "full dockerfile")
 }
