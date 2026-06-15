@@ -132,6 +132,31 @@ func compareVersions(a, b string) int {
 // (1) than b, honoring pre-release suffixes.
 func (s UpgradeService) CompareVersions(a, b string) int { return compareVersions(a, b) }
 
+// ResolveTarget picks the release to install: the newest release overall (top)
+// when the user opted into pre-releases, otherwise the newest stable release
+// (falling back to top when no stable exists). Opting in with wantPreRelease
+// targets top regardless of whether it is strictly newer than the installed
+// version, so a forced reinstall reinstalls the pre-release rather than the
+// stable build.
+func (s UpgradeService) ResolveTarget(top, stable *Release, wantPreRelease bool) *Release {
+	if wantPreRelease && top != nil {
+		return top
+	}
+	if stable != nil {
+		return stable
+	}
+	return top
+}
+
+// PreReleaseAvailable reports whether top is a pre-release newer than current,
+// i.e. a pre-release the caller may offer as an opt-in upgrade.
+func (s UpgradeService) PreReleaseAvailable(current string, top *Release) bool {
+	if top == nil || !top.Prerelease {
+		return false
+	}
+	return current == "dev" || s.CompareVersions(current, top.Tag) < 0
+}
+
 // pickTargets returns the newest release overall (top) and the newest stable,
 // non-draft release (stable), ignoring drafts. Either may be nil when no
 // release qualifies.
