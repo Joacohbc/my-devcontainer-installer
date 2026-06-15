@@ -33,7 +33,7 @@ var DockerfileModules = []*dockerfile.ModuleSpec{
 	dockerfile.GraphifyModule,
 	dockerfile.CavemanModule,
 	dockerfile.ZellijModule,
-	dockerfile.PlaywrightModule,
+	dockerfile.ChromeModule,
 	dockerfile.DodModule,
 	dockerfile.CleanupModule,
 }
