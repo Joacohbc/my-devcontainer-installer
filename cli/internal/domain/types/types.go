@@ -34,6 +34,7 @@ const (
 	ModuleGraphify       ModuleID = "graphify"
 	ModuleCaveman        ModuleID = "caveman"
 	ModuleZellij         ModuleID = "zellij"
+	ModulePlaywright     ModuleID = "playwright"
 	ModuleDod            ModuleID = "dod"
 	ModuleCleanup        ModuleID = "cleanup"
 )

@@ -155,6 +155,35 @@ func TestYarnModuleRender(t *testing.T) {
 	}
 }
 
+func TestPlaywrightModuleRender(t *testing.T) {
+	out := dockerfile.PlaywrightModule.Render(nil)
+	// Core Chromium/headless-Chrome runtime libraries, in their Ubuntu 24.04
+	// (noble) spellings — the t64 suffix is required after the time_t transition.
+	for _, pkg := range []string{
+		"libnss3",
+		"libatk-bridge2.0-0t64",
+		"libcups2t64",
+		"libgbm1",
+		"libasound2t64",
+		"fonts-liberation",
+	} {
+		if !strings.Contains(out, pkg) {
+			t.Errorf("playwright module must install %q:\n%s", pkg, out)
+		}
+	}
+	// Language-agnostic: it must NOT bake a Node/Python client or a browser
+	// binary — those are pinned by the client the user installs later.
+	for _, nope := range []string{"npm install", "pip install", "playwright install"} {
+		if strings.Contains(out, nope) {
+			t.Errorf("playwright module must stay language-agnostic, found %q:\n%s", nope, out)
+		}
+	}
+	// Single install layer with inline cleanup.
+	if got := strings.Count(out, "RUN "); got != 1 {
+		t.Errorf("expected a single RUN layer, got %d:\n%s", got, out)
+	}
+}
+
 func TestDatabaseClientModulesRender(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -220,6 +249,7 @@ func TestAptModulesIncludeStandardCleanup(t *testing.T) {
 		{"pnpm", dockerfile.PnpmModule, nil},
 		{"github-cli", dockerfile.GithubCliModule, nil},
 		{"dod", dockerfile.DodModule, nil},
+		{"playwright", dockerfile.PlaywrightModule, nil},
 		{"java-temurin", dockerfile.JavaTemurinModule, nil},
 		{"java-openjdk", dockerfile.JavaOpenjdkModule, nil},
 		{"postgres-client", dockerfile.PostgresClientModule, nil},
@@ -274,6 +304,7 @@ func TestModuleRunLayerCounts(t *testing.T) {
 		{"zellij", dockerfile.ZellijModule, nil, 1},
 		{"github-cli", dockerfile.GithubCliModule, nil, 1},
 		{"dod", dockerfile.DodModule, nil, 1},
+		{"playwright", dockerfile.PlaywrightModule, nil, 1},
 		{"java-temurin", dockerfile.JavaTemurinModule, nil, 1},
 		{"java-openjdk", dockerfile.JavaOpenjdkModule, nil, 1},
 	}

@@ -35,7 +35,7 @@ func TestSelectableByCategoryMapping(t *testing.T) {
 		types.UICategoryAITools:   {"claude-code", "opencode", "codex-cli", "antigravity-cli", "copilot-cli", "graphify", "caveman"},
 		types.UICategoryLanguages: {"java-temurin", "java-openjdk", "python", "go", "php", "rust", "c-cpp", "nodejs", "pnpm", "yarn", "bun"},
 		types.UICategoryDatabases: {"sqlite", "mongo", "redis", "postgres"},
-		types.UICategoryDevTools:  {"github-cli", "zellij", "dod", "tunnel"},
+		types.UICategoryDevTools:  {"github-cli", "zellij", "playwright", "dod", "tunnel"},
 		types.UICategoryClients:   {"postgres-client", "redis-client", "mongo-client"},
 	}
 
