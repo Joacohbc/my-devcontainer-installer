@@ -130,6 +130,84 @@ func TestEntrypointAlignsUIDInsteadOfChangingWorkspaceACLs(t *testing.T) {
 	}
 }
 
+// install-graphify.sh must wire Graphify into every supported agent present in
+// the container (global scope, never --project) and detect/skip absent ones.
+func TestGraphifyInstallWiresAllPlatforms(t *testing.T) {
+	body, err := os.ReadFile("install-graphify.sh")
+	if err != nil {
+		t.Fatalf("reading install-graphify.sh: %v", err)
+	}
+	script := string(body)
+
+	// A helper applies the platform id ($2); assert the helper plus each call.
+	wantWires := []string{
+		`graphify install --platform "$2"`,
+		"wire \"Claude Code\" claude",
+		"wire \"Codex\" codex",
+		"wire \"Antigravity\" antigravity",
+		"wire \"GitHub Copilot\" copilot",
+	}
+	for _, w := range wantWires {
+		if !strings.Contains(script, w) {
+			t.Errorf("install-graphify.sh must wire %q", w)
+		}
+	}
+
+	wantGuards := []string{
+		"command -v claude",
+		"command -v codex",
+		`[ -d "$HOME/.codex" ]`, // Codex leaves no binary; dir is the marker.
+		"command -v antigravity",
+		"command -v copilot",
+	}
+	for _, g := range wantGuards {
+		if !strings.Contains(script, g) {
+			t.Errorf("install-graphify.sh must guard a platform with %q", g)
+		}
+	}
+
+	// Global scope only: the project-scoped flag must never be used.
+	if strings.Contains(script, "--project") {
+		t.Error("install-graphify.sh must install in global scope (no --project)")
+	}
+}
+
+// install-caveman.sh must wire Caveman into every supported agent present in
+// the container, using each platform's native command, and detect/skip absent
+// ones.
+func TestCavemanInstallWiresAllPlatforms(t *testing.T) {
+	body, err := os.ReadFile("install-caveman.sh")
+	if err != nil {
+		t.Fatalf("reading install-caveman.sh: %v", err)
+	}
+	script := string(body)
+
+	wantWires := []string{
+		"claude plugin install caveman@caveman", // Claude Code (plugin marketplace)
+		"--only codex",
+		"--only antigravity",
+		"--only copilot",
+	}
+	for _, w := range wantWires {
+		if !strings.Contains(script, w) {
+			t.Errorf("install-caveman.sh must wire %q", w)
+		}
+	}
+
+	wantGuards := []string{
+		"command -v claude",
+		"command -v codex",
+		`[ -d "$HOME/.codex" ]`,
+		"command -v antigravity",
+		"command -v copilot",
+	}
+	for _, g := range wantGuards {
+		if !strings.Contains(script, g) {
+			t.Errorf("install-caveman.sh must guard a platform with %q", g)
+		}
+	}
+}
+
 func TestIsGeneratedFile(t *testing.T) {
 	dir := t.TempDir()
 

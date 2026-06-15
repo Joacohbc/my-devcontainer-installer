@@ -1,9 +1,49 @@
 #!/bin/bash
-# Install Caveman for devuser. Auto-detects supported AI agents and wires the
-# output-compression hooks, statusline badge and caveman-shrink MCP middleware.
-# The installer is Node-based (bin/install.js) and needs Node >= 18.
+# Install Caveman for devuser and wire its output-compression hooks/skills into
+# every AI agent present in this container (Claude Code, Codex, Antigravity,
+# GitHub Copilot). Node >= 18 is required (the per-platform installers are
+# npx-based). Each platform is only wired if its CLI / config is present;
+# failures never abort the rest.
 set -e
 
 echo "==> Installing Caveman"
 
-curl -fsSL https://raw.githubusercontent.com/JuliusBrussee/caveman/main/install.sh | bash
+export PATH="$HOME/.local/bin:$PATH"
+
+REPO="JuliusBrussee/caveman"
+wired=0
+
+# Claude Code — native plugin marketplace.
+if command -v claude >/dev/null 2>&1; then
+  echo "==> Caveman -> Claude Code (plugin marketplace)"
+  { claude plugin marketplace add "$REPO" && claude plugin install caveman@caveman; } \
+    || echo "   (skipped: claude plugin install caveman@caveman failed)"
+  wired=1
+fi
+
+# Codex — npx skills profile. Codex leaves no binary; ~/.codex is the marker.
+if command -v codex >/dev/null 2>&1 || [ -d "$HOME/.codex" ]; then
+  echo "==> Caveman -> Codex (npx skills --only codex)"
+  npx --yes skills add "$REPO" --only codex || echo "   (skipped: codex wiring failed)"
+  wired=1
+fi
+
+# Antigravity — npx skills profile.
+if command -v antigravity >/dev/null 2>&1; then
+  echo "==> Caveman -> Antigravity (npx skills --only antigravity)"
+  npx --yes skills add "$REPO" --only antigravity || echo "   (skipped: antigravity wiring failed)"
+  wired=1
+fi
+
+# GitHub Copilot — skills profile with always-on rule files.
+if command -v copilot >/dev/null 2>&1; then
+  echo "==> Caveman -> GitHub Copilot (npx skills --only copilot --with-init)"
+  npx --yes skills add "$REPO" --only copilot --with-init || echo "   (skipped: copilot wiring failed)"
+  wired=1
+fi
+
+# Fallback: no known agent detected — run the generic auto-detecting installer.
+if [ "$wired" -eq 0 ]; then
+  echo "==> No known agent detected; running generic Caveman installer (auto-detect)"
+  curl -fsSL https://raw.githubusercontent.com/JuliusBrussee/caveman/main/install.sh | bash
+fi

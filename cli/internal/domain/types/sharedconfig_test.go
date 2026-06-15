@@ -52,6 +52,18 @@ func TestSharedConfigEntries(t *testing.T) {
 			t.Errorf("gh target %q should be nested (have a parent dir)", e.Target)
 		}
 	}
+
+	// ~/.agents holds reusable agent rules/workflows/skills shared across tools.
+	if e, ok := SharedConfigEntryByID("agents"); !ok {
+		t.Error("expected an agents entry (~/.agents)")
+	} else {
+		if e.Target != ".agents" {
+			t.Errorf("agents target = %q, want .agents", e.Target)
+		}
+		if e.Kind != SharedConfigDir {
+			t.Errorf("agents must be a dir entry, got %q", e.Kind)
+		}
+	}
 }
 
 func TestSharedConfigEntryByID(t *testing.T) {
