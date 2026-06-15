@@ -34,6 +34,7 @@ var DockerfileModules = []*dockerfile.ModuleSpec{
 	dockerfile.CavemanModule,
 	dockerfile.ZellijModule,
 	dockerfile.ChromeModule,
+	dockerfile.FfmpegModule,
 	dockerfile.DodModule,
 	dockerfile.CleanupModule,
 }

@@ -133,6 +133,54 @@ func TestPickTargets_OnlyTesting(t *testing.T) {
 	}
 }
 
+func TestPreReleaseAvailable(t *testing.T) {
+	var svc UpgradeService
+	stable := &Release{Tag: "v1.4.0"}
+	newerPre := &Release{Tag: "v1.5.0-vt.2", Prerelease: true}
+	cases := []struct {
+		name    string
+		current string
+		top     *Release
+		want    bool
+	}{
+		{"newer pre-release", "v1.4.0", newerPre, true},
+		{"already on pre-release", "v1.5.0-vt.2", newerPre, false},
+		{"older pre-release", "v1.6.0", newerPre, false},
+		{"top is stable", "v1.3.0", stable, false},
+		{"dev always sees pre-release", "dev", newerPre, true},
+		{"nil top", "v1.0.0", nil, false},
+	}
+	for _, c := range cases {
+		if got := svc.PreReleaseAvailable(c.current, c.top); got != c.want {
+			t.Errorf("%s: PreReleaseAvailable(%q) = %v, want %v", c.name, c.current, got, c.want)
+		}
+	}
+}
+
+func TestResolveTarget(t *testing.T) {
+	var svc UpgradeService
+	top := &Release{Tag: "v1.5.0-vt.2", Prerelease: true}
+	stable := &Release{Tag: "v1.4.0"}
+	cases := []struct {
+		name           string
+		top, stable    *Release
+		wantPreRelease bool
+		want           *Release
+	}{
+		// Opting in targets top even when it is NOT newer than current — the
+		// case that reproduced the --force/--pre-release bug.
+		{"opt-in targets top", top, stable, true, top},
+		{"default targets stable", top, stable, false, stable},
+		{"no stable falls back to top", top, nil, false, top},
+		{"opt-in with no top falls back to stable", nil, stable, true, stable},
+	}
+	for _, c := range cases {
+		if got := svc.ResolveTarget(c.top, c.stable, c.wantPreRelease); got != c.want {
+			t.Errorf("%s: ResolveTarget() = %v, want %v", c.name, got, c.want)
+		}
+	}
+}
+
 func TestGetTargetTriplet(t *testing.T) {
 	triplet, err := getTargetTriplet()
 	if err != nil {

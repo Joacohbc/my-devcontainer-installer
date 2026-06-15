@@ -35,6 +35,7 @@ const (
 	ModuleCaveman        ModuleID = "caveman"
 	ModuleZellij         ModuleID = "zellij"
 	ModuleChrome         ModuleID = "chrome"
+	ModuleFfmpeg         ModuleID = "ffmpeg"
 	ModuleDod            ModuleID = "dod"
 	ModuleCleanup        ModuleID = "cleanup"
 )
