@@ -55,18 +55,32 @@ func postScriptsDockerfileBlock(config *types.DevcontainerConfig) (string, error
 		lines = append(lines, fmt.Sprintf("COPY %s %s/", strings.Join(manual, " "), types.PostScriptDir))
 		chmodTargets = append(chmodTargets, types.PostScriptDir+"/*.sh")
 	}
+	var symlinks []string
 	if len(autoStart) > 0 {
 		// Non-interactive installers the entrypoint auto-runs on start. The
 		// numeric "NN-" prefix encodes run order so the entrypoint's sorted glob
 		// runs agents first and the agent-wiring tools (graphify/caveman) last.
 		for _, e := range autoStart {
 			lines = append(lines, fmt.Sprintf("COPY %s %s/%02d-%s", e.File, types.PostScriptStartDir, e.Order, e.File))
+			// Also expose each auto-start script under its plain name in
+			// ~/post-script/ (a relative symlink into start.d/) so the user can
+			// still run it manually, exactly like the interactive scripts.
+			symlinks = append(symlinks, fmt.Sprintf("ln -sfn start.d/%02d-%s %s/%s", e.Order, e.File, types.PostScriptDir, e.File))
 		}
 		chmodTargets = append(chmodTargets, types.PostScriptStartDir+"/*.sh")
 	}
 
-	lines = append(lines, fmt.Sprintf("RUN chown -R devuser:devuser %s && chmod +x %s",
-		types.PostScriptDir, strings.Join(chmodTargets, " ")))
+	run := fmt.Sprintf("RUN chown -R devuser:devuser %s && chmod +x %s",
+		types.PostScriptDir, strings.Join(chmodTargets, " "))
+	for _, s := range symlinks {
+		run += " \\\n    && " + s
+	}
+	if len(symlinks) > 0 {
+		// Own the symlinks themselves by devuser (the targets are already owned
+		// via the recursive chown above; -h keeps chown from dereferencing).
+		run += " \\\n    && chown -h devuser:devuser " + types.PostScriptDir + "/*.sh"
+	}
+	lines = append(lines, run)
 	return strings.Join(lines, "\n"), nil
 }
 

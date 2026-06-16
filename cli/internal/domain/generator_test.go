@@ -816,6 +816,8 @@ func TestGenerateDockerfile_ClaudeCode(t *testing.T) {
 	// the start.d/ dir with a numeric order prefix (default order 50).
 	assertContainsStr(t, df, "COPY install-claude-code.sh /home/devuser/post-script/start.d/50-install-claude-code.sh", "claude-code auto-start script")
 	assertContainsStr(t, df, "/home/devuser/post-script/start.d/*.sh", "start.d chmod target")
+	// A plain-named symlink under ~/post-script/ lets the user still run it by hand.
+	assertContainsStr(t, df, "ln -sfn start.d/50-install-claude-code.sh /home/devuser/post-script/install-claude-code.sh", "claude-code manual symlink")
 }
 
 // Auto-start installers go to start.d/ with an order prefix; the agent-wiring

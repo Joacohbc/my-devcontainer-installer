@@ -34,7 +34,13 @@ Los instaladores **no interactivos** se ejecutan **automáticamente al arrancar 
 ~/post-script/start.d/90-install-caveman.sh       # Caveman          (auto, al final)
 ```
 
-El progreso de cada uno queda en `~/.post-script-state/<script>.log`. Si querés reinstalar a mano, borrá el `.done` correspondiente y reiniciá el contenedor, o ejecutá el script directamente.
+Cada instalador auto-start también queda accesible con su nombre llano en `~/post-script/` (un symlink a `start.d/NN-...`), así que podés ejecutarlo a mano cuando quieras:
+
+```bash
+~/post-script/install-claude-code.sh   # corre el instalador manualmente (symlink a start.d/)
+```
+
+El progreso de cada ejecución automática queda en `~/.post-script-state/<script>.log`. Si querés que se reinstale solo en el próximo arranque, borrá el `.done` correspondiente y reiniciá el contenedor.
 
 El instalador **interactivo** de Codex no se auto-ejecuta (lanza `npx @openai/codex` y requiere interacción); queda como script manual:
 
