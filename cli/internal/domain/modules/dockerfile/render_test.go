@@ -155,6 +155,38 @@ func TestYarnModuleRender(t *testing.T) {
 	}
 }
 
+func TestChromeModuleRender(t *testing.T) {
+	out := dockerfile.ChromeModule.Render(nil)
+	// Installs the same container-friendly Chromium .deb from the xtradeb/apps
+	// PPA on every arch, so the binary name and behaviour are identical across
+	// amd64 and arm64.
+	for _, frag := range []string{
+		"ppa:xtradeb/apps",
+		"apt-get install -y chromium",
+	} {
+		if !strings.Contains(out, frag) {
+			t.Errorf("chrome module must install chromium from the xtradeb PPA, missing %q:\n%s", frag, out)
+		}
+	}
+	// Always Chromium — no architecture branch and no amd64-only Google Chrome.
+	for _, nope := range []string{"google-chrome", "dl.google.com", `"$ARCH" = "amd64"`} {
+		if strings.Contains(out, nope) {
+			t.Errorf("chrome module must always install chromium, found %q:\n%s", nope, out)
+		}
+	}
+	// Chromium is decoupled from any automation framework — no Playwright/Selenium
+	// client is baked in.
+	for _, nope := range []string{"playwright", "selenium", "puppeteer", "npm install", "pip install"} {
+		if strings.Contains(out, nope) {
+			t.Errorf("chrome module must stay framework-agnostic, found %q:\n%s", nope, out)
+		}
+	}
+	// Single install layer with inline cleanup.
+	if got := strings.Count(out, "RUN "); got != 1 {
+		t.Errorf("expected a single RUN layer, got %d:\n%s", got, out)
+	}
+}
+
 func TestFfmpegModuleRender(t *testing.T) {
 	out := dockerfile.FfmpegModule.Render(nil)
 	if !strings.Contains(out, "apt-get install -y ffmpeg") {
@@ -228,6 +260,7 @@ func TestAptModulesIncludeStandardCleanup(t *testing.T) {
 		{"pnpm", dockerfile.PnpmModule, nil},
 		{"github-cli", dockerfile.GithubCliModule, nil},
 		{"dod", dockerfile.DodModule, nil},
+		{"chrome", dockerfile.ChromeModule, nil},
 		{"java-temurin", dockerfile.JavaTemurinModule, nil},
 		{"java-openjdk", dockerfile.JavaOpenjdkModule, nil},
 		{"postgres-client", dockerfile.PostgresClientModule, nil},
@@ -283,6 +316,7 @@ func TestModuleRunLayerCounts(t *testing.T) {
 		{"zellij", dockerfile.ZellijModule, nil, 1},
 		{"github-cli", dockerfile.GithubCliModule, nil, 1},
 		{"dod", dockerfile.DodModule, nil, 1},
+		{"chrome", dockerfile.ChromeModule, nil, 1},
 		{"java-temurin", dockerfile.JavaTemurinModule, nil, 1},
 		{"java-openjdk", dockerfile.JavaOpenjdkModule, nil, 1},
 	}
