@@ -23,16 +23,23 @@ sudo ~/post-script/update_golang.sh  # actualiza Go a la última estable (módul
 
 ### CLIs de IA (módulos `claude-code`, `opencode`, `codex-cli`, `antigravity-cli`, `copilot-cli`, `caveman`, `graphify`)
 
-Si generaste el entorno con alguno de los módulos de IA correspondientes, sus instaladores quedan disponibles. Ejecutá el que necesites:
+Los instaladores **no interactivos** se ejecutan **automáticamente al arrancar el contenedor**, en segundo plano y **una sola vez por contenedor** (un sentinel en `~/.post-script-state/<script>.done` evita reinstalar tras un `stop`/`start`; un contenedor nuevo reinstala). El orden está fijado: primero los agentes y al final las herramientas que se cablean sobre ellos (Graphify/Caveman).
 
 ```bash
-~/post-script/install-claude-code.sh   # Claude Code (@anthropic-ai/claude-code)
-~/post-script/install-opencode.sh      # OpenCode (opencode.ai)
-~/post-script/install-codex-cli.sh     # Codex CLI (usa npx, no requiere instalación global)
-~/post-script/install-antigravity.sh   # Antigravity CLI
-~/post-script/install-copilot.sh       # GitHub Copilot CLI
-~/post-script/install-caveman.sh       # Caveman (requiere Node.js)
-~/post-script/install-graphify.sh      # Graphify (requiere Python)
+~/post-script/start.d/50-install-claude-code.sh   # Claude Code      (auto)
+~/post-script/start.d/50-install-opencode.sh      # OpenCode         (auto)
+~/post-script/start.d/50-install-antigravity.sh   # Antigravity CLI  (auto)
+~/post-script/start.d/50-install-copilot.sh       # GitHub Copilot   (auto)
+~/post-script/start.d/90-install-graphify.sh      # Graphify         (auto, al final)
+~/post-script/start.d/90-install-caveman.sh       # Caveman          (auto, al final)
+```
+
+El progreso de cada uno queda en `~/.post-script-state/<script>.log`. Si querés reinstalar a mano, borrá el `.done` correspondiente y reiniciá el contenedor, o ejecutá el script directamente.
+
+El instalador **interactivo** de Codex no se auto-ejecuta (lanza `npx @openai/codex` y requiere interacción); queda como script manual:
+
+```bash
+~/post-script/install-codex-cli.sh     # Codex CLI (usa npx, requiere interacción)
 ```
 
 > 💡 **¿No incluiste el módulo?** No hace falta reinstalar la imagen: desde el host podés materializar cualquiera de estos instaladores en un contenedor en marcha con `devcontainer-cli copy --asset <nombre>` (ej. `copy --asset install-claude-code`) y luego ejecutarlo dentro. Ver [README.md → Copiar archivos y assets](README.md#copiar-archivos-y-assets-copy).

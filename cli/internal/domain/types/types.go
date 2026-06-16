@@ -64,6 +64,17 @@ const (
 const DevUserHome = "/home/devuser"
 const PostScriptDir = DevUserHome + "/post-script"
 
+// PostScriptStartDir holds the non-interactive installer scripts the entrypoint
+// runs automatically (in the background, once per container) on start. Scripts
+// are copied here with a numeric "NN-" prefix so the entrypoint's sorted glob
+// runs them in the intended order (agents first, then the agent-wiring tools
+// graphify/caveman last). Manual/interactive scripts stay under PostScriptDir.
+const PostScriptStartDir = PostScriptDir + "/start.d"
+
+// DefaultPostScriptStartOrder is the run-order prefix used for auto-start
+// scripts whose module does not set an explicit PostScriptStartOrder.
+const DefaultPostScriptStartOrder = 50
+
 // WorkspaceRoot is the parent dir the project is mounted under. Each project
 // gets a unique /workspaces/<workspace> path (entrypoint aliases /workspace to
 // it) so the path-keyed history of Claude Code/Antigravity does not collide in

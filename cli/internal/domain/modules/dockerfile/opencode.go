@@ -14,6 +14,7 @@ var OpencodeModule = &ModuleSpec{
 	PostScriptFiles: func(opts map[string]any) []string {
 		return []string{"install-opencode.sh"}
 	},
+	PostScriptAutoStart: true,
 	Render: func(opts map[string]any) string {
 		return fmt.Sprintf("##\n## OpenCode — install script shipped under %s\n##\n", types.PostScriptDir)
 	},

@@ -14,6 +14,7 @@ var ClaudeCodeModule = &ModuleSpec{
 	PostScriptFiles: func(opts map[string]any) []string {
 		return []string{"install-claude-code.sh"}
 	},
+	PostScriptAutoStart: true,
 	Render: func(opts map[string]any) string {
 		return fmt.Sprintf("##\n## Claude Code — install script shipped under %s\n##\n", types.PostScriptDir)
 	},
