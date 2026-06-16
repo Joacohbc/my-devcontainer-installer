@@ -139,35 +139,35 @@ fi
 # ── Auto-run non-interactive installer post-scripts ─────────────────────────
 # Scripts under post-script/start.d/ are the non-interactive installers
 # (Claude Code, Antigravity, Copilot, OpenCode, then the agent-wiring tools
-# Graphify/Caveman) the generator marked as auto-start. They run as devuser in
-# the BACKGROUND so SSH comes up immediately, and only once per container: a
+# Graphify/Caveman) the generator marked as auto-start. The ENTIRE block runs as
+# devuser (never root): a single 'su - devuser' login shell owns the loop, the
+# sentinels and the logs, so nothing under the home is left root-owned. It runs
+# in the BACKGROUND so SSH comes up immediately, and only once per container — a
 # per-script ".done" sentinel under ~/.post-script-state skips already-installed
 # tools across stop/start (a fresh container has no sentinel and reinstalls).
 # The numeric "NN-" filename prefix drives run order via the sorted glob. Each
 # script runs through a login shell (bash -l) so node/python/.local/bin from the
 # shell-init files are on PATH. The whole block no-ops when the dir is absent.
-START_SCRIPT_DIR="/home/devuser/post-script/start.d"
-if [ -d "$START_SCRIPT_DIR" ]; then
-    STATE_DIR=/home/devuser/.post-script-state
-    mkdir -p "$STATE_DIR"
-    chown "$DEV_UID:$DEV_GID" "$STATE_DIR" 2>/dev/null || true
-    (
-        for _script in "$START_SCRIPT_DIR"/*.sh; do
-            [ -e "$_script" ] || continue
-            _name="$(basename "$_script")"
-            _done="$STATE_DIR/$_name.done"
-            [ -f "$_done" ] && continue
-            _log="$STATE_DIR/$_name.log"
-            echo "post-script: running $_name (log: $_log)"
-            if su - devuser -c "bash -l '$_script'" > "$_log" 2>&1; then
-                : > "$_done"
-                echo "post-script: $_name completed"
+if [ -d /home/devuser/post-script/start.d ]; then
+    su - devuser -s /bin/bash -c '
+        start_dir="$HOME/post-script/start.d"
+        state_dir="$HOME/.post-script-state"
+        mkdir -p "$state_dir"
+        for script in "$start_dir"/*.sh; do
+            [ -e "$script" ] || continue
+            name="$(basename "$script")"
+            done_marker="$state_dir/$name.done"
+            [ -f "$done_marker" ] && continue
+            log="$state_dir/$name.log"
+            echo "post-script: running $name as $(id -un) (log: $log)"
+            if bash -l "$script" > "$log" 2>&1; then
+                : > "$done_marker"
+                echo "post-script: $name completed"
             else
-                echo "post-script: $_name FAILED (see $_log)" >&2
+                echo "post-script: $name FAILED (see $log)" >&2
             fi
         done
-        chown -R "$DEV_UID:$DEV_GID" "$STATE_DIR" 2>/dev/null || true
-    ) &
+    ' &
 fi
 
 # Start the SSH service
