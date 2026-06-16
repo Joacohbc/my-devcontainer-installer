@@ -157,27 +157,29 @@ func TestYarnModuleRender(t *testing.T) {
 
 func TestChromeModuleRender(t *testing.T) {
 	out := dockerfile.ChromeModule.Render(nil)
-	// Installs the real Google Chrome .deb from the official apt repo (apt then
-	// resolves its runtime libraries automatically — no manual dep list).
+	// Installs the same container-friendly Chromium .deb from the xtradeb/apps
+	// PPA on every arch, so the binary name and behaviour are identical across
+	// amd64 and arm64.
 	for _, frag := range []string{
-		"google-chrome-stable",
-		"dl.google.com/linux/chrome/deb",
-		"linux_signing_key.pub",
+		"ppa:xtradeb/apps",
+		"apt-get install -y chromium",
 	} {
 		if !strings.Contains(out, frag) {
-			t.Errorf("chrome module must contain %q:\n%s", frag, out)
+			t.Errorf("chrome module must install chromium from the xtradeb PPA, missing %q:\n%s", frag, out)
 		}
 	}
-	// Chrome is decoupled from any automation framework — no Playwright/Selenium
+	// Always Chromium — no architecture branch and no amd64-only Google Chrome.
+	for _, nope := range []string{"google-chrome", "dl.google.com", `"$ARCH" = "amd64"`} {
+		if strings.Contains(out, nope) {
+			t.Errorf("chrome module must always install chromium, found %q:\n%s", nope, out)
+		}
+	}
+	// Chromium is decoupled from any automation framework — no Playwright/Selenium
 	// client is baked in.
 	for _, nope := range []string{"playwright", "selenium", "puppeteer", "npm install", "pip install"} {
 		if strings.Contains(out, nope) {
 			t.Errorf("chrome module must stay framework-agnostic, found %q:\n%s", nope, out)
 		}
-	}
-	// Google Chrome is amd64-only: the build must fail fast on other arches.
-	if !strings.Contains(out, `if [ "$ARCH" != "amd64" ]; then`) {
-		t.Errorf("chrome module must guard against non-amd64 architectures:\n%s", out)
 	}
 	// Single install layer with inline cleanup.
 	if got := strings.Count(out, "RUN "); got != 1 {
