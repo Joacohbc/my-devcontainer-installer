@@ -39,12 +39,18 @@ type SharedConfigEntry struct {
 // nested entry for ~/.gemini/antigravity-cli: symlinking a subpath of an
 // already-symlinked dir would break. The agy binary itself installs to
 // ~/.local/bin (docs/cli-install) and is intentionally NOT shared.
+//
+// The "agents" entry (~/.agents) is the cross-tool home for reusable agent
+// rules/workflows/skills: Graphify, Caveman, Antigravity and others drop their
+// reusable assets there, so persisting it keeps those definitions across every
+// container the CLI creates.
 var SharedConfigEntries = []SharedConfigEntry{
 	{ID: "claude", Target: ".claude", Kind: SharedConfigDir},
 	{ID: "claude.json", Target: ".claude.json", Kind: SharedConfigFile},
 	{ID: "antigravity", Target: ".antigravity", Kind: SharedConfigDir},
 	{ID: "antigravity-config", Target: ".config/antigravity", Kind: SharedConfigDir},
 	{ID: "gemini", Target: ".gemini", Kind: SharedConfigDir}, // Gemini CLI creds + Antigravity CLI settings/plugins/skills/MCP
+	{ID: "agents", Target: ".agents", Kind: SharedConfigDir}, // reusable agent rules/workflows/skills (Graphify, Caveman, Antigravity, …)
 	{ID: "codex", Target: ".codex", Kind: SharedConfigDir},
 	{ID: "gh", Target: ".config/gh", Kind: SharedConfigDir},
 }

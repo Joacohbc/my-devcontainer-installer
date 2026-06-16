@@ -130,6 +130,7 @@ claude.json file .claude.json
 antigravity dir .antigravity
 antigravity-config dir .config/antigravity
 gemini dir .gemini
+agents dir .agents
 codex dir .codex
 gh dir .config/gh
 SHARED_CONFIG_ENTRIES
