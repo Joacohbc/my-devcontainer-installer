@@ -1283,7 +1283,7 @@ func TestPresetCommand_CreateAndCopy(t *testing.T) {
 		subcommands[sub.Name()] = true
 	}
 
-	for _, name := range []string{"list", "create", "copy"} {
+	for _, name := range []string{"list", "create", "copy", "remove"} {
 		if !subcommands[name] {
 			t.Errorf("expected preset subcommand %q to exist", name)
 		}
@@ -1348,6 +1348,50 @@ func TestPresetCopy(t *testing.T) {
 	// It should copy modules from built-in nodejs preset
 	if len(p.Modules) == 0 {
 		t.Error("expected copied preset to have modules from 'nodejs' preset")
+	}
+}
+
+func TestPresetRemove_UserPreset(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmpHome)
+	presetsDir := filepath.Join(tmpHome, "devcontainer-cli", "presets")
+	if err := os.MkdirAll(presetsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(presetsDir, "scratch.yml")
+	if err := os.WriteFile(target, []byte("id: scratch\nmodules: [github-cli]\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	root := NewRootCommand("test")
+	root.SetArgs([]string{"config", "preset", "remove", "scratch", "--yes"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("unexpected error removing preset: %v", err)
+	}
+	if _, err := os.Stat(target); !os.IsNotExist(err) {
+		t.Errorf("expected preset file %s to be deleted", target)
+	}
+}
+
+func TestPresetRemove_BuiltinIsRejected(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmpHome)
+
+	root := NewRootCommand("test")
+	root.SetArgs([]string{"config", "preset", "remove", "nodejs", "--yes"})
+	if err := root.Execute(); err == nil {
+		t.Fatal("expected error: built-in preset 'nodejs' must not be removable")
+	}
+}
+
+func TestPresetRemove_UnknownFails(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmpHome)
+
+	root := NewRootCommand("test")
+	root.SetArgs([]string{"config", "preset", "remove", "does-not-exist", "--yes"})
+	if err := root.Execute(); err == nil {
+		t.Fatal("expected error removing a non-existent user preset")
 	}
 }
 

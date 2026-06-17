@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/goccy/go-yaml"
@@ -24,6 +25,7 @@ func newPresetCommand() *cobra.Command {
 	cmd.AddCommand(newPresetListCommand())
 	cmd.AddCommand(newPresetCreateCommand())
 	cmd.AddCommand(newPresetCopyCommand())
+	cmd.AddCommand(newPresetRemoveCommand())
 	return cmd
 }
 
@@ -179,6 +181,81 @@ func runPresetCopy(cmd *cobra.Command, args []string) error {
 
 	console.Success("Preset %q successfully copied to %q at %s", existingID, newID, filepath.Join(presetsDir, newID+".yml"))
 	return nil
+}
+
+func newPresetRemoveCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:               "remove <preset-id...>",
+		Aliases:           []string{"rm", "delete"},
+		Short:             "Remove user-created presets (built-in presets cannot be removed)",
+		Args:              cobra.MinimumNArgs(1),
+		SilenceUsage:      true,
+		RunE:              runPresetRemove,
+		ValidArgsFunction: completeUserPresetArgs,
+	}
+	addYesFlag(cmd)
+	addInteractiveFlag(cmd)
+	return cmd
+}
+
+func runPresetRemove(cmd *cobra.Command, args []string) error {
+	presetsDir := filepath.Join(domain.GlobalConfigDir(), "presets")
+
+	// Resolve every target up front so we fail before deleting anything.
+	paths := make([]string, 0, len(args))
+	for _, id := range args {
+		path, ok := userPresetPath(presetsDir, id)
+		if !ok {
+			if _, isPreset := catalog.Resolve(id, presetsDir); isPreset {
+				return fmt.Errorf("preset %q is a built-in preset and cannot be removed", id)
+			}
+			return fmt.Errorf("user preset %q not found", id)
+		}
+		paths = append(paths, path)
+	}
+
+	if !yesFlag(cmd) {
+		if !interactiveFlag(cmd) {
+			return fmt.Errorf("refusing to remove preset(s) without confirmation; pass --yes to confirm in non-interactive mode")
+		}
+		proceed, err := console.Confirm(fmt.Sprintf("Remove %d user preset(s): %s?", len(args), strings.Join(args, ", ")))
+		if err != nil {
+			return err
+		}
+		if !proceed {
+			console.Info("Cancelled.")
+			return nil
+		}
+	}
+
+	for i, path := range paths {
+		if err := os.Remove(path); err != nil {
+			return fmt.Errorf("failed to remove preset %q: %w", args[i], err)
+		}
+		console.Success("Removed preset %q", args[i])
+	}
+	return nil
+}
+
+// userPresetPath returns the on-disk path of a user preset id (.yml or .yaml).
+func userPresetPath(dir, id string) (string, bool) {
+	for _, ext := range []string{".yml", ".yaml"} {
+		p := filepath.Join(dir, id+ext)
+		if fileExists(p) {
+			return p, true
+		}
+	}
+	return "", false
+}
+
+func completeUserPresetArgs(_ *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	var out []string
+	for _, p := range catalog.LoadUserPresets(filepath.Join(domain.GlobalConfigDir(), "presets")) {
+		if strings.HasPrefix(p.ID, toComplete) && !slices.Contains(args, p.ID) {
+			out = append(out, p.ID)
+		}
+	}
+	return out, cobra.ShellCompDirectiveNoFileComp
 }
 
 // validatePresetID rejects empty ids and ids with characters outside the
