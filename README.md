@@ -141,7 +141,9 @@ Detalles de la configuración del túnel en [CLOUDFLARE_TUNNEL.md](CLOUDFLARE_TU
   * **SQLite:** sqlite3 (módulo `sqlite`).
   * **Zellij:** zellij (módulo `zellij`).
   * **Docker CLI (DoD):** cliente `docker` dentro del contenedor usando el socket montado del host (módulo `dod`).
-  * **Clientes de DB en el devcontainer:** `psql`, `redis-tools`, `mongosh` (módulo `dbclients`, seleccionables individualmente).
+  * **Clientes de DB en el devcontainer:** `psql`, `redis-tools`, `mongosh` (módulos `postgres-client`, `redis-client`, `mongo-client`, seleccionables individualmente).
+  * **Chromium:** navegador headless-capable y cross-arch (módulo `chrome`), desacoplado del framework — apuntá Playwright/Selenium/Puppeteer al binario del sistema.
+  * **FFmpeg:** `ffmpeg` para procesamiento de audio/video (módulo `ffmpeg`).
   * **GitHub CLI:** `gh` + `jq` (módulo `github-cli`, incluido por defecto).
   * **AI CLIs (opcionales, módulos `claude-code`, `opencode`, `codex-cli`, `antigravity-cli`, `copilot-cli`):** scripts de instalación embebidos seleccionables de forma independiente. También están disponibles `caveman` (compresión de salida de agentes + hooks) y `graphify` (grafos de conocimiento del código).
 * **Herramientas base:** `git`, `nano`, `wget`, `curl`, `unzip`, `ca-certificates` — siempre presentes.
