@@ -76,8 +76,7 @@ func TestLoadUserPresetsValid(t *testing.T) {
 	dir := t.TempDir()
 	content := `id: myteam
 label: My Team
-modules: [nodejs, python]
-services: [postgres]`
+modules: [nodejs, python]`
 	err := os.WriteFile(filepath.Join(dir, "myteam.yml"), []byte(content), 0644)
 	if err != nil {
 		t.Fatalf("failed to write test preset file: %v", err)
@@ -109,8 +108,7 @@ func TestLoadUserPresetsIgnoresBroken(t *testing.T) {
 func TestUserOverridesBuiltin(t *testing.T) {
 	dir := t.TempDir()
 	content := `id: nodejs
-modules: [bun]
-services: [redis]`
+modules: [bun]`
 	err := os.WriteFile(filepath.Join(dir, "fs.yml"), []byte(content), 0644)
 	if err != nil {
 		t.Fatalf("failed to write file: %v", err)

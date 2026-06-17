@@ -18,6 +18,7 @@ var modeLabels = map[types.BuildMode]string{
 const (
 	stepKeyWorkspace    = "workspace"
 	stepKeyMode         = "mode"
+	stepKeyPreset       = "preset"
 	stepKeyVariant      = "variant"
 	stepKeyImage        = "image"
 	stepKeySubnet       = "subnet"
@@ -199,6 +200,7 @@ type wizardContext struct {
 	workspace       string
 	usedSubnets     []domain.CidrRange
 	suggestedSubnet string
+	userPresets     []catalog.Preset
 }
 
 func (w wizardContext) steps(s *State) []Step {
@@ -206,6 +208,10 @@ func (w wizardContext) steps(s *State) []Step {
 
 	if currentMode(s) == types.BuildModeRemote {
 		steps = append(steps, w.variantStep())
+	} else if step, ok := w.presetStep(); ok {
+		// In local-cached mode, optionally start from one of the user's presets,
+		// which pre-selects its modules before the per-category steps.
+		steps = append(steps, step)
 	}
 
 	steps = append(steps, w.categorySteps(s)...)
@@ -340,6 +346,50 @@ func (w wizardContext) variantStep() Step {
 	}}
 }
 
+// presetStep lets the user start from one of their saved presets (a module
+// bundle). It is only offered in local-cached mode and when at least one user
+// preset exists. Selecting one seeds the per-category module multiselects.
+func (w wizardContext) presetStep() (Step, bool) {
+	if len(w.userPresets) == 0 {
+		return Step{}, false
+	}
+	return Step{Key: stepKeyPreset, Build: func(s *State) Field {
+		choices := []Option{{Value: "", Label: "(ninguno — elegir módulos manualmente)"}}
+		for _, p := range w.userPresets {
+			label := p.ID
+			if len(p.Modules) > 0 {
+				label = fmt.Sprintf("%s (%s)", p.ID, strings.Join(p.Modules, ", "))
+			}
+			choices = append(choices, Option{Value: p.ID, Label: label})
+		}
+		initial := ""
+		if s.Has(stepKeyPreset) {
+			initial = s.String(stepKeyPreset)
+		}
+		return Field{Kind: FieldSelect, Title: "Partir de un preset? (opcional):", Choices: choices, Initial: initial}
+	}}, true
+}
+
+func (w wizardContext) presetByID(id string) (catalog.Preset, bool) {
+	for _, p := range w.userPresets {
+		if p.ID == id {
+			return p, true
+		}
+	}
+	return catalog.Preset{}, false
+}
+
+// presetCategoryIDs returns the preset's module ids that belong to UI category c.
+func presetCategoryIDs(p catalog.Preset, c types.UICategory) []string {
+	var ids []string
+	for _, id := range p.Modules {
+		if spec := catalog.GetDockerfileModule(types.ModuleID(id)); spec != nil && spec.UICategory == c {
+			ids = append(ids, id)
+		}
+	}
+	return ids
+}
+
 func (w wizardContext) categorySteps(s *State) []Step {
 	var steps []Step
 	for _, c := range catalog.CategoriesInOrder() {
@@ -348,7 +398,14 @@ func (w wizardContext) categorySteps(s *State) []Step {
 		}
 		category := c
 		steps = append(steps, Step{Key: categoryStepKey(category), Build: func(s *State) Field {
+			// Seed from base, or from the chosen preset's modules in this
+			// category. An explicit answer for this category always wins.
 			initial := baseCategoryIDs(w.base, category)
+			if pid := s.String(stepKeyPreset); pid != "" {
+				if p, ok := w.presetByID(pid); ok {
+					initial = presetCategoryIDs(p, category)
+				}
+			}
 			if s.Has(categoryStepKey(category)) {
 				initial = s.Strings(categoryStepKey(category))
 			}
@@ -579,6 +636,7 @@ func (s GenerateService) Configure(base *types.DevcontainerConfig, cwd string, p
 		workspace:       workspace,
 		usedSubnets:     usedSubnets,
 		suggestedSubnet: domain.FindFreeSubnet(preferredSubnet, usedSubnets),
+		userPresets:     catalog.LoadUserPresets(filepath.Join(domain.GlobalConfigDir(), "presets")),
 	}
 
 	state, err := prompt.Wizard(ctx.steps)
@@ -586,6 +644,75 @@ func (s GenerateService) Configure(base *types.DevcontainerConfig, cwd string, p
 		return nil, err
 	}
 	return ctx.reduce(state), nil
+}
+
+// moduleChoices lists the selectable Dockerfile modules in a UI category,
+// excluding compose services (a preset is a pure module bundle).
+func moduleChoices(c types.UICategory) []Option {
+	var out []Option
+	for _, e := range catalog.SelectableByCategory()[c] {
+		if e.IsService {
+			continue
+		}
+		out = append(out, Option{Value: e.ID, Label: e.Label})
+	}
+	return out
+}
+
+// baseModuleIDs returns the ids of base's Dockerfile modules belonging to a UI
+// category, used to pre-select them in the module-only wizard.
+func baseModuleIDs(base *types.DevcontainerConfig, c types.UICategory) []string {
+	var ids []string
+	for _, m := range base.Dockerfile.Modules {
+		if spec := catalog.GetDockerfileModule(m.ID); spec != nil && spec.UICategory == c {
+			ids = append(ids, string(m.ID))
+		}
+	}
+	return ids
+}
+
+// SelectModules runs a trimmed wizard that only offers the per-category module
+// multiselects (no services, options, workspace, ports, volumes, …) and returns
+// the chosen module ids in catalog order. It backs `config preset create`, where
+// a preset is just a reusable bundle of modules.
+func (s GenerateService) SelectModules(base *types.DevcontainerConfig, prompt Prompter) ([]string, error) {
+	build := func(*State) []Step {
+		var steps []Step
+		for _, c := range catalog.CategoriesInOrder() {
+			choices := moduleChoices(c)
+			if len(choices) == 0 {
+				continue
+			}
+			category := c
+			steps = append(steps, Step{Key: categoryStepKey(category), Build: func(st *State) Field {
+				initial := baseModuleIDs(base, category)
+				if st.Has(categoryStepKey(category)) {
+					initial = st.Strings(categoryStepKey(category))
+				}
+				return Field{
+					Kind:    FieldMultiselect,
+					Title:   types.UICategoryLabels[category] + " (Espacio para seleccionar, Enter para confirmar):",
+					Choices: choices,
+					Initial: initial,
+				}
+			}})
+		}
+		return steps
+	}
+
+	state, err := prompt.Wizard(build)
+	if err != nil {
+		return nil, err
+	}
+
+	selected := selectedModuleIDs(state)
+	var ids []string
+	for _, m := range catalog.DockerfileModules {
+		if selected[string(m.ID)] {
+			ids = append(ids, string(m.ID))
+		}
+	}
+	return ids, nil
 }
 
 // VariantChoices lists the selectable remote image variants.

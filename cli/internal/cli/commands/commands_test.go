@@ -1290,6 +1290,26 @@ func TestPresetCommand_CreateAndCopy(t *testing.T) {
 	}
 }
 
+func TestPresetCreate_NoInteractiveFails(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmpHome)
+
+	root := NewRootCommand("test")
+	root.SetArgs([]string{"config", "preset", "create", "--no-interactive"})
+	if err := root.Execute(); err == nil {
+		t.Fatal("expected error: 'preset create' must fail in --no-interactive mode")
+	}
+}
+
+func TestPresetCreate_RejectsPositionalArg(t *testing.T) {
+	// create no longer takes a positional id; the id is prompted interactively.
+	root := NewRootCommand("test")
+	root.SetArgs([]string{"config", "preset", "create", "some-id"})
+	if err := root.Execute(); err == nil {
+		t.Fatal("expected error: 'preset create' no longer accepts a positional preset id")
+	}
+}
+
 func TestPresetCopy(t *testing.T) {
 	// Setup isolated XDG config home
 	tmpHome := t.TempDir()

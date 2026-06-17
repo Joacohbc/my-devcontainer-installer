@@ -9,13 +9,13 @@ import (
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 )
 
+// Preset is a reusable bundle of Dockerfile module ids. Older preset files may
+// still carry `services:`/`mode:` keys; those are ignored on load.
 type Preset struct {
-	ID       string          `yaml:"id"`
-	Label    string          `yaml:"label,omitempty"`
-	Modules  []string        `yaml:"modules,omitempty"`
-	Services []string        `yaml:"services,omitempty"`
-	Mode     types.BuildMode `yaml:"mode,omitempty"`
-	Source   string          `yaml:"-"`
+	ID      string   `yaml:"id"`
+	Label   string   `yaml:"label,omitempty"`
+	Modules []string `yaml:"modules,omitempty"`
+	Source  string   `yaml:"-"`
 }
 
 // github-cli and zellij are listed first in every preset so their Dockerfile

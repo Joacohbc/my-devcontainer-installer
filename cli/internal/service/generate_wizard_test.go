@@ -1,8 +1,11 @@
 package service
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/catalog"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 )
 
@@ -169,6 +172,80 @@ func TestVariantChoicesCoversRemoteVariants(t *testing.T) {
 	for i, v := range types.RemoteVariants {
 		if choices[i].Value != v {
 			t.Errorf("choice[%d].Value = %q, want %q", i, choices[i].Value, v)
+		}
+	}
+}
+
+func TestConfigureAppliesUserPreset(t *testing.T) {
+	defer useFakeDocker(&fakeRunner{status: 0})()
+
+	tmp := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmp)
+	presetsDir := filepath.Join(tmp, "devcontainer-cli", "presets")
+	if err := os.MkdirAll(presetsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(presetsDir, "mystack.yml"),
+		[]byte("id: mystack\nmodules: [claude-code, antigravity-cli]\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	svc := GenerateService{Report: nopReporter{}}
+	base := &types.DevcontainerConfig{Env: map[string]string{}}
+	prompter := scriptedPrompter{answers: map[string]any{
+		stepKeyWorkspace: "ws",
+		stepKeyMode:      string(types.BuildModeLocalCached),
+		stepKeyPreset:    "mystack",
+		stepKeySubnet:    "172.20.0.0/24",
+	}}
+
+	cfg, err := svc.Configure(base, tmp, prompter)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	got := map[string]bool{}
+	for _, m := range cfg.Dockerfile.Modules {
+		got[string(m.ID)] = true
+	}
+	for _, want := range []string{"claude-code", "antigravity-cli"} {
+		if !got[want] {
+			t.Errorf("expected preset module %q to be pre-selected, got %v", want, got)
+		}
+	}
+}
+
+func TestSelectModules(t *testing.T) {
+	defer useFakeDocker(&fakeRunner{status: 0})()
+
+	svc := GenerateService{Report: nopReporter{}}
+	base := &types.DevcontainerConfig{}
+	prompter := scriptedPrompter{answers: map[string]any{
+		categoryStepKey(types.UICategoryAITools):  []string{"claude-code", "antigravity-cli"},
+		categoryStepKey(types.UICategoryDevTools): []string{"chrome"},
+	}}
+
+	ids, err := svc.SelectModules(base, prompter)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	got := map[string]bool{}
+	for _, id := range ids {
+		got[id] = true
+	}
+	for _, want := range []string{"claude-code", "antigravity-cli", "chrome"} {
+		if !got[want] {
+			t.Errorf("expected selected modules to contain %q, got %v", want, ids)
+		}
+	}
+	if len(ids) != 3 {
+		t.Errorf("expected exactly 3 selected modules, got %d: %v", len(ids), ids)
+	}
+	// No services must leak into the result (a preset is a pure module bundle).
+	for _, id := range ids {
+		if catalog.GetDockerfileModule(types.ModuleID(id)) == nil {
+			t.Errorf("selected id %q is not a Dockerfile module", id)
 		}
 	}
 }

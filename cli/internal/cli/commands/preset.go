@@ -7,9 +7,9 @@ import (
 	"strings"
 
 	"github.com/goccy/go-yaml"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/ui"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/catalog"
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/service"
 	"github.com/spf13/cobra"
 )
@@ -30,18 +30,41 @@ func newPresetCommand() *cobra.Command {
 func newPresetListCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:          "list",
-		Short:        "List builtin and user-defined presets",
+		Short:        "List builtin and user-defined presets (module bundles)",
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			for _, p := range (service.ConfigService{Report: console}).Presets() {
-				console.Print(fmt.Sprintf("%-20s %-10s %s\n", p.ID, p.Source, p.Label))
-				if len(p.Modules) > 0 {
-					console.Print(fmt.Sprintf("  modules:  %s\n", strings.Join(p.Modules, ", ")))
+			presets := (service.ConfigService{Report: console}).Presets()
+
+			var builtin, user []catalog.Preset
+			width := 0
+			for _, p := range presets {
+				if len(p.ID) > width {
+					width = len(p.ID)
 				}
-				if len(p.Services) > 0 {
-					console.Print(fmt.Sprintf("  services: %s\n", strings.Join(p.Services, ", ")))
+				if p.Source == "user" {
+					user = append(user, p)
+				} else {
+					builtin = append(builtin, p)
 				}
 			}
+
+			printGroup := func(title string, group []catalog.Preset, emptyHint string) {
+				console.Print(ui.HeaderS(title) + "\n")
+				if len(group) == 0 {
+					console.Print("  " + ui.Subtle(emptyHint) + "\n")
+					return
+				}
+				for _, p := range group {
+					// Pad the plain id first, then style it, so ANSI codes don't
+					// throw off column alignment.
+					id := ui.Bold(fmt.Sprintf("%-*s", width, p.ID))
+					console.Print(fmt.Sprintf("  %s  %s\n", id, ui.Subtle(strings.Join(p.Modules, ", "))))
+				}
+			}
+
+			printGroup("Built-in presets", builtin, "(none)")
+			console.Print("\n")
+			printGroup("Your presets", user, "(none — create one with 'config preset create')")
 			return nil
 		},
 	}
@@ -49,9 +72,9 @@ func newPresetListCommand() *cobra.Command {
 
 func newPresetCreateCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:          "create <preset-id>",
-		Short:        "Create a new custom preset using the interactive wizard",
-		Args:         cobra.ExactArgs(1),
+		Use:          "create",
+		Short:        "Create a new custom preset (module bundle) using the interactive wizard",
+		Args:         cobra.NoArgs,
 		SilenceUsage: true,
 		RunE:         runPresetCreate,
 	}
@@ -59,20 +82,21 @@ func newPresetCreateCommand() *cobra.Command {
 	return cmd
 }
 
-func runPresetCreate(cmd *cobra.Command, args []string) error {
-	presetID := args[0]
-	// Validate preset ID format (alphanumeric, dashes, underscores)
-	for _, r := range presetID {
-		if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_') {
-			return fmt.Errorf("invalid preset ID: %s. Use only alphanumeric characters, dashes, and underscores", presetID)
-		}
-	}
-
+func runPresetCreate(cmd *cobra.Command, _ []string) error {
 	if !interactiveFlag(cmd) {
 		return fmt.Errorf("preset create is an interactive wizard; cannot run with --no-interactive")
 	}
 
 	presetsDir := filepath.Join(domain.GlobalConfigDir(), "presets")
+
+	presetID, err := console.Ask("Preset ID (alphanumeric, dashes, underscores):")
+	if err != nil {
+		return err
+	}
+	presetID = strings.TrimSpace(presetID)
+	if err := validatePresetID(presetID); err != nil {
+		return err
+	}
 	if _, ok := catalog.Resolve(presetID, presetsDir); ok {
 		return fmt.Errorf("preset %q already exists", presetID)
 	}
@@ -85,55 +109,23 @@ func runPresetCreate(cmd *cobra.Command, args []string) error {
 		label = fmt.Sprintf("Custom Preset %s", presetID)
 	}
 
-	svc := service.GenerateService{Report: console}
-
 	cwd, err := currentDir()
 	if err != nil {
 		return err
 	}
 
-	baseConfig := domain.DefaultConfig(cwd)
-
-	config, err := svc.Configure(baseConfig, cwd, console)
+	// A preset is a pure module bundle: the wizard only offers module selection
+	// (no services, ports, volumes or build mode).
+	modules, err := (service.GenerateService{Report: console}).SelectModules(domain.DefaultConfig(cwd), console)
 	if err != nil {
 		return err
 	}
 
-	var modules []string
-	for _, m := range config.Dockerfile.Modules {
-		modules = append(modules, string(m.ID))
+	if err := savePreset(presetsDir, catalog.Preset{ID: presetID, Label: label, Modules: modules}); err != nil {
+		return err
 	}
 
-	var services []string
-	for _, s := range types.NormalizeServices(config.Compose.Services) {
-		if s.ID != "devcontainer" {
-			services = append(services, string(s.ID))
-		}
-	}
-
-	preset := catalog.Preset{
-		ID:       presetID,
-		Label:    label,
-		Modules:  modules,
-		Services: services,
-		Mode:     config.Mode,
-	}
-
-	if err := os.MkdirAll(presetsDir, 0755); err != nil {
-		return fmt.Errorf("failed to create presets directory: %w", err)
-	}
-
-	presetPath := filepath.Join(presetsDir, presetID+".yml")
-	data, err := yaml.Marshal(preset)
-	if err != nil {
-		return fmt.Errorf("failed to marshal preset: %w", err)
-	}
-
-	if err := os.WriteFile(presetPath, data, 0644); err != nil {
-		return fmt.Errorf("failed to save preset: %w", err)
-	}
-
-	console.Success("Preset %q successfully created at %s", presetID, presetPath)
+	console.Success("Preset %q successfully created at %s", presetID, filepath.Join(presetsDir, presetID+".yml"))
 	return nil
 }
 
@@ -153,11 +145,8 @@ func runPresetCopy(cmd *cobra.Command, args []string) error {
 	existingID := args[0]
 	newID := args[1]
 
-	// Validate new preset ID format
-	for _, r := range newID {
-		if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_') {
-			return fmt.Errorf("invalid new preset ID: %s. Use only alphanumeric characters, dashes, and underscores", newID)
-		}
+	if err := validatePresetID(newID); err != nil {
+		return err
 	}
 
 	presetsDir := filepath.Join(domain.GlobalConfigDir(), "presets")
@@ -184,28 +173,39 @@ func runPresetCopy(cmd *cobra.Command, args []string) error {
 		label = p.Label
 	}
 
-	preset := catalog.Preset{
-		ID:       newID,
-		Label:    label,
-		Modules:  p.Modules,
-		Services: p.Services,
-		Mode:     p.Mode,
+	if err := savePreset(presetsDir, catalog.Preset{ID: newID, Label: label, Modules: p.Modules}); err != nil {
+		return err
 	}
 
-	if err := os.MkdirAll(presetsDir, 0755); err != nil {
+	console.Success("Preset %q successfully copied to %q at %s", existingID, newID, filepath.Join(presetsDir, newID+".yml"))
+	return nil
+}
+
+// validatePresetID rejects empty ids and ids with characters outside the
+// [a-zA-Z0-9_-] set used for the on-disk preset filename.
+func validatePresetID(id string) error {
+	if id == "" {
+		return fmt.Errorf("preset ID cannot be empty")
+	}
+	for _, r := range id {
+		if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_') {
+			return fmt.Errorf("invalid preset ID: %s. Use only alphanumeric characters, dashes, and underscores", id)
+		}
+	}
+	return nil
+}
+
+// savePreset marshals p to YAML and writes it to <dir>/<id>.yml, creating dir.
+func savePreset(dir string, p catalog.Preset) error {
+	if err := os.MkdirAll(dir, 0755); err != nil {
 		return fmt.Errorf("failed to create presets directory: %w", err)
 	}
-
-	presetPath := filepath.Join(presetsDir, newID+".yml")
-	data, err := yaml.Marshal(preset)
+	data, err := yaml.Marshal(p)
 	if err != nil {
 		return fmt.Errorf("failed to marshal preset: %w", err)
 	}
-
-	if err := os.WriteFile(presetPath, data, 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, p.ID+".yml"), data, 0644); err != nil {
 		return fmt.Errorf("failed to save preset: %w", err)
 	}
-
-	console.Success("Preset %q successfully copied to %q at %s", existingID, newID, presetPath)
 	return nil
 }
