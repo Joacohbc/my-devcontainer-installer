@@ -52,7 +52,7 @@ func addGenerateFlags(cmd *cobra.Command) {
 	f.String(flagPorts, "", "Ports to publish on the devcontainer (e.g. 8080:80,5432:5432); bound to 127.0.0.1 unless an IP is given; 'none' clears them")
 	f.String(flagVolumes, "", "Extra volume mounts on the devcontainer (e.g. myvol:/data,./cache:/cache); 'none' clears them")
 	f.Bool(flagSharedConfig, true, "Mount the global shared AI/dev tool config volume (devcontainer-shared-config) so logins/sessions persist across containers; --shared-config=false to opt out")
-	f.String(flagPreset, "", "Apply a preset (modules + services). See 'preset list'.")
+	f.String(flagPreset, "", "Apply a preset (modules + services). See 'config preset list'.")
 	f.Bool(flagNoInteractive, false, "Fail if any value is missing instead of prompting")
 	f.Bool(flagNonInteractive, false, "Alias for --no-interactive")
 	f.Bool(flagForcePrompt, false, "Prompt even if config file exists")

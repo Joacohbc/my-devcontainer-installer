@@ -14,12 +14,12 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func init() { register(newPresetCommand()) }
-
+// The preset group is attached under `config` (see newConfigCommand); it is not
+// registered as a top-level command.
 func newPresetCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "preset",
-		Short: "Manage presets",
+		Short: "Manage presets (list/create/copy)",
 	}
 	cmd.AddCommand(newPresetListCommand())
 	cmd.AddCommand(newPresetCreateCommand())

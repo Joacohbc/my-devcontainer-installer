@@ -1136,26 +1136,35 @@ func TestConfigExportImport(t *testing.T) {
 	}
 }
 
-func TestPresetCommand_Exists(t *testing.T) {
+// findSubcommand returns the immediate child of parent with the given name.
+func findSubcommand(parent *cobra.Command, name string) *cobra.Command {
+	for _, c := range parent.Commands() {
+		if c.Name() == name {
+			return c
+		}
+	}
+	return nil
+}
+
+func TestConfigPresetCommand_Exists(t *testing.T) {
 	root := NewRootCommand("test")
-	var presetCmd *cobra.Command
-	for _, c := range root.Commands() {
-		if c.Name() == "preset" {
-			presetCmd = c
-			break
-		}
+	configCmd := findSubcommand(root, "config")
+	if configCmd == nil {
+		t.Fatal("expected 'config' command to be registered")
 	}
+	presetCmd := findSubcommand(configCmd, "preset")
 	if presetCmd == nil {
-		t.Fatal("expected 'preset' command to be registered")
+		t.Fatal("expected 'config preset' command to be registered")
 	}
-	found := false
-	for _, sub := range presetCmd.Commands() {
-		if sub.Name() == "list" {
-			found = true
-		}
+	if findSubcommand(presetCmd, "list") == nil {
+		t.Error("expected 'config preset list' subcommand")
 	}
-	if !found {
-		t.Error("expected 'preset list' subcommand")
+}
+
+func TestPresetCommand_NotTopLevel(t *testing.T) {
+	root := NewRootCommand("test")
+	if findSubcommand(root, "preset") != nil {
+		t.Error("expected no top-level 'preset' command; it now lives under 'config preset'")
 	}
 }
 
@@ -1259,15 +1268,13 @@ func TestInitAndConfigure_PresetSkipsPrompts(t *testing.T) {
 
 func TestPresetCommand_CreateAndCopy(t *testing.T) {
 	root := NewRootCommand("test")
-	var presetCmd *cobra.Command
-	for _, c := range root.Commands() {
-		if c.Name() == "preset" {
-			presetCmd = c
-			break
-		}
+	configCmd := findSubcommand(root, "config")
+	if configCmd == nil {
+		t.Fatal("expected 'config' command to be registered")
 	}
+	presetCmd := findSubcommand(configCmd, "preset")
 	if presetCmd == nil {
-		t.Fatal("expected 'preset' command to be registered")
+		t.Fatal("expected 'config preset' command to be registered")
 	}
 
 	// Verify all subcommands exist
@@ -1290,7 +1297,7 @@ func TestPresetCopy(t *testing.T) {
 
 	root := NewRootCommand("test")
 	// Copy 'nodejs' (builtin) to 'my-copied-nodejs' with --no-interactive
-	root.SetArgs([]string{"preset", "copy", "nodejs", "my-copied-nodejs", "--no-interactive"})
+	root.SetArgs([]string{"config", "preset", "copy", "nodejs", "my-copied-nodejs", "--no-interactive"})
 
 	// Run command
 	if err := root.Execute(); err != nil {

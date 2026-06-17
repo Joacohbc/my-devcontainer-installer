@@ -14,9 +14,10 @@ func init() { register(newConfigCommand()) }
 func newConfigCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "config",
-		Short: "Read or write global CLI config (e.g. 'config registry <url>')",
-		Long: "devcontainer-cli config — read/write global CLI config\n\n" +
-			"Config file: " + domain.GlobalConfigPath(),
+		Short: "Read or write global CLI config (e.g. 'config registry <url>', 'config preset create <id>')",
+		Long: "devcontainer-cli config — read/write global CLI config and manage presets\n\n" +
+			"Config file: " + domain.GlobalConfigPath() + "\n" +
+			"Presets:     create/list/copy reusable module bundles with 'config preset'",
 		SilenceUsage: true,
 	}
 	cmd.AddCommand(newConfigKeyCommand("registry", "image registry"))
@@ -25,6 +26,7 @@ func newConfigCommand() *cobra.Command {
 	cmd.AddCommand(newConfigSSHKeyCommand())
 	cmd.AddCommand(newConfigExportCommand())
 	cmd.AddCommand(newConfigImportCommand())
+	cmd.AddCommand(newPresetCommand())
 	return cmd
 }
 
