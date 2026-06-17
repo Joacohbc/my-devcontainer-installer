@@ -52,9 +52,10 @@ func TestNodejsModuleRender(t *testing.T) {
 		notWant []string
 	}{
 		{
-			name: "default nvm lts",
-			opts: nil,
-			want: []string{"NVM", "nvm install --lts"},
+			name:    "default fnm lts",
+			opts:    nil,
+			want:    []string{"fnm", "fnm install --lts"},
+			notWant: []string{"nvm install"},
 		},
 		{
 			name: "nvm pinned version",

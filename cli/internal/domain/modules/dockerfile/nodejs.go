@@ -8,7 +8,7 @@ import (
 
 var NodejsModule = &ModuleSpec{
 	ID:         types.ModuleNodejs,
-	Label:      "Node.js (nvm or fnm, for devuser)",
+	Label:      "Node.js (fnm or nvm, for devuser)",
 	Category:   types.CategoryRuntime,
 	UICategory: types.UICategoryLanguages,
 	Requires:   []types.ModuleID{types.ModuleGithubCli},
@@ -18,10 +18,10 @@ var NodejsModule = &ModuleSpec{
 			Label: "Node.js Version manager",
 			Type:  types.ModuleOptionSelect,
 			Choices: []types.ModuleOptionChoice{
-				{Value: "nvm", Label: "nvm (Node Version Manager)"},
 				{Value: "fnm", Label: "fnm (Fast Node Manager, Rust)"},
+				{Value: "nvm", Label: "nvm (Node Version Manager)"},
 			},
-			Default: "nvm",
+			Default: "fnm",
 		},
 		{
 			ID:    "version",
@@ -38,16 +38,16 @@ var NodejsModule = &ModuleSpec{
 	Render: func(opts map[string]any) string {
 		manager, _ := opts["manager"].(string)
 		if manager == "" {
-			manager = "nvm"
+			manager = "fnm"
 		}
 		version, _ := opts["version"].(string)
 		if version == "" {
 			version = "lts"
 		}
-		if manager == "fnm" {
-			return renderFnm(version)
+		if manager == "nvm" {
+			return renderNvm(version)
 		}
-		return renderNvm(version)
+		return renderFnm(version)
 	},
 }
 

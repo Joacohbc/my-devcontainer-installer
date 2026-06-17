@@ -94,7 +94,7 @@ func TestGenerateDockerfile_AllSelectedModules(t *testing.T) {
 	assertContainsStr(t, df, "postgresql-client", "full dockerfile")
 	assertContainsStr(t, df, "redis-tools", "full dockerfile")
 	assertContainsStr(t, df, "mongodb-mongosh", "full dockerfile")
-	assertContainsStr(t, df, "nvm install --lts", "full dockerfile")
+	assertContainsStr(t, df, "fnm install --lts", "full dockerfile")
 	assertContainsStr(t, df, "bun.sh/install", "full dockerfile")
 	assertContainsStr(t, df, "zellij", "full dockerfile")
 	assertContainsStr(t, df, "install -y ffmpeg", "full dockerfile")
@@ -155,7 +155,7 @@ func TestGenerateDockerfile_YarnAutoAddNodejs(t *testing.T) {
 	})
 	df := mustGenerateDockerfile(t, cfg)
 	// yarn requires nodejs, so the resolver must pull it in.
-	assertContainsStr(t, df, "nvm install", "yarn pulls nodejs")
+	assertContainsStr(t, df, "fnm install", "yarn pulls nodejs")
 	// Yarn is provisioned through Corepack, sourcing the shared node init.
 	assertContainsStr(t, df, "corepack prepare yarn@stable --activate", "yarn")
 	assertContainsStr(t, df, ".nodejs_init.sh", "yarn sources node init")
@@ -166,7 +166,7 @@ func TestGenerateDockerfile_PnpmAutoAddNodejs(t *testing.T) {
 		c.Dockerfile.Modules = []types.SelectedModule{{ID: "pnpm"}}
 	})
 	df := mustGenerateDockerfile(t, cfg)
-	assertContainsStr(t, df, "nvm install", "pnpm pulls nodejs")
+	assertContainsStr(t, df, "fnm install", "pnpm pulls nodejs")
 	assertContainsStr(t, df, "get.pnpm.io/install.sh", "pnpm")
 	// pnpm must expose its global bin dir on PATH (zsh/bash/profile) and pin a
 	// store-dir on the persisted home so no stray store lands in the workspace.
@@ -871,7 +871,7 @@ func TestGenerateDockerfile_CodexCli(t *testing.T) {
 	df := mustGenerateDockerfile(t, cfg)
 	assertContainsStr(t, df, "install-codex-cli.sh", "codex-cli script")
 	// codex-cli requires nodejs
-	assertContainsStr(t, df, "nvm install --lts", "codex-cli requires nodejs")
+	assertContainsStr(t, df, "fnm install --lts", "codex-cli requires nodejs")
 }
 
 func TestGenerateDockerfile_AntigravityCli(t *testing.T) {
@@ -907,5 +907,5 @@ func TestGenerateDockerfile_Caveman(t *testing.T) {
 	df := mustGenerateDockerfile(t, cfg)
 	assertContainsStr(t, df, "install-caveman.sh", "caveman script")
 	// caveman requires nodejs
-	assertContainsStr(t, df, "nvm install --lts", "caveman requires nodejs")
+	assertContainsStr(t, df, "fnm install --lts", "caveman requires nodejs")
 }
