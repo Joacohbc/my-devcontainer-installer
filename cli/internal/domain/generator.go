@@ -2,6 +2,7 @@ package domain
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -37,23 +38,95 @@ func GenerateDockerfile(config *types.DevcontainerConfig) (string, error) {
 }
 
 func postScriptsDockerfileBlock(config *types.DevcontainerConfig) (string, error) {
-	files, err := CollectRequiredPostScriptFiles(config)
+	manual, autoStart, err := collectPartitionedPostScripts(config)
 	if err != nil {
 		return "", err
 	}
-	if len(files) == 0 {
+	if len(manual) == 0 && len(autoStart) == 0 {
 		return "", nil
 	}
-	return fmt.Sprintf(`##
-## POST-INSTALL SCRIPTS (available inside the container, not auto-run)
-##
-COPY %s %s/
-RUN chown -R devuser:devuser %s && chmod +x %s/*.sh`,
-		strings.Join(files, " "),
-		types.PostScriptDir,
-		types.PostScriptDir,
-		types.PostScriptDir,
-	), nil
+
+	var lines []string
+	lines = append(lines, "##", "## POST-INSTALL SCRIPTS", "##")
+
+	var chmodTargets []string
+	if len(manual) > 0 {
+		// Interactive / manual scripts: copied verbatim, not auto-run.
+		lines = append(lines, fmt.Sprintf("COPY %s %s/", strings.Join(manual, " "), types.PostScriptDir))
+		chmodTargets = append(chmodTargets, types.PostScriptDir+"/*.sh")
+	}
+	var symlinks []string
+	if len(autoStart) > 0 {
+		// Non-interactive installers the entrypoint auto-runs on start. The
+		// numeric "NN-" prefix encodes run order so the entrypoint's sorted glob
+		// runs agents first and the agent-wiring tools (graphify/caveman) last.
+		for _, e := range autoStart {
+			lines = append(lines, fmt.Sprintf("COPY %s %s/%02d-%s", e.File, types.PostScriptStartDir, e.Order, e.File))
+			// Also expose each auto-start script under its plain name in
+			// ~/post-script/ (a relative symlink into start.d/) so the user can
+			// still run it manually, exactly like the interactive scripts.
+			symlinks = append(symlinks, fmt.Sprintf("ln -sfn start.d/%02d-%s %s/%s", e.Order, e.File, types.PostScriptDir, e.File))
+		}
+		chmodTargets = append(chmodTargets, types.PostScriptStartDir+"/*.sh")
+	}
+
+	run := fmt.Sprintf("RUN chown -R devuser:devuser %s && chmod +x %s",
+		types.PostScriptDir, strings.Join(chmodTargets, " "))
+	for _, s := range symlinks {
+		run += " \\\n    && " + s
+	}
+	if len(symlinks) > 0 {
+		// Own the symlinks themselves by devuser (the targets are already owned
+		// via the recursive chown above; -h keeps chown from dereferencing).
+		run += " \\\n    && chown -h devuser:devuser " + types.PostScriptDir + "/*.sh"
+	}
+	lines = append(lines, run)
+	return strings.Join(lines, "\n"), nil
+}
+
+// postScriptStart pairs an auto-start script with its resolved run order.
+type postScriptStart struct {
+	File  string
+	Order int
+}
+
+// collectPartitionedPostScripts splits the required post-scripts into manual
+// (interactive, left under PostScriptDir) and auto-start (non-interactive
+// installers the entrypoint runs on start), with the auto-start set sorted by
+// run order then filename for deterministic output.
+func collectPartitionedPostScripts(config *types.DevcontainerConfig) (manual []string, autoStart []postScriptStart, err error) {
+	resolved, err := ResolveDockerfileModules(config.Dockerfile.Modules)
+	if err != nil {
+		return nil, nil, err
+	}
+	seen := make(map[string]bool)
+	for _, r := range resolved {
+		if r.Module.PostScriptFiles == nil {
+			continue
+		}
+		for _, f := range r.Module.PostScriptFiles(r.Options) {
+			if seen[f] {
+				continue
+			}
+			seen[f] = true
+			if r.Module.PostScriptAutoStart {
+				order := r.Module.PostScriptStartOrder
+				if order == 0 {
+					order = types.DefaultPostScriptStartOrder
+				}
+				autoStart = append(autoStart, postScriptStart{File: f, Order: order})
+			} else {
+				manual = append(manual, f)
+			}
+		}
+	}
+	sort.Slice(autoStart, func(i, j int) bool {
+		if autoStart[i].Order != autoStart[j].Order {
+			return autoStart[i].Order < autoStart[j].Order
+		}
+		return autoStart[i].File < autoStart[j].File
+	})
+	return manual, autoStart, nil
 }
 
 func ResolveRemoteImage(variant, registry string) string {

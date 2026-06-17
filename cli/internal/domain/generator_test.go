@@ -94,7 +94,7 @@ func TestGenerateDockerfile_AllSelectedModules(t *testing.T) {
 	assertContainsStr(t, df, "postgresql-client", "full dockerfile")
 	assertContainsStr(t, df, "redis-tools", "full dockerfile")
 	assertContainsStr(t, df, "mongodb-mongosh", "full dockerfile")
-	assertContainsStr(t, df, "nvm install --lts", "full dockerfile")
+	assertContainsStr(t, df, "fnm install --lts", "full dockerfile")
 	assertContainsStr(t, df, "bun.sh/install", "full dockerfile")
 	assertContainsStr(t, df, "zellij", "full dockerfile")
 	assertContainsStr(t, df, "install -y ffmpeg", "full dockerfile")
@@ -155,7 +155,7 @@ func TestGenerateDockerfile_YarnAutoAddNodejs(t *testing.T) {
 	})
 	df := mustGenerateDockerfile(t, cfg)
 	// yarn requires nodejs, so the resolver must pull it in.
-	assertContainsStr(t, df, "nvm install", "yarn pulls nodejs")
+	assertContainsStr(t, df, "fnm install", "yarn pulls nodejs")
 	// Yarn is provisioned through Corepack, sourcing the shared node init.
 	assertContainsStr(t, df, "corepack prepare yarn@stable --activate", "yarn")
 	assertContainsStr(t, df, ".nodejs_init.sh", "yarn sources node init")
@@ -166,7 +166,7 @@ func TestGenerateDockerfile_PnpmAutoAddNodejs(t *testing.T) {
 		c.Dockerfile.Modules = []types.SelectedModule{{ID: "pnpm"}}
 	})
 	df := mustGenerateDockerfile(t, cfg)
-	assertContainsStr(t, df, "nvm install", "pnpm pulls nodejs")
+	assertContainsStr(t, df, "fnm install", "pnpm pulls nodejs")
 	assertContainsStr(t, df, "get.pnpm.io/install.sh", "pnpm")
 	// pnpm must expose its global bin dir on PATH (zsh/bash/profile) and pin a
 	// store-dir on the persisted home so no stray store lands in the workspace.
@@ -812,8 +812,48 @@ func TestGenerateDockerfile_ClaudeCode(t *testing.T) {
 		c.Dockerfile.Modules = []types.SelectedModule{{ID: "claude-code"}}
 	})
 	df := mustGenerateDockerfile(t, cfg)
-	assertContainsStr(t, df, "install-claude-code.sh", "claude-code script")
-	assertContainsStr(t, df, "/home/devuser/post-script/", "post-script dir")
+	// Claude Code is a non-interactive installer: it auto-starts, so it lands in
+	// the start.d/ dir with a numeric order prefix (default order 50).
+	assertContainsStr(t, df, "COPY install-claude-code.sh /home/devuser/post-script/start.d/50-install-claude-code.sh", "claude-code auto-start script")
+	assertContainsStr(t, df, "/home/devuser/post-script/start.d/*.sh", "start.d chmod target")
+	// A plain-named symlink under ~/post-script/ lets the user still run it by hand.
+	assertContainsStr(t, df, "ln -sfn start.d/50-install-claude-code.sh /home/devuser/post-script/install-claude-code.sh", "claude-code manual symlink")
+}
+
+// Auto-start installers go to start.d/ with an order prefix; the agent-wiring
+// tools (graphify/caveman) carry order 90 so they run after the agents.
+func TestGenerateDockerfile_AutoStartOrdering(t *testing.T) {
+	cfg := makeConfig(func(c *types.DevcontainerConfig) {
+		c.Dockerfile.Modules = []types.SelectedModule{
+			{ID: "python"}, {ID: "nodejs"},
+			{ID: "claude-code"}, {ID: "graphify"}, {ID: "caveman"},
+		}
+	})
+	df := mustGenerateDockerfile(t, cfg)
+	assertContainsStr(t, df, "/home/devuser/post-script/start.d/50-install-claude-code.sh", "claude order 50")
+	assertContainsStr(t, df, "/home/devuser/post-script/start.d/90-install-graphify.sh", "graphify order 90")
+	assertContainsStr(t, df, "/home/devuser/post-script/start.d/90-install-caveman.sh", "caveman order 90")
+	// The agent (50-) must be COPYed before the wiring tools (90-) so the sorted
+	// glob in the entrypoint runs them in that order.
+	claudeIdx := strings.Index(df, "50-install-claude-code.sh")
+	graphifyIdx := strings.Index(df, "90-install-graphify.sh")
+	if claudeIdx < 0 || graphifyIdx < 0 || claudeIdx > graphifyIdx {
+		t.Errorf("agent installer must be ordered before the wiring tools:\nclaude=%d graphify=%d", claudeIdx, graphifyIdx)
+	}
+}
+
+// Interactive scripts (codex, the github login) stay manual under post-script/,
+// never under start.d/.
+func TestGenerateDockerfile_ManualPostScripts(t *testing.T) {
+	cfg := makeConfig(func(c *types.DevcontainerConfig) {
+		c.Dockerfile.Modules = []types.SelectedModule{{ID: "codex-cli"}}
+	})
+	df := mustGenerateDockerfile(t, cfg)
+	assertContainsStr(t, df, "install-codex-cli.sh", "codex script present")
+	// codex-cli pulls in no auto-start module, so there is no start.d block.
+	if strings.Contains(df, "start.d/") {
+		t.Errorf("interactive-only config must not emit a start.d block:\n%s", df)
+	}
 }
 
 func TestGenerateDockerfile_Opencode(t *testing.T) {
@@ -831,7 +871,7 @@ func TestGenerateDockerfile_CodexCli(t *testing.T) {
 	df := mustGenerateDockerfile(t, cfg)
 	assertContainsStr(t, df, "install-codex-cli.sh", "codex-cli script")
 	// codex-cli requires nodejs
-	assertContainsStr(t, df, "nvm install --lts", "codex-cli requires nodejs")
+	assertContainsStr(t, df, "fnm install --lts", "codex-cli requires nodejs")
 }
 
 func TestGenerateDockerfile_AntigravityCli(t *testing.T) {
@@ -867,5 +907,5 @@ func TestGenerateDockerfile_Caveman(t *testing.T) {
 	df := mustGenerateDockerfile(t, cfg)
 	assertContainsStr(t, df, "install-caveman.sh", "caveman script")
 	// caveman requires nodejs
-	assertContainsStr(t, df, "nvm install --lts", "caveman requires nodejs")
+	assertContainsStr(t, df, "fnm install --lts", "caveman requires nodejs")
 }

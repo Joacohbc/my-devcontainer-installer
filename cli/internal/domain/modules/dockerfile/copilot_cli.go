@@ -14,6 +14,7 @@ var CopilotCliModule = &ModuleSpec{
 	PostScriptFiles: func(opts map[string]any) []string {
 		return []string{"install-copilot.sh"}
 	},
+	PostScriptAutoStart: true,
 	Render: func(opts map[string]any) string {
 		return fmt.Sprintf("##\n## GitHub Copilot CLI — install script shipped under %s\n##\n", types.PostScriptDir)
 	},

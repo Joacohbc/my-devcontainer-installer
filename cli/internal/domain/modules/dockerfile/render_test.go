@@ -35,6 +35,13 @@ func TestBaseModuleRender(t *testing.T) {
 			t.Errorf("base must contain %q:\n%s", frag, out)
 		}
 	}
+	// ~/.local/bin must be on PATH unconditionally (post-script installers and
+	// pip/uv --user binaries land there), via a shell-init file.
+	for _, frag := range []string{".local_bin_init.sh", `export PATH=\"\$HOME/.local/bin:\$PATH\"`} {
+		if !strings.Contains(out, frag) {
+			t.Errorf("base must wire ~/.local/bin onto PATH (%q):\n%s", frag, out)
+		}
+	}
 }
 
 func TestNodejsModuleRender(t *testing.T) {
@@ -45,9 +52,10 @@ func TestNodejsModuleRender(t *testing.T) {
 		notWant []string
 	}{
 		{
-			name: "default nvm lts",
-			opts: nil,
-			want: []string{"NVM", "nvm install --lts"},
+			name:    "default fnm lts",
+			opts:    nil,
+			want:    []string{"fnm", "fnm install --lts"},
+			notWant: []string{"nvm install"},
 		},
 		{
 			name: "nvm pinned version",
@@ -326,6 +334,39 @@ func TestModuleRunLayerCounts(t *testing.T) {
 			if got != tc.wantRun {
 				t.Errorf("module %q rendered %d RUN layers, want %d:\n%s",
 					tc.name, got, tc.wantRun, tc.module.Render(tc.opts))
+			}
+		})
+	}
+}
+
+// The non-interactive installer modules are marked PostScriptAutoStart so the
+// entrypoint runs them on start; the agent-wiring tools (graphify/caveman) carry
+// a higher run order so they run after the agents. Interactive scripts (codex,
+// the github login under cleanup) must NOT be auto-start.
+func TestPostScriptAutoStartFlags(t *testing.T) {
+	cases := []struct {
+		name      string
+		module    *dockerfile.ModuleSpec
+		autoStart bool
+		order     int // expected explicit order; 0 means "module default"
+	}{
+		{"claude-code", dockerfile.ClaudeCodeModule, true, 0},
+		{"antigravity", dockerfile.AntigravityCliModule, true, 0},
+		{"copilot", dockerfile.CopilotCliModule, true, 0},
+		{"opencode", dockerfile.OpencodeModule, true, 0},
+		{"graphify", dockerfile.GraphifyModule, true, 90},
+		{"caveman", dockerfile.CavemanModule, true, 90},
+		{"codex", dockerfile.CodexCliModule, false, 0},
+		{"cleanup (github login)", dockerfile.CleanupModule, false, 0},
+		{"golang", dockerfile.GolangModule, false, 0},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.module.PostScriptAutoStart != tc.autoStart {
+				t.Errorf("module %q PostScriptAutoStart = %v, want %v", tc.name, tc.module.PostScriptAutoStart, tc.autoStart)
+			}
+			if tc.module.PostScriptStartOrder != tc.order {
+				t.Errorf("module %q PostScriptStartOrder = %d, want %d", tc.name, tc.module.PostScriptStartOrder, tc.order)
 			}
 		})
 	}

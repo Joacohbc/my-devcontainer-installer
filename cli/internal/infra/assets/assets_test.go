@@ -130,6 +130,30 @@ func TestEntrypointAlignsUIDInsteadOfChangingWorkspaceACLs(t *testing.T) {
 	}
 }
 
+// The auto-start post-scripts must run as devuser (never root): the whole loop
+// is wrapped in a single 'su - devuser' login shell and backgrounded so SSH is
+// not blocked, with a per-script .done sentinel guarding re-runs.
+func TestEntrypointAutoStartRunsAsDevuser(t *testing.T) {
+	body, err := os.ReadFile(embeddedScript)
+	if err != nil {
+		t.Fatalf("reading %s: %v", embeddedScript, err)
+	}
+	script := string(body)
+	if !strings.Contains(script, "/home/devuser/post-script/start.d") {
+		t.Error("entrypoint must auto-run the start.d post-scripts")
+	}
+	if !strings.Contains(script, "su - devuser -s /bin/bash -c") {
+		t.Error("entrypoint must run the auto-start post-scripts as devuser (su - devuser)")
+	}
+	if !strings.Contains(script, ".post-script-state") || !strings.Contains(script, ".done") {
+		t.Error("entrypoint must guard re-runs with a per-script .done sentinel")
+	}
+	// The su block must be backgrounded so it never blocks sshd from starting.
+	if !strings.Contains(script, "' &\nfi") {
+		t.Error("entrypoint must background the auto-start block so SSH comes up immediately")
+	}
+}
+
 // install-graphify.sh must wire Graphify into every supported agent present in
 // the container (global scope, never --project) and detect/skip absent ones.
 func TestGraphifyInstallWiresAllPlatforms(t *testing.T) {

@@ -65,6 +65,11 @@ COPY zsh-installer.sh /tmp/zsh-installer.sh
 RUN chmod +x /tmp/zsh-installer.sh && \
     su - devuser -c "/tmp/zsh-installer.sh" && \
     rm /tmp/zsh-installer.sh
-`, UbuntuLTS, aptCleanup())
+
+# Put ~/.local/bin on PATH for devuser. Tools installed by the post-scripts
+# (Claude Code, Antigravity, …) and pip/uv --user binaries land there, so this
+# is always-on rather than tied to any single language module.
+%s
+`, UbuntuLTS, aptCleanup(), emitShellInit(".local_bin_init.sh", []string{`export PATH="$HOME/.local/bin:$PATH"`}))
 	},
 }
