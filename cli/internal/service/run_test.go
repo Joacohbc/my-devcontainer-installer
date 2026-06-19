@@ -170,6 +170,50 @@ func TestRunMapsPortsBoundToLoopback(t *testing.T) {
 	}
 }
 
+func TestRunCopyAIScripts(t *testing.T) {
+	runner := &fakeRunner{status: 0, stdout: "running"}
+	defer useFakeDocker(runner)()
+
+	svc := RunService{Report: nopReporter{}}
+	if err := svc.CopyAIScripts("c1", []string{"install-claude-code"}); err != nil {
+		t.Fatalf("CopyAIScripts: %v", err)
+	}
+
+	cp := runner.callContaining("cp")
+	if cp == nil {
+		t.Fatalf("expected a docker cp call; calls=%v", runner.calls)
+	}
+	if !slices.Contains(cp, "c1:/home/devuser/install-claude-code.sh") {
+		t.Errorf("cp must target the devuser home dest: %v", cp)
+	}
+
+	// The copied script is left owned by devuser and executable.
+	var chowned bool
+	for _, call := range runner.calls {
+		for _, arg := range call {
+			if strings.Contains(arg, "chown devuser:devuser") && strings.Contains(arg, "chmod +x") {
+				chowned = true
+			}
+		}
+	}
+	if !chowned {
+		t.Errorf("expected a chown devuser:devuser + chmod +x call; calls=%v", runner.calls)
+	}
+}
+
+func TestRunCopyAIScriptsNoopWhenEmpty(t *testing.T) {
+	runner := &fakeRunner{status: 0, stdout: "running"}
+	defer useFakeDocker(runner)()
+
+	svc := RunService{Report: nopReporter{}}
+	if err := svc.CopyAIScripts("c1", nil); err != nil {
+		t.Fatalf("CopyAIScripts: %v", err)
+	}
+	if runner.callContaining("cp") != nil {
+		t.Errorf("no copy should happen for an empty list; calls=%v", runner.calls)
+	}
+}
+
 func TestRunMapsPortsExposeAll(t *testing.T) {
 	runner := &fakeRunner{status: 0, stdout: ""}
 	defer useFakeDocker(runner)()

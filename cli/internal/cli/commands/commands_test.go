@@ -368,6 +368,36 @@ func TestRunCommand_HasSharedConfigFlag(t *testing.T) {
 	}
 }
 
+func TestRunCommand_HasCopyAIScriptsFlag(t *testing.T) {
+	cmd := newRunCommand()
+	if cmd.Flags().Lookup("copy-ai-scripts") == nil {
+		t.Error("expected run --copy-ai-scripts flag")
+	}
+}
+
+func TestShellInteractiveDefaults(t *testing.T) {
+	cases := []struct {
+		name             string
+		user, shellType  string
+		userSet, typeSet bool
+		hasCommand       bool
+		wantUser, wantSh string
+	}{
+		{"interactive applies devuser+zsh", "", "", false, false, false, "devuser", "zsh"},
+		{"interactive respects explicit flags", "root", "bash", true, true, false, "root", "bash"},
+		{"explicit command leaves flags bare", "", "", false, false, true, "", ""},
+		{"explicit command keeps given user", "root", "", true, false, true, "root", ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			gotUser, gotSh := shellInteractiveDefaults(c.user, c.shellType, c.userSet, c.typeSet, c.hasCommand)
+			if gotUser != c.wantUser || gotSh != c.wantSh {
+				t.Errorf("shellInteractiveDefaults = (%q, %q); want (%q, %q)", gotUser, gotSh, c.wantUser, c.wantSh)
+			}
+		})
+	}
+}
+
 func TestPruneVolumeCommand_HasSharedFlag(t *testing.T) {
 	root := NewRootCommand("test")
 	var prune *cobra.Command

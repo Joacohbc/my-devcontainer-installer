@@ -196,7 +196,8 @@ func (s InspectService) ensureRunning(name string) error {
 // interactive login session, not a bare shell. HOME is re-exported from the
 // live passwd entry because docker exec delivers a stale HOME=/ after the
 // entrypoint's runtime UID remap, which made the shell look for its rc files
-// under / and start bare.
+// under / and start bare. The session also cd's into that home so the shell
+// opens in the user's home directory (devuser's for the interactive default).
 func shellLauncher(shellType string) string {
 	resolve := `SH="$(printf %s "$P" | cut -d: -f7)"; `
 	if shellType != "" {
@@ -208,6 +209,7 @@ func shellLauncher(shellType string) string {
 		`[ -x "$SH" ] || SH="$SHELL"; ` +
 		`[ -x "$SH" ] || SH="$(command -v bash)"; ` +
 		`[ -x "$SH" ] || SH="$(command -v sh)"; ` +
+		`[ -d "$H" ] && cd "$H"; ` +
 		`exec "$SH" -l`
 }
 

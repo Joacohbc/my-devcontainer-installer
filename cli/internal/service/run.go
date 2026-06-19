@@ -88,6 +88,25 @@ func (s RunService) Run(spec QuickRunSpec) error {
 	return nil
 }
 
+// CopyAIScripts copies the named AI/dev tool installer scripts into the running
+// container's devuser home, reusing InspectService.CopyAsset (which materializes
+// the embedded script, docker cp's it and leaves it owned by devuser and
+// executable). Names are the copyable asset ids (see assets.CopyableNames).
+func (s RunService) CopyAIScripts(container string, names []string) error {
+	if len(names) == 0 {
+		return nil
+	}
+	inspectSvc := InspectService{Report: s.Report}
+	for _, name := range names {
+		s.Report.Info("Copying %s...", name)
+		if err := inspectSvc.CopyAsset(container, name, ""); err != nil {
+			return fmt.Errorf("copy asset %q: %w", name, err)
+		}
+	}
+	s.Report.Success("✓ Copied %d AI tool script(s) into '%s'.", len(names), container)
+	return nil
+}
+
 func (s RunService) containerState(name string) ContainerState {
 	inspectSvc := InspectService{Report: s.Report}
 	state, err := inspectSvc.ContainerState(name)
