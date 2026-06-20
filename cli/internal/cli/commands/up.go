@@ -11,10 +11,24 @@ func init() { register(newUpCommand()) }
 func newUpCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "up",
-		Short: "Create and start project containers",
-		Long: `devcontainer-cli up — build, recreate, start, and attach to containers for a service
+		Short: "Create and start the project's containers",
+		Long: `devcontainer-cli up — create (or recreate) and start the containers for the
+current project in the background.
 
-Runs: docker compose -f .dc_<workspace>/build/docker-compose.yml up -d`,
+Wraps 'docker compose -f .dc_<workspace>/build/docker-compose.yml up -d', so it
+creates missing containers, applies any compose changes and leaves everything
+running detached. Generate the project first (run 'devcontainer-cli') so the
+compose file exists.
+
+Flags:
+  --workspace   Target a workspace other than the one for the current directory.
+  --build       Build images before starting (docker compose up -d --build);
+                use it after changing the Dockerfile or modules.`,
+		Example: `  # Start the current project's containers
+  devcontainer-cli up
+
+  # Rebuild images first, then start
+  devcontainer-cli up --build`,
 		SilenceUsage: true,
 		RunE:         runUp,
 	}

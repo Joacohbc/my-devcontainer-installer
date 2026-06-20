@@ -20,7 +20,24 @@ import (
 func newPresetCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "preset",
-		Short: "Manage presets (list/create/copy)",
+		Short: "Manage reusable module-bundle presets",
+		Long: `devcontainer-cli config preset — manage presets, named bundles of Dockerfile
+modules you can reuse when generating projects.
+
+A preset is just a list of module ids (no services, ports, volumes or build mode).
+Built-in presets ship with the CLI; your own are saved under
+~/.devcontainer-cli/presets/. Pass a preset to 'devcontainer-cli --preset <id>'
+(or pick one in the interactive wizard) to pre-select its modules.
+
+Subcommands:
+  list                List built-in and user presets with their modules.
+  create              Create a user preset via an interactive module picker.
+  copy <from> <to>    Copy any preset into a new user preset.
+  remove <id...>      Delete user presets (built-ins cannot be removed).`,
+		Example: `  devcontainer-cli config preset list
+  devcontainer-cli config preset create
+  devcontainer-cli config preset copy web my-web
+  devcontainer-cli --preset my-web`,
 	}
 	cmd.AddCommand(newPresetListCommand())
 	cmd.AddCommand(newPresetCreateCommand())
@@ -32,7 +49,8 @@ func newPresetCommand() *cobra.Command {
 func newPresetListCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:          "list",
-		Short:        "List builtin and user-defined presets (module bundles)",
+		Short:        "List built-in and user presets with their modules",
+		Long:         "devcontainer-cli config preset list — show every available preset, grouped\ninto built-in and your own, with the module ids each one bundles.",
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			presets := (service.ConfigService{Report: console}).Presets()
@@ -74,8 +92,15 @@ func newPresetListCommand() *cobra.Command {
 
 func newPresetCreateCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:          "create",
-		Short:        "Create a new custom preset (module bundle) using the interactive wizard",
+		Use:   "create",
+		Short: "Create a user preset via an interactive module picker",
+		Long: `devcontainer-cli config preset create — interactively create a new user preset.
+
+It prompts for a preset id and label, then opens the module picker so you can
+choose which Dockerfile modules the preset bundles, and saves it under
+~/.devcontainer-cli/presets/. This is an interactive command: it cannot run with
+--no-interactive.`,
+		Example:      "  devcontainer-cli config preset create",
 		Args:         cobra.NoArgs,
 		SilenceUsage: true,
 		RunE:         runPresetCreate,
@@ -133,8 +158,18 @@ func runPresetCreate(cmd *cobra.Command, _ []string) error {
 
 func newPresetCopyCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:          "copy <existing-preset-id> <new-preset-id>",
-		Short:        "Copy an existing preset (builtin or user) to a new user preset",
+		Use:   "copy <existing-preset-id> <new-preset-id>",
+		Short: "Copy any preset into a new user preset",
+		Long: `devcontainer-cli config preset copy — duplicate an existing preset (built-in or
+user) into a new user preset you can then edit.
+
+The new preset is saved under ~/.devcontainer-cli/presets/ with the same modules.
+In interactive mode you're asked for a label; otherwise the source label is kept.
+
+Flags:
+  --no-interactive   Skip the label prompt and reuse the source preset's label.`,
+		Example: `  # Fork the built-in 'web' preset
+  devcontainer-cli config preset copy web my-web`,
 		Args:         cobra.ExactArgs(2),
 		SilenceUsage: true,
 		RunE:         runPresetCopy,
@@ -185,9 +220,21 @@ func runPresetCopy(cmd *cobra.Command, args []string) error {
 
 func newPresetRemoveCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:               "remove <preset-id...>",
-		Aliases:           []string{"rm", "delete"},
-		Short:             "Remove user-created presets (built-in presets cannot be removed)",
+		Use:     "remove <preset-id...>",
+		Aliases: []string{"rm", "delete"},
+		Short:   "Delete user presets (built-ins cannot be removed)",
+		Long: `devcontainer-cli config preset remove — delete one or more of your own presets
+from ~/.devcontainer-cli/presets/.
+
+Only user presets can be removed; attempting to remove a built-in preset errors
+out. Every id is validated before anything is deleted, so a bad id aborts the
+whole operation. Preset ids tab-complete.
+
+Flags:
+  -y, --yes         Skip the confirmation prompt (required with --no-interactive).
+      --no-interactive  Never prompt; without --yes the command refuses to delete.`,
+		Example: `  devcontainer-cli config preset remove my-web
+  devcontainer-cli config preset rm old-preset another --yes`,
 		Args:              cobra.MinimumNArgs(1),
 		SilenceUsage:      true,
 		RunE:              runPresetRemove,

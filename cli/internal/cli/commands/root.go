@@ -12,8 +12,66 @@ func NewRootCommand(v string) *cobra.Command {
 	version = v
 	root := &cobra.Command{
 		Use:   "devcontainer-cli",
-		Short: "Generate Dockerfile + docker-compose.yml for devcontainers",
-		Long:  "devcontainer CLI — generate Dockerfile + docker-compose.yml and manage devcontainer environments.",
+		Short: "Generate and manage reproducible Docker devcontainers",
+		Long: `devcontainer-cli — generate and manage reproducible Docker devcontainers.
+
+Run with no subcommand to (re)generate the Dockerfile, docker-compose.yml and
+.env for the current directory and then build/start the stack. Interactively it
+walks a wizard: pick a build mode, choose Dockerfile modules (languages and
+tools such as nodejs, golang, python), add compose services (databases like
+postgres/mongo/redis, a tunnel, …), and set published ports and extra volumes.
+Generated files are written under .dc_<workspace>/ next to your project and the
+result is recorded so the other subcommands can find it.
+
+The subcommands manage an existing project: lifecycle (up, down, start, stop,
+restart, destroy), inspection (status, info, logs, ls, shell), access (setup-ssh,
+port-forward, network, password), config (config, sync-config) and cleanup
+(prune, remove-container, remove-image). Run 'devcontainer-cli <command> --help'
+for the full details of any one.
+
+Build modes:
+  local-cached  Build the full Dockerfile/compose pipeline locally and tag the
+                image by a content fingerprint so identical setups are reused.
+  remote        Skip the Dockerfile and pull a prebuilt ghcr.io image for the
+                chosen --variant; database services are still generated.
+
+Generate flags:
+  --mode            Build mode: local-cached (default) or remote.
+  --variant         Remote image variant for --mode remote (e.g. ssh, nodejs).
+  --registry        Container registry prefix for remote images (overrides config).
+  --with            Comma-separated Dockerfile modules (e.g. nodejs,golang,zellij).
+  --service         Comma-separated compose services (e.g. postgres,redis,tunnel).
+  --image           Override the image name (defaults to the fingerprint image).
+  --workspace       Workspace name; defaults to the current directory name.
+  --ports           Ports to publish (e.g. 8080:80,5432:5432); 'none' clears them.
+  --volumes         Extra volume mounts (e.g. myvol:/data); 'none' clears them.
+  --shared-config   Mount the shared tool-config volume so logins persist
+                    across containers (default true; --shared-config=false opts out).
+  --preset          Start from a saved module bundle (see 'config preset list').
+  --force           Overwrite existing generated files without prompting.
+  --force-prompt    Re-run the wizard even when a config file already exists.
+  --build/--no-build  Force or skip the build/pull step after generating.
+  --no-interactive  Never prompt; fail if a required value is missing.
+
+Global flags (accepted by every command):
+  --verbose         Enable debug logging (shortcut for --log-level debug).
+  --log-level       Log verbosity: debug|info|warn|error (default warn).`,
+		Example: `  # Generate, build and start a devcontainer for the current directory
+  devcontainer-cli
+
+  # Non-interactive generation with explicit modules and a database service
+  devcontainer-cli --with nodejs,golang --service postgres --no-interactive --force
+
+  # Pull a prebuilt remote image instead of building locally
+  devcontainer-cli --mode remote --variant nodejs
+
+  # Start from a saved preset, then publish a port
+  devcontainer-cli --preset web --ports 3000:3000
+
+  # Work with the running container, then tear it down
+  devcontainer-cli shell
+  devcontainer-cli logs -f
+  devcontainer-cli down`,
 		// Run the generate flow when no subcommand is given.
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,

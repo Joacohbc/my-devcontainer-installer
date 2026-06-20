@@ -29,9 +29,41 @@ type setupSshFlags struct {
 
 func newSetupSshCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:          "setup-ssh",
-		Short:        "Run automated SSH setup (see: setup-ssh --help)",
-		Long:         "devcontainer-cli setup-ssh — automate SSH key + config for devcontainer-ssh",
+		Use:   "setup-ssh",
+		Short: "Set up SSH key + config so you can 'ssh' into the devcontainer",
+		Long: `devcontainer-cli setup-ssh — automate end-to-end SSH access to a devcontainer.
+
+It generates (once) a single shared ed25519 key managed by the CLI, makes sure
+the target container is running (offering to start the stack if not), installs
+the public key into the container's authorized_keys, resolves the container's IP,
+and appends a ready-to-use Host block to your ~/.ssh/config — then tests the
+connection. Afterwards you connect with a plain 'ssh <alias>'. If the alias
+already exists you're asked to overwrite it, pick a new name, or skip.
+
+Two modes:
+  local (default)  Configure direct SSH from this machine into a local container.
+  remote (--remote USER@HOST)  This CLI runs on the Docker host; it prints a
+                   self-contained snippet (containing the PRIVATE key) to paste
+                   on the machine you connect FROM, setting up a ProxyCommand jump.
+
+Flags:
+  --remote USER@HOST  Switch to remote/ProxyCommand mode for the given host.
+  --container NAME     Target container (auto-detected from the project compose
+                       file when omitted; tab-completes running containers).
+  --user USER          SSH user inside the container (default: ` + sshdefaults.User + `).
+  --key PATH           Private key to use (default: the shared managed key under
+                       the CLI config dir; generated if missing).
+  -y, --yes            Assume "yes" to all prompts (non-interactive): overwrites a
+                       conflicting alias and auto-starts the stack if needed.`,
+		Example: `  # Set up SSH for the project's devcontainer, then connect
+  devcontainer-cli setup-ssh
+  ssh <workspace>
+
+  # Target a specific container unattended
+  devcontainer-cli setup-ssh --container dc-ssh --yes
+
+  # Remote/jump-host setup (run on the Docker host)
+  devcontainer-cli setup-ssh --remote me@docker-host`,
 		SilenceUsage: true,
 		RunE:         runSetupSsh,
 	}

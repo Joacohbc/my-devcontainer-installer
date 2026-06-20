@@ -15,15 +15,33 @@ func init() { register(newSyncConfigCommand()) }
 func newSyncConfigCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "sync-config [tool...]",
-		Short: "Copy host tool configs into the shared config volume",
-		Long: `devcontainer-cli sync-config — seed the shared tool-config volume (` + types.SharedConfigVolumeName + `)
-with the configs already present on this machine, so containers start logged in
-without redoing any setup.
+		Short: "Seed the shared config volume from this machine's tool configs",
+		Long: `devcontainer-cli sync-config — copy the tool configs already on this machine
+(e.g. ~/.claude, ~/.config/gh, …) into the shared config volume
+(` + types.SharedConfigVolumeName + `), so any container that mounts it starts already
+logged in, without you redoing each tool's setup.
 
-Tools: ` + strings.Join(types.SharedConfigIDs(), ", ") + ` (default: all of them).
+Pass one or more tool ids to sync only those; with no arguments every known tool
+is synced. Restart (or start) containers afterwards to pick up the seeded config.
 
-By default only entries with no data in the volume are copied; --force replaces
-existing volume data with the host copy.`,
+Known tools: ` + strings.Join(types.SharedConfigIDs(), ", ") + `.
+
+Flags:
+  --force           Replace entries that ALREADY have data in the volume with the
+                    host copy. Without it, only empty entries are filled (existing
+                    volume data is never overwritten). This is destructive, so it
+                    prompts for confirmation.
+  -y, --yes         Skip the --force confirmation prompt (required to use --force
+                    with --no-interactive).
+      --no-interactive  Never prompt; --force without --yes errors out.`,
+		Example: `  # Seed everything not already present in the volume
+  devcontainer-cli sync-config
+
+  # Sync only specific tools
+  devcontainer-cli sync-config claude gh
+
+  # Overwrite existing volume data with the host copy, unattended
+  devcontainer-cli sync-config --force --yes`,
 		SilenceUsage: true,
 		RunE:         runSyncConfig,
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {

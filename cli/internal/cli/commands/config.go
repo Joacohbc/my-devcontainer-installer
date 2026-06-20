@@ -14,10 +14,31 @@ func init() { register(newConfigCommand()) }
 func newConfigCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "config",
-		Short: "Read or write global CLI config (e.g. 'config registry <url>', 'config preset create <id>')",
-		Long: "devcontainer-cli config — read/write global CLI config and manage presets\n\n" +
-			"Config file: " + domain.GlobalConfigPath() + "\n" +
-			"Presets:     create/list/copy reusable module bundles with 'config preset'",
+		Short: "Read or write the global CLI config and manage presets",
+		Long: `devcontainer-cli config — read and write the global, machine-wide CLI defaults
+and manage reusable module presets.
+
+These defaults are applied to every project so you don't repeat them on each
+generate (e.g. a default registry, DB credentials, the shared SSH key). Run a
+key subcommand with no value to print the current value, with a value to set it,
+or with --unset to revert to the built-in default.
+
+Subcommands:
+  registry            Default container registry prefix for remote images.
+  db-user             Default database user for DB services.
+  db-password         Default database password for DB services.
+  ssh-key             Path to the shared managed SSH key (and key utilities).
+  preset              List/create/copy/remove reusable module-bundle presets.
+  export / import     Export the project config to YAML / import it back.
+
+Config file: ` + domain.GlobalConfigPath(),
+		Example: `  # Show or set the default registry
+  devcontainer-cli config registry
+  devcontainer-cli config registry ghcr.io/myuser
+
+  # Manage presets and export the current project config
+  devcontainer-cli config preset list
+  devcontainer-cli config export -o devcontainer.yml`,
 		SilenceUsage: true,
 	}
 	cmd.AddCommand(newConfigKeyCommand("registry", "image registry"))
@@ -33,11 +54,16 @@ func newConfigCommand() *cobra.Command {
 func newConfigKeyCommand(key, description string) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   key + " [value]",
-		Short: "Get/set the default " + description,
-		Long: fmt.Sprintf("devcontainer-cli config %s — get/set the default %s\n\nUsage:\n"+
-			"  devcontainer-cli config %s                 # print current value\n"+
-			"  devcontainer-cli config %s <value>         # set value\n"+
-			"  devcontainer-cli config %s --unset         # remove key", key, description, key, key, key),
+		Short: "Get, set or unset the default " + description,
+		Long: fmt.Sprintf("devcontainer-cli config %s — get, set or unset the global default %s,\n"+
+			"applied to every project that doesn't override it.\n\n"+
+			"With no argument it prints the current value (and whether it has been\n"+
+			"customized); with a value it stores it; with --unset it reverts to the\n"+
+			"built-in default.\n\nFlags:\n"+
+			"  --unset   Remove the stored %s and fall back to the default.", key, description, key),
+		Example: fmt.Sprintf("  devcontainer-cli config %s            # print current value\n"+
+			"  devcontainer-cli config %s <value>    # set value\n"+
+			"  devcontainer-cli config %s --unset    # revert to default", key, key, key),
 		Args:         cobra.MaximumNArgs(1),
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -51,14 +77,23 @@ func newConfigKeyCommand(key, description string) *cobra.Command {
 func newConfigSSHKeyCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "ssh-key [path]",
-		Short: "Get/set the shared managed SSH key path",
-		Long: "devcontainer-cli config ssh-key — manage the single shared SSH key reused by every devcontainer\n\nUsage:\n" +
-			"  devcontainer-cli config ssh-key            # print path and whether the key exists\n" +
-			"  devcontainer-cli config ssh-key <path>     # set the key path\n" +
-			"  devcontainer-cli config ssh-key --unset    # revert to the default managed path\n" +
-			"  devcontainer-cli config ssh-key --generate # generate the managed key now if missing\n" +
-			"  devcontainer-cli config ssh-key --public   # print the public key contents\n" +
-			"  devcontainer-cli config ssh-key --private  # print the private key contents",
+		Short: "Manage the single shared SSH key reused by every devcontainer",
+		Long: `devcontainer-cli config ssh-key — manage the one shared SSH key that 'setup-ssh'
+installs into every devcontainer.
+
+With no argument it prints the configured key path and whether the key exists.
+Pass a path to point the CLI at a different key, or use the flags below to revert
+to the default, generate the key, or print its contents.
+
+Flags:
+  --unset      Forget the custom path and revert to the default managed key.
+  --generate   Generate the managed ed25519 key now if it does not yet exist.
+  --public     Print the public key contents (needs the key to exist).
+  --private    Print the private key contents (needs the key to exist).`,
+		Example: `  devcontainer-cli config ssh-key             # print path + existence
+  devcontainer-cli config ssh-key ~/.ssh/id_ed25519   # set a custom key
+  devcontainer-cli config ssh-key --generate  # create the managed key
+  devcontainer-cli config ssh-key --public    # print the public key`,
 		Args:         cobra.MaximumNArgs(1),
 		SilenceUsage: true,
 		RunE:         runConfigSSHKey,

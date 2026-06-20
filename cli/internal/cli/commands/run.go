@@ -16,9 +16,39 @@ func init() { register(newRunCommand()) }
 func newRunCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "run",
-		Short: "Spin up a remote image container without project files",
-		Long: "devcontainer-cli run — spin up a container from a remote image without any project files\n\n" +
-			"Variants: " + strings.Join(types.RemoteVariants, ", "),
+		Short: "Spin up a container from a prebuilt remote image (no project files)",
+		Long: `devcontainer-cli run — start a one-off devcontainer from a prebuilt remote
+image, without generating a Dockerfile, compose file or any project files.
+
+This is the fast path for a throwaway environment: it pulls the ghcr.io image
+for the chosen variant and runs it directly with 'docker run'. Interactively it
+prompts for the variant, volumes, ports, whether to mount the shared config
+volume and which AI installer scripts to copy; with --no-interactive every value
+must come from a flag (--variant becomes required).
+
+Flags:
+  --variant         Image variant to run (required when --no-interactive).
+                    One of: ` + strings.Join(types.RemoteVariants, ", ") + `.
+  --name            Container name (default: dc-<variant>).
+  --volumes         Volume mounts, e.g. myvol:/workspace; repeatable or
+                    comma-separated.
+  --ports           Port mappings, e.g. 2222:22; bound to 127.0.0.1 unless
+                    --expose-all; repeatable or comma-separated.
+  --expose-all      Publish ports on all interfaces (0.0.0.0) for LAN access
+                    instead of binding them to 127.0.0.1.
+  --shared-config   Mount the shared tool-config volume so logins/sessions
+                    persist across containers (default true; =false to opt out).
+  --copy-ai-scripts Copy the AI/dev tool installer scripts into the container;
+                    in non-interactive mode copies all of them.
+  --registry        Registry prefix override for the image (defaults to config).`,
+		Example: `  # Interactive: pick a variant and options
+  devcontainer-cli run
+
+  # Non-interactive SSH box with a named volume and a forwarded port
+  devcontainer-cli run --variant ssh --name dev --volumes work:/workspace --ports 2222:22
+
+  # Expose ports on the LAN and pre-install the AI CLI scripts
+  devcontainer-cli run --variant nodejs --ports 8080:80 --expose-all --copy-ai-scripts`,
 		SilenceUsage: true,
 		RunE:         runQuickRun,
 	}

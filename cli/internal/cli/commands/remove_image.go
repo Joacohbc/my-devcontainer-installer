@@ -13,12 +13,27 @@ func newRemoveImageCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "remove-image [ref...]",
 		Aliases: []string{"rmi"},
-		Short:   "Remove managed images by label",
-		Long: `devcontainer-cli remove-image — remove CLI-managed images selected by the managed label
+		Short:   "Remove CLI-managed images (by reference or in bulk)",
+		Long: `devcontainer-cli remove-image — remove images created by this CLI, identified by
+the managed label. Lists what will be removed and confirms first.
 
-With one or more image references, removes exactly those (tab-completion
-suggests managed image references). With no refs, removes images that are not
-in use, or every managed image with --all.`,
+Give one or more image references to remove exactly those (refs tab-complete
+managed images). With no refs it removes the managed images that are NOT in use
+by any container, or — with --all — every managed image regardless.
+
+Flags:
+  --all             With no refs, remove ALL managed images, including ones in
+                    use (ignored when refs are given).
+  -y, --yes         Skip the confirmation prompt (required with --no-interactive).
+      --no-interactive  Never prompt; without --yes the command refuses to delete.`,
+		Example: `  # Remove unused managed images
+  devcontainer-cli remove-image
+
+  # Remove a specific image
+  devcontainer-cli rmi devcontainer-cli/ab12cd34ef56:latest
+
+  # Remove every managed image, no prompt
+  devcontainer-cli rmi --all --yes`,
 		SilenceUsage:      true,
 		RunE:              runRemoveImage,
 		ValidArgsFunction: completeManagedImageArgs,
