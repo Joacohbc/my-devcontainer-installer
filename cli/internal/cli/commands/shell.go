@@ -21,8 +21,8 @@ output to a file, e.g.:
 		RunE: runShell,
 	}
 	addWorkspaceFlag(cmd)
-	cmd.Flags().String("user", "", "User to run the command as (e.g. root)")
-	cmd.Flags().String("type", "", "Shell to open: bash, zsh or sh (default: auto-detect)")
+	cmd.Flags().String("user", "", "User to run the command as (interactive shell defaults to devuser; ignored when an explicit command is passed)")
+	cmd.Flags().String("type", "", "Shell to open: bash, zsh or sh (interactive shell defaults to zsh)")
 	cmd.Flags().BoolP("no-tty", "T", false, "Disable pseudo-TTY allocation (use when piping output to a file, e.g. a DB dump)")
 	addContainerFlag(cmd)
 
@@ -42,6 +42,25 @@ output to a file, e.g.:
 	return cmd
 }
 
+// shellInteractiveDefaults applies the interactive-shell defaults: when no
+// explicit command is given, an unset --user becomes devuser and an unset --type
+// becomes zsh (the service launcher then cd's into that user's home). With an
+// explicit command the flags are left untouched so commands against containers
+// without a devuser/zsh (e.g. `shell -c <ws>-postgres -- pg_dump ...`) keep
+// working.
+func shellInteractiveDefaults(user, shellType string, userSet, typeSet, hasCommand bool) (string, string) {
+	if hasCommand {
+		return user, shellType
+	}
+	if !userSet {
+		user = "devuser"
+	}
+	if !typeSet {
+		shellType = "zsh"
+	}
+	return user, shellType
+}
+
 func runShell(cmd *cobra.Command, args []string) error {
 	wsFlag := workspaceFlag(cmd)
 	userFlag, _ := cmd.Flags().GetString("user")
@@ -52,6 +71,12 @@ func runShell(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+
+	userFlag, shellType = shellInteractiveDefaults(
+		userFlag, shellType,
+		cmd.Flags().Changed("user"), cmd.Flags().Changed("type"),
+		len(args) > 0,
+	)
 
 	// With explicit args, --type prepends the shell to the raw command line;
 	// with no args it picks the login shell the service launcher opens.

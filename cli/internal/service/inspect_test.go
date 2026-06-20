@@ -71,6 +71,11 @@ func TestInspectShellBuildsExecArgs(t *testing.T) {
 				if !strings.Contains(joined, `export HOME="$H"`) {
 					t.Errorf("launcher must re-export HOME from passwd, got %v", call)
 				}
+				// The session must cd into the user's home so the interactive
+				// shell opens there (devuser's home for the interactive default).
+				if !strings.Contains(joined, `cd "$H"`) {
+					t.Errorf("launcher must cd into the user's home, got %v", call)
+				}
 				if c.shellType != "" && !strings.Contains(joined, "command -v "+c.shellType) {
 					t.Errorf("launcher must resolve the typed shell %q, got %v", c.shellType, call)
 				}

@@ -6,6 +6,7 @@ import (
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/assets"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/service"
 	"github.com/spf13/cobra"
 )
@@ -27,6 +28,7 @@ func newRunCommand() *cobra.Command {
 	cmd.Flags().StringSlice("ports", nil, "Port mappings (e.g. 2222:22); bound to 127.0.0.1 unless --expose-all; repeatable or comma-separated")
 	cmd.Flags().Bool("expose-all", false, "Publish ports on all interfaces (0.0.0.0) instead of binding to 127.0.0.1")
 	cmd.Flags().Bool("shared-config", true, "Mount the global shared AI/dev tool config volume (devcontainer-shared-config) so logins/sessions persist across containers; --shared-config=false to opt out")
+	cmd.Flags().Bool("copy-ai-scripts", false, "Copy the AI/dev tool installer scripts into the container; in non-interactive mode copies all of them")
 	cmd.Flags().String("registry", "", "Registry prefix override")
 	addInteractiveFlag(cmd)
 
@@ -44,6 +46,7 @@ func runQuickRun(cmd *cobra.Command, _ []string) error {
 	ports, _ := cmd.Flags().GetStringSlice("ports")
 	exposeAll, _ := cmd.Flags().GetBool("expose-all")
 	sharedConfig, _ := cmd.Flags().GetBool("shared-config")
+	copyAIScripts, _ := cmd.Flags().GetBool("copy-ai-scripts")
 	registry, _ := cmd.Flags().GetString("registry")
 	interactive := interactiveFlag(cmd)
 
@@ -93,6 +96,44 @@ func runQuickRun(cmd *cobra.Command, _ []string) error {
 		ports = filterEmpty(strings.Split(raw, ","))
 	}
 
+	// In interactive mode ask whether to mount the shared config volume unless
+	// the flag was set explicitly. The flag default stays true, so the prompt
+	// defaults to Yes; an explicit --shared-config[=false] skips the prompt.
+	if interactive && !cmd.Flags().Changed("shared-config") {
+		ans, err := console.ConfirmDefault("Mount the shared config volume (persist logins/sessions across containers)?", true)
+		if err != nil {
+			return err
+		}
+		sharedConfig = ans
+	}
+
+	// AI installer scripts: in interactive mode (unless --copy-ai-scripts was set
+	// explicitly) ask whether to copy them and let the user pick which; in
+	// non-interactive mode --copy-ai-scripts copies all of them.
+	var aiScripts []string
+	if interactive && !cmd.Flags().Changed("copy-ai-scripts") {
+		want, err := console.ConfirmDefault("Copy AI tool installer scripts into the container?", false)
+		if err != nil {
+			return err
+		}
+		if want {
+			copyable := assets.CopyableAssets()
+			choices := make([]service.Option, len(copyable))
+			for i, a := range copyable {
+				choices[i] = service.Option{Value: a.Name, Label: a.Label}
+			}
+			picked, err := console.Multiselect("Scripts to copy:", choices, choices)
+			if err != nil {
+				return err
+			}
+			for _, p := range picked {
+				aiScripts = append(aiScripts, p.Value)
+			}
+		}
+	} else if copyAIScripts {
+		aiScripts = assets.CopyableNames()
+	}
+
 	reg := domain.ResolveRegistry(registry, "")
 	image := domain.ResolveRemoteImage(variant, reg)
 	containerName := name
@@ -127,6 +168,12 @@ func runQuickRun(cmd *cobra.Command, _ []string) error {
 		SharedConfig:  sharedConfig,
 	}); err != nil {
 		return err
+	}
+
+	if len(aiScripts) > 0 {
+		if err := svc.CopyAIScripts(containerName, aiScripts); err != nil {
+			return err
+		}
 	}
 
 	console.NewLine()
