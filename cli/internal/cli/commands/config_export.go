@@ -17,10 +17,7 @@ devcontainer.config.json as human-friendly YAML.
 
 Useful for reviewing the config, checking it into version control, or sharing a
 reproducible setup that someone else can recreate with 'config import'. Writes to
-stdout by default.
-
-Flags:
-  -o, --output FILE   Write the YAML to FILE instead of stdout.`,
+stdout by default, or to a file with -o.`,
 		Example: `  # Print the config as YAML
   devcontainer-cli config export
 

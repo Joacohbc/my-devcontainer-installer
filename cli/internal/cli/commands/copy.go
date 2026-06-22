@@ -27,13 +27,9 @@ container path, and the copy direction is inferred from which side carries the
 ':'. If neither side is prefixed, the copy defaults to host -> container. Paths
 inside the container tab-complete in real time.
 
-Flags:
-  --container NAME  Target a specific container instead of the resolved one.
-  --workspace NAME  Resolve the container from another workspace.
-  -a, --asset NAME  Instead of a local source, copy a built-in script asset
-                    (e.g. an AI CLI installer) into the container's devuser home,
-                    left owned by devuser and executable. The single optional
-                    positional arg then overrides the destination path.`,
+With --asset, instead of a local source it copies a built-in script asset (e.g.
+an AI CLI installer) into the container's devuser home, left owned by devuser and
+executable; the single optional positional arg then overrides the destination.`,
 		Example: `  # Host -> container
   devcontainer-cli copy ./app.go :/home/devuser/app.go
 

@@ -44,17 +44,7 @@ Two modes:
   local (default)  Configure direct SSH from this machine into a local container.
   remote (--remote USER@HOST)  This CLI runs on the Docker host; it prints a
                    self-contained snippet (containing the PRIVATE key) to paste
-                   on the machine you connect FROM, setting up a ProxyCommand jump.
-
-Flags:
-  --remote USER@HOST  Switch to remote/ProxyCommand mode for the given host.
-  --container NAME     Target container (auto-detected from the project compose
-                       file when omitted; tab-completes running containers).
-  --user USER          SSH user inside the container (default: ` + sshdefaults.User + `).
-  --key PATH           Private key to use (default: the shared managed key under
-                       the CLI config dir; generated if missing).
-  -y, --yes            Assume "yes" to all prompts (non-interactive): overwrites a
-                       conflicting alias and auto-starts the stack if needed.`,
+                   on the machine you connect FROM, setting up a ProxyCommand jump.`,
 		Example: `  # Set up SSH for the project's devcontainer, then connect
   devcontainer-cli setup-ssh
   ssh <workspace>
@@ -72,7 +62,7 @@ Flags:
 	f.String("key", "", "Private key path (default: the shared managed key under the CLI config dir)")
 	f.String("container", sshdefaults.ServiceName, "Container name (auto-detected from compose if omitted)")
 	f.String("user", sshdefaults.User, "SSH user inside container")
-	f.BoolP("yes", "y", false, `Assume "yes" to all prompts`)
+	f.BoolP("yes", "y", false, `Assume "yes" to all prompts (overwrite a conflicting alias, auto-start the stack)`)
 
 	// Dynamic completions
 	_ = cmd.RegisterFlagCompletionFunc("container", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {

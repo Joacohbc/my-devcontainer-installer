@@ -17,13 +17,7 @@ identified by the managed label. Lists what will be removed and confirms first.
 
 Give one or more container names to remove exactly those (names tab-complete
 managed containers). With no names it removes the managed containers that are NOT
-running, or — with --all — every managed container regardless of state.
-
-Flags:
-  --all             With no names, remove ALL managed containers, including
-                    running ones (ignored when names are given).
-  -y, --yes         Skip the confirmation prompt (required with --no-interactive).
-      --no-interactive  Never prompt; without --yes the command refuses to delete.`,
+running, or — with --all — every managed container regardless of state.`,
 		Example: `  # Remove stopped managed containers
   devcontainer-cli remove-container
 

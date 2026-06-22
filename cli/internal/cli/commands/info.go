@@ -21,11 +21,8 @@ workspace: name, image, status, created/started timestamps, published ports,
 mounted volumes and network IPs (with aliases).
 
 It's the deep-dive companion to 'status' (which shows a compact table). With no
-flags it reports every container of the current project.
-
-Flags:
-  --workspace NAME  Report on another workspace instead of the current dir's.
-  --container NAME  Report on a single container by name instead of the project.`,
+flags it reports every container of the current project; --container narrows it
+to a single container.`,
 		Example: `  # Detailed info for the whole project
   devcontainer-cli info
 

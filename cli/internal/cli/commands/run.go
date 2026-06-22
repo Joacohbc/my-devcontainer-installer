@@ -26,21 +26,7 @@ prompts for the variant, volumes, ports, whether to mount the shared config
 volume and which AI installer scripts to copy; with --no-interactive every value
 must come from a flag (--variant becomes required).
 
-Flags:
-  --variant         Image variant to run (required when --no-interactive).
-                    One of: ` + strings.Join(types.RemoteVariants, ", ") + `.
-  --name            Container name (default: dc-<variant>).
-  --volumes         Volume mounts, e.g. myvol:/workspace; repeatable or
-                    comma-separated.
-  --ports           Port mappings, e.g. 2222:22; bound to 127.0.0.1 unless
-                    --expose-all; repeatable or comma-separated.
-  --expose-all      Publish ports on all interfaces (0.0.0.0) for LAN access
-                    instead of binding them to 127.0.0.1.
-  --shared-config   Mount the shared tool-config volume so logins/sessions
-                    persist across containers (default true; =false to opt out).
-  --copy-ai-scripts Copy the AI/dev tool installer scripts into the container;
-                    in non-interactive mode copies all of them.
-  --registry        Registry prefix override for the image (defaults to config).`,
+Variants: ` + strings.Join(types.RemoteVariants, ", ") + `.`,
 		Example: `  # Interactive: pick a variant and options
   devcontainer-cli run
 
@@ -52,7 +38,7 @@ Flags:
 		SilenceUsage: true,
 		RunE:         runQuickRun,
 	}
-	cmd.Flags().String("variant", "", "Image variant (e.g. ssh, nodejs, python)")
+	cmd.Flags().String("variant", "", "Image variant to run, e.g. ssh, nodejs, python (required with --no-interactive)")
 	cmd.Flags().String("name", "", "Container name (default: dc-<variant>)")
 	cmd.Flags().StringSlice("volumes", nil, "Volume mounts (e.g. myvol:/workspace); repeatable or comma-separated")
 	cmd.Flags().StringSlice("ports", nil, "Port mappings (e.g. 2222:22); bound to 127.0.0.1 unless --expose-all; repeatable or comma-separated")

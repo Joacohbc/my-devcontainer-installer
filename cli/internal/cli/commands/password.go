@@ -39,11 +39,7 @@ generated when the container was created.
 This is the ONLY password the CLI can reveal: Linux stores credentials as a
 one-way hash, so a password later set via 'password change' cannot be retrieved.
 The password is printed to stdout (the explanatory note goes to stderr) so it can
-be piped.
-
-Flags:
-  --workspace NAME  Resolve the container from another workspace.
-  --container NAME  Target a specific container instead of the resolved one.`,
+be piped.`,
 		Example: `  devcontainer-cli password show
   devcontainer-cli password show --container myproject-ssh`,
 		SilenceUsage: true,
@@ -61,15 +57,9 @@ func newPasswordChangeCommand() *cobra.Command {
 		Long: `devcontainer-cli password change — set a new password for the devuser inside a
 running container.
 
-Interactively you are prompted for the new password (hidden input). Once changed,
-the new password is hashed by the OS and can no longer be revealed by
-'password show'.
-
-Flags:
-  --password VALUE  Provide the new password directly (for non-interactive use);
-                    required when running with --no-interactive.
-  --workspace NAME  Resolve the container from another workspace.
-  --container NAME  Target a specific container instead of the resolved one.`,
+Interactively you are prompted for the new password (hidden input); with
+--no-interactive pass it via --password. Once changed, the new password is hashed
+by the OS and can no longer be revealed by 'password show'.`,
 		Example: `  # Prompt for the new password
   devcontainer-cli password change
 

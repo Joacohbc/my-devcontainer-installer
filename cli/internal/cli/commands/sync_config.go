@@ -22,18 +22,11 @@ func newSyncConfigCommand() *cobra.Command {
 logged in, without you redoing each tool's setup.
 
 Pass one or more tool ids to sync only those; with no arguments every known tool
-is synced. Restart (or start) containers afterwards to pick up the seeded config.
+is synced. By default only entries with no data in the volume are filled, so
+existing logins are never clobbered — use --force to overwrite them. Restart (or
+start) containers afterwards to pick up the seeded config.
 
-Known tools: ` + strings.Join(types.SharedConfigIDs(), ", ") + `.
-
-Flags:
-  --force           Replace entries that ALREADY have data in the volume with the
-                    host copy. Without it, only empty entries are filled (existing
-                    volume data is never overwritten). This is destructive, so it
-                    prompts for confirmation.
-  -y, --yes         Skip the --force confirmation prompt (required to use --force
-                    with --no-interactive).
-      --no-interactive  Never prompt; --force without --yes errors out.`,
+Known tools: ` + strings.Join(types.SharedConfigIDs(), ", ") + `.`,
 		Example: `  # Seed everything not already present in the volume
   devcontainer-cli sync-config
 

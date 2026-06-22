@@ -35,27 +35,8 @@ Build modes:
   remote        Skip the Dockerfile and pull a prebuilt ghcr.io image for the
                 chosen --variant; database services are still generated.
 
-Generate flags:
-  --mode            Build mode: local-cached (default) or remote.
-  --variant         Remote image variant for --mode remote (e.g. ssh, nodejs).
-  --registry        Container registry prefix for remote images (overrides config).
-  --with            Comma-separated Dockerfile modules (e.g. nodejs,golang,zellij).
-  --service         Comma-separated compose services (e.g. postgres,redis,tunnel).
-  --image           Override the image name (defaults to the fingerprint image).
-  --workspace       Workspace name; defaults to the current directory name.
-  --ports           Ports to publish (e.g. 8080:80,5432:5432); 'none' clears them.
-  --volumes         Extra volume mounts (e.g. myvol:/data); 'none' clears them.
-  --shared-config   Mount the shared tool-config volume so logins persist
-                    across containers (default true; --shared-config=false opts out).
-  --preset          Start from a saved module bundle (see 'config preset list').
-  --force           Overwrite existing generated files without prompting.
-  --force-prompt    Re-run the wizard even when a config file already exists.
-  --build/--no-build  Force or skip the build/pull step after generating.
-  --no-interactive  Never prompt; fail if a required value is missing.
-
-Global flags (accepted by every command):
-  --verbose         Enable debug logging (shortcut for --log-level debug).
-  --log-level       Log verbosity: debug|info|warn|error (default warn).`,
+Run 'devcontainer-cli --help' for the full flag list, or
+'devcontainer-cli <command> --help' for any subcommand.`,
 		Example: `  # Generate, build and start a devcontainer for the current directory
   devcontainer-cli
 

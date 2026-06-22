@@ -164,10 +164,8 @@ func newPresetCopyCommand() *cobra.Command {
 user) into a new user preset you can then edit.
 
 The new preset is saved under ~/.devcontainer-cli/presets/ with the same modules.
-In interactive mode you're asked for a label; otherwise the source label is kept.
-
-Flags:
-  --no-interactive   Skip the label prompt and reuse the source preset's label.`,
+In interactive mode you're asked for a label; with --no-interactive the source
+label is kept.`,
 		Example: `  # Fork the built-in 'web' preset
   devcontainer-cli config preset copy web my-web`,
 		Args:         cobra.ExactArgs(2),
@@ -228,11 +226,7 @@ from ~/.devcontainer-cli/presets/.
 
 Only user presets can be removed; attempting to remove a built-in preset errors
 out. Every id is validated before anything is deleted, so a bad id aborts the
-whole operation. Preset ids tab-complete.
-
-Flags:
-  -y, --yes         Skip the confirmation prompt (required with --no-interactive).
-      --no-interactive  Never prompt; without --yes the command refuses to delete.`,
+whole operation. Preset ids tab-complete.`,
 		Example: `  devcontainer-cli config preset remove my-web
   devcontainer-cli config preset rm old-preset another --yes`,
 		Args:              cobra.MinimumNArgs(1),

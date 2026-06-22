@@ -18,12 +18,7 @@ current project in the background.
 Wraps 'docker compose -f .dc_<workspace>/build/docker-compose.yml up -d', so it
 creates missing containers, applies any compose changes and leaves everything
 running detached. Generate the project first (run 'devcontainer-cli') so the
-compose file exists.
-
-Flags:
-  --workspace   Target a workspace other than the one for the current directory.
-  --build       Build images before starting (docker compose up -d --build);
-                use it after changing the Dockerfile or modules.`,
+compose file exists.`,
 		Example: `  # Start the current project's containers
   devcontainer-cli up
 
@@ -33,7 +28,7 @@ Flags:
 		RunE:         runUp,
 	}
 	addWorkspaceFlag(cmd)
-	cmd.Flags().Bool("build", false, "Build images before starting containers (docker compose up -d --build)")
+	cmd.Flags().Bool("build", false, "Build images before starting (docker compose up -d --build); use after changing the Dockerfile or modules")
 	return cmd
 }
 

@@ -16,13 +16,8 @@ func newLsCommand() *cobra.Command {
 a convenience wrapper over 'ls' run via docker exec.
 
 The optional path is interpreted inside the container and defaults to the current
-working directory there; paths tab-complete in real time.
-
-Flags:
-  -a, --all         Show hidden entries (ls -a).
-  -l, --long        Long listing with permissions, sizes and timestamps (ls -l).
-      --workspace   Target a workspace other than the current directory's.
-      --container   List inside a specific container by name.`,
+working directory there; paths tab-complete in real time. -a shows hidden entries
+and -l switches to a long listing.`,
 		Example: `  # List the default working dir
   devcontainer-cli ls
 

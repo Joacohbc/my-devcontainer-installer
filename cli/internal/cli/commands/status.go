@@ -24,13 +24,8 @@ containers with their service, name, state, published ports and image (similar
 to 'docker compose ps'). Services that exist in the compose file but have no
 container yet are shown as "not created".
 
-For an exhaustive per-container report use 'info' instead.
-
-Flags:
-  --workspace NAME  Show another workspace instead of the current directory's.
-  --container NAME  Show the status of a single container by name.
-  --all             Show every CLI-managed container across ALL workspaces, with
-                    a workspace column.`,
+For an exhaustive per-container report use 'info' instead. --container narrows to
+one container; --all lists every managed container across all workspaces.`,
 		Example: `  # Status of the current project
   devcontainer-cli status
 

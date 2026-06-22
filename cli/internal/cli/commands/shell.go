@@ -22,15 +22,7 @@ handy for scripting against the container.
 Interactive defaults (only when no command is given): the shell runs as devuser
 with zsh. With an explicit command those defaults are left alone, so commands
 work against containers that have no devuser/zsh (e.g. a database container).
-
-Flags:
-  --container NAME  Target a specific container instead of the resolved one.
-  --workspace NAME  Resolve the container from another workspace.
-  --user USER       Run as this user (interactive default: devuser; ignored once
-                    an explicit command is given). Tab-completes container users.
-  --type SHELL      Shell to open: bash, zsh or sh (interactive default: zsh).
-  -T, --no-tty      Drop the pseudo-TTY (docker exec -i) — use it when piping a
-                    command's output to a file, so the stream isn't mangled.`,
+Pass -T when piping a command's output to a file so the stream isn't mangled.`,
 		Example: `  # Interactive shell as devuser
   devcontainer-cli shell
 

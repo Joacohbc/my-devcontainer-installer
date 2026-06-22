@@ -36,16 +36,7 @@ The optional port_mapping argument accepts three forms:
 
 With no argument it runs an interactive picker: choose any running container,
 enter one or more ports, optionally repeat for other containers, then all tunnels
-are opened in parallel after you confirm.
-
-Flags:
-  --alias NAME      SSH host alias to tunnel through, bypassing auto-discovery
-                    (tab-completes aliases from ~/.ssh/config).
-  --service NAME    Compose service to map the port to inside the container
-                    network (default: localhost). Equivalent to the HOST part of
-                    the LOCAL:HOST:CONTAINER form.
-  --no-interactive  Disable prompts; a port_mapping (and resolvable alias) is then
-                    required.`,
+are opened in parallel after you confirm.`,
 		Example: `  # Interactive multi-container picker
   devcontainer-cli port-forward
 

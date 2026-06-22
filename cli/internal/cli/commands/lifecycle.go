@@ -40,12 +40,8 @@ project (they must already have been created with 'up').
 
 Wraps 'docker compose -f .dc_<workspace>/build/docker-compose.yml start'. Unlike
 'up' it never creates or recreates containers — it only resumes ones that are
-stopped.
-
-Flags:
-  --workspace   Target a workspace other than the current directory's.
-  --container   Start a single container by name via 'docker start' instead of
-                the whole project (tab-completes stopped containers).`,
+stopped. Pass --container to start a single container instead of the whole
+project.`,
 		Example: `  # Start the whole project
   devcontainer-cli start
 
@@ -88,12 +84,8 @@ leaving the containers, volumes and network in place so they can be resumed with
 'start'.
 
 Wraps 'docker compose -f .dc_<workspace>/build/docker-compose.yml stop'. Use
-'down' instead when you want to remove the containers, not just stop them.
-
-Flags:
-  --workspace   Target a workspace other than the current directory's.
-  --container   Stop a single container by name via 'docker stop' instead of the
-                whole project (tab-completes running containers).`,
+'down' instead when you want to remove the containers, not just stop them. Pass
+--container to stop a single container instead of the whole project.`,
 		Example: `  # Stop the whole project
   devcontainer-cli stop
 

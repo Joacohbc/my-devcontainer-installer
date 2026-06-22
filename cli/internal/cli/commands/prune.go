@@ -29,11 +29,6 @@ Subcommands:
   prune volume     Remove managed volumes only (--shared also drops the shared
                    tool-config volume).
 
-Flags:
-  --all             Remove EVERY managed resource, not just the unused ones.
-  -y, --yes         Skip the confirmation prompt (required with --no-interactive).
-      --no-interactive  Never prompt; without --yes the command refuses to delete.
-
 See also 'remove-container' (rm) and 'remove-image' (rmi) for targeting specific
 items by name.`,
 		Example: `  # Remove unused managed resources, with confirmation
@@ -169,12 +164,8 @@ func newPruneImagesCommand() *cobra.Command {
 		Aliases: []string{"image"},
 		Short:   "Remove unused managed images",
 		Long: `devcontainer-cli prune images — remove CLI-managed images that no container is
-using. Lists the candidates and confirms before deleting.
-
-Flags:
-  --all             Remove every managed image, even ones in use.
-  -y, --yes         Skip the confirmation prompt.
-      --no-interactive  Never prompt; requires --yes to delete.`,
+using. Lists the candidates and confirms before deleting; --all removes every
+managed image, even ones in use.`,
 		SilenceUsage: true,
 		RunE:         runPruneImages,
 	}
@@ -195,12 +186,8 @@ func newPruneNetworkCommand() *cobra.Command {
 		Aliases: []string{"networks"},
 		Short:   "Remove unused managed networks",
 		Long: `devcontainer-cli prune network — remove CLI-managed bridge networks that no
-container is attached to. Lists the candidates and confirms before deleting.
-
-Flags:
-  --all             Remove every managed network, even ones in use.
-  -y, --yes         Skip the confirmation prompt.
-      --no-interactive  Never prompt; requires --yes to delete.`,
+container is attached to. Lists the candidates and confirms before deleting;
+--all removes every managed network, even ones in use.`,
 		SilenceUsage: true,
 		RunE:         runPruneNetwork,
 	}
@@ -223,16 +210,9 @@ func newPruneVolumeCommand() *cobra.Command {
 		Aliases: []string{"volumes"},
 		Short:   "Remove unused managed volumes",
 		Long: `devcontainer-cli prune volume — remove CLI-managed volumes that no container is
-using. Lists the candidates and confirms before deleting. This deletes the
-volumes' data.
-
-Flags:
-  --all             Remove every managed volume, even ones in use.
-  --shared          Also remove the global shared tool-config volume
-                    (devcontainer-shared-config) — deletes saved logins/sessions
-                    for ALL containers.
-  -y, --yes         Skip the confirmation prompt.
-      --no-interactive  Never prompt; requires --yes to delete.`,
+using. Lists the candidates and confirms before deleting; this deletes the
+volumes' data. --all removes every managed volume, even ones in use, and --shared
+also drops the global shared tool-config volume.`,
 		SilenceUsage: true,
 		RunE:         runPruneVolume,
 	}

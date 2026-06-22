@@ -20,13 +20,8 @@ by 'config export') and write it to the project's devcontainer.config.json.
 
 This recreates a project's configuration from a shared/checked-in file. Run
 'devcontainer-cli' afterwards to (re)generate the Dockerfile and compose from it.
-If a config already exists you are asked before overwriting.
-
-Flags:
-  --force           Overwrite an existing devcontainer.config.json without asking.
-  -y, --yes         Confirm the overwrite (required to overwrite with
-                    --no-interactive; --force also works).
-      --no-interactive  Never prompt; overwriting then requires --force or --yes.`,
+If a config already exists you are asked before overwriting (use --force or --yes
+to skip the prompt).`,
 		Example: `  # Recreate the project config from a YAML file
   devcontainer-cli config import devcontainer.yml
 

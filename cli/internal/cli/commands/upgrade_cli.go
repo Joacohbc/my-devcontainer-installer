@@ -21,19 +21,9 @@ verifies its SHA-256 checksum, and atomically swaps the binary in place. By
 default it installs the latest STABLE release; pre-releases are opt-in. Restart
 any running session afterwards to use the new binary.
 
-This updates the CLI itself — to update a project's container images use
-'devcontainer-cli update' instead.
-
-Flags:
-  --check         Print current vs latest version and exit without downloading.
-  --pre-release   Install the latest pre-release when it is newer than the
-                  installed version (also required to opt in non-interactively).
-                  Without it, a newer pre-release only triggers a prompt and
-                  otherwise the latest stable is installed.
-  --force         Reinstall the selected target even if it matches the installed
-                  version (--pre-release --force reinstalls the latest pre-release).
-      --no-interactive  Never prompt; falls back to the latest stable unless
-                  --pre-release is given.
+By default the latest stable release is installed; a newer pre-release is only
+offered (prompted) unless you pass --pre-release to opt in. This updates the CLI
+itself — to update a project's container images use 'devcontainer-cli update'.
 
 Environment:
   GITHUB_TOKEN    Optional token to avoid GitHub's 60 req/hour anonymous limit.`,

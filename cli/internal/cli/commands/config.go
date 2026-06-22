@@ -59,8 +59,7 @@ func newConfigKeyCommand(key, description string) *cobra.Command {
 			"applied to every project that doesn't override it.\n\n"+
 			"With no argument it prints the current value (and whether it has been\n"+
 			"customized); with a value it stores it; with --unset it reverts to the\n"+
-			"built-in default.\n\nFlags:\n"+
-			"  --unset   Remove the stored %s and fall back to the default.", key, description, key),
+			"built-in default.", key, description),
 		Example: fmt.Sprintf("  devcontainer-cli config %s            # print current value\n"+
 			"  devcontainer-cli config %s <value>    # set value\n"+
 			"  devcontainer-cli config %s --unset    # revert to default", key, key, key),
@@ -82,14 +81,8 @@ func newConfigSSHKeyCommand() *cobra.Command {
 installs into every devcontainer.
 
 With no argument it prints the configured key path and whether the key exists.
-Pass a path to point the CLI at a different key, or use the flags below to revert
-to the default, generate the key, or print its contents.
-
-Flags:
-  --unset      Forget the custom path and revert to the default managed key.
-  --generate   Generate the managed ed25519 key now if it does not yet exist.
-  --public     Print the public key contents (needs the key to exist).
-  --private    Print the private key contents (needs the key to exist).`,
+Pass a path to point the CLI at a different key, or use the flags to revert to
+the default, generate the key, or print its public/private contents.`,
 		Example: `  devcontainer-cli config ssh-key             # print path + existence
   devcontainer-cli config ssh-key ~/.ssh/id_ed25519   # set a custom key
   devcontainer-cli config ssh-key --generate  # create the managed key

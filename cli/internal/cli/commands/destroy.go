@@ -25,11 +25,7 @@ directory and the devcontainer.config.json. After this the project is gone and
 would have to be regenerated from scratch. Use 'down' instead if you only want
 to stop containers but keep your files and data.
 
-Flags:
-  -y, --yes         Skip the confirmation prompt (required to run with
-                    --no-interactive, since destroy is irreversible).
-      --no-interactive  Never prompt; must be combined with --yes or the command
-                    errors out instead of destroying anything.`,
+Because it is irreversible, with --no-interactive you must also pass --yes.`,
 		Example: `  # Interactive: asks for confirmation first
   devcontainer-cli destroy
 

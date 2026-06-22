@@ -19,13 +19,7 @@ the managed label. Lists what will be removed and confirms first.
 
 Give one or more image references to remove exactly those (refs tab-complete
 managed images). With no refs it removes the managed images that are NOT in use
-by any container, or — with --all — every managed image regardless.
-
-Flags:
-  --all             With no refs, remove ALL managed images, including ones in
-                    use (ignored when refs are given).
-  -y, --yes         Skip the confirmation prompt (required with --no-interactive).
-      --no-interactive  Never prompt; without --yes the command refuses to delete.`,
+by any container, or — with --all — every managed image regardless.`,
 		Example: `  # Remove unused managed images
   devcontainer-cli remove-image
 

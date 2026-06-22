@@ -17,13 +17,8 @@ wrapper over 'docker compose logs'.
 
 With no argument it shows logs for every service in the project; pass a service
 name to limit it to one. Use --container to read a single container's logs
-directly (bypassing compose).
-
-Flags:
-  -f, --follow      Stream new log lines live until you press Ctrl+C.
-      --tail N      Show only the last N lines before following (default: all).
-      --workspace   Target a workspace other than the current directory's.
-      --container   Read one container's logs by name instead of via compose.`,
+directly (bypassing compose), -f to stream them live, and --tail to cap how many
+past lines are shown.`,
 		Example: `  # All project logs
   devcontainer-cli logs
 
