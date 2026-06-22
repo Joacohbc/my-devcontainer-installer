@@ -58,6 +58,39 @@ Applies to:
 
 ---
 
+## Mandatory rule: command changes require a doc review
+
+Every time a command is **added**, or its **behavior or flags change** (new/
+removed/renamed flag, changed default, new subcommand, different interactive vs
+non-interactive handling, new positional arg, …), review and update the
+documentation that describes it. Help text is part of the command's contract —
+out-of-date docs count as a bug. Don't merge a behavior change with stale docs.
+
+What to check on every command change:
+
+1. **`Short` / `Long`**: the one-line summary and the description in
+   `internal/cli/commands/<name>.go` still match what the command does. `Long`
+   explains *what it does and when to use it* (and how it differs from sibling
+   commands) — it does **not** re-list every flag in prose.
+2. **Flag descriptions**: each flag is described **once**, in its own
+   registration (`cmd.Flags().X(...)` / the shared helpers in `flags.go`). Fold
+   any important nuance (a flag only valid with another, a destructive default)
+   into that string rather than into `Long`. Cobra renders these in `--help`.
+3. **`Example`**: add/adjust the `Example` block so a realistic invocation of the
+   new/changed behavior is shown.
+4. **Completions**: if a flag's accepted values changed, update its
+   `RegisterFlagCompletionFunc` / `ValidArgsFunction`.
+5. **The `### Current commands` table** below and the **root help text** when a
+   command/subcommand is added, removed, or its one-line purpose changes.
+6. **`README` / `install.sh` / other prose** that names the command or flag, when
+   touched.
+
+Keep the help consistent with the rest of the tree: imperative, capitalized
+`Short` with no trailing period; `Long` and `Example` in the same voice as the
+neighboring commands.
+
+---
+
 ## Architecture overview
 
 `cli/` is split by **responsibility**, not by feature. A layer may import the
@@ -473,6 +506,8 @@ installer downloads the raw `devcontainer-cli-<triplet>`.
 ## PR checklist
 
 - [ ] New/modified module, domain function, or service method has a matching `_test.go`.
+- [ ] Added/changed command or flag has its docs reviewed (`Short`/`Long`/`Example`,
+      flag descriptions, the `Current commands` table) — see "command changes require a doc review".
 - [ ] No `infra/docker` or `os/exec` import in `internal/cli/commands` (logic belongs in a service).
 - [ ] `go test ./...` passes.
 - [ ] `go vet ./...` and `gofmt -l .` are clean.
