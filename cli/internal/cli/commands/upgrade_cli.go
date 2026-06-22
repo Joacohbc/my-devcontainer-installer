@@ -12,19 +12,29 @@ func init() { register(newUpgradeCliCommand()) }
 func newUpgradeCliCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "upgrade-cli",
-		Short: "Replace this binary with the latest GitHub release",
-		Long: `devcontainer-cli upgrade-cli — replace the current binary with the latest release
+		Short: "Self-update the CLI binary from the latest GitHub release",
+		Long: `devcontainer-cli upgrade-cli — replace the running CLI binary with the latest
+release published on GitHub.
 
-By default this installs the latest stable release. Pre-releases
-are opt-in: when one is newer than the installed version you are
-asked whether to install it, otherwise the latest stable is used. Pass
---pre-release to install it without prompting (and in non-interactive mode).
+It fetches the release list, picks the right asset for your OS/architecture,
+verifies its SHA-256 checksum, and atomically swaps the binary in place. By
+default it installs the latest STABLE release; pre-releases are opt-in. Restart
+any running session afterwards to use the new binary.
 
---force reinstalls the selected target even when it matches the installed
-version, so --pre-release --force reinstalls the latest pre-release.
+By default the latest stable release is installed; a newer pre-release is only
+offered (prompted) unless you pass --pre-release to opt in. This updates the CLI
+itself — to update a project's container images use 'devcontainer-cli update'.
 
-Env:
-  GITHUB_TOKEN  Optional, to avoid the 60 req/hour anonymous rate limit`,
+Environment:
+  GITHUB_TOKEN    Optional token to avoid GitHub's 60 req/hour anonymous limit.`,
+		Example: `  # See whether an update is available
+  devcontainer-cli upgrade-cli --check
+
+  # Install the latest stable release
+  devcontainer-cli upgrade-cli
+
+  # Opt into the latest pre-release
+  devcontainer-cli upgrade-cli --pre-release`,
 		SilenceUsage: true,
 		RunE:         runSelfUpdate,
 	}

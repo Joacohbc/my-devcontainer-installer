@@ -13,15 +13,25 @@ func init() { register(newUpdateCommand()) }
 func newUpdateCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "update",
-		Short: "Update container images for this project / all projects",
-		Long: `devcontainer-cli update — update container images
+		Short: "Update (pull or rebuild) a project's container images",
+		Long: `devcontainer-cli update — refresh the container images for a devcontainer.
 
-  devcontainer-cli update              Update images for the project in the current dir
-  devcontainer-cli update --all        Update images for every recorded project
-  devcontainer-cli update --pull       Force pull for remote images
-  devcontainer-cli update --rebuild    Force rebuild for local-cached images
+What it does depends on the project's build mode: 'remote' projects pull the
+newest image from the registry, while 'local-cached' projects rebuild the image
+from the Dockerfile when its contents changed. By default it updates the project
+in the current directory and records the new image.
 
-Note: To update the CLI binary itself, run 'devcontainer-cli upgrade-cli'.`,
+Note: this updates container IMAGES, not the CLI. To update the CLI binary
+itself, run 'devcontainer-cli upgrade-cli'.`,
+		Example: `  # Update the current project's images
+  devcontainer-cli update
+
+  # Update every recorded project
+  devcontainer-cli update --all
+
+  # Force a fresh pull / rebuild
+  devcontainer-cli update --pull
+  devcontainer-cli update --rebuild`,
 		SilenceUsage: true,
 		RunE:         runUpdateImages,
 	}

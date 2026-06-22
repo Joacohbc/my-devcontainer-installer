@@ -17,22 +17,30 @@ func newCopyCommand() *cobra.Command {
 		Use:     "copy [src] [dest]",
 		Aliases: []string{"cp"},
 		Short:   "Copy files or directories between the host and the container",
-		Long: `devcontainer-cli copy — copy a file or directory between the host and the running devcontainer
+		Long: `devcontainer-cli copy — copy a file or directory between the host and the
+running devcontainer (a friendlier 'docker cp' that resolves the container for
+you).
 
-A path prefixed with ':' refers to a path inside the container (the container is
-resolved automatically, so you don't type its name). Exactly one of src/dest may
-be a container path; the direction is inferred from where the ':' is:
+Prefix a path with ':' to mean "inside the container"; the container is resolved
+automatically so you never type its name. Exactly one of src/dest may be a
+container path, and the copy direction is inferred from which side carries the
+':'. If neither side is prefixed, the copy defaults to host -> container. Paths
+inside the container tab-complete in real time.
 
-  copy ./app.go :/home/devuser/app.go   # host -> container
-  copy :/home/devuser/out.log ./out.log # container -> host
-  copy ./app.go /home/devuser/app.go    # host -> container (':' optional on dest)
+With --asset, instead of a local source it copies a built-in script asset (e.g.
+an AI CLI installer) into the container's devuser home, left owned by devuser and
+executable; the single optional positional arg then overrides the destination.`,
+		Example: `  # Host -> container
+  devcontainer-cli copy ./app.go :/home/devuser/app.go
 
-Supports real-time dynamic completion for paths inside the container.
+  # Container -> host
+  devcontainer-cli copy :/home/devuser/out.log ./out.log
 
-With --asset <name>, copy a built-in script asset (e.g. an AI CLI installer)
-into the devuser home of the container instead of a local path. The script is
-left owned by devuser and executable. An optional destination path may be given
-as the single positional argument; otherwise it lands in the devuser home.`,
+  # ':' is optional when the destination is the container
+  devcontainer-cli copy ./app.go /home/devuser/app.go
+
+  # Drop a built-in installer script into the container
+  devcontainer-cli copy --asset claude`,
 		Args:              copyArgs,
 		SilenceUsage:      true,
 		ValidArgsFunction: runCopyCompletion,

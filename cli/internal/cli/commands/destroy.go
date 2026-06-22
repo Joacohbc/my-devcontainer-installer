@@ -15,11 +15,22 @@ func init() { register(newDestroyCommand()) }
 func newDestroyCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "destroy",
-		Short: "down -v + delete .dc_<workspace>/ and config (irreversible)",
-		Long: `devcontainer-cli destroy — tear down everything for the current project
+		Short: "Tear down the project completely and delete its generated files",
+		Long: `devcontainer-cli destroy — completely remove the current project. This is the
+nuclear option and cannot be undone.
 
-Runs 'docker compose down -v' (containers + volumes), then deletes the generated
-.dc_<workspace>/ directory and devcontainer.config.json. This is irreversible.`,
+It runs 'docker compose down -v' (removing containers, the network AND the named
+volumes, so all data is deleted), then deletes the generated .dc_<workspace>/
+directory and the devcontainer.config.json. After this the project is gone and
+would have to be regenerated from scratch. Use 'down' instead if you only want
+to stop containers but keep your files and data.
+
+Because it is irreversible, with --no-interactive you must also pass --yes.`,
+		Example: `  # Interactive: asks for confirmation first
+  devcontainer-cli destroy
+
+  # Unattended teardown in a script
+  devcontainer-cli destroy --yes`,
 		SilenceUsage: true,
 		RunE:         runDestroy,
 	}

@@ -11,12 +11,25 @@ func init() { register(newShellCommand()) }
 func newShellCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "shell [flags] [-- command args...]",
-		Short: "Open an interactive shell in the devcontainer",
-		Long: `devcontainer-cli shell — shortcut for docker exec -it <container> <shell>
+		Short: "Open a shell (or run a command) in the devcontainer",
+		Long: `devcontainer-cli shell — open an interactive shell in the running devcontainer,
+or run a one-off command in it. A convenience wrapper over 'docker exec -it'.
 
-Pass -T/--no-tty to drop the pseudo-TTY (docker exec -i) when piping a command's
-output to a file, e.g.:
+With no command after '--' it opens a login shell. Anything after '--' is run
+inside the container instead and its exit code is propagated, which makes 'shell'
+handy for scripting against the container.
 
+Interactive defaults (only when no command is given): the shell runs as devuser
+with zsh. With an explicit command those defaults are left alone, so commands
+work against containers that have no devuser/zsh (e.g. a database container).
+Pass -T when piping a command's output to a file so the stream isn't mangled.`,
+		Example: `  # Interactive shell as devuser
+  devcontainer-cli shell
+
+  # Run a one-off command
+  devcontainer-cli shell -- go version
+
+  # Pipe a DB dump out without a TTY
   devcontainer-cli shell -c <ws>-postgres -T -- pg_dump -U devuser devdb > dump.sql`,
 		RunE: runShell,
 	}

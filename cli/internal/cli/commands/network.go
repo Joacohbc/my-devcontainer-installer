@@ -14,16 +14,21 @@ func init() { register(newNetworkCommand()) }
 func newNetworkCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "network",
-		Short: "Attach/detach containers to the workspace network",
-		Long: `devcontainer-cli network — wire containers onto the current workspace network
+		Short: "Attach or detach containers to the workspace network",
+		Long: `devcontainer-cli network — wire arbitrary containers onto the current project's
+workspace network so they can talk to the devcontainer.
 
 The workspace network is the managed bridge network docker compose created for
 the project (named "<workspace>-network"). Any existing container — managed by
-this CLI or not — can be attached so it can reach the devcontainer by service
-name; it does not need to be recreated.
+this CLI or not — can be attached to it and will then reach the devcontainer by
+service name (and vice-versa), without being recreated.
 
-  network connect <container...>     attach containers to the workspace network
-  network disconnect <container...>  detach containers from the workspace network`,
+Subcommands:
+  network connect <container...>     Attach containers to the workspace network.
+  network disconnect <container...>  Detach containers from the workspace network.`,
+		Example: `  devcontainer-cli network connect my-other-app
+  devcontainer-cli network connect db --alias postgres
+  devcontainer-cli network disconnect my-other-app`,
 		SilenceUsage: true,
 	}
 	cmd.AddCommand(newNetworkConnectCommand())
@@ -33,8 +38,15 @@ name; it does not need to be recreated.
 
 func newNetworkConnectCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:               "connect <container...>",
-		Short:             "Attach containers to the workspace network",
+		Use:   "connect <container...>",
+		Short: "Attach containers to the workspace network",
+		Long: `devcontainer-cli network connect — attach one or more existing containers to the
+current project's workspace network so they can reach the devcontainer by name.
+
+Container names tab-complete from every container on the daemon. Use --alias to
+register extra DNS names for them on the network.`,
+		Example: `  devcontainer-cli network connect my-app
+  devcontainer-cli network connect db --alias postgres,pg`,
 		Args:              cobra.MinimumNArgs(1),
 		SilenceUsage:      true,
 		RunE:              func(cmd *cobra.Command, args []string) error { return runNetworkOp(cmd, args, "connect") },
@@ -63,8 +75,11 @@ func connectAliases(cmd *cobra.Command) ([]string, error) {
 
 func newNetworkDisconnectCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:               "disconnect <container...>",
-		Short:             "Detach containers from the workspace network",
+		Use:   "disconnect <container...>",
+		Short: "Detach containers from the workspace network",
+		Long: `devcontainer-cli network disconnect — detach one or more containers from the
+current project's workspace network. Container names tab-complete.`,
+		Example:           "  devcontainer-cli network disconnect my-app",
 		Args:              cobra.MinimumNArgs(1),
 		SilenceUsage:      true,
 		RunE:              func(cmd *cobra.Command, args []string) error { return runNetworkOp(cmd, args, "disconnect") },

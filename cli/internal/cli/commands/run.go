@@ -16,13 +16,29 @@ func init() { register(newRunCommand()) }
 func newRunCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "run",
-		Short: "Spin up a remote image container without project files",
-		Long: "devcontainer-cli run — spin up a container from a remote image without any project files\n\n" +
-			"Variants: " + strings.Join(types.RemoteVariants, ", "),
+		Short: "Spin up a container from a prebuilt remote image (no project files)",
+		Long: `devcontainer-cli run — start a one-off devcontainer from a prebuilt remote
+image, without generating a Dockerfile, compose file or any project files.
+
+This is the fast path for a throwaway environment: it pulls the ghcr.io image
+for the chosen variant and runs it directly with 'docker run'. Interactively it
+prompts for the variant, volumes, ports, whether to mount the shared config
+volume and which AI installer scripts to copy; with --no-interactive every value
+must come from a flag (--variant becomes required).
+
+Variants: ` + strings.Join(types.RemoteVariants, ", ") + `.`,
+		Example: `  # Interactive: pick a variant and options
+  devcontainer-cli run
+
+  # Non-interactive SSH box with a named volume and a forwarded port
+  devcontainer-cli run --variant ssh --name dev --volumes work:/workspace --ports 2222:22
+
+  # Expose ports on the LAN and pre-install the AI CLI scripts
+  devcontainer-cli run --variant nodejs --ports 8080:80 --expose-all --copy-ai-scripts`,
 		SilenceUsage: true,
 		RunE:         runQuickRun,
 	}
-	cmd.Flags().String("variant", "", "Image variant (e.g. ssh, nodejs, python)")
+	cmd.Flags().String("variant", "", "Image variant to run, e.g. ssh, nodejs, python (required with --no-interactive)")
 	cmd.Flags().String("name", "", "Container name (default: dc-<variant>)")
 	cmd.Flags().StringSlice("volumes", nil, "Volume mounts (e.g. myvol:/workspace); repeatable or comma-separated")
 	cmd.Flags().StringSlice("ports", nil, "Port mappings (e.g. 2222:22); bound to 127.0.0.1 unless --expose-all; repeatable or comma-separated")

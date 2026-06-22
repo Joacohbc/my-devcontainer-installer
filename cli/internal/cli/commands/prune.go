@@ -13,19 +13,32 @@ func init() { register(newPruneCommand()) }
 func newPruneCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "prune",
-		Short: "Remove unused devcontainer resources",
-		Long: `devcontainer-cli prune — remove CLI-managed devcontainer resources (images, networks, volumes)
+		Short: "Remove unused CLI-managed images, networks and volumes",
+		Long: `devcontainer-cli prune — clean up the Docker resources this CLI created (images,
+networks and volumes), identified by their managed label.
 
-By default only removes resources that are not in use (no container references
-them). Use --all to remove every managed resource regardless.
+By default it removes only resources that are NOT in use — ones no container
+references — so it is safe to run regularly. Run it with no subcommand to sweep
+all three resource types at once, list what would be removed, and confirm before
+deleting; or target a single type with a subcommand. Containers are handled
+separately by 'remove-container'.
 
-Run a subcommand to target a single resource type:
-  prune images    remove managed images
-  prune network   remove managed networks
-  prune volume    remove managed volumes
+Subcommands:
+  prune images     Remove managed images only.
+  prune network    Remove managed networks only.
+  prune volume     Remove managed volumes only (--shared also drops the shared
+                   tool-config volume).
 
-See also the top-level 'remove-container' (alias rm) and 'remove-image'
-(alias rmi) commands.`,
+See also 'remove-container' (rm) and 'remove-image' (rmi) for targeting specific
+items by name.`,
+		Example: `  # Remove unused managed resources, with confirmation
+  devcontainer-cli prune
+
+  # Remove every managed resource, no prompt
+  devcontainer-cli prune --all --yes
+
+  # Only prune unused volumes
+  devcontainer-cli prune volume`,
 		SilenceUsage: true,
 		RunE:         runPruneAll,
 	}
@@ -147,9 +160,12 @@ func confirmAndRemove[T any](
 
 func newPruneImagesCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:          "images",
-		Aliases:      []string{"image"},
-		Short:        "Remove unused managed images",
+		Use:     "images",
+		Aliases: []string{"image"},
+		Short:   "Remove unused managed images",
+		Long: `devcontainer-cli prune images — remove CLI-managed images that no container is
+using. Lists the candidates and confirms before deleting; --all removes every
+managed image, even ones in use.`,
 		SilenceUsage: true,
 		RunE:         runPruneImages,
 	}
@@ -166,9 +182,12 @@ func runPruneImages(cmd *cobra.Command, _ []string) error {
 
 func newPruneNetworkCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:          "network",
-		Aliases:      []string{"networks"},
-		Short:        "Remove unused managed networks",
+		Use:     "network",
+		Aliases: []string{"networks"},
+		Short:   "Remove unused managed networks",
+		Long: `devcontainer-cli prune network — remove CLI-managed bridge networks that no
+container is attached to. Lists the candidates and confirms before deleting;
+--all removes every managed network, even ones in use.`,
 		SilenceUsage: true,
 		RunE:         runPruneNetwork,
 	}
@@ -187,9 +206,13 @@ func runPruneNetwork(cmd *cobra.Command, _ []string) error {
 
 func newPruneVolumeCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:          "volume",
-		Aliases:      []string{"volumes"},
-		Short:        "Remove unused managed volumes",
+		Use:     "volume",
+		Aliases: []string{"volumes"},
+		Short:   "Remove unused managed volumes",
+		Long: `devcontainer-cli prune volume — remove CLI-managed volumes that no container is
+using. Lists the candidates and confirms before deleting; this deletes the
+volumes' data. --all removes every managed volume, even ones in use, and --shared
+also drops the global shared tool-config volume.`,
 		SilenceUsage: true,
 		RunE:         runPruneVolume,
 	}

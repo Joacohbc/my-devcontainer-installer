@@ -29,9 +29,31 @@ type setupSshFlags struct {
 
 func newSetupSshCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:          "setup-ssh",
-		Short:        "Run automated SSH setup (see: setup-ssh --help)",
-		Long:         "devcontainer-cli setup-ssh — automate SSH key + config for devcontainer-ssh",
+		Use:   "setup-ssh",
+		Short: "Set up SSH key + config so you can 'ssh' into the devcontainer",
+		Long: `devcontainer-cli setup-ssh — automate end-to-end SSH access to a devcontainer.
+
+It generates (once) a single shared ed25519 key managed by the CLI, makes sure
+the target container is running (offering to start the stack if not), installs
+the public key into the container's authorized_keys, resolves the container's IP,
+and appends a ready-to-use Host block to your ~/.ssh/config — then tests the
+connection. Afterwards you connect with a plain 'ssh <alias>'. If the alias
+already exists you're asked to overwrite it, pick a new name, or skip.
+
+Two modes:
+  local (default)  Configure direct SSH from this machine into a local container.
+  remote (--remote USER@HOST)  This CLI runs on the Docker host; it prints a
+                   self-contained snippet (containing the PRIVATE key) to paste
+                   on the machine you connect FROM, setting up a ProxyCommand jump.`,
+		Example: `  # Set up SSH for the project's devcontainer, then connect
+  devcontainer-cli setup-ssh
+  ssh <workspace>
+
+  # Target a specific container unattended
+  devcontainer-cli setup-ssh --container dc-ssh --yes
+
+  # Remote/jump-host setup (run on the Docker host)
+  devcontainer-cli setup-ssh --remote me@docker-host`,
 		SilenceUsage: true,
 		RunE:         runSetupSsh,
 	}
@@ -40,7 +62,7 @@ func newSetupSshCommand() *cobra.Command {
 	f.String("key", "", "Private key path (default: the shared managed key under the CLI config dir)")
 	f.String("container", sshdefaults.ServiceName, "Container name (auto-detected from compose if omitted)")
 	f.String("user", sshdefaults.User, "SSH user inside container")
-	f.BoolP("yes", "y", false, `Assume "yes" to all prompts`)
+	f.BoolP("yes", "y", false, `Assume "yes" to all prompts (overwrite a conflicting alias, auto-start the stack)`)
 
 	// Dynamic completions
 	_ = cmd.RegisterFlagCompletionFunc("container", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {

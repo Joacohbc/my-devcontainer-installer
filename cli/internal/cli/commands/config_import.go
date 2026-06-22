@@ -13,8 +13,20 @@ import (
 
 func newConfigImportCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:          "import <file.yml>",
-		Short:        "Import a YAML config and write devcontainer.config.json",
+		Use:   "import <file.yml>",
+		Short: "Import a YAML config into devcontainer.config.json",
+		Long: `devcontainer-cli config import — read a YAML config file (such as one produced
+by 'config export') and write it to the project's devcontainer.config.json.
+
+This recreates a project's configuration from a shared/checked-in file. Run
+'devcontainer-cli' afterwards to (re)generate the Dockerfile and compose from it.
+If a config already exists you are asked before overwriting (use --force or --yes
+to skip the prompt).`,
+		Example: `  # Recreate the project config from a YAML file
+  devcontainer-cli config import devcontainer.yml
+
+  # Overwrite an existing config without prompting
+  devcontainer-cli config import devcontainer.yml --force`,
 		Args:         cobra.ExactArgs(1),
 		SilenceUsage: true,
 		RunE:         runConfigImport,

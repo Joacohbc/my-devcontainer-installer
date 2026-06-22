@@ -12,16 +12,26 @@ func init() { register(newDownCommand()) }
 func newDownCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "down",
-		Short: "Bring down project containers",
-		Long: `devcontainer-cli down — stop and remove project containers
+		Short: "Stop and remove the project's containers",
+		Long: `devcontainer-cli down — stop and remove the containers (and network) for the
+current project, leaving the generated files and named volumes intact.
 
-Runs: docker compose -f .dc_<workspace>/build/docker-compose.yml down
-Add -v/--volumes to also remove named volumes (deletes data). --yes only
-skips the volume prompt; it never deletes volumes on its own.`,
+Wraps 'docker compose -f .dc_<workspace>/build/docker-compose.yml down'. Named
+volumes hold your data (databases, the shared config) and are kept by default;
+pass -v to delete them too. To also remove the generated .dc_<workspace>/
+directory and config, use 'destroy' instead.`,
+		Example: `  # Stop and remove containers, keep data volumes
+  devcontainer-cli down
+
+  # Also delete the named volumes (destroys data)
+  devcontainer-cli down -v
+
+  # Non-interactive teardown in a script (keeps volumes)
+  devcontainer-cli down --yes`,
 		SilenceUsage: true,
 		RunE:         runDown,
 	}
-	cmd.Flags().BoolP("volumes", "v", false, "Also remove named volumes (docker compose down -v)")
+	cmd.Flags().BoolP("volumes", "v", false, "Also remove named volumes (down -v); deletes their data, irreversible")
 	addYesFlag(cmd)
 	addInteractiveFlag(cmd)
 	return cmd

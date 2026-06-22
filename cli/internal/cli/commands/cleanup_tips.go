@@ -13,9 +13,18 @@ func init() { register(newCleanupTipsCommand()) }
 
 func newCleanupTipsCommand() *cobra.Command {
 	return &cobra.Command{
-		Use:          "cleanup-tips",
-		Short:        "Show docker cleanup commands for this project",
-		Long:         "devcontainer-cli cleanup-tips — show docker cleanup commands for this project",
+		Use:   "cleanup-tips",
+		Short: "Print a cleanup/update cheat-sheet for this project",
+		Long: `devcontainer-cli cleanup-tips — print a cheat-sheet of cleanup and update
+commands for the current project.
+
+It prints, but never runs, the relevant commands: each task shows the native
+devcontainer-cli command first and, where useful, the raw 'docker' command it
+wraps (using this project's managed labels). Handy when you want to clean up by
+hand or understand what the CLI does under the hood.
+
+Takes no flags or arguments.`,
+		Example:      "  devcontainer-cli cleanup-tips",
 		SilenceUsage: true,
 		RunE: func(_ *cobra.Command, _ []string) error {
 			cwd, err := currentDir()

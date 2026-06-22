@@ -19,19 +19,38 @@ func init() { register(newPortForwardCommand()) }
 func newPortForwardCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "port-forward [port_mapping]",
-		Short: "Forward host port to a container port using SSH",
-		Long: `devcontainer-cli port-forward — forward host ports to container ports using SSH
+		Short: "Forward host ports into a running container over SSH",
+		Long: `devcontainer-cli port-forward — open SSH tunnels from your machine to ports
+inside a running container, so you can reach a service in the container on
+localhost. The session stays in the foreground; press Ctrl+C to close the tunnels.
 
-Run with no port_mapping for an interactive session: pick any running container
-(devcontainers are marked '(devcontainer)'), enter one or more ports, and repeat
-for other containers. All tunnels are opened in parallel after you confirm.
+It tunnels through a devcontainer's SSH alias (set up with 'setup-ssh'), so that
+alias must exist in ~/.ssh/config. Non-devcontainer containers are reached via a
+devcontainer used as an SSH jump host.
 
-Examples:
-  devcontainer-cli port-forward                 # interactive multi-container picker
+The optional port_mapping argument accepts three forms:
+  PORT                     forward localhost:PORT -> container:PORT
+  LOCAL:CONTAINER          forward localhost:LOCAL -> container:CONTAINER
+  LOCAL:HOST:CONTAINER     forward localhost:LOCAL -> HOST:CONTAINER inside the
+                           container's network (e.g. a compose service name)
+
+With no argument it runs an interactive picker: choose any running container,
+enter one or more ports, optionally repeat for other containers, then all tunnels
+are opened in parallel after you confirm.`,
+		Example: `  # Interactive multi-container picker
+  devcontainer-cli port-forward
+
+  # localhost:3000 -> container:3000
   devcontainer-cli port-forward 3000
+
+  # localhost:8080 -> container:80
   devcontainer-cli port-forward 8080:80
+
+  # Reach the 'postgres' service inside the container network
   devcontainer-cli port-forward 5432:postgres:5432
   devcontainer-cli port-forward 5432 --service postgres
+
+  # Pin the SSH alias to tunnel through
   devcontainer-cli port-forward 3000 --alias my-custom-host`,
 		Args:         cobra.MaximumNArgs(1),
 		SilenceUsage: true,
