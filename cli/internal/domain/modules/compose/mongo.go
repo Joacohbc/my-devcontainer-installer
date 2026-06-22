@@ -17,8 +17,9 @@ var MongoService = &ServiceSpec{
 			Label: "MongoDB version",
 			Type:  types.ModuleOptionSelect,
 			Choices: []types.ModuleOptionChoice{
-				{Value: "8.0", Label: "MongoDB 8.0 (LTS)"},
 				{Value: "8.3", Label: "MongoDB 8.3 (latest)"},
+				{Value: "8.2", Label: "MongoDB 8.2"},
+				{Value: "8.0", Label: "MongoDB 8.0 (LTS)"},
 				{Value: "7.0", Label: "MongoDB 7.0"},
 			},
 			Default: "8.0",

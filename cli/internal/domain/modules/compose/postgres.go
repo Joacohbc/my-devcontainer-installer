@@ -17,11 +17,13 @@ var PostgresService = &ServiceSpec{
 			Label: "PostgreSQL version",
 			Type:  types.ModuleOptionSelect,
 			Choices: []types.ModuleOptionChoice{
-				{Value: "17-alpine", Label: "PostgreSQL 17"},
 				{Value: "18-alpine", Label: "PostgreSQL 18 (latest)"},
+				{Value: "17-alpine", Label: "PostgreSQL 17"},
 				{Value: "16-alpine", Label: "PostgreSQL 16"},
+				{Value: "15-alpine", Label: "PostgreSQL 15"},
+				{Value: "14-alpine", Label: "PostgreSQL 14"},
 			},
-			Default: "17-alpine",
+			Default: "18-alpine",
 		},
 	},
 	Render: func(ctx RenderContext) *ServiceDef {

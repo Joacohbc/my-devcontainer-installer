@@ -23,8 +23,10 @@ var JavaTemurinModule = &ModuleSpec{
 				{Value: "11", Label: "Temurin JDK 11"},
 				{Value: "17", Label: "Temurin JDK 17"},
 				{Value: "21", Label: "Temurin JDK 21"},
+				{Value: "25", Label: "Temurin JDK 25"},
+				{Value: "26", Label: "Temurin JDK 26"},
 			},
-			Default: []string{"17", "21"},
+			Default: []string{"21", "25"},
 		},
 		{
 			ID:      "maven",

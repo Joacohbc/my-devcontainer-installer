@@ -23,8 +23,9 @@ var JavaOpenjdkModule = &ModuleSpec{
 				{Value: "11", Label: "openjdk-11-jdk"},
 				{Value: "17", Label: "openjdk-17-jdk"},
 				{Value: "21", Label: "openjdk-21-jdk"},
+				{Value: "25", Label: "openjdk-25-jdk"},
 			},
-			Default: []string{"17"},
+			Default: []string{"21"},
 		},
 		{
 			ID:      "maven",

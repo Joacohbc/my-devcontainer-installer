@@ -29,7 +29,7 @@ func TestMatchDBClientVersions(t *testing.T) {
 			services: []any{"postgres"},
 			modules:  []types.SelectedModule{{ID: types.ModulePostgresClient}},
 			client:   types.ModulePostgresClient,
-			want:     "17", // catalog default 17-alpine -> 17
+			want:     "18", // catalog default 18-alpine -> 18
 		},
 		{
 			name:     "explicit postgres service version, alpine suffix stripped",

@@ -17,11 +17,12 @@ var RedisService = &ServiceSpec{
 			Label: "Redis version",
 			Type:  types.ModuleOptionSelect,
 			Choices: []types.ModuleOptionChoice{
-				{Value: "7.4-alpine", Label: "Redis 7.4 (BSD-licensed last)"},
 				{Value: "8.6-alpine", Label: "Redis 8.6 (latest, SSPL/RSALv2)"},
+				{Value: "8.4-alpine", Label: "Redis 8.4"},
 				{Value: "8.0-alpine", Label: "Redis 8.0"},
+				{Value: "7.4-alpine", Label: "Redis 7.4 (BSD-licensed last)"},
 			},
-			Default: "7.4-alpine",
+			Default: "8.6-alpine",
 		},
 	},
 	Render: func(ctx RenderContext) *ServiceDef {
