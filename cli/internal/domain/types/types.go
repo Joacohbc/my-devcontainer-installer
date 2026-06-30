@@ -148,6 +148,27 @@ var UICategoryLabels = map[UICategory]string{
 	UICategoryClients:   "Clientes de bases de datos",
 }
 
+// UICategoryIcons maps each category to a colorful emoji icon displayed next to
+// its label in the interactive wizard, so the category nodes are easy to tell
+// apart at a glance. Emojis render in color across terminals.
+var UICategoryIcons = map[UICategory]string{
+	UICategoryAITools:   "🤖",
+	UICategoryLanguages: "💻",
+	UICategoryDatabases: "🗄️",
+	UICategoryDevTools:  "🛠️",
+	UICategoryClients:   "🔌",
+}
+
+// UICategoryLabel returns the category's user-facing label prefixed with its
+// icon (e.g. "🤖 IA Tools"). It falls back to the bare label when the category
+// has no icon registered.
+func UICategoryLabel(c UICategory) string {
+	if icon := UICategoryIcons[c]; icon != "" {
+		return icon + " " + UICategoryLabels[c]
+	}
+	return UICategoryLabels[c]
+}
+
 type RequiredEnvVar struct {
 	Name    string `json:"name" yaml:"name"`
 	Prompt  string `json:"prompt" yaml:"prompt"`

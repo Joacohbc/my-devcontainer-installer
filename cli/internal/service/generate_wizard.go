@@ -411,7 +411,7 @@ func (w wizardContext) categorySteps(s *State) []Step {
 			}
 			return Field{
 				Kind:    FieldMultiselect,
-				Title:   types.UICategoryLabels[category] + " (Espacio para seleccionar, Enter para confirmar):",
+				Title:   types.UICategoryLabel(category) + " (Espacio para seleccionar, Enter para confirmar):",
 				Choices: categoryChoices(category, currentMode(s), selectedModuleIDs(s)),
 				Initial: initial,
 			}
@@ -691,7 +691,7 @@ func (s GenerateService) SelectModules(base *types.DevcontainerConfig, prompt Pr
 				}
 				return Field{
 					Kind:    FieldMultiselect,
-					Title:   types.UICategoryLabels[category] + " (Espacio para seleccionar, Enter para confirmar):",
+					Title:   types.UICategoryLabel(category) + " (Espacio para seleccionar, Enter para confirmar):",
 					Choices: choices,
 					Initial: initial,
 				}
