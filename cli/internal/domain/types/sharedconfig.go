@@ -43,7 +43,12 @@ type SharedConfigEntry struct {
 // The "agents" entry (~/.agents) is the cross-tool home for reusable agent
 // rules/workflows/skills: Graphify, Caveman, Antigravity and others drop their
 // reusable assets there, so persisting it keeps those definitions across every
-// container the CLI creates.
+// container the CLI creates. It also doubles as the canonical store for skills
+// and agents installed globally with the skills.sh CLI (`npx skills add -g`),
+// which places them under ~/.agents/skills (and symlinks them into each
+// agent's own config dir, e.g. ~/.claude/skills) — see the cp -aL note on
+// syncEntryScript in service/sharedconfig.go for why those symlinks are
+// dereferenced on copy instead of carried over as-is.
 var SharedConfigEntries = []SharedConfigEntry{
 	{ID: "claude", Target: ".claude", Kind: SharedConfigDir},
 	{ID: "claude.json", Target: ".claude.json", Kind: SharedConfigFile},

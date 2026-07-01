@@ -57,6 +57,16 @@ const syncHelperImage = "ubuntu:24.04"
 // /host, skips when the volume already has data (unless ENTRY_FORCE), otherwise
 // replaces the entry with the host copy and re-owns it. It prints COPIED or
 // SKIPPED so the caller can classify the result.
+//
+// cp -aL (not plain -a) dereferences symlinks instead of copying them as-is.
+// This matters for entries like "claude"/"codex"/"agents": tools such as the
+// skills.sh CLI (`npx skills add -g`) install global skills/agents into a
+// canonical ~/.agents/skills store and symlink them into each agent's own
+// config dir (e.g. ~/.claude/skills/<name> -> ~/.agents/skills/<name>). A
+// plain `cp -a` would copy that symlink verbatim, pointing at a host path
+// that does not exist inside the volume/container, leaving a dangling link.
+// Dereferencing copies the real skill/agent content instead, so it persists
+// regardless of the host's symlink layout.
 const syncEntryScript = `set -e
 dst="/vol/$ENTRY_ID"
 src="/host/$ENTRY_TARGET"
@@ -68,9 +78,9 @@ if [ -z "$ENTRY_FORCE" ]; then
   fi
 fi
 if [ "$ENTRY_KIND" = dir ]; then
-  rm -rf "$dst"; mkdir -p "$dst"; cp -a "$src/." "$dst/"
+  rm -rf "$dst"; mkdir -p "$dst"; cp -aL "$src/." "$dst/"
 else
-  rm -f "$dst"; cp -a "$src" "$dst"
+  rm -f "$dst"; cp -aL "$src" "$dst"
 fi
 [ -n "$ENTRY_OWNER" ] && chown -R "$ENTRY_OWNER" "$dst"
 echo COPIED`
