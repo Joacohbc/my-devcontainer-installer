@@ -173,3 +173,17 @@ func TestSyncFromHostForcePassesFlagToHelper(t *testing.T) {
 		t.Errorf("expected ENTRY_FORCE=1 in run call, got %v", run)
 	}
 }
+
+// TestSyncEntryScriptDereferencesSymlinks guards against a regression to plain
+// `cp -a`: global skills/agents installed via the skills.sh CLI are symlinked
+// into each tool's config dir (e.g. ~/.claude/skills/<name> ->
+// ~/.agents/skills/<name>), so the copy into the volume must follow (-L)
+// those links and persist real content, not a dangling host-path symlink.
+func TestSyncEntryScriptDereferencesSymlinks(t *testing.T) {
+	if strings.Contains(syncEntryScript, "cp -a \"") {
+		t.Errorf("syncEntryScript must use `cp -aL` (dereference symlinks), found plain `cp -a`: %s", syncEntryScript)
+	}
+	if !strings.Contains(syncEntryScript, "cp -aL") {
+		t.Errorf("syncEntryScript must use `cp -aL` to dereference symlinked skills/agents, got: %s", syncEntryScript)
+	}
+}
