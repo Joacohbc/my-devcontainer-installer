@@ -452,6 +452,46 @@ func TestSyncConfigCommand_FlagsAndArgs(t *testing.T) {
 	}
 }
 
+func TestBackupConfigCommand_FlagsAndArgs(t *testing.T) {
+	root := NewRootCommand("test")
+	var backup *cobra.Command
+	for _, c := range root.Commands() {
+		if c.Name() == "backup-config" {
+			backup = c
+		}
+	}
+	if backup == nil {
+		t.Fatal("backup-config command not found")
+	}
+	if backup.Flags().Lookup("output") == nil {
+		t.Error("expected backup-config flag --output")
+	}
+}
+
+func TestRestoreConfigCommand_FlagsAndArgs(t *testing.T) {
+	root := NewRootCommand("test")
+	var restore *cobra.Command
+	for _, c := range root.Commands() {
+		if c.Name() == "restore-config" {
+			restore = c
+		}
+	}
+	if restore == nil {
+		t.Fatal("restore-config command not found")
+	}
+	for _, name := range []string{"force", "yes", "no-interactive"} {
+		if restore.Flags().Lookup(name) == nil {
+			t.Errorf("expected restore-config flag --%s", name)
+		}
+	}
+	if restore.Args == nil {
+		t.Fatal("expected restore-config to require at least the zip-file argument")
+	}
+	if err := restore.Args(restore, nil); err == nil {
+		t.Error("expected restore-config to reject invocation with no arguments")
+	}
+}
+
 func TestConfigCommand_HasRegistrySubcommand(t *testing.T) {
 	root := NewRootCommand("test")
 	var config *cobra.Command

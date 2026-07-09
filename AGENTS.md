@@ -314,6 +314,8 @@ is Cobra-native.
 | _(default)_ | `root.go` (+ `generate_prompts.go`) | Generate Dockerfile + compose + .env |
 | `setup-ssh` | `setup_ssh.go` | Automated SSH key + config |
 | `sync-config` | `sync_config.go` | Seed the shared tool-config volume from host configs (`~/.claude`, `~/.config/gh`, …); `--force` replaces |
+| `backup-config` | `backup_config.go` | Back up the shared tool-config volume to a zip file; `-o` sets the destination (default: timestamped file in cwd) |
+| `restore-config` | `restore_config.go` | Restore the shared tool-config volume from a zip made by `backup-config`; `--force` replaces existing entries |
 | `port-forward` | `port_forward.go` | Forward host ports into the running container |
 | `run` | `run.go` | `docker run` from a remote image, no project files |
 | `down` | `down.go` | `docker compose down [-v]` |
