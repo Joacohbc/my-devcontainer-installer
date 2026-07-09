@@ -312,7 +312,8 @@ is Cobra-native.
 | `argv[0]` | File | Purpose |
 |---|---|---|
 | _(default)_ | `root.go` (+ `generate_prompts.go`) | Generate Dockerfile + compose + .env |
-| `setup-ssh` | `setup_ssh.go` | Automated SSH key + config |
+| `setup-ssh` | `setup_ssh.go` | Automated SSH key + config. Each generated `~/.ssh/config` Host block is tagged with a structured managed marker (`# devcontainer-cli:managed v=1 kind=<workspace\|container> ref=<id> alias=<alias>`) — workspace mode keys by the (unique) workspace name, loose `--container` mode by the container name — so `destroy`/`clean-ssh` can find and remove it |
+| `clean-ssh` | `clean_ssh.go` | Prune managed `~/.ssh/config` Host blocks whose target no longer exists (destroyed workspace or removed container); lists + confirms, backs up to `config.bak`; `--dry-run` previews, `-y` skips confirmation. Distinct from `destroy` (one project's block) — it sweeps every stale managed block |
 | `sync-config` | `sync_config.go` | Seed the shared tool-config volume from host configs (`~/.claude`, `~/.config/gh`, …); `--force` replaces |
 | `port-forward` | `port_forward.go` | Forward host ports into the running container |
 | `run` | `run.go` | `docker run` from a remote image, no project files |

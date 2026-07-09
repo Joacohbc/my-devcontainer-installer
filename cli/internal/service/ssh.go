@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/osutil"
 )
@@ -113,6 +114,39 @@ func (s SshService) InstallKeyLocal(spec InstallKeySpec) error {
 		return fmt.Errorf("docker exec key install failed")
 	}
 	return nil
+}
+
+// LiveTargetPredicates builds the existence checks clean-ssh needs: whether a
+// managed SSH block's workspace or container target still exists. It requires Docker
+// (the container check queries the daemon). A workspace counts as alive when a
+// managed container reports it OR the image registry still records it, so a merely
+// stopped ("down") stack whose project is still on disk is not treated as gone; a
+// container counts as alive when a container of that name exists in any state.
+func (s SshService) LiveTargetPredicates() (existsWorkspace, existsContainer func(string) bool, err error) {
+	if err := docker.EnsureDocker(); err != nil {
+		return nil, nil, err
+	}
+	inspect := InspectService{Report: s.Report}
+	all, err := inspect.ListContainers(false)
+	if err != nil {
+		return nil, nil, err
+	}
+	containerNames := make(map[string]bool, len(all))
+	workspaces := make(map[string]bool)
+	for _, c := range all {
+		containerNames[c.Name] = true
+		if c.Managed && c.Workspace != "" {
+			workspaces[c.Workspace] = true
+		}
+	}
+	for _, e := range domain.LoadRegistry() {
+		if e.Workspace != "" {
+			workspaces[e.Workspace] = true
+		}
+	}
+	return func(ws string) bool { return workspaces[ws] },
+		func(name string) bool { return containerNames[name] },
+		nil
 }
 
 // SSHTestResult is the outcome of a connectivity probe.

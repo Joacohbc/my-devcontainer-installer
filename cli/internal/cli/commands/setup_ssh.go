@@ -313,7 +313,7 @@ func installKey(ssh service.SshService, f *setupSshFlags, mode sshdefaults.Mode)
 	return installResult{}, nil
 }
 
-func buildConfigBlock(mode sshdefaults.Mode, f *setupSshFlags, inst installResult, workspace string) (string, error) {
+func buildConfigBlock(mode sshdefaults.Mode, f *setupSshFlags, inst installResult, kind sshdefaults.Kind, ref string) (string, error) {
 	return sshdefaults.BuildConfigBlock(sshdefaults.ConfigBlockOptions{
 		Mode:      mode,
 		Alias:     f.alias,
@@ -322,7 +322,8 @@ func buildConfigBlock(mode sshdefaults.Mode, f *setupSshFlags, inst installResul
 		Hostname:  inst.hostname,
 		Remote:    f.remote,
 		Container: f.container,
-		Workspace: workspace,
+		Kind:      kind,
+		Ref:       ref,
 	})
 }
 
@@ -383,14 +384,14 @@ func resolveAliasConflict(p aliasPrompter, f *setupSshFlags) (aliasAction, error
 // appending it when the alias is free or, when it collides, letting the user
 // overwrite the existing block or pick a new alias (re-checking the new name for
 // a fresh conflict). All file parsing/IO lives in the service layer.
-func updateSshConfig(ssh service.SshService, f *setupSshFlags, mode sshdefaults.Mode, inst installResult, workspace string) error {
+func updateSshConfig(ssh service.SshService, f *setupSshFlags, mode sshdefaults.Mode, inst installResult, kind sshdefaults.Kind, ref string) error {
 	configPath, current, err := ssh.ReadSSHConfig()
 	if err != nil {
 		return err
 	}
 
 	for {
-		newBlock, berr := buildConfigBlock(mode, f, inst, workspace)
+		newBlock, berr := buildConfigBlock(mode, f, inst, kind, ref)
 		if berr != nil {
 			return berr
 		}
@@ -535,18 +536,21 @@ func runSetupSsh(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
-	// markerWorkspace tags the generated block so destroy can remove it. In loose
-	// container mode there is no project workspace ("(none)"), so leave it untagged.
-	markerWorkspace := workspace
+	// The marker tags the generated block so destroy/clean-ssh can remove it. Loose
+	// container mode keys the block by container name; workspace mode by the (unique)
+	// workspace name.
+	markerKind := sshdefaults.KindWorkspace
+	markerRef := workspace
 	if f.containerExplicit {
-		markerWorkspace = ""
+		markerKind = sshdefaults.KindContainer
+		markerRef = f.container
 	}
 
 	if mode == sshdefaults.ModeRemote {
-		return emitRemoteConfig(ssh, f, markerWorkspace)
+		return emitRemoteConfig(ssh, f, markerKind, markerRef)
 	}
 
-	if err := updateSshConfig(ssh, f, mode, inst, markerWorkspace); err != nil {
+	if err := updateSshConfig(ssh, f, mode, inst, markerKind, markerRef); err != nil {
 		return err
 	}
 
@@ -563,7 +567,7 @@ func runSetupSsh(cmd *cobra.Command, _ []string) error {
 // ~/.ssh/config. The snippet contains a PRIVATE key. The shared public key is
 // injected into the target container prior to invoking this function, so the
 // connecting machine only needs the key + config.
-func emitRemoteConfig(ssh service.SshService, f *setupSshFlags, workspace string) error {
+func emitRemoteConfig(ssh service.SshService, f *setupSshFlags, kind sshdefaults.Kind, ref string) error {
 	displayKey := "~/.ssh/" + sshdefaults.KeyName
 
 	// The block is pasted into the connecting machine's ~/.ssh/config, whose home
@@ -571,7 +575,7 @@ func emitRemoteConfig(ssh service.SshService, f *setupSshFlags, workspace string
 	// absolute local path.
 	rf := *f
 	rf.key = displayKey
-	block, err := buildConfigBlock(sshdefaults.ModeRemote, &rf, installResult{}, workspace)
+	block, err := buildConfigBlock(sshdefaults.ModeRemote, &rf, installResult{}, kind, ref)
 	if err != nil {
 		return err
 	}

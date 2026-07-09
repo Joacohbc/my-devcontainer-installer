@@ -255,7 +255,7 @@ devcontainer-cli setup-ssh
 1. **Levanta el stack** si el contenedor objetivo todavía no está corriendo (te pide confirmación) y autodetecta el `devcontainer-ssh` del proyecto desde el `docker-compose.yml`.
 2. **Genera (una sola vez) una clave SSH gestionada y compartida.** La CLI mantiene **una única clave** reutilizada por todos los workspaces, almacenada fuera de `~/.ssh` en `~/.config/devcontainer-cli/ssh/id_devcontainer`. Si ya existe, la reutiliza. Podés apuntar a otra clave con `--key <ruta>`.
 3. **Instala la clave pública** dentro del contenedor (vía `docker exec`), agregándola a `~/.ssh/authorized_keys` del usuario `devuser`.
-4. **Escribe un bloque `Host` en tu `~/.ssh/config`** con un comentario marcador (`# devcontainer-cli:managed workspace=<ws>`) para que `destroy` pueda limpiarlo después. Si el alias ya existe, te ofrece sobrescribir, renombrar o saltar (guardando un backup al sobrescribir).
+4. **Escribe un bloque `Host` en tu `~/.ssh/config`** con un comentario marcador estructurado (`# devcontainer-cli:managed v=1 kind=<workspace|container> ref=<id> alias=<alias>`) para que `destroy` y `clean-ssh` puedan encontrarlo y limpiarlo después. En modo workspace la clave es el nombre (único) del workspace; con `--container` la clave es el nombre del contenedor. Si el alias ya existe, te ofrece sobrescribir, renombrar o saltar (guardando un backup al sobrescribir).
 5. **Prueba la conexión** (`ssh <alias> echo OK`) y te muestra el comando final para conectarte.
 
 #### Modo Local (por defecto)
@@ -309,6 +309,18 @@ Una vez configurado, conectate con el alias (por defecto el nombre del workspace
 ```bash
 ssh <workspace>
 ```
+
+### 4. Limpiar entradas obsoletas con `clean-ssh`
+
+Con el tiempo tu `~/.ssh/config` puede acumular bloques de workspaces destruidos o contenedores que ya no existen. `clean-ssh` recorre los marcadores gestionados y elimina los bloques cuyo objetivo ya no existe, dejando intactos los bloques vivos y los que escribiste vos:
+
+```bash
+devcontainer-cli clean-ssh --dry-run   # muestra qué eliminaría, sin tocar nada
+devcontainer-cli clean-ssh             # elimina tras confirmar (backup en config.bak)
+devcontainer-cli clean-ssh --yes       # elimina sin preguntar
+```
+
+Un bloque de workspace se conserva mientras un contenedor gestionado lo reporte o el proyecto siga registrado, así que un stack apenas detenido (`down`) no se limpia. A diferencia de `destroy` (que quita el bloque del proyecto actual), `clean-ssh` barre todos los bloques obsoletos de una sola pasada.
 
 ## Copiar archivos y assets (`copy`)
 
