@@ -37,6 +37,7 @@ const (
 	ModuleChrome         ModuleID = "chrome"
 	ModuleFfmpeg         ModuleID = "ffmpeg"
 	ModuleDod            ModuleID = "dod"
+	ModuleNgrok          ModuleID = "ngrok"
 	ModuleCleanup        ModuleID = "cleanup"
 )
 

@@ -36,6 +36,7 @@ var DockerfileModules = []*dockerfile.ModuleSpec{
 	dockerfile.ChromeModule,
 	dockerfile.FfmpegModule,
 	dockerfile.DodModule,
+	dockerfile.NgrokModule,
 	dockerfile.CleanupModule,
 }
 

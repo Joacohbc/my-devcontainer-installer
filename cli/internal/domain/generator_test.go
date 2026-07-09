@@ -111,6 +111,15 @@ func TestGenerateDockerfile_ZellijModule(t *testing.T) {
 	assertContainsStr(t, df, "tar -xzf /tmp/zellij.tar.gz -C /usr/local/bin zellij", "zellij")
 }
 
+func TestGenerateDockerfile_NgrokModule(t *testing.T) {
+	cfg := makeConfig(func(c *types.DevcontainerConfig) {
+		c.Dockerfile.Modules = []types.SelectedModule{{ID: "ngrok"}}
+	})
+	df := mustGenerateDockerfile(t, cfg)
+	assertContainsStr(t, df, "ngrok-agent.s3.amazonaws.com/ngrok.asc", "ngrok")
+	assertContainsStr(t, df, "apt-get install -y ngrok", "ngrok")
+}
+
 func TestGenerateDockerfile_DodModule(t *testing.T) {
 	cfg := makeConfig(func(c *types.DevcontainerConfig) {
 		c.Dockerfile.Modules = []types.SelectedModule{{ID: "dod"}}
