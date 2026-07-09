@@ -188,31 +188,6 @@ func TestDevcontainerRender_NoDatabasesNoDependsOn(t *testing.T) {
 	}
 }
 
-func TestNgrokRender(t *testing.T) {
-	def := compose.NgrokService.Render(compose.RenderContext{})
-	if def == nil {
-		t.Fatal("expected a service definition")
-	}
-	if def.Image != "ngrok/ngrok:latest" {
-		t.Errorf("default image = %q, want ngrok/ngrok:latest", def.Image)
-	}
-	if def.ContainerName != "ngrok_tunnel" {
-		t.Errorf("ContainerName = %q, want ngrok_tunnel", def.ContainerName)
-	}
-	if def.Command != "http devcontainer-ssh:3000" {
-		t.Errorf("default Command = %q, want http devcontainer-ssh:3000", def.Command)
-	}
-	env, ok := def.Environment.([]string)
-	if !ok || len(env) != 1 || env[0] != "NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN}" {
-		t.Errorf("expected NGROK_AUTHTOKEN env passthrough, got %+v", def.Environment)
-	}
-
-	custom := compose.NgrokService.Render(compose.RenderContext{Options: map[string]any{"port": "8080"}})
-	if custom.Command != "http devcontainer-ssh:8080" {
-		t.Errorf("custom Command = %q, want http devcontainer-ssh:8080", custom.Command)
-	}
-}
-
 // Every compose service must render a definition with a container name and must
 // not panic on an empty render context.
 func TestAllComposeServicesRender(t *testing.T) {

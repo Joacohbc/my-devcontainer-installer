@@ -111,6 +111,15 @@ func TestGenerateDockerfile_ZellijModule(t *testing.T) {
 	assertContainsStr(t, df, "tar -xzf /tmp/zellij.tar.gz -C /usr/local/bin zellij", "zellij")
 }
 
+func TestGenerateDockerfile_NgrokModule(t *testing.T) {
+	cfg := makeConfig(func(c *types.DevcontainerConfig) {
+		c.Dockerfile.Modules = []types.SelectedModule{{ID: "ngrok"}}
+	})
+	df := mustGenerateDockerfile(t, cfg)
+	assertContainsStr(t, df, "ngrok-agent.s3.amazonaws.com/ngrok.asc", "ngrok")
+	assertContainsStr(t, df, "apt-get install -y ngrok", "ngrok")
+}
+
 func TestGenerateDockerfile_DodModule(t *testing.T) {
 	cfg := makeConfig(func(c *types.DevcontainerConfig) {
 		c.Dockerfile.Modules = []types.SelectedModule{{ID: "dod"}}
@@ -247,29 +256,6 @@ func TestGenerateCompose_ValidYAMLWithExpectedServices(t *testing.T) {
 	}
 	if services["postgres"] != nil {
 		t.Error("expected postgres to be absent")
-	}
-}
-
-func TestGenerateCompose_NgrokService(t *testing.T) {
-	cfg := makeConfig(func(c *types.DevcontainerConfig) {
-		c.Compose.Services = []any{"ngrok"}
-		c.Compose.Subnet = "10.0.0.0/24"
-	})
-	yml := mustGenerateCompose(t, cfg)
-	var parsed map[string]any
-	if err := yaml.Unmarshal([]byte(yml), &parsed); err != nil {
-		t.Fatalf("invalid YAML: %v\n%s", err, yml)
-	}
-	services := parsed["services"].(map[string]any)
-	ngrok, ok := services["ngrok"].(map[string]any)
-	if !ok {
-		t.Fatal("expected ngrok service")
-	}
-	if ngrok["image"] != "ngrok/ngrok:latest" {
-		t.Errorf("expected ngrok/ngrok:latest image, got %v", ngrok["image"])
-	}
-	if ngrok["command"] != "http devcontainer-ssh:3000" {
-		t.Errorf("expected default command, got %v", ngrok["command"])
 	}
 }
 

@@ -37,6 +37,7 @@ const (
 	ModuleChrome         ModuleID = "chrome"
 	ModuleFfmpeg         ModuleID = "ffmpeg"
 	ModuleDod            ModuleID = "dod"
+	ModuleNgrok          ModuleID = "ngrok"
 	ModuleCleanup        ModuleID = "cleanup"
 )
 
@@ -48,7 +49,6 @@ const (
 	ServiceRedis        ServiceID = "redis"
 	ServicePostgres     ServiceID = "postgres"
 	ServiceTunnel       ServiceID = "tunnel"
-	ServiceNgrok        ServiceID = "ngrok"
 )
 
 type ModuleOptionType string

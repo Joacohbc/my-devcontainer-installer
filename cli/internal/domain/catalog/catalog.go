@@ -36,6 +36,7 @@ var DockerfileModules = []*dockerfile.ModuleSpec{
 	dockerfile.ChromeModule,
 	dockerfile.FfmpegModule,
 	dockerfile.DodModule,
+	dockerfile.NgrokModule,
 	dockerfile.CleanupModule,
 }
 
@@ -46,7 +47,6 @@ var ComposeServices = []*compose.ServiceSpec{
 	compose.RedisService,
 	compose.PostgresService,
 	compose.TunnelService,
-	compose.NgrokService,
 }
 
 // GetDockerfileModule returns the module with the given ID, or nil.
