@@ -250,6 +250,29 @@ func TestGenerateCompose_ValidYAMLWithExpectedServices(t *testing.T) {
 	}
 }
 
+func TestGenerateCompose_NgrokService(t *testing.T) {
+	cfg := makeConfig(func(c *types.DevcontainerConfig) {
+		c.Compose.Services = []any{"ngrok"}
+		c.Compose.Subnet = "10.0.0.0/24"
+	})
+	yml := mustGenerateCompose(t, cfg)
+	var parsed map[string]any
+	if err := yaml.Unmarshal([]byte(yml), &parsed); err != nil {
+		t.Fatalf("invalid YAML: %v\n%s", err, yml)
+	}
+	services := parsed["services"].(map[string]any)
+	ngrok, ok := services["ngrok"].(map[string]any)
+	if !ok {
+		t.Fatal("expected ngrok service")
+	}
+	if ngrok["image"] != "ngrok/ngrok:latest" {
+		t.Errorf("expected ngrok/ngrok:latest image, got %v", ngrok["image"])
+	}
+	if ngrok["command"] != "http devcontainer-ssh:3000" {
+		t.Errorf("expected default command, got %v", ngrok["command"])
+	}
+}
+
 func TestGenerateCompose_Labels(t *testing.T) {
 	cfg := makeConfig(func(c *types.DevcontainerConfig) {
 		c.Compose.Services = []any{"mongo"}

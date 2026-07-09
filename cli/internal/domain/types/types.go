@@ -48,6 +48,7 @@ const (
 	ServiceRedis        ServiceID = "redis"
 	ServicePostgres     ServiceID = "postgres"
 	ServiceTunnel       ServiceID = "tunnel"
+	ServiceNgrok        ServiceID = "ngrok"
 )
 
 type ModuleOptionType string
