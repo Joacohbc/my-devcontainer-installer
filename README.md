@@ -124,7 +124,7 @@ Detalles de la configuración del túnel en [CLOUDFLARE_TUNNEL.md](CLOUDFLARE_TU
 * **Conexión SSH:** Acceso seguro mediante OpenSSH Server. Ideal para usar con VS Code Remote - SSH o tu terminal favorita.
 * **Persistencia y Sincronización:**
   * El directorio del repositorio se monta en `/workspaces/<workspace>` dentro del contenedor (con `/workspace` como alias de compatibilidad). La ruta única por proyecto evita que el historial de herramientas como Claude Code o Antigravity (indexado por ruta) se mezcle entre proyectos al compartir el volumen de configuración.
-  * **Volumen de config compartida (opcional):** un volumen global que sincroniza logins y sesiones de herramientas (`.claude`, `.claude.json`, `.codex`, `.gemini`, `.antigravity`, `.config/gh`) entre todos los contenedores. Se siembra desde el host con `devcontainer-cli sync-config` (ver [Sembrar logins desde el host](#sembrar-logins-desde-el-host-sync-config)).
+  * **Volumen de config compartida (opcional):** un volumen global que sincroniza logins y sesiones de herramientas (`.claude`, `.claude.json`, `.codex`, `.gemini`, `.antigravity`, `.config/gh`) entre todos los contenedores. Se siembra desde el host con `devcontainer-cli sync-config` (ver [Sembrar logins desde el host](#sembrar-logins-desde-el-host-sync-config)) y se puede respaldar/restaurar en un `.zip` con `backup-config`/`restore-config` (ver [Backup y restore de la config compartida](#backup-y-restore-de-la-config-compartida-backup-config--restore-config)).
 * **Bases de Datos (Dockerizadas, versión configurable por la CLI):**
   * MongoDB — default `8.0` (opciones: `7.0`, `8.0`, `8.3`).
   * Redis — default `7.4-alpine` (opciones: `7.4-alpine`, `8.0-alpine`, `8.6-alpine`).
@@ -356,6 +356,20 @@ devcontainer-cli sync-config --force    # reemplaza lo que ya exista en el volum
 ```
 
 Herramientas reconocidas (se copian desde tu `$HOME` si existen): `claude` (`.claude` + `.claude.json`), `codex` (`.codex`), `gemini` (`.gemini`), `antigravity` (`.antigravity`, `.config/antigravity`) y `gh` (`.config/gh`). Tras sembrar, reiniciá o levantá los contenedores para que tomen los symlinks.
+
+## Backup y restore de la config compartida (`backup-config` / `restore-config`)
+
+El **volumen de config compartida** es un volumen Docker a nivel de daemon (no un contenedor): si se borra (`prune volume --all`, reinstalar Docker, migrar de máquina) se pierden todos los logins sembrados. `backup-config` guarda una copia en un `.zip` en el host; `restore-config` la vuelve a cargar. Ambos comandos corren **en el host**:
+
+```bash
+devcontainer-cli backup-config                          # respalda todo a shared-config-backup-<fecha>.zip
+devcontainer-cli backup-config gh claude -o mi-backup.zip  # solo algunas herramientas, a un archivo elegido
+
+devcontainer-cli restore-config mi-backup.zip            # restaura lo que falte en el volumen (no pisa nada)
+devcontainer-cli restore-config mi-backup.zip --force -y # reemplaza lo que ya exista en el volumen
+```
+
+Igual que `sync-config`, por default `restore-config` solo llena entradas vacías del volumen; `--force` reemplaza las que ya tienen datos (pide confirmación salvo `-y`/`--yes`). Tras restaurar, reiniciá o levantá los contenedores para que tomen los symlinks.
 
 ## Pasos Post-Instalación
 
