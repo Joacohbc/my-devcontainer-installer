@@ -206,6 +206,184 @@ func TestRemoveManagedBlockNoMatch(t *testing.T) {
 	}
 }
 
+// newFormatConfig mixes a workspace block and a container block in the modern
+// structured marker format, plus an untagged block.
+const newFormatConfig = `# devcontainer-cli:managed v=1 kind=workspace ref=api-3f9a alias=api
+Host api
+    HostName 172.18.0.2
+    User devuser
+
+# devcontainer-cli:managed v=1 kind=container ref=dc-ssh alias=dc-ssh
+Host dc-ssh
+    HostName 172.18.0.9
+    User devuser
+
+Host other
+    HostName example.com
+`
+
+func TestParseManagedMarker(t *testing.T) {
+	cases := []struct {
+		name         string
+		line         string
+		wantOK       bool
+		kind, ref, a string
+	}{
+		{"new workspace", "# devcontainer-cli:managed v=1 kind=workspace ref=api-3f9a alias=api", true, "workspace", "api-3f9a", "api"},
+		{"new container", "# devcontainer-cli:managed v=1 kind=container ref=dc-ssh alias=dc-ssh", true, "container", "dc-ssh", "dc-ssh"},
+		{"legacy workspace", "# devcontainer-cli:managed workspace=proj", true, "workspace", "proj", ""},
+		{"indented", "   #  devcontainer-cli:managed kind=workspace ref=x alias=y", true, "workspace", "x", "y"},
+		{"not a comment", "Host devcontainer", false, "", "", ""},
+		{"other comment", "# just a note", false, "", "", ""},
+		{"missing ref", "# devcontainer-cli:managed kind=workspace alias=y", false, "", "", ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			m, ok := parseManagedMarker(c.line)
+			if ok != c.wantOK {
+				t.Fatalf("parseManagedMarker(%q) ok=%v, want %v", c.line, ok, c.wantOK)
+			}
+			if !ok {
+				return
+			}
+			if m.Kind != c.kind || m.Ref != c.ref || m.Alias != c.a {
+				t.Errorf("parseManagedMarker(%q) = %+v, want {Kind:%q Ref:%q Alias:%q}", c.line, m, c.kind, c.ref, c.a)
+			}
+		})
+	}
+}
+
+func TestStripManagedBlockByRef_Container(t *testing.T) {
+	stripped := StripManagedBlockByRef(newFormatConfig, "container", "dc-ssh")
+	if strings.Contains(stripped, "Host dc-ssh") || strings.Contains(stripped, "172.18.0.9") {
+		t.Errorf("container block not removed:\n%s", stripped)
+	}
+	if strings.Contains(stripped, "kind=container") {
+		t.Errorf("container marker not removed:\n%s", stripped)
+	}
+	if !strings.Contains(stripped, "Host api") || !strings.Contains(stripped, "Host other") {
+		t.Errorf("unrelated blocks were removed:\n%s", stripped)
+	}
+}
+
+func TestListManagedBlocks(t *testing.T) {
+	blocks := ListManagedBlocks(newFormatConfig)
+	if len(blocks) != 2 {
+		t.Fatalf("ListManagedBlocks returned %d blocks, want 2: %+v", len(blocks), blocks)
+	}
+	want := map[string]ManagedMarker{
+		"api-3f9a": {Kind: "workspace", Ref: "api-3f9a", Alias: "api"},
+		"dc-ssh":   {Kind: "container", Ref: "dc-ssh", Alias: "dc-ssh"},
+	}
+	for _, b := range blocks {
+		if w, ok := want[b.Ref]; !ok || b != w {
+			t.Errorf("unexpected block %+v", b)
+		}
+	}
+}
+
+// ListManagedBlocks recovers the alias from the Host line beneath a legacy marker
+// that carries no alias= field.
+func TestListManagedBlocksLegacyAlias(t *testing.T) {
+	blocks := ListManagedBlocks(managedConfig)
+	if len(blocks) != 1 {
+		t.Fatalf("want 1 block, got %+v", blocks)
+	}
+	if blocks[0].Kind != "workspace" || blocks[0].Ref != "proj" || blocks[0].Alias != "proj" {
+		t.Errorf("legacy block = %+v, want {workspace proj proj}", blocks[0])
+	}
+}
+
+func TestPruneManagedBlocks(t *testing.T) {
+	home := t.TempDir()
+	setHomeDir(t, home)
+	if err := os.MkdirAll(filepath.Join(home, ".ssh"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(home, ".ssh", "config")
+	if err := os.WriteFile(path, []byte(newFormatConfig), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	svc := SshService{Report: nopReporter{}}
+	// Workspace api-3f9a still exists; container dc-ssh is gone → only dc-ssh is stale.
+	existsWorkspace := func(ref string) bool { return ref == "api-3f9a" }
+	existsContainer := func(string) bool { return false }
+
+	// Dry-run reports the stale block but leaves the file untouched.
+	stale, backup, err := svc.PruneManagedBlocks(existsWorkspace, existsContainer, true)
+	if err != nil {
+		t.Fatalf("PruneManagedBlocks(dryRun): %v", err)
+	}
+	if len(stale) != 1 || stale[0].Ref != "dc-ssh" {
+		t.Fatalf("dry-run stale = %+v, want [dc-ssh]", stale)
+	}
+	if backup != "" {
+		t.Errorf("dry-run must not write a backup, got %q", backup)
+	}
+	if data, _ := os.ReadFile(path); !strings.Contains(string(data), "Host dc-ssh") {
+		t.Error("dry-run must not modify the config")
+	}
+
+	// Real run strips the stale container block, keeps the live workspace block.
+	stale, backup, err = svc.PruneManagedBlocks(existsWorkspace, existsContainer, false)
+	if err != nil {
+		t.Fatalf("PruneManagedBlocks: %v", err)
+	}
+	if len(stale) != 1 || stale[0].Ref != "dc-ssh" {
+		t.Fatalf("stale = %+v, want [dc-ssh]", stale)
+	}
+	if _, err := os.Stat(backup); err != nil {
+		t.Errorf("expected backup at %s: %v", backup, err)
+	}
+	data, _ := os.ReadFile(path)
+	got := string(data)
+	if strings.Contains(got, "Host dc-ssh") || strings.Contains(got, "kind=container") {
+		t.Errorf("stale container block not removed:\n%s", got)
+	}
+	if !strings.Contains(got, "Host api") || !strings.Contains(got, "Host other") {
+		t.Errorf("live/unrelated blocks lost:\n%s", got)
+	}
+}
+
+func TestPruneManagedBlocksNoStale(t *testing.T) {
+	home := t.TempDir()
+	setHomeDir(t, home)
+	if err := os.MkdirAll(filepath.Join(home, ".ssh"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(home, ".ssh", "config")
+	if err := os.WriteFile(path, []byte(newFormatConfig), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	svc := SshService{Report: nopReporter{}}
+	alive := func(string) bool { return true }
+	stale, backup, err := svc.PruneManagedBlocks(alive, alive, false)
+	if err != nil {
+		t.Fatalf("PruneManagedBlocks: %v", err)
+	}
+	if len(stale) != 0 || backup != "" {
+		t.Errorf("expected no-op when nothing stale, got stale=%+v backup=%q", stale, backup)
+	}
+}
+
+func TestPruneManagedBlocksMissingConfig(t *testing.T) {
+	home := t.TempDir()
+	setHomeDir(t, home)
+	svc := SshService{Report: nopReporter{}}
+	alive := func(string) bool { return true }
+	stale, _, err := svc.PruneManagedBlocks(alive, alive, false)
+	if err != nil {
+		t.Fatalf("PruneManagedBlocks (missing file): %v", err)
+	}
+	if len(stale) != 0 {
+		t.Errorf("expected empty result for missing config, got %+v", stale)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".ssh", "config")); !os.IsNotExist(err) {
+		t.Error("PruneManagedBlocks must not create ~/.ssh/config")
+	}
+}
+
 func TestConfigHostAliasesFromDisk(t *testing.T) {
 	home := t.TempDir()
 	setHomeDir(t, home)

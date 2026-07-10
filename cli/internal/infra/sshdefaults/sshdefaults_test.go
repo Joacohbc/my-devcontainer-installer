@@ -76,17 +76,18 @@ func TestBuildConfigBlock_Local(t *testing.T) {
 
 func TestBuildConfigBlock_WorkspaceMarker(t *testing.T) {
 	got, err := sshdefaults.BuildConfigBlock(sshdefaults.ConfigBlockOptions{
-		Mode:      sshdefaults.ModeLocal,
-		Alias:     "myalias",
-		User:      "devuser",
-		KeyPath:   "k",
-		Hostname:  "172.20.0.2",
-		Workspace: "myproj",
+		Mode:     sshdefaults.ModeLocal,
+		Alias:    "myalias",
+		User:     "devuser",
+		KeyPath:  "k",
+		Hostname: "172.20.0.2",
+		Kind:     sshdefaults.KindWorkspace,
+		Ref:      "myproj",
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	wantMarker := "# devcontainer-cli:managed workspace=myproj"
+	wantMarker := "# devcontainer-cli:managed v=1 kind=workspace ref=myproj alias=myalias"
 	if !strings.HasPrefix(got, wantMarker+"\n") {
 		t.Errorf("expected block to start with marker %q:\n%s", wantMarker, got)
 	}
@@ -95,7 +96,26 @@ func TestBuildConfigBlock_WorkspaceMarker(t *testing.T) {
 	}
 }
 
-func TestBuildConfigBlock_NoMarkerWhenWorkspaceEmpty(t *testing.T) {
+func TestBuildConfigBlock_ContainerMarker(t *testing.T) {
+	got, err := sshdefaults.BuildConfigBlock(sshdefaults.ConfigBlockOptions{
+		Mode:     sshdefaults.ModeLocal,
+		Alias:    "dc-ssh",
+		User:     "devuser",
+		KeyPath:  "k",
+		Hostname: "172.20.0.2",
+		Kind:     sshdefaults.KindContainer,
+		Ref:      "dc-ssh",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	wantMarker := "# devcontainer-cli:managed v=1 kind=container ref=dc-ssh alias=dc-ssh"
+	if !strings.HasPrefix(got, wantMarker+"\n") {
+		t.Errorf("expected block to start with container marker %q:\n%s", wantMarker, got)
+	}
+}
+
+func TestBuildConfigBlock_NoMarkerWhenKindEmpty(t *testing.T) {
 	got, err := sshdefaults.BuildConfigBlock(sshdefaults.ConfigBlockOptions{
 		Mode:     sshdefaults.ModeLocal,
 		Alias:    "x",
@@ -107,7 +127,7 @@ func TestBuildConfigBlock_NoMarkerWhenWorkspaceEmpty(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if strings.Contains(got, "devcontainer-cli:managed") {
-		t.Errorf("did not expect a marker when Workspace is empty:\n%s", got)
+		t.Errorf("did not expect a marker when Kind is empty:\n%s", got)
 	}
 	if !strings.HasPrefix(got, "Host x") {
 		t.Errorf("expected stanza to start with Host:\n%s", got)

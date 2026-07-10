@@ -24,7 +24,7 @@ import (
 func TestNewRootCommand_RegistersAllSubcommands(t *testing.T) {
 	root := NewRootCommand("test")
 	want := []string{
-		"setup-ssh", "port-forward", "run", "down", "destroy",
+		"setup-ssh", "clean-ssh", "port-forward", "run", "down", "destroy",
 		"start", "stop", "restart", "prune", "update",
 		"upgrade-cli", "config", "cleanup-tips", "shell", "logs", "copy",
 		"up", "status", "ls", "info", "remove-container", "remove-image",
@@ -199,6 +199,25 @@ func TestRootCommand_HasGenerateFlags(t *testing.T) {
 	for _, name := range []string{"mode", "variant", "with", "service", "image", "workspace", "force", "build", "no-build", "version"} {
 		if root.Flags().Lookup(name) == nil {
 			t.Errorf("expected root flag --%s", name)
+		}
+	}
+}
+
+func TestCleanSshCommand_Flags(t *testing.T) {
+	root := NewRootCommand("test")
+	var clean *cobra.Command
+	for _, c := range root.Commands() {
+		if c.Name() == "clean-ssh" {
+			clean = c
+			break
+		}
+	}
+	if clean == nil {
+		t.Fatal("clean-ssh command not registered")
+	}
+	for _, name := range []string{"dry-run", "yes", "no-interactive"} {
+		if clean.Flags().Lookup(name) == nil {
+			t.Errorf("expected clean-ssh flag --%s", name)
 		}
 	}
 }
@@ -690,11 +709,11 @@ func TestBuildConfigBlock_RemoteNeedsNoKeyInstall(t *testing.T) {
 		remote:    "user@host",
 		container: "myws-devcontainer-ssh",
 	}
-	block, err := buildConfigBlock(sshdefaults.ModeRemote, f, installResult{}, "myws")
+	block, err := buildConfigBlock(sshdefaults.ModeRemote, f, installResult{}, sshdefaults.KindWorkspace, "myws")
 	if err != nil {
 		t.Fatalf("buildConfigBlock(remote): %v", err)
 	}
-	for _, want := range []string{"# devcontainer-cli:managed workspace=myws", "Host myws", "ProxyCommand ssh user@host", "myws-devcontainer-ssh"} {
+	for _, want := range []string{"# devcontainer-cli:managed v=1 kind=workspace ref=myws alias=myws", "Host myws", "ProxyCommand ssh user@host", "myws-devcontainer-ssh"} {
 		if !strings.Contains(block, want) {
 			t.Errorf("remote block missing %q:\n%s", want, block)
 		}
@@ -729,7 +748,7 @@ func TestEmitRemoteConfig_ExportsSharedKey(t *testing.T) {
 		t.Fatalf("os.Pipe: %v", err)
 	}
 	os.Stdout = w
-	emitErr := emitRemoteConfig(ssh, f, "myws")
+	emitErr := emitRemoteConfig(ssh, f, sshdefaults.KindWorkspace, "myws")
 	_ = w.Close()
 	os.Stdout = orig
 	if emitErr != nil {
@@ -1293,6 +1312,45 @@ func TestInitAndConfigure_PresetSkipsPrompts(t *testing.T) {
 
 	if len(config.Dockerfile.Modules) != 4 {
 		t.Errorf("expected 4 modules from early-resolved preset, got %d", len(config.Dockerfile.Modules))
+	}
+}
+
+func TestValidateConfig_DisambiguatesCollidingWorkspace(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	// A different project already claims the workspace name "api".
+	if err := domain.SaveRegistry([]domain.ImageEntry{{ProjectDir: "/some/other/api", Workspace: "api"}}); err != nil {
+		t.Fatal(err)
+	}
+	cwd := filepath.Join(t.TempDir(), "api")
+	if err := os.MkdirAll(cwd, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	config := &types.DevcontainerConfig{Workspace: "api", Mode: types.BuildModeLocalCached, Image: "api:local"}
+	flags := &genFlags{interactive: true} // keepWorkspace false → auto-uniquify
+	if err := validateConfig(cwd, config, flags, service.GenerateService{}); err != nil {
+		t.Fatalf("validateConfig: %v", err)
+	}
+	if !strings.HasPrefix(config.Workspace, "api-") || config.Workspace == "api" {
+		t.Errorf("expected a disambiguated 'api-<hash>' workspace, got %q", config.Workspace)
+	}
+}
+
+func TestValidateConfig_KeepsPinnedWorkspaceOnCollision(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	if err := domain.SaveRegistry([]domain.ImageEntry{{ProjectDir: "/some/other/api", Workspace: "api"}}); err != nil {
+		t.Fatal(err)
+	}
+	cwd := filepath.Join(t.TempDir(), "api")
+	if err := os.MkdirAll(cwd, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	config := &types.DevcontainerConfig{Workspace: "api", Mode: types.BuildModeLocalCached, Image: "api:local"}
+	flags := &genFlags{interactive: true, keepWorkspace: true} // pinned → warn, don't rewrite
+	if err := validateConfig(cwd, config, flags, service.GenerateService{}); err != nil {
+		t.Fatalf("validateConfig: %v", err)
+	}
+	if config.Workspace != "api" {
+		t.Errorf("pinned workspace must not be rewritten, got %q", config.Workspace)
 	}
 }
 
