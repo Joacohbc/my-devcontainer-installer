@@ -113,6 +113,10 @@ type genFlags struct {
 	variant      string
 	registry     string
 	preset       string
+	// keepWorkspace is set when the workspace name must not be auto-uniquified: the
+	// user pinned it with --workspace, or it was already persisted for this project.
+	// Derived in initAndConfigure, not parsed from a flag.
+	keepWorkspace bool
 }
 
 func splitCSV(s string) []string {
@@ -280,6 +284,9 @@ func initAndConfigure(cwd string, flags *genFlags, svc service.GenerateService) 
 	} else {
 		config = domain.DefaultConfig(cwd)
 	}
+	// Only a brand-new project with no pinned name gets its workspace auto-uniquified;
+	// an explicit --workspace or an already-persisted project keeps its name stable.
+	flags.keepWorkspace = flags.workspace != "" || existing != nil
 
 	// Resolve preset early so its modules populate our flags. A preset is a pure
 	// module bundle, so applying one clears DB services (none come from the preset).
@@ -324,6 +331,18 @@ func validateConfig(cwd string, config *types.DevcontainerConfig, flags *genFlag
 	}
 	if !domain.IsValidDockerName(config.Workspace) {
 		return fmt.Errorf("invalid workspace name: %s", config.Workspace)
+	}
+
+	// Keep workspace names unique across projects so their (daemon-global) container,
+	// network and volume names don't collide. A pinned or already-persisted name is
+	// respected — we only warn — while an auto-derived name is disambiguated.
+	if unique := domain.UniqueWorkspaceName(cwd, config.Workspace); unique != config.Workspace {
+		if flags.keepWorkspace {
+			console.Warn("Workspace name %q is already used by another project; container/network names may collide.", config.Workspace)
+		} else {
+			console.Info("Workspace name %q is taken by another project; using %q instead.", config.Workspace, unique)
+			config.Workspace = unique
+		}
 	}
 
 	if config.Mode == types.BuildModeRemote && config.Image == "" && config.Remote != nil && config.Remote.Variant != "" {

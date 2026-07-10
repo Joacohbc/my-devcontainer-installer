@@ -25,9 +25,9 @@ result is recorded so the other subcommands can find it.
 
 The subcommands manage an existing project: lifecycle (up, down, start, stop,
 restart, destroy), inspection (status, info, logs, ls, shell), access (setup-ssh,
-port-forward, network, password), config (config, sync-config, backup-config,
-restore-config) and cleanup
-(prune, remove-container, remove-image). Run 'devcontainer-cli <command> --help'
+clean-ssh, port-forward, network, password), config (config, sync-config,
+backup-config, restore-config) and cleanup (prune, remove-container,
+remove-image). Run 'devcontainer-cli <command> --help'
 for the full details of any one.
 
 Build modes:
