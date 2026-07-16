@@ -2,7 +2,7 @@
 
 Acciones que se ejecutan **dentro del contenedor** una vez levantado. Para instalar la CLI y configurar el acceso SSH, ver [README.md](README.md).
 
-> 💡 **Antes de hacer logins a mano:** si activaste el volumen de config compartida, ejecutá `devcontainer-cli sync-config` en el **host** para sembrar los logins/sesiones que ya tenés (GitHub CLI, Claude, Codex, Gemini, Antigravity) — así los contenedores arrancan ya autenticados. Ver [README.md → Sembrar logins desde el host](README.md#sembrar-logins-desde-el-host-sync-config). Los pasos manuales de abajo solo hacen falta para lo que `sync-config` no cubre.
+> 💡 **Antes de hacer logins a mano:** si activaste el volumen de config compartida, ejecutá `devcontainer-cli config shared sync` en el **host** para sembrar los logins/sesiones que ya tenés (GitHub CLI, Claude, Codex, Gemini, Antigravity) — así los contenedores arrancan ya autenticados. Ver [README.md → Sembrar logins desde el host](README.md#sembrar-logins-desde-el-host-config-shared-sync). Los pasos manuales de abajo solo hacen falta para lo que `config shared sync` no cubre.
 
 ## Cambiar la contraseña del DevUser (opcional)
 
@@ -17,7 +17,7 @@ sudo passwd
 La CLI hornea estos scripts dentro de la imagen según los módulos elegidos:
 
 ```bash
-~/post-script/login-github-cli.sh    # login de GitHub CLI (módulo github-cli) — o usá `sync-config gh` en el host
+~/post-script/login-github-cli.sh    # login de GitHub CLI (módulo github-cli) — o usá `config shared sync gh` en el host
 sudo ~/post-script/update_golang.sh  # actualiza Go a la última estable (módulo go; requiere root, escribe en /usr/local/go)
 ```
 
@@ -50,7 +50,7 @@ El instalador **interactivo** de Codex no se auto-ejecuta (lanza `npx @openai/co
 
 > 💡 **¿No incluiste el módulo?** No hace falta reinstalar la imagen: desde el host podés materializar cualquiera de estos instaladores en un contenedor en marcha con `devcontainer-cli copy --asset <nombre>` (ej. `copy --asset install-claude-code`) y luego ejecutarlo dentro. Ver [README.md → Copiar archivos y assets](README.md#copiar-archivos-y-assets-copy).
 
-> Los logins de estas CLIs (Claude, Codex, Gemini, Antigravity) se siembran desde el host con `sync-config`; ver la nota al inicio de este documento.
+> Los logins de estas CLIs (Claude, Codex, Gemini, Antigravity) se siembran desde el host con `config shared sync`; ver la nota al inicio de este documento.
 
 ## Bases de datos
 

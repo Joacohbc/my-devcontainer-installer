@@ -442,20 +442,31 @@ func TestPruneVolumeCommand_HasSharedFlag(t *testing.T) {
 	}
 }
 
-func TestSyncConfigCommand_FlagsAndArgs(t *testing.T) {
+// sharedConfigSubcommand resolves `config shared <name>`, failing the test if any
+// level of the group is missing.
+func sharedConfigSubcommand(t *testing.T, name string) *cobra.Command {
+	t.Helper()
 	root := NewRootCommand("test")
-	var sync *cobra.Command
-	for _, c := range root.Commands() {
-		if c.Name() == "sync-config" {
-			sync = c
-		}
+	configCmd := findSubcommand(root, "config")
+	if configCmd == nil {
+		t.Fatal("config command not found")
 	}
-	if sync == nil {
-		t.Fatal("sync-config command not found")
+	sharedCmd := findSubcommand(configCmd, "shared")
+	if sharedCmd == nil {
+		t.Fatal("'config shared' command not found")
 	}
+	sub := findSubcommand(sharedCmd, name)
+	if sub == nil {
+		t.Fatalf("'config shared %s' command not found", name)
+	}
+	return sub
+}
+
+func TestSyncConfigCommand_FlagsAndArgs(t *testing.T) {
+	sync := sharedConfigSubcommand(t, "sync")
 	for _, name := range []string{"force", "yes", "no-interactive"} {
 		if sync.Flags().Lookup(name) == nil {
-			t.Errorf("expected sync-config flag --%s", name)
+			t.Errorf("expected config shared sync flag --%s", name)
 		}
 	}
 
@@ -472,42 +483,50 @@ func TestSyncConfigCommand_FlagsAndArgs(t *testing.T) {
 }
 
 func TestBackupConfigCommand_FlagsAndArgs(t *testing.T) {
-	root := NewRootCommand("test")
-	var backup *cobra.Command
-	for _, c := range root.Commands() {
-		if c.Name() == "backup-config" {
-			backup = c
-		}
-	}
-	if backup == nil {
-		t.Fatal("backup-config command not found")
-	}
+	backup := sharedConfigSubcommand(t, "backup")
 	if backup.Flags().Lookup("output") == nil {
-		t.Error("expected backup-config flag --output")
+		t.Error("expected config shared backup flag --output")
 	}
 }
 
 func TestRestoreConfigCommand_FlagsAndArgs(t *testing.T) {
-	root := NewRootCommand("test")
-	var restore *cobra.Command
-	for _, c := range root.Commands() {
-		if c.Name() == "restore-config" {
-			restore = c
-		}
-	}
-	if restore == nil {
-		t.Fatal("restore-config command not found")
-	}
+	restore := sharedConfigSubcommand(t, "restore")
 	for _, name := range []string{"force", "yes", "no-interactive"} {
 		if restore.Flags().Lookup(name) == nil {
-			t.Errorf("expected restore-config flag --%s", name)
+			t.Errorf("expected config shared restore flag --%s", name)
 		}
 	}
 	if restore.Args == nil {
-		t.Fatal("expected restore-config to require at least the zip-file argument")
+		t.Fatal("expected config shared restore to require at least the zip-file argument")
 	}
 	if err := restore.Args(restore, nil); err == nil {
-		t.Error("expected restore-config to reject invocation with no arguments")
+		t.Error("expected config shared restore to reject invocation with no arguments")
+	}
+}
+
+func TestConfigSharedCommand_Exists(t *testing.T) {
+	root := NewRootCommand("test")
+	configCmd := findSubcommand(root, "config")
+	if configCmd == nil {
+		t.Fatal("expected 'config' command to be registered")
+	}
+	sharedCmd := findSubcommand(configCmd, "shared")
+	if sharedCmd == nil {
+		t.Fatal("expected 'config shared' command to be registered")
+	}
+	for _, name := range []string{"sync", "backup", "restore"} {
+		if findSubcommand(sharedCmd, name) == nil {
+			t.Errorf("expected 'config shared %s' subcommand", name)
+		}
+	}
+}
+
+func TestSharedConfigCommands_NotTopLevel(t *testing.T) {
+	root := NewRootCommand("test")
+	for _, name := range []string{"sync-config", "backup-config", "restore-config"} {
+		if findSubcommand(root, name) != nil {
+			t.Errorf("expected no top-level %q command; it now lives under 'config shared'", name)
+		}
 	}
 }
 

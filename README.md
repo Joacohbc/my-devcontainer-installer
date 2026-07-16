@@ -124,7 +124,7 @@ Detalles de la configuración del túnel en [CLOUDFLARE_TUNNEL.md](CLOUDFLARE_TU
 * **Conexión SSH:** Acceso seguro mediante OpenSSH Server. Ideal para usar con VS Code Remote - SSH o tu terminal favorita.
 * **Persistencia y Sincronización:**
   * El directorio del repositorio se monta en `/workspaces/<workspace>` dentro del contenedor (con `/workspace` como alias de compatibilidad). La ruta única por proyecto evita que el historial de herramientas como Claude Code o Antigravity (indexado por ruta) se mezcle entre proyectos al compartir el volumen de configuración.
-  * **Volumen de config compartida (opcional):** un volumen global que sincroniza logins y sesiones de herramientas (`.claude`, `.claude.json`, `.codex`, `.gemini`, `.antigravity`, `.config/gh`) entre todos los contenedores. Se siembra desde el host con `devcontainer-cli sync-config` (ver [Sembrar logins desde el host](#sembrar-logins-desde-el-host-sync-config)) y se puede respaldar/restaurar en un `.zip` con `backup-config`/`restore-config` (ver [Backup y restore de la config compartida](#backup-y-restore-de-la-config-compartida-backup-config--restore-config)).
+  * **Volumen de config compartida (opcional):** un volumen global que sincroniza logins y sesiones de herramientas (`.claude`, `.claude.json`, `.codex`, `.gemini`, `.antigravity`, `.config/gh`) entre todos los contenedores. Se siembra desde el host con `devcontainer-cli config shared sync` (ver [Sembrar logins desde el host](#sembrar-logins-desde-el-host-config-shared-sync)) y se puede respaldar/restaurar en un `.zip` con `config shared backup`/`config shared restore` (ver [Backup y restore de la config compartida](#backup-y-restore-de-la-config-compartida-config-shared-backup--config-shared-restore)).
 * **Bases de Datos (Dockerizadas, versión configurable por la CLI):**
   * MongoDB — default `8.0` (opciones: `7.0`, `8.0`, `8.3`).
   * Redis — default `7.4-alpine` (opciones: `7.4-alpine`, `8.0-alpine`, `8.6-alpine`).
@@ -345,37 +345,37 @@ devcontainer-cli copy --asset login-github-cli /tmp/login.sh   # destino opciona
 
 Assets disponibles: `install-claude-code`, `install-codex-cli`, `install-copilot`, `install-opencode`, `install-antigravity`, `install-caveman`, `install-graphify`, `login-github-cli` (autocompletables con TAB).
 
-## Sembrar logins desde el host (`sync-config`)
+## Sembrar logins desde el host (`config shared sync`)
 
 Si activaste el **volumen de config compartida**, podés copiar los logins y sesiones que ya tenés en tu host hacia ese volumen, para que los contenedores arranquen ya autenticados (sin repetir `gh auth login`, login de Claude Code, etc.). El comando corre **en el host**:
 
 ```bash
-devcontainer-cli sync-config            # siembra todas las herramientas detectadas
-devcontainer-cli sync-config gh claude  # solo herramientas específicas
-devcontainer-cli sync-config --force    # reemplaza lo que ya exista en el volumen
+devcontainer-cli config shared sync            # siembra todas las herramientas detectadas
+devcontainer-cli config shared sync gh claude  # solo herramientas específicas
+devcontainer-cli config shared sync --force    # reemplaza lo que ya exista en el volumen
 ```
 
 Herramientas reconocidas (se copian desde tu `$HOME` si existen): `claude` (`.claude` + `.claude.json`), `codex` (`.codex`), `gemini` (`.gemini`), `antigravity` (`.antigravity`, `.config/antigravity`) y `gh` (`.config/gh`). Tras sembrar, reiniciá o levantá los contenedores para que tomen los symlinks.
 
-## Backup y restore de la config compartida (`backup-config` / `restore-config`)
+## Backup y restore de la config compartida (`config shared backup` / `config shared restore`)
 
-El **volumen de config compartida** es un volumen Docker a nivel de daemon (no un contenedor): si se borra (`prune volume --all`, reinstalar Docker, migrar de máquina) se pierden todos los logins sembrados. `backup-config` guarda una copia en un `.zip` en el host; `restore-config` la vuelve a cargar. Ambos comandos corren **en el host**:
+El **volumen de config compartida** es un volumen Docker a nivel de daemon (no un contenedor): si se borra (`prune volume --all`, reinstalar Docker, migrar de máquina) se pierden todos los logins sembrados. `config shared backup` guarda una copia en un `.zip` en el host; `config shared restore` la vuelve a cargar. Ambos comandos corren **en el host**:
 
 ```bash
-devcontainer-cli backup-config                          # respalda todo a shared-config-backup-<fecha>.zip
-devcontainer-cli backup-config gh claude -o mi-backup.zip  # solo algunas herramientas, a un archivo elegido
+devcontainer-cli config shared backup                          # respalda todo a shared-config-backup-<fecha>.zip
+devcontainer-cli config shared backup gh claude -o mi-backup.zip  # solo algunas herramientas, a un archivo elegido
 
-devcontainer-cli restore-config mi-backup.zip            # restaura lo que falte en el volumen (no pisa nada)
-devcontainer-cli restore-config mi-backup.zip --force -y # reemplaza lo que ya exista en el volumen
+devcontainer-cli config shared restore mi-backup.zip            # restaura lo que falte en el volumen (no pisa nada)
+devcontainer-cli config shared restore mi-backup.zip --force -y # reemplaza lo que ya exista en el volumen
 ```
 
-Igual que `sync-config`, por default `restore-config` solo llena entradas vacías del volumen; `--force` reemplaza las que ya tienen datos (pide confirmación salvo `-y`/`--yes`). Tras restaurar, reiniciá o levantá los contenedores para que tomen los symlinks.
+Igual que `config shared sync`, por default `config shared restore` solo llena entradas vacías del volumen; `--force` reemplaza las que ya tienen datos (pide confirmación salvo `-y`/`--yes`). Tras restaurar, reiniciá o levantá los contenedores para que tomen los symlinks.
 
 ## Pasos Post-Instalación
 
 Una vez dentro del contenedor puedes terminar de preparar tu entorno: cambiar la contraseña del DevUser, actualizar Go, ejecutar los instaladores de CLIs de IA, backups de base de datos, etc. Los scripts viven horneados en `~/post-script/`.
 
-> 💡 El login de GitHub CLI y los logins/configs de las CLIs de IA ya **no requieren pasos manuales** si usás [`sync-config`](#sembrar-logins-desde-el-host-sync-config): se siembran desde el host. Y cualquier instalador horneado puede materializarse en un contenedor en marcha con `devcontainer-cli copy --asset <nombre>`.
+> 💡 El login de GitHub CLI y los logins/configs de las CLIs de IA ya **no requieren pasos manuales** si usás [`config shared sync`](#sembrar-logins-desde-el-host-config-shared-sync): se siembran desde el host. Y cualquier instalador horneado puede materializarse en un contenedor en marcha con `devcontainer-cli copy --asset <nombre>`.
 
 Consulta **[POST_INSTALL_STEPS.md](POST_INSTALL_STEPS.md)** para el detalle.
 
