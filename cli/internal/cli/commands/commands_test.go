@@ -841,6 +841,26 @@ func TestEmitRemoteConfig_ExportsSharedKey(t *testing.T) {
 	}
 }
 
+// -c is the shorthand for --container, matching every other command that
+// targets a container.
+func TestSetupSshCommand_ContainerShorthand(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	cmd := newSetupSshCommand()
+	if err := cmd.Flags().Parse([]string{"-c", "my-container"}); err != nil {
+		t.Fatalf("parse flags: %v", err)
+	}
+	f, err := collectSetupSshFlags(cmd)
+	if err != nil {
+		t.Fatalf("collectSetupSshFlags: %v", err)
+	}
+	if f.container != "my-container" {
+		t.Errorf("container = %q, want %q", f.container, "my-container")
+	}
+	if !f.containerExplicit {
+		t.Error("containerExplicit = false, want true when -c is passed")
+	}
+}
+
 // With no --key, setup-ssh defaults to the shared managed key under the CLI
 // config dir, not a per-host ~/.ssh path.
 func TestCollectSetupSshFlags_DefaultsToManagedKey(t *testing.T) {

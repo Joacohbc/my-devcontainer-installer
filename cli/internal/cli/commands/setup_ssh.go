@@ -60,7 +60,7 @@ Two modes:
 	f := cmd.Flags()
 	f.String("remote", "", "Configure remote-server access (ProxyCommand mode): USER@HOST")
 	f.String("key", "", "Private key path (default: the shared managed key under the CLI config dir)")
-	f.String("container", sshdefaults.ServiceName, "Container name (auto-detected from compose if omitted)")
+	f.StringP("container", "c", sshdefaults.ServiceName, "Container name (auto-detected from compose if omitted)")
 	f.String("user", sshdefaults.User, "SSH user inside container")
 	f.BoolP("yes", "y", false, `Assume "yes" to all prompts (overwrite a conflicting alias, auto-start the stack)`)
 
