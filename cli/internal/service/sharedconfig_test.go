@@ -275,6 +275,67 @@ func TestWriteZipFromDir_RoundTrip(t *testing.T) {
 	}
 }
 
+// TestWriteZipFromDir_PreservesSymlinks is the regression guard for the backup
+// crash: tools running inside the container write symlinks directly onto the
+// volume (e.g. ~/.claude/debug/latest), frequently dangling. writeZipFromDir
+// must archive them as symlinks (not os.Open them, which follows the link and
+// fails on a dangling one), and extractZipToDir must recreate them faithfully.
+func TestWriteZipFromDir_PreservesSymlinks(t *testing.T) {
+	srcDir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(srcDir, "claude", "debug"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// A real file the valid symlink can point at.
+	if err := os.WriteFile(filepath.Join(srcDir, "claude", "debug", "2026.log"), []byte("log"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// A valid symlink and a dangling one (the case that crashed the backup).
+	if err := os.Symlink("2026.log", filepath.Join(srcDir, "claude", "debug", "current")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("nonexistent.log", filepath.Join(srcDir, "claude", "debug", "latest")); err != nil {
+		t.Fatal(err)
+	}
+
+	zipPath := filepath.Join(t.TempDir(), "backup.zip")
+	if err := writeZipFromDir(srcDir, zipPath, []string{"claude"}); err != nil {
+		t.Fatalf("writeZipFromDir must not fail on symlinks (incl. dangling): %v", err)
+	}
+
+	destDir := t.TempDir()
+	if err := extractZipToDir(zipPath, destDir); err != nil {
+		t.Fatalf("extractZipToDir: %v", err)
+	}
+
+	for name, wantTarget := range map[string]string{
+		"current": "2026.log",
+		"latest":  "nonexistent.log",
+	} {
+		p := filepath.Join(destDir, "claude", "debug", name)
+		fi, err := os.Lstat(p)
+		if err != nil {
+			t.Fatalf("Lstat %s: %v", name, err)
+		}
+		if fi.Mode()&os.ModeSymlink == 0 {
+			t.Errorf("%s round-tripped as a regular file, want a symlink", name)
+			continue
+		}
+		got, err := os.Readlink(p)
+		if err != nil {
+			t.Fatalf("Readlink %s: %v", name, err)
+		}
+		if got != wantTarget {
+			t.Errorf("%s target = %q, want %q", name, got, wantTarget)
+		}
+	}
+
+	// The regular file alongside the symlinks still round-trips.
+	got, err := os.ReadFile(filepath.Join(destDir, "claude", "debug", "2026.log"))
+	if err != nil || string(got) != "log" {
+		t.Errorf("claude/debug/2026.log round-trip mismatch: %q, err=%v", got, err)
+	}
+}
+
 func TestExtractZipToDir_RejectsPathTraversal(t *testing.T) {
 	zipPath := filepath.Join(t.TempDir(), "evil.zip")
 	f, err := os.Create(zipPath)
