@@ -10,16 +10,14 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func init() { register(newBackupConfigCommand()) }
-
 func newBackupConfigCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "backup-config [tool...]",
+		Use:   "backup [tool...]",
 		Short: "Back up the shared config volume to a zip file",
-		Long: `devcontainer-cli backup-config — save the current content of the shared
+		Long: `devcontainer-cli config shared backup — save the current content of the shared
 config volume (` + types.SharedConfigVolumeName + `) to a zip file on this machine, so
-it can be restored later with 'restore-config' (e.g. before wiping the volume, or to
-move logins to another machine).
+it can be restored later with 'config shared restore' (e.g. before wiping the volume,
+or to move logins to another machine).
 
 Pass one or more tool ids to back up only those; with no arguments every entry
 currently present in the volume is included. Entries with no data in the volume
@@ -27,13 +25,13 @@ are silently skipped.
 
 Known tools: ` + strings.Join(types.SharedConfigIDs(), ", ") + `.`,
 		Example: `  # Back up everything to a timestamped zip
-  devcontainer-cli backup-config
+  devcontainer-cli config shared backup
 
   # Back up to a specific file
-  devcontainer-cli backup-config -o shared-config-backup.zip
+  devcontainer-cli config shared backup -o shared-config-backup.zip
 
   # Back up only specific tools
-  devcontainer-cli backup-config claude gh -o claude-gh-backup.zip`,
+  devcontainer-cli config shared backup claude gh -o claude-gh-backup.zip`,
 		SilenceUsage: true,
 		RunE:         runBackupConfig,
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {

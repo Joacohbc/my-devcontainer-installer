@@ -91,13 +91,13 @@ fi
 # block no-ops when the mount is absent (opt-out, or an image built before the
 # mount existed), which keeps it safe for quick-run on older images. Pre-existing
 # real config in the home is never destroyed; seed the volume from the host with
-# 'devcontainer-cli sync-config'.
+# 'devcontainer-cli config shared sync'.
 # Each row: "<volume-subpath> <dir|file> <home-relative-target>".
 # Keep in sync with types.SharedConfigEntries (internal/domain/types/sharedconfig.go).
 SHARED_CONFIG_DIR="/mnt/shared-config"
 if [ -d "$SHARED_CONFIG_DIR" ]; then
     # Re-own the volume to devuser's real UID only when it drifted (mirrors the
-    # /home/devuser repair above); also fixes entries seeded by sync-config.
+    # /home/devuser repair above); also fixes entries seeded by config shared sync.
     if [ "$(stat -c %u "$SHARED_CONFIG_DIR")" != "$DEV_UID" ]; then
         chown -R "$DEV_UID:$DEV_GID" "$SHARED_CONFIG_DIR" 2>/dev/null || true
     fi
@@ -117,7 +117,7 @@ if [ -d "$SHARED_CONFIG_DIR" ]; then
         # Link into the home, never clobbering pre-existing real (non-symlink)
         # config. ln -sfn both creates a missing link and repoints a stale one.
         if [ -e "$dest" ] && [ ! -L "$dest" ]; then
-            echo "shared-config: keeping existing $dest (not a symlink); run 'devcontainer-cli sync-config' to seed the volume" >&2
+            echo "shared-config: keeping existing $dest (not a symlink); run 'devcontainer-cli config shared sync' to seed the volume" >&2
             continue
         fi
         destparent="$(dirname "$dest")"

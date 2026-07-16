@@ -10,14 +10,12 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func init() { register(newSyncConfigCommand()) }
-
 func newSyncConfigCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "sync-config [tool...]",
+		Use:   "sync [tool...]",
 		Short: "Seed the shared config volume from this machine's tool configs",
-		Long: `devcontainer-cli sync-config — copy the tool configs already on this machine
-(e.g. ~/.claude, ~/.config/gh, …) into the shared config volume
+		Long: `devcontainer-cli config shared sync — copy the tool configs already on this
+machine (e.g. ~/.claude, ~/.config/gh, …) into the shared config volume
 (` + types.SharedConfigVolumeName + `), so any container that mounts it starts already
 logged in, without you redoing each tool's setup.
 
@@ -28,13 +26,13 @@ start) containers afterwards to pick up the seeded config.
 
 Known tools: ` + strings.Join(types.SharedConfigIDs(), ", ") + `.`,
 		Example: `  # Seed everything not already present in the volume
-  devcontainer-cli sync-config
+  devcontainer-cli config shared sync
 
   # Sync only specific tools
-  devcontainer-cli sync-config claude gh
+  devcontainer-cli config shared sync claude gh
 
   # Overwrite existing volume data with the host copy, unattended
-  devcontainer-cli sync-config --force --yes`,
+  devcontainer-cli config shared sync --force --yes`,
 		SilenceUsage: true,
 		RunE:         runSyncConfig,
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {

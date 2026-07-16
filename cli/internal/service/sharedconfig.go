@@ -375,6 +375,29 @@ func writeZipFromDir(srcDir, destZip string, topLevel []string) error {
 				_, err := zw.Create(rel + "/")
 				return err
 			}
+			// Symlinks (e.g. ~/.claude/debug/latest, which tools create inside
+			// the container directly on the volume, often left dangling) must be
+			// archived as symlinks: store the link target as the entry content
+			// with the symlink mode preserved. os.Open would follow the link and
+			// fail on a dangling one, aborting the whole backup.
+			if info.Mode()&os.ModeSymlink != 0 {
+				target, err := os.Readlink(path)
+				if err != nil {
+					return err
+				}
+				hdr, err := zip.FileInfoHeader(info)
+				if err != nil {
+					return err
+				}
+				hdr.Name = rel
+				hdr.Method = zip.Deflate
+				w, err := zw.CreateHeader(hdr)
+				if err != nil {
+					return err
+				}
+				_, err = io.WriteString(w, target)
+				return err
+			}
 			hdr, err := zip.FileInfoHeader(info)
 			if err != nil {
 				return err
@@ -429,11 +452,36 @@ func extractZipToDir(zipPath, destDir string) error {
 		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 			return err
 		}
+		// Recreate symlinks (written by writeZipFromDir with the link target as
+		// content) instead of writing a regular file, so backups round-trip
+		// faithfully. The link target is restored verbatim; only the entry name
+		// is validated against zip-slip above.
+		if f.Mode()&os.ModeSymlink != 0 {
+			if err := extractZipSymlink(f, target); err != nil {
+				return err
+			}
+			continue
+		}
 		if err := extractZipFile(f, target); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// extractZipSymlink recreates a symlink zip entry at target, reading the link
+// target from the entry's content (as written by writeZipFromDir).
+func extractZipSymlink(f *zip.File, target string) error {
+	rc, err := f.Open()
+	if err != nil {
+		return err
+	}
+	defer rc.Close()
+	linkTarget, err := io.ReadAll(rc)
+	if err != nil {
+		return err
+	}
+	return os.Symlink(string(linkTarget), target)
 }
 
 // extractZipFile writes a single zip entry's content to target.

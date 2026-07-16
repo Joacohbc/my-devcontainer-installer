@@ -10,14 +10,13 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func init() { register(newRestoreConfigCommand()) }
-
 func newRestoreConfigCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "restore-config <zip-file> [tool...]",
+		Use:   "restore <zip-file> [tool...]",
 		Short: "Restore the shared config volume from a zip backup",
-		Long: `devcontainer-cli restore-config — load a zip file produced by 'backup-config'
-back into the shared config volume (` + types.SharedConfigVolumeName + `).
+		Long: `devcontainer-cli config shared restore — load a zip file produced by
+'config shared backup' back into the shared config volume
+(` + types.SharedConfigVolumeName + `).
 
 Pass one or more tool ids to restore only those; with no arguments every entry
 present in the zip is restored. By default only entries with no data in the
@@ -27,10 +26,10 @@ config.
 
 Known tools: ` + strings.Join(types.SharedConfigIDs(), ", ") + `.`,
 		Example: `  # Restore everything from a backup, without touching existing data
-  devcontainer-cli restore-config shared-config-backup.zip
+  devcontainer-cli config shared restore shared-config-backup.zip
 
   # Restore only specific tools, overwriting existing volume data
-  devcontainer-cli restore-config shared-config-backup.zip claude gh --force --yes`,
+  devcontainer-cli config shared restore shared-config-backup.zip claude gh --force --yes`,
 		Args:         cobra.MinimumNArgs(1),
 		SilenceUsage: true,
 		RunE:         runRestoreConfig,

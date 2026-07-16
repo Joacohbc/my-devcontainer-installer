@@ -29,6 +29,7 @@ Subcommands:
   db-password         Default database password for DB services.
   ssh-key             Path to the shared managed SSH key (and key utilities).
   preset              List/create/copy/remove reusable module-bundle presets.
+  shared              Sync/backup/restore the shared tool-config volume.
   export / import     Export the project config to YAML / import it back.
 
 Config file: ` + domain.GlobalConfigPath(),
@@ -48,6 +49,7 @@ Config file: ` + domain.GlobalConfigPath(),
 	cmd.AddCommand(newConfigExportCommand())
 	cmd.AddCommand(newConfigImportCommand())
 	cmd.AddCommand(newPresetCommand())
+	cmd.AddCommand(newConfigSharedCommand())
 	return cmd
 }
 
