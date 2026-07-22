@@ -26,6 +26,13 @@ prompts for the variant, volumes, ports, whether to mount the shared config
 volume and which AI installer scripts to copy; with --no-interactive every value
 must come from a flag (--variant becomes required).
 
+--name picks the container name (default: dc-<variant>). If a container by
+that name already exists and was itself created by a previous 'run', it is
+reused as-is (started if stopped, left alone if already running). If the name
+belongs to any other container — a devcontainer project container, or an
+unrelated container entirely — the command errors out instead of starting or
+renaming it; pick a different --name or remove the existing container first.
+
 Variants: ` + strings.Join(types.RemoteVariants, ", ") + `.`,
 		Example: `  # Interactive: pick a variant and options
   devcontainer-cli run
@@ -39,7 +46,7 @@ Variants: ` + strings.Join(types.RemoteVariants, ", ") + `.`,
 		RunE:         runQuickRun,
 	}
 	cmd.Flags().String("variant", "", "Image variant to run, e.g. ssh, nodejs, python (required with --no-interactive)")
-	cmd.Flags().String("name", "", "Container name (default: dc-<variant>)")
+	cmd.Flags().String("name", "", "Container name (default: dc-<variant>); if it belongs to an existing quick-run container it is reused/restarted, but a name already used by any other container is rejected")
 	cmd.Flags().StringSlice("volumes", nil, "Volume mounts (e.g. myvol:/workspace); repeatable or comma-separated")
 	cmd.Flags().StringSlice("ports", nil, "Port mappings (e.g. 2222:22); bound to 127.0.0.1 unless --expose-all; repeatable or comma-separated")
 	cmd.Flags().Bool("expose-all", false, "Publish ports on all interfaces (0.0.0.0) instead of binding to 127.0.0.1")
