@@ -102,6 +102,16 @@ func TestGenerateDockerfile_AllSelectedModules(t *testing.T) {
 	assertContainsStr(t, df, "rustup.rs", "full dockerfile")
 }
 
+func TestGenerateDockerfile_BaseP10kStyle(t *testing.T) {
+	cfg := makeConfig(func(c *types.DevcontainerConfig) {
+		c.Dockerfile.Modules = []types.SelectedModule{
+			{ID: "base", Options: map[string]any{"p10kStyle": "rainbow"}},
+		}
+	})
+	df := mustGenerateDockerfile(t, cfg)
+	assertContainsStr(t, df, `su - devuser -c "/tmp/zsh-installer.sh rainbow"`, "base p10kStyle")
+}
+
 func TestGenerateDockerfile_ZellijModule(t *testing.T) {
 	cfg := makeConfig(func(c *types.DevcontainerConfig) {
 		c.Dockerfile.Modules = []types.SelectedModule{{ID: "zellij"}}
