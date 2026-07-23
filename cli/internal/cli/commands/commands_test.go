@@ -664,13 +664,77 @@ func TestBuildSshTunnels(t *testing.T) {
 	}
 }
 
+func TestResolveSshTargetContainerExplicit(t *testing.T) {
+	target, err := resolveSshTarget("/ignored", "", "myws-postgres", true)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := sshTarget{
+		containerName:     "myws-postgres",
+		containerExplicit: true,
+		markerKind:        sshdefaults.KindContainer,
+		markerRef:         "myws-postgres",
+	}
+	if target != want {
+		t.Errorf("resolveSshTarget(explicit) = %+v, want %+v", target, want)
+	}
+}
+
+func TestResolveSshTargetWorkspace(t *testing.T) {
+	cwd := t.TempDir()
+	target, err := resolveSshTarget(cwd, "myws", "", false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if target.containerExplicit {
+		t.Error("workspace mode must not set containerExplicit")
+	}
+	if target.markerKind != sshdefaults.KindWorkspace || target.markerRef != "myws" {
+		t.Errorf("marker = %s/%s, want workspace/myws", target.markerKind, target.markerRef)
+	}
+	if target.containerName != "myws-devcontainer-ssh" {
+		t.Errorf("containerName = %q, want myws-devcontainer-ssh", target.containerName)
+	}
+}
+
+func TestBootstrapSetupSshFlagsContainerExplicit(t *testing.T) {
+	target := sshTarget{
+		containerName:     "myws-postgres",
+		containerExplicit: true,
+		markerKind:        sshdefaults.KindContainer,
+		markerRef:         "myws-postgres",
+	}
+	f, workspace := bootstrapSetupSshFlags(target, true)
+	if workspace != "(none)" {
+		t.Errorf("workspace label = %q, want (none)", workspace)
+	}
+	if !f.containerExplicit || f.container != "myws-postgres" || f.alias != "myws-postgres" || f.composeFile != "" {
+		t.Errorf("unexpected flags: %+v", f)
+	}
+}
+
+func TestBootstrapSetupSshFlagsWorkspace(t *testing.T) {
+	target := sshTarget{
+		containerName: "myws-devcontainer-ssh",
+		markerKind:    sshdefaults.KindWorkspace,
+		markerRef:     "myws",
+	}
+	f, workspace := bootstrapSetupSshFlags(target, false)
+	if workspace != "myws" {
+		t.Errorf("workspace label = %q, want myws", workspace)
+	}
+	if f.containerExplicit || f.container != "myws-devcontainer-ssh" || f.alias != "myws" || f.composeFile == "" {
+		t.Errorf("unexpected flags: %+v", f)
+	}
+}
+
 func TestSshCommandRegistered(t *testing.T) {
 	root := NewRootCommand("test")
 	sshCmd := findSubcommand(root, "ssh")
 	if sshCmd == nil {
 		t.Fatal("expected 'ssh' command to be registered")
 	}
-	for _, name := range []string{"workspace", "yes", "no-interactive", "forward", "ports"} {
+	for _, name := range []string{"workspace", "container", "yes", "no-interactive", "forward", "ports"} {
 		if sshCmd.Flags().Lookup(name) == nil {
 			t.Errorf("expected 'ssh' to register --%s", name)
 		}
