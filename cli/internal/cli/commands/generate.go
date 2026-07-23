@@ -44,7 +44,7 @@ func addGenerateFlags(cmd *cobra.Command) {
 	f.String(flagMode, "", "Build mode: local-cached (default), remote")
 	f.String(flagVariant, "", "Remote image variant (e.g. ssh, nodejs, python)")
 	f.String(flagRegistry, "", "Container registry prefix for remote images (overrides global)")
-	f.String(flagWith, "", "Comma-separated dockerfile modules (e.g. nodejs,golang,zellij)")
+	f.String(flagWith, "", "Comma-separated dockerfile modules (e.g. nodejs,golang,rust)")
 	f.String(flagService, "", "Comma-separated compose services (e.g. mongo,postgres,tunnel)")
 	f.String(flagServices, "", "Alias for --service")
 	f.String(flagImage, "", "Image name (default: derived from fingerprint for local-cached)")

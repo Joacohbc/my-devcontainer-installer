@@ -232,6 +232,24 @@ func TestCavemanInstallWiresAllPlatforms(t *testing.T) {
 	}
 }
 
+// setup-help.sh must write the quick reference to ~/help and cover both the
+// micro editor and zellij, so every container ships an accurate cheat-sheet.
+func TestSetupHelpWritesQuickReference(t *testing.T) {
+	body, err := os.ReadFile("setup-help.sh")
+	if err != nil {
+		t.Fatalf("reading setup-help.sh: %v", err)
+	}
+	script := string(body)
+	if !strings.Contains(script, `> "$HOME/help"`) {
+		t.Error("setup-help.sh must write the quick reference to $HOME/help")
+	}
+	for _, frag := range []string{"micro", "zellij", "Ctrl-S", "Ctrl-p"} {
+		if !strings.Contains(script, frag) {
+			t.Errorf("setup-help.sh quick reference must mention %q", frag)
+		}
+	}
+}
+
 func TestIsGeneratedFile(t *testing.T) {
 	dir := t.TempDir()
 

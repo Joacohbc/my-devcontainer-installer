@@ -40,7 +40,7 @@ func TestCopyableAssetsAreScripts(t *testing.T) {
 
 func TestBuildOnlyAssetsAreNotCopyable(t *testing.T) {
 	// Build-time-only scripts must never be offered for runtime copying.
-	buildOnly := []string{"entrypoint", "golang-utils", "update-golang", "zsh-installer"}
+	buildOnly := []string{"entrypoint", "golang-utils", "setup-help", "update-golang", "zsh-installer"}
 	for _, name := range buildOnly {
 		if _, ok := LookupCopyable(name); ok {
 			t.Errorf("build-only asset %q must not be copyable", name)

@@ -36,8 +36,10 @@ func TestBasePreset(t *testing.T) {
 	if !slices.Contains(p.Modules, "github-cli") {
 		t.Errorf("expected base preset to contain github-cli, got %v", p.Modules)
 	}
-	if !slices.Contains(p.Modules, "zellij") {
-		t.Errorf("expected base preset to contain zellij, got %v", p.Modules)
+	// Zellij ships in the base image by default (always-on), so presets must NOT
+	// list it as a selectable module.
+	if slices.Contains(p.Modules, "zellij") {
+		t.Errorf("zellij is always-on and must not be listed in the base preset, got %v", p.Modules)
 	}
 }
 

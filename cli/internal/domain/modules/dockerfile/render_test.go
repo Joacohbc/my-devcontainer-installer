@@ -52,6 +52,22 @@ func TestBaseModuleRender(t *testing.T) {
 			t.Errorf("base must contain %q:\n%s", frag, out)
 		}
 	}
+	// micro ships in the base image by default (alongside nano) so an editor is
+	// always available in every container.
+	if !strings.Contains(out, "\n    micro \\") {
+		t.Errorf("base must install the micro editor by default:\n%s", out)
+	}
+	// The ~/help quick reference (micro + zellij shortcuts) is materialized into
+	// devuser's home at build time, then its installer script is removed.
+	for _, frag := range []string{
+		"COPY setup-help.sh /tmp/setup-help.sh",
+		`su - devuser -c "/tmp/setup-help.sh"`,
+		"rm /tmp/setup-help.sh",
+	} {
+		if !strings.Contains(out, frag) {
+			t.Errorf("base must install the ~/help quick reference (%q):\n%s", frag, out)
+		}
+	}
 	// ~/.local/bin must be on PATH unconditionally (post-script installers and
 	// pip/uv --user binaries land there), via a shell-init file.
 	for _, frag := range []string{".local_bin_init.sh", `export PATH=\"\$HOME/.local/bin:\$PATH\"`} {
