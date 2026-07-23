@@ -384,6 +384,75 @@ func TestPruneManagedBlocksMissingConfig(t *testing.T) {
 	}
 }
 
+func TestRemoveManagedBlocksSubset(t *testing.T) {
+	home := t.TempDir()
+	setHomeDir(t, home)
+	if err := os.MkdirAll(filepath.Join(home, ".ssh"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(home, ".ssh", "config")
+	if err := os.WriteFile(path, []byte(newFormatConfig), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	svc := SshService{Report: nopReporter{}}
+	// Both blocks are stale, but the caller (clean-ssh's picker) only asks to
+	// remove the container one — the workspace block must survive untouched.
+	toRemove := []ManagedMarker{{Kind: "container", Ref: "dc-ssh", Alias: "dc-ssh"}}
+	removed, backup, err := svc.RemoveManagedBlocks(toRemove)
+	if err != nil {
+		t.Fatalf("RemoveManagedBlocks: %v", err)
+	}
+	if len(removed) != 1 || removed[0].Ref != "dc-ssh" {
+		t.Fatalf("removed = %+v, want [dc-ssh]", removed)
+	}
+	if _, err := os.Stat(backup); err != nil {
+		t.Errorf("expected backup at %s: %v", backup, err)
+	}
+	data, _ := os.ReadFile(path)
+	got := string(data)
+	if strings.Contains(got, "Host dc-ssh") {
+		t.Errorf("selected block not removed:\n%s", got)
+	}
+	if !strings.Contains(got, "Host api") || !strings.Contains(got, "Host other") {
+		t.Errorf("unselected/unrelated blocks lost:\n%s", got)
+	}
+}
+
+func TestRemoveManagedBlocksEmpty(t *testing.T) {
+	home := t.TempDir()
+	setHomeDir(t, home)
+	if err := os.MkdirAll(filepath.Join(home, ".ssh"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(home, ".ssh", "config")
+	if err := os.WriteFile(path, []byte(newFormatConfig), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	svc := SshService{Report: nopReporter{}}
+	removed, backup, err := svc.RemoveManagedBlocks(nil)
+	if err != nil {
+		t.Fatalf("RemoveManagedBlocks(nil): %v", err)
+	}
+	if len(removed) != 0 || backup != "" {
+		t.Errorf("expected no-op for empty blocks, got removed=%+v backup=%q", removed, backup)
+	}
+}
+
+func TestRemoveManagedBlocksMissingConfig(t *testing.T) {
+	home := t.TempDir()
+	setHomeDir(t, home)
+	svc := SshService{Report: nopReporter{}}
+	toRemove := []ManagedMarker{{Kind: "workspace", Ref: "api-3f9a", Alias: "api"}}
+	removed, backup, err := svc.RemoveManagedBlocks(toRemove)
+	if err != nil {
+		t.Fatalf("RemoveManagedBlocks (missing file): %v", err)
+	}
+	if len(removed) != 0 || backup != "" {
+		t.Errorf("expected no-op when config is missing, got removed=%+v backup=%q", removed, backup)
+	}
+}
+
 func TestConfigHostAliasesFromDisk(t *testing.T) {
 	home := t.TempDir()
 	setHomeDir(t, home)
