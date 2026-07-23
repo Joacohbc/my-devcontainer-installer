@@ -70,6 +70,34 @@ func TestRunRejectsNameOfUnmanagedContainer(t *testing.T) {
 	}
 }
 
+func TestValidateContainerName(t *testing.T) {
+	cases := []struct {
+		name    string
+		stdout  string
+		wantErr bool
+	}{
+		{"absent", "", false},
+		{"existing quick-run container", "running|ssh", false},
+		{"existing quick-run container stopped", "exited|nodejs", false},
+		{"existing unmanaged container", "running|", true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			runner := &fakeRunner{status: 0, stdout: c.stdout}
+			defer useFakeDocker(runner)()
+
+			svc := RunService{Report: nopReporter{}}
+			err := svc.ValidateContainerName("dc-ssh")
+			if c.wantErr && err == nil {
+				t.Fatal("expected an error, got nil")
+			}
+			if !c.wantErr && err != nil {
+				t.Fatalf("expected no error, got %v", err)
+			}
+		})
+	}
+}
+
 func TestRunMountsVolumes(t *testing.T) {
 	runner := &fakeRunner{status: 0, stdout: ""}
 	defer useFakeDocker(runner)()

@@ -42,7 +42,7 @@ func (s RunService) Run(spec QuickRunSpec) error {
 	lookup := s.lookupQuickRunContainer(spec.ContainerName)
 	if lookup.Exists {
 		if !lookup.QuickRun {
-			return fmt.Errorf("container name '%s' is already in use by an existing container that was not created by 'run'; pick a different --name or remove/rename the existing container first", spec.ContainerName)
+			return nameConflictErr(spec.ContainerName)
 		}
 		switch lookup.State {
 		case StateRunning:
@@ -115,6 +115,24 @@ func (s RunService) CopyAIScripts(container string, names []string) error {
 	}
 	s.Report.Success("✓ Copied %d AI tool script(s) into '%s'.", len(names), container)
 	return nil
+}
+
+// ValidateContainerName reports an error if name is already used by a
+// container that 'run' cannot safely reuse (i.e. one not created by a
+// previous 'run' invocation). A free name, or one belonging to an existing
+// quick-run container, returns nil. Intended for interactive prompt
+// validation, so the user is asked again rather than failing after the image
+// has already been pulled.
+func (s RunService) ValidateContainerName(name string) error {
+	lookup := s.lookupQuickRunContainer(name)
+	if lookup.Exists && !lookup.QuickRun {
+		return nameConflictErr(name)
+	}
+	return nil
+}
+
+func nameConflictErr(name string) error {
+	return fmt.Errorf("container name '%s' is already in use by an existing container that was not created by 'run'; pick a different name (or remove/rename the existing container) and try again", name)
 }
 
 // quickRunLookup describes what's known about an existing container name:
