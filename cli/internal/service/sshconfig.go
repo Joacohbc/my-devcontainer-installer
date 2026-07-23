@@ -186,6 +186,17 @@ func stripManagedBlockWhere(content string, match func(ManagedMarker) bool) stri
 	return strings.Join(out, "\n")
 }
 
+// AliasForManagedRef returns the Host alias of the CLI managed block in content
+// matching kind + ref (e.g. kind="workspace", ref=<workspace name>), if any.
+func AliasForManagedRef(content, kind, ref string) (alias string, ok bool) {
+	for _, m := range ListManagedBlocks(content) {
+		if m.Kind == kind && m.Ref == ref && m.Alias != "" {
+			return m.Alias, true
+		}
+	}
+	return "", false
+}
+
 // ListManagedBlocks enumerates every CLI managed block in content. When a marker
 // omits its alias (legacy form) the alias is recovered from the Host line beneath
 // it so callers can report the block precisely.
@@ -315,6 +326,27 @@ func (s SshService) AppendHostBlock(path, content, newBlock string) error {
 		body += "\n\n"
 	}
 	return os.WriteFile(path, []byte(body+newBlock+"\n"), 0o600)
+}
+
+// ManagedAlias resolves the Host alias already configured for a CLI managed
+// block matching kind + ref (e.g. a workspace's own devcontainer), if
+// ~/.ssh/config has one. Unlike ReadSSHConfig it does not create the file: a
+// missing config is treated as "not found" (ok=false), not an error. Used by
+// 'ssh' to skip the setup-ssh bootstrap when access is already configured.
+func (s SshService) ManagedAlias(kind sshdefaults.Kind, ref string) (alias string, ok bool, err error) {
+	path, err := sshConfigPath()
+	if err != nil {
+		return "", false, err
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", false, nil
+		}
+		return "", false, err
+	}
+	alias, ok = AliasForManagedRef(string(data), string(kind), ref)
+	return alias, ok, nil
 }
 
 // RemoveManagedBlock removes the CLI managed Host block tagged with workspace from

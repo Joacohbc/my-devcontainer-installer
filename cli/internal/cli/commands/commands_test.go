@@ -24,7 +24,7 @@ import (
 func TestNewRootCommand_RegistersAllSubcommands(t *testing.T) {
 	root := NewRootCommand("test")
 	want := []string{
-		"setup-ssh", "clean-ssh", "port-forward", "run", "down", "destroy",
+		"ssh", "setup-ssh", "clean-ssh", "port-forward", "run", "down", "destroy",
 		"start", "stop", "restart", "prune", "update",
 		"upgrade-cli", "config", "cleanup-tips", "shell", "logs", "copy",
 		"up", "status", "ls", "info", "remove-container", "remove-image",
@@ -640,6 +640,40 @@ func TestParsePortMapping(t *testing.T) {
 func TestParsePortMapping_ConflictingService(t *testing.T) {
 	if _, err := parsePortMapping("5432:postgres:5432", "redis"); err == nil {
 		t.Error("expected conflicting target host error")
+	}
+}
+
+func TestBuildSshTunnels(t *testing.T) {
+	tunnels, err := buildSshTunnels("3000, 8080:80", "myws", "myws-devcontainer-ssh")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(tunnels) != 2 {
+		t.Fatalf("expected 2 tunnels, got %d", len(tunnels))
+	}
+	want := tunnels[0]
+	if want.LocalPort != 3000 || want.ContainerPort != 3000 || want.TargetHost != "localhost" ||
+		want.Alias != "myws" || want.ContainerName != "myws-devcontainer-ssh" || !want.IsDevcontainer {
+		t.Errorf("tunnel 0 = %+v", want)
+	}
+	if tunnels[1].LocalPort != 8080 || tunnels[1].ContainerPort != 80 {
+		t.Errorf("tunnel 1 = %+v", tunnels[1])
+	}
+	if _, err := buildSshTunnels("not-a-port", "myws", "c"); err == nil {
+		t.Error("expected error for an invalid ports spec")
+	}
+}
+
+func TestSshCommandRegistered(t *testing.T) {
+	root := NewRootCommand("test")
+	sshCmd := findSubcommand(root, "ssh")
+	if sshCmd == nil {
+		t.Fatal("expected 'ssh' command to be registered")
+	}
+	for _, name := range []string{"workspace", "yes", "no-interactive", "forward", "ports"} {
+		if sshCmd.Flags().Lookup(name) == nil {
+			t.Errorf("expected 'ssh' to register --%s", name)
+		}
 	}
 }
 

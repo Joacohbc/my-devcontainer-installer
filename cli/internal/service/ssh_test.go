@@ -4,8 +4,22 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 )
+
+// writeFakeSSH puts an executable "ssh" shell script (running body) at the
+// front of PATH, so tests can control what a real `exec.Command("ssh", ...)`
+// call does without depending on an actual ssh binary or network.
+func writeFakeSSH(t *testing.T, body string) {
+	t.Helper()
+	dir := t.TempDir()
+	script := "#!/bin/sh\n" + body + "\n"
+	if err := os.WriteFile(filepath.Join(dir, "ssh"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+}
 
 func TestSshEnsureKeyAlreadyExists(t *testing.T) {
 	dir := t.TempDir()
@@ -136,6 +150,23 @@ func TestSshContainerIPs(t *testing.T) {
 	defer useFakeDocker(failRunner)()
 	if _, err := (SshService{Report: nopReporter{}}).ContainerIPs("c1"); err == nil {
 		t.Error("expected error when docker inspect fails")
+	}
+}
+
+func TestSshConnect(t *testing.T) {
+	writeFakeSSH(t, "exit 0")
+	svc := SshService{Report: nopReporter{}}
+	if err := svc.Connect("myalias", nil); err != nil {
+		t.Errorf("Connect ok: %v", err)
+	}
+}
+
+func TestSshConnectPropagatesExitCode(t *testing.T) {
+	writeFakeSSH(t, "exit 7")
+	svc := SshService{Report: nopReporter{}}
+	err := svc.Connect("myalias", []string{"go", "version"})
+	if err == nil || !strings.Contains(err.Error(), "code 7") {
+		t.Errorf("Connect exit code = %v, want error containing 'code 7'", err)
 	}
 }
 

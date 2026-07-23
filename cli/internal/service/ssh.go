@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -183,4 +184,22 @@ func (s SshService) TestConnection(alias string) SSHTestResult {
 		}
 	}
 	return SSHTestInconclusive
+}
+
+// Connect opens a real `ssh <alias>` session (or runs the given command over
+// SSH when args is non-empty), inheriting the terminal. Mirrors
+// InspectService.Shell's exit-code contract: a non-zero remote exit becomes an
+// error carrying that code, so callers don't need to special-case it.
+func (s SshService) Connect(alias string, args []string) error {
+	c := exec.Command("ssh", append([]string{alias}, args...)...)
+	c.Stdin, c.Stdout, c.Stderr = os.Stdin, os.Stdout, os.Stderr
+	err := c.Run()
+	if err == nil {
+		return nil
+	}
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		return fmt.Errorf("ssh session exited with code %d", exitErr.ExitCode())
+	}
+	return fmt.Errorf("failed to run ssh: %w", err)
 }
