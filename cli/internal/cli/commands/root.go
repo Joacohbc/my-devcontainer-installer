@@ -24,8 +24,8 @@ Generated files are written under .dc_<workspace>/ next to your project and the
 result is recorded so the other subcommands can find it.
 
 The subcommands manage an existing project: lifecycle (up, down, start, stop,
-restart, destroy), inspection (status, info, logs, ls, shell), access (setup-ssh,
-clean-ssh, port-forward, network, password), config (config, including
+restart, destroy), inspection (status, info, logs, ls, shell), access (ssh,
+setup-ssh, clean-ssh, port-forward, network, password), config (config, including
 config shared sync/backup/restore) and cleanup (prune, remove-container,
 remove-image). Run 'devcontainer-cli <command> --help'
 for the full details of any one.

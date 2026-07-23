@@ -520,6 +520,16 @@ func runSetupSsh(cmd *cobra.Command, _ []string) error {
 		f.alias = alias
 	}
 
+	return performSetupSsh(ssh, f, mode, workspace)
+}
+
+// performSetupSsh runs the core of the setup-ssh flow once mode, workspace and
+// alias are resolved: ensure the stack is running, generate/install the shared
+// key, write (or print, in remote mode) the ~/.ssh/config Host block, and test
+// the connection. Shared between the explicit 'setup-ssh' command and the
+// automatic bootstrap 'ssh' runs when no managed alias exists yet for the
+// workspace.
+func performSetupSsh(ssh service.SshService, f *setupSshFlags, mode sshdefaults.Mode, workspace string) error {
 	console.Log(fmt.Sprintf("Mode: %s   Workspace: %s   Alias: %s   Key: %s", mode, workspace, f.alias, f.key))
 	console.Log(fmt.Sprintf("Service: %s   Container: %s   Compose: %s", f.service, f.container, f.composeFile))
 

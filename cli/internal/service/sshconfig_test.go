@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/sshdefaults"
 )
 
 // setHomeDir points os.UserHomeDir() at dir via the HOME env var.
@@ -291,6 +293,49 @@ func TestListManagedBlocksLegacyAlias(t *testing.T) {
 	}
 	if blocks[0].Kind != "workspace" || blocks[0].Ref != "proj" || blocks[0].Alias != "proj" {
 		t.Errorf("legacy block = %+v, want {workspace proj proj}", blocks[0])
+	}
+}
+
+func TestAliasForManagedRef(t *testing.T) {
+	alias, ok := AliasForManagedRef(newFormatConfig, "workspace", "api-3f9a")
+	if !ok || alias != "api" {
+		t.Errorf("AliasForManagedRef(workspace,api-3f9a) = %q,%v, want api,true", alias, ok)
+	}
+	if _, ok := AliasForManagedRef(newFormatConfig, "workspace", "missing"); ok {
+		t.Error("did not expect a match for an unknown ref")
+	}
+	if _, ok := AliasForManagedRef(newFormatConfig, "container", "api-3f9a"); ok {
+		t.Error("kind must be matched, not just ref")
+	}
+}
+
+func TestManagedAlias(t *testing.T) {
+	home := t.TempDir()
+	setHomeDir(t, home)
+	if err := os.MkdirAll(filepath.Join(home, ".ssh"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, ".ssh", "config"), []byte(newFormatConfig), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	svc := SshService{Report: nopReporter{}}
+	alias, ok, err := svc.ManagedAlias(sshdefaults.KindWorkspace, "api-3f9a")
+	if err != nil || !ok || alias != "api" {
+		t.Errorf("ManagedAlias(workspace,api-3f9a) = %q,%v,%v, want api,true,nil", alias, ok, err)
+	}
+	if _, ok, err := svc.ManagedAlias(sshdefaults.KindWorkspace, "missing"); err != nil || ok {
+		t.Errorf("ManagedAlias(missing) = %v,%v, want false,nil", ok, err)
+	}
+}
+
+func TestManagedAliasMissingConfig(t *testing.T) {
+	home := t.TempDir()
+	setHomeDir(t, home)
+	svc := SshService{Report: nopReporter{}}
+	alias, ok, err := svc.ManagedAlias(sshdefaults.KindWorkspace, "api-3f9a")
+	if err != nil || ok || alias != "" {
+		t.Errorf("ManagedAlias with no config = %q,%v,%v, want \"\",false,nil", alias, ok, err)
 	}
 }
 
