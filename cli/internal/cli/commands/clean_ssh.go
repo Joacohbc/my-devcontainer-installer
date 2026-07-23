@@ -2,6 +2,7 @@ package commands
 
 import (
 	"fmt"
+	"strconv"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/service"
 	"github.com/spf13/cobra"
@@ -24,9 +25,16 @@ for the current project, clean-ssh sweeps every stale managed block at once.
 
 A workspace block is kept while a managed container reports it or the project is
 still recorded, so a merely stopped ('down') stack is not cleaned. Removals are
-listed and confirmed first, and the original config is backed up alongside it.`,
+listed first; in interactive mode you then pick which of the stale blocks to
+remove (all are pre-selected, so deselect any you want to keep) instead of an
+all-or-nothing confirmation, and the original config is backed up alongside it.
+--yes skips the picker and removes every stale block, which is also what
+happens in --no-interactive mode.`,
 		Example: `  # Show what would be removed, change nothing
   devcontainer-cli clean-ssh --dry-run
+
+  # Pick which stale blocks to remove
+  devcontainer-cli clean-ssh
 
   # Remove all stale blocks without prompting
   devcontainer-cli clean-ssh --yes`,
@@ -69,21 +77,37 @@ func runCleanSsh(cmd *cobra.Command, _ []string) error {
 		return nil
 	}
 
+	toRemove := stale
 	if !yesFlag(cmd) {
 		if !interactiveFlag(cmd) {
 			return fmt.Errorf("refusing to remove SSH config blocks without confirmation; pass --yes to confirm in non-interactive mode")
 		}
-		proceed, err := console.ConfirmDefault("Remove these SSH config blocks?", false)
+		choices := make([]service.Option, len(stale))
+		for i, b := range stale {
+			choices[i] = service.Option{
+				Value: strconv.Itoa(i),
+				Label: fmt.Sprintf("Host %s  (%s %s)", b.Alias, b.Kind, b.Ref),
+			}
+		}
+		picked, err := console.Multiselect("Select SSH config blocks to remove:", choices, choices)
 		if err != nil {
 			return err
 		}
-		if !proceed {
+		if len(picked) == 0 {
 			console.Warn("Cancelled.")
 			return nil
 		}
+		toRemove = make([]service.ManagedMarker, len(picked))
+		for i, p := range picked {
+			idx, err := strconv.Atoi(p.Value)
+			if err != nil {
+				return err
+			}
+			toRemove[i] = stale[idx]
+		}
 	}
 
-	removed, backup, err := ssh.PruneManagedBlocks(existsWorkspace, existsContainer, false)
+	removed, backup, err := ssh.RemoveManagedBlocks(toRemove)
 	if err != nil {
 		return err
 	}

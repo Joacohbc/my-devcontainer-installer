@@ -417,6 +417,48 @@ func (s SshService) PruneManagedBlocks(existsWorkspace, existsContainer func(str
 	return stale, backupPath, nil
 }
 
+// RemoveManagedBlocks removes exactly the given managed blocks from
+// ~/.ssh/config, without re-checking whether their target is alive — the
+// caller (clean-ssh, after the user picks a subset of the stale blocks it
+// found) has already decided which ones to drop. A missing config, or an
+// empty blocks slice, is a no-op returning an empty result. When it rewrites
+// the file it first backs the original up to path+".bak" and returns that
+// path.
+func (s SshService) RemoveManagedBlocks(blocks []ManagedMarker) (removed []ManagedMarker, backupPath string, err error) {
+	if len(blocks) == 0 {
+		return nil, "", nil
+	}
+	path, err := sshConfigPath()
+	if err != nil {
+		return nil, "", err
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, "", nil
+		}
+		return nil, "", err
+	}
+	content := string(data)
+
+	backupPath = path + ".bak"
+	if err := os.WriteFile(backupPath, data, 0o600); err != nil {
+		return nil, "", err
+	}
+	stripped := content
+	for _, b := range blocks {
+		stripped = StripManagedBlockByRef(stripped, b.Kind, b.Ref)
+	}
+	stripped = strings.TrimRight(stripped, "\n")
+	if stripped != "" {
+		stripped += "\n"
+	}
+	if err := os.WriteFile(path, []byte(stripped), 0o600); err != nil {
+		return nil, "", err
+	}
+	return blocks, backupPath, nil
+}
+
 // ConfigHostAliasesFromDisk reads ~/.ssh/config and returns its non-wildcard
 // Host aliases, or nil if the file cannot be read.
 func (s SshService) ConfigHostAliasesFromDisk() []string {
