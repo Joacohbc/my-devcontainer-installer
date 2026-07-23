@@ -27,7 +27,7 @@ var BaseModule = &ModuleSpec{
 	Label:     "Base (Ubuntu " + UbuntuLTS + " LTS + SSH + zsh + sudo)",
 	Category:  types.CategoryBase,
 	Always:    true,
-	CopyFiles: []string{"zsh-installer.sh"},
+	CopyFiles: []string{"zsh-installer.sh", "setup-help.sh"},
 	Options: []types.ModuleOption{
 		{
 			ID:    "p10kStyle",
@@ -60,6 +60,7 @@ RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
     && apt-get -y install --no-install-recommends \
     openssh-server \
     nano \
+    micro \
     sudo \
     pwgen \
     zsh \
@@ -100,6 +101,14 @@ COPY zsh-installer.sh /tmp/zsh-installer.sh
 RUN chmod +x /tmp/zsh-installer.sh && \
     su - devuser -c "%s" && \
     rm /tmp/zsh-installer.sh
+
+# Install the ~/help quick reference (micro + zellij shortcuts) into devuser's
+# home so every container ships the cheat-sheet. Written as devuser so it is
+# owned by them, then the installer script is removed in the same layer.
+COPY setup-help.sh /tmp/setup-help.sh
+RUN chmod +x /tmp/setup-help.sh && \
+    su - devuser -c "/tmp/setup-help.sh" && \
+    rm /tmp/setup-help.sh
 
 # Put ~/.local/bin on PATH for devuser. Tools installed by the post-scripts
 # (Claude Code, Antigravity, …) and pip/uv --user binaries land there, so this
