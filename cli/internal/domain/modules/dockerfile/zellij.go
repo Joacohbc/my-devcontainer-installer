@@ -22,7 +22,8 @@ RUN ARCH="$(dpkg --print-architecture)" && \
     wget -nv -O /tmp/zellij.tar.gz "https://github.com/zellij-org/zellij/releases/latest/download/zellij-${ZELLIJ_ARCH}.tar.gz" && \
     tar -xzf /tmp/zellij.tar.gz -C /usr/local/bin zellij && \
     chmod +x /usr/local/bin/zellij && \
-    rm /tmp/zellij.tar.gz
+    rm /tmp/zellij.tar.gz && \
+    su - devuser -c "mkdir -p /home/devuser/.config/zellij && printf '%s\n' 'default_shell \"zsh\"' > /home/devuser/.config/zellij/config.kdl"
 `
 	},
 }
