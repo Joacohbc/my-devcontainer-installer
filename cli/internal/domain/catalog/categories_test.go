@@ -35,7 +35,7 @@ func TestSelectableByCategoryMapping(t *testing.T) {
 		types.UICategoryAITools:   {"claude-code", "opencode", "codex-cli", "antigravity-cli", "copilot-cli", "graphify", "caveman"},
 		types.UICategoryLanguages: {"java-temurin", "java-openjdk", "python", "go", "php", "rust", "c-cpp", "nodejs", "pnpm", "yarn", "bun"},
 		types.UICategoryDatabases: {"sqlite", "mongo", "redis", "postgres"},
-		types.UICategoryDevTools:  {"github-cli", "zellij", "chrome", "ffmpeg", "dod", "tunnel", "ngrok"},
+		types.UICategoryDevTools:  {"github-cli", "chrome", "ffmpeg", "dod", "tunnel", "ngrok"},
 		types.UICategoryClients:   {"postgres-client", "redis-client", "mongo-client"},
 	}
 
@@ -64,6 +64,28 @@ func TestSelectableExcludesAlwaysOn(t *testing.T) {
 		for _, e := range entries {
 			if excluded[e.ID] {
 				t.Errorf("always-on entry %q must not appear in the grouped selection", e.ID)
+			}
+		}
+	}
+}
+
+// Zellij now ships in the base image by default: it must be always-on (like
+// base/cleanup) and must never appear as a selectable entry in the wizard.
+func TestZellijIsAlwaysOnAndNotSelectable(t *testing.T) {
+	m := GetDockerfileModule("zellij")
+	if m == nil {
+		t.Fatal("expected zellij module to exist in the catalog")
+	}
+	if !m.Always {
+		t.Error("zellij must be always-on so it ships in the base image by default")
+	}
+	if m.UICategory != "" {
+		t.Errorf("zellij must not be selectable (no UICategory), got %q", m.UICategory)
+	}
+	for cat, entries := range SelectableByCategory() {
+		for _, e := range entries {
+			if e.ID == "zellij" {
+				t.Errorf("zellij must not appear in the grouped selection (category %q)", cat)
 			}
 		}
 	}

@@ -1400,8 +1400,10 @@ func TestApplyGenFlags_PresetWithoutServices(t *testing.T) {
 
 	applyGenFlags(config, flags)
 
-	if len(config.Dockerfile.Modules) != 4 {
-		t.Errorf("expected 4 modules, got %d", len(config.Dockerfile.Modules))
+	// The nodejs preset is github-cli + nodejs + pnpm (zellij is always-on and
+	// no longer listed in presets).
+	if len(config.Dockerfile.Modules) != 3 {
+		t.Errorf("expected 3 modules, got %d", len(config.Dockerfile.Modules))
 	}
 	if len(config.Compose.Services) != 0 {
 		t.Errorf("expected 0 services after applying service-less preset, got %d: %v", len(config.Compose.Services), config.Compose.Services)
@@ -1423,8 +1425,8 @@ func TestInitAndConfigure_PresetSkipsPrompts(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if len(config.Dockerfile.Modules) != 4 {
-		t.Errorf("expected 4 modules from early-resolved preset, got %d", len(config.Dockerfile.Modules))
+	if len(config.Dockerfile.Modules) != 3 {
+		t.Errorf("expected 3 modules from early-resolved preset, got %d", len(config.Dockerfile.Modules))
 	}
 }
 

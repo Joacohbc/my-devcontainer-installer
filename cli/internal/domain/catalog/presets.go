@@ -18,70 +18,64 @@ type Preset struct {
 	Source  string   `yaml:"-"`
 }
 
-// github-cli and zellij are listed first in every preset so their Dockerfile
-// layers are shared with the base cache image (devcontainer-base), maximising
-// Docker layer cache hits across all variant builds in CI.
+// github-cli is listed first in every preset so its Dockerfile layer is shared
+// with the base cache image (devcontainer-base), maximising Docker layer cache
+// hits across all variant builds in CI. Zellij is no longer listed: it ships in
+// the base image by default (always-on), so every preset gets it implicitly.
 var BuiltinPresets = []Preset{
 	{
 		ID:    "base",
-		Label: "Base (GitHub CLI, Zellij)",
+		Label: "Base (GitHub CLI)",
 		Modules: []string{
 			string(types.ModuleGithubCli),
-			string(types.ModuleZellij),
 		},
 	},
 	{
 		ID:    "nodejs",
-		Label: "Node.js (pnpm, GitHub CLI, Zellij)",
+		Label: "Node.js (pnpm, GitHub CLI)",
 		Modules: []string{
 			string(types.ModuleGithubCli),
-			string(types.ModuleZellij),
 			string(types.ModuleNodejs),
 			string(types.ModulePnpm),
 		},
 	},
 	{
 		ID:    "bun",
-		Label: "Bun (GitHub CLI, Zellij)",
+		Label: "Bun (GitHub CLI)",
 		Modules: []string{
 			string(types.ModuleGithubCli),
-			string(types.ModuleZellij),
 			string(types.ModuleBun),
 		},
 	},
 	{
 		ID:    "java-temurin",
-		Label: "Java Temurin (GitHub CLI, Zellij)",
+		Label: "Java Temurin (GitHub CLI)",
 		Modules: []string{
 			string(types.ModuleGithubCli),
-			string(types.ModuleZellij),
 			string(types.ModuleJavaTemurin),
 		},
 	},
 	{
 		ID:    "python",
-		Label: "Python (GitHub CLI, Zellij)",
+		Label: "Python (GitHub CLI)",
 		Modules: []string{
 			string(types.ModuleGithubCli),
-			string(types.ModuleZellij),
 			string(types.ModulePython),
 		},
 	},
 	{
 		ID:    "go",
-		Label: "Go (GitHub CLI, Zellij)",
+		Label: "Go (GitHub CLI)",
 		Modules: []string{
 			string(types.ModuleGithubCli),
-			string(types.ModuleZellij),
 			string(types.ModuleGolang),
 		},
 	},
 	{
 		ID:    "node-go",
-		Label: "Node.js + Go (pnpm, GitHub CLI, Zellij)",
+		Label: "Node.js + Go (pnpm, GitHub CLI)",
 		Modules: []string{
 			string(types.ModuleGithubCli),
-			string(types.ModuleZellij),
 			string(types.ModuleNodejs),
 			string(types.ModulePnpm),
 			string(types.ModuleGolang),
@@ -89,10 +83,9 @@ var BuiltinPresets = []Preset{
 	},
 	{
 		ID:    "node-python",
-		Label: "Node.js + Python (pnpm, GitHub CLI, Zellij)",
+		Label: "Node.js + Python (pnpm, GitHub CLI)",
 		Modules: []string{
 			string(types.ModuleGithubCli),
-			string(types.ModuleZellij),
 			string(types.ModuleNodejs),
 			string(types.ModulePnpm),
 			string(types.ModulePython),
@@ -100,10 +93,9 @@ var BuiltinPresets = []Preset{
 	},
 	{
 		ID:    "node-java-temurin",
-		Label: "Node.js + Java Temurin (pnpm, GitHub CLI, Zellij)",
+		Label: "Node.js + Java Temurin (pnpm, GitHub CLI)",
 		Modules: []string{
 			string(types.ModuleGithubCli),
-			string(types.ModuleZellij),
 			string(types.ModuleNodejs),
 			string(types.ModulePnpm),
 			string(types.ModuleJavaTemurin),
@@ -111,30 +103,27 @@ var BuiltinPresets = []Preset{
 	},
 	{
 		ID:    "bun-go",
-		Label: "Bun + Go (GitHub CLI, Zellij)",
+		Label: "Bun + Go (GitHub CLI)",
 		Modules: []string{
 			string(types.ModuleGithubCli),
-			string(types.ModuleZellij),
 			string(types.ModuleBun),
 			string(types.ModuleGolang),
 		},
 	},
 	{
 		ID:    "bun-python",
-		Label: "Bun + Python (GitHub CLI, Zellij)",
+		Label: "Bun + Python (GitHub CLI)",
 		Modules: []string{
 			string(types.ModuleGithubCli),
-			string(types.ModuleZellij),
 			string(types.ModuleBun),
 			string(types.ModulePython),
 		},
 	},
 	{
 		ID:    "bun-java-temurin",
-		Label: "Bun + Java Temurin (GitHub CLI, Zellij)",
+		Label: "Bun + Java Temurin (GitHub CLI)",
 		Modules: []string{
 			string(types.ModuleGithubCli),
-			string(types.ModuleZellij),
 			string(types.ModuleBun),
 			string(types.ModuleJavaTemurin),
 		},

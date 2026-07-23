@@ -5,10 +5,12 @@ import (
 )
 
 var ZellijModule = &ModuleSpec{
-	ID:         types.ModuleZellij,
-	Label:      "Zellij",
-	Category:   types.CategoryInfra,
-	UICategory: types.UICategoryDevTools,
+	ID:       types.ModuleZellij,
+	Label:    "Zellij",
+	Category: types.CategoryInfra,
+	// Zellij ships in the base image by default, so it is auto-applied like
+	// base/cleanup and never offered as a selectable option (no UICategory).
+	Always: true,
 	Render: func(opts map[string]any) string {
 		return `##
 ## ZELLIJ
