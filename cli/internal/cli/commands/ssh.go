@@ -31,7 +31,12 @@ other CLI-managed container instead (loose mode, same as 'setup-ssh
 
 With --forward (or by answering yes to the interactive prompt) it also opens
 SSH tunnels for the given ports alongside the session, torn down automatically
-when the session ends.`,
+when the session ends.
+
+Closing an interactive session is always treated as success — even if the last
+command in your shell exited non-zero — so only a real connection failure
+reports an error. With an explicit command after '--', the command's exit code
+is propagated instead, which makes 'ssh' usable in scripts.`,
 		Example: `  # Connect to the project's devcontainer (runs setup-ssh automatically the first time)
   devcontainer-cli ssh
 

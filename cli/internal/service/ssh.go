@@ -186,10 +186,22 @@ func (s SshService) TestConnection(alias string) SSHTestResult {
 	return SSHTestInconclusive
 }
 
-// Connect opens a real `ssh <alias>` session (or runs the given command over
-// SSH when args is non-empty), inheriting the terminal. Mirrors
-// InspectService.Shell's exit-code contract: a non-zero remote exit becomes an
-// error carrying that code, so callers don't need to special-case it.
+// sshConnFailureCode is the exit status ssh itself returns when the connection
+// fails (host unreachable, auth rejected, connection dropped) — as opposed to a
+// remote command's own exit status, which ssh passes through verbatim.
+const sshConnFailureCode = 255
+
+// Connect opens a real `ssh <alias>` session (or runs the given command over SSH
+// when args is non-empty), inheriting the terminal.
+//
+// Exit handling differs by mode, because an interactive shell's exit status is
+// not the CLI's business:
+//   - Interactive (args empty): closing the session is a normal outcome even
+//     when the remote login shell exits non-zero (e.g. the last command you ran
+//     returned 1, or you Ctrl+C'd it → 130). Such an exit returns nil. Only
+//     ssh's own connection failure (code 255) is surfaced as an error.
+//   - Command mode (args non-empty): the remote exit status is meaningful for
+//     scripting, so any non-zero code (including 255) is returned as an error.
 func (s SshService) Connect(alias string, args []string) error {
 	c := exec.Command("ssh", append([]string{alias}, args...)...)
 	c.Stdin, c.Stdout, c.Stderr = os.Stdin, os.Stdout, os.Stderr
@@ -198,8 +210,17 @@ func (s SshService) Connect(alias string, args []string) error {
 		return nil
 	}
 	var exitErr *exec.ExitError
-	if errors.As(err, &exitErr) {
-		return fmt.Errorf("ssh session exited with code %d", exitErr.ExitCode())
+	if !errors.As(err, &exitErr) {
+		return fmt.Errorf("failed to run ssh: %w", err)
 	}
-	return fmt.Errorf("failed to run ssh: %w", err)
+	code := exitErr.ExitCode()
+	if len(args) == 0 {
+		// Interactive session: only a genuine ssh-level failure is an error;
+		// the user closing a shell whose last command failed is not.
+		if code == sshConnFailureCode {
+			return fmt.Errorf("ssh connection failed (exit %d)", code)
+		}
+		return nil
+	}
+	return fmt.Errorf("ssh command exited with code %d", code)
 }

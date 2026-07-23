@@ -170,6 +170,27 @@ func TestSshConnectPropagatesExitCode(t *testing.T) {
 	}
 }
 
+// Closing an interactive session is a normal outcome even when the remote shell
+// exits non-zero (its last command failed, or was interrupted) — no error.
+func TestSshConnectInteractiveNonZeroIsOK(t *testing.T) {
+	writeFakeSSH(t, "exit 130")
+	svc := SshService{Report: nopReporter{}}
+	if err := svc.Connect("myalias", nil); err != nil {
+		t.Errorf("interactive non-zero exit should be OK, got %v", err)
+	}
+}
+
+// ssh's own connection-failure code (255) is surfaced as an error even for an
+// interactive session, since the session never really started.
+func TestSshConnectInteractiveConnectionFailure(t *testing.T) {
+	writeFakeSSH(t, "exit 255")
+	svc := SshService{Report: nopReporter{}}
+	err := svc.Connect("myalias", nil)
+	if err == nil || !strings.Contains(err.Error(), "connection failed") {
+		t.Errorf("Connect(255) = %v, want a connection-failed error", err)
+	}
+}
+
 func TestSshCommandExists(t *testing.T) {
 	svc := SshService{Report: nopReporter{}}
 	if !svc.CommandExists("go") {
