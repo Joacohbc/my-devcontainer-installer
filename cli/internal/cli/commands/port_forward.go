@@ -22,16 +22,17 @@ func newPortForwardCommand() *cobra.Command {
 		Short: "Forward host ports into a running container over SSH",
 		Long: `devcontainer-cli port-forward — open SSH tunnels from your machine to ports
 inside a running container, so you can reach a service in the container on
-localhost. The session stays in the foreground; press Ctrl+C to close the tunnels.
+127.0.0.1 (never exposed on other interfaces). The session stays in the
+foreground; press Ctrl+C to close the tunnels.
 
 It tunnels through a devcontainer's SSH alias (set up with 'setup-ssh'), so that
 alias must exist in ~/.ssh/config. Non-devcontainer containers are reached via a
 devcontainer used as an SSH jump host.
 
 The optional port_mapping argument accepts three forms:
-  PORT                     forward localhost:PORT -> container:PORT
-  LOCAL:CONTAINER          forward localhost:LOCAL -> container:CONTAINER
-  LOCAL:HOST:CONTAINER     forward localhost:LOCAL -> HOST:CONTAINER inside the
+  PORT                     forward 127.0.0.1:PORT -> container:PORT
+  LOCAL:CONTAINER          forward 127.0.0.1:LOCAL -> container:CONTAINER
+  LOCAL:HOST:CONTAINER     forward 127.0.0.1:LOCAL -> HOST:CONTAINER inside the
                            container's network (e.g. a compose service name)
 
 With no argument it runs an interactive picker: choose any running container,
@@ -40,10 +41,10 @@ are opened in parallel after you confirm.`,
 		Example: `  # Interactive multi-container picker
   devcontainer-cli port-forward
 
-  # localhost:3000 -> container:3000
+  # 127.0.0.1:3000 -> container:3000
   devcontainer-cli port-forward 3000
 
-  # localhost:8080 -> container:80
+  # 127.0.0.1:8080 -> container:80
   devcontainer-cli port-forward 8080:80
 
   # Reach the 'postgres' service inside the container network
@@ -369,7 +370,7 @@ func printTunnelPlan(tunnels []service.Tunnel) {
 		}
 		console.Info("  %s  %s  %s → %s:%d  %s",
 			t.ContainerName, tag,
-			console.WarnS("localhost:%d", t.LocalPort),
+			console.WarnS("127.0.0.1:%d", t.LocalPort),
 			t.TargetHost, t.ContainerPort,
 			console.Subtle(fmt.Sprintf("(via %s)", t.Alias)))
 	}

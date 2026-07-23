@@ -41,7 +41,9 @@ func (s PortForwardService) OpenTunnels(tunnels []Tunnel) error {
 	}
 
 	for _, t := range tunnels {
-		c := exec.Command("ssh", "-N", "-L", fmt.Sprintf("%d:%s:%d", t.LocalPort, t.TargetHost, t.ContainerPort), t.Alias)
+		// Bind address is explicit: an omitted bind address makes ssh listen on
+		// both the IPv4 and IPv6 loopback (127.0.0.1 and ::1), which we don't want.
+		c := exec.Command("ssh", "-N", "-L", fmt.Sprintf("127.0.0.1:%d:%s:%d", t.LocalPort, t.TargetHost, t.ContainerPort), t.Alias)
 		c.Stdin = os.Stdin
 		c.Stdout = os.Stdout
 		c.Stderr = os.Stderr
