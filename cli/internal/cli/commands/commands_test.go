@@ -1182,7 +1182,7 @@ func TestLsCommand_HasFlags(t *testing.T) {
 
 func TestAllCommands_HaveContainerFlag(t *testing.T) {
 	root := NewRootCommand("test")
-	cmds := []string{"copy", "update", "ls", "logs", "status", "shell", "start", "stop", "info"}
+	cmds := []string{"copy", "update", "ls", "logs", "status", "shell", "start", "stop", "restart", "info"}
 	for _, name := range cmds {
 		var target *cobra.Command
 		for _, c := range root.Commands() {
@@ -1196,6 +1196,25 @@ func TestAllCommands_HaveContainerFlag(t *testing.T) {
 		}
 		if target.Flags().Lookup("container") == nil {
 			t.Errorf("expected command %q to have --container flag", name)
+		}
+	}
+}
+
+func TestLifecycleCommands_HaveWorkspaceFlag(t *testing.T) {
+	root := NewRootCommand("test")
+	byName := map[string]*cobra.Command{}
+	for _, c := range root.Commands() {
+		byName[c.Name()] = c
+	}
+	// Every command that acts on the current project's compose stack must accept
+	// --workspace so it can target a different workspace's .dc_<ws>/ stack.
+	for _, name := range []string{"up", "down", "start", "stop", "restart"} {
+		cmd := byName[name]
+		if cmd == nil {
+			t.Fatalf("command %q not found", name)
+		}
+		if cmd.Flags().Lookup("workspace") == nil {
+			t.Errorf("expected command %q to have --workspace flag", name)
 		}
 	}
 }

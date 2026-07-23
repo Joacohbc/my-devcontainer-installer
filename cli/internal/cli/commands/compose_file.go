@@ -36,10 +36,6 @@ func defaultComposeFile(cwd string) string {
 	return relativeComposeFile(resolveWorkspace(cwd, ""))
 }
 
-func resolveProjectComposeFile(cwd string) (string, error) {
-	return resolveProjectComposeFileWithWorkspace(cwd, "")
-}
-
 func resolveProjectComposeFileWithWorkspace(cwd string, wsFlag string) (string, error) {
 	paths := project.ProjectPaths(cwd, resolveWorkspace(cwd, wsFlag))
 	if _, statErr := os.Stat(paths.ComposeFile); os.IsNotExist(statErr) {

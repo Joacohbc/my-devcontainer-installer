@@ -89,6 +89,30 @@ func TestLifecycleContainerOps(t *testing.T) {
 	}
 }
 
+func TestLifecycleRestartContainer(t *testing.T) {
+	runner := &fakeRunner{status: 0}
+	defer useFakeDocker(runner)()
+
+	svc := LifecycleService{Report: nopReporter{}}
+	if err := svc.RestartContainer("c1"); err != nil {
+		t.Fatalf("RestartContainer: %v", err)
+	}
+	call := runner.callContaining("restart")
+	if call == nil || !slices.Contains(call, "c1") {
+		t.Errorf("expected docker restart c1; calls=%v", runner.calls)
+	}
+}
+
+func TestLifecycleRestartContainerFails(t *testing.T) {
+	runner := &fakeRunner{status: 1}
+	defer useFakeDocker(runner)()
+
+	svc := LifecycleService{Report: nopReporter{}}
+	if err := svc.RestartContainer("c1"); err == nil {
+		t.Error("expected error on non-zero exit")
+	}
+}
+
 func TestLifecycleStopContainer(t *testing.T) {
 	runner := &fakeRunner{status: 0}
 	defer useFakeDocker(runner)()

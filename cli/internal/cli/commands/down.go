@@ -2,7 +2,6 @@ package commands
 
 import (
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/ui"
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/service"
 	"github.com/spf13/cobra"
 )
@@ -32,6 +31,7 @@ directory and config, use 'destroy' instead.`,
 		RunE:         runDown,
 	}
 	cmd.Flags().BoolP("volumes", "v", false, "Also remove named volumes (down -v); deletes their data, irreversible")
+	addWorkspaceFlag(cmd)
 	addYesFlag(cmd)
 	addInteractiveFlag(cmd)
 	return cmd
@@ -55,13 +55,13 @@ func runDown(cmd *cobra.Command, _ []string) error {
 	console := ui.Console{}
 	svc := service.LifecycleService{Report: console}
 
+	wsFlag := workspaceFlag(cmd)
 	cwd, err := currentDir()
 	if err != nil {
 		return err
 	}
-	cfg, _ := domain.LoadConfig(cwd)
-	workspace := domain.ResolveWorkspace(cwd, cfg)
-	composeFile, err := resolveProjectComposeFile(cwd)
+	workspace := resolveWorkspace(cwd, wsFlag)
+	composeFile, err := resolveProjectComposeFileWithWorkspace(cwd, wsFlag)
 	if err != nil {
 		return err
 	}
