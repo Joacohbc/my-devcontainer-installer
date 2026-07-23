@@ -2,6 +2,7 @@ package service
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
@@ -32,23 +33,32 @@ type QuickRunSpec struct {
 }
 
 // Run reuses the container if it already exists (starting it when stopped),
-// otherwise creates it from the image. It reports progress and returns once the
-// container is running.
+// otherwise creates it from the image. If a container with the same name
+// already exists but was not created by 'run' (no quick-run label), it
+// refuses to touch it and returns an error instead of hijacking or renaming
+// an unrelated container. It reports progress and returns once the container
+// is running.
 func (s RunService) Run(spec QuickRunSpec) error {
-	switch s.containerState(spec.ContainerName) {
-	case StateRunning:
-		s.Report.Success("✓ Container '%s' is already running.", spec.ContainerName)
-		return nil
-	case StateExited, StateCreated, StatePaused:
-		s.Report.Warn("↻ Starting existing container '%s'...", spec.ContainerName)
-		status, err := docker.DockerInherit([]string{"start", spec.ContainerName})
-		if err != nil {
-			return err
+	lookup := s.lookupQuickRunContainer(spec.ContainerName)
+	if lookup.Exists {
+		if !lookup.QuickRun {
+			return nameConflictErr(spec.ContainerName)
 		}
-		if status != 0 {
-			return fmt.Errorf("docker start failed")
+		switch lookup.State {
+		case StateRunning:
+			s.Report.Success("✓ Container '%s' is already running.", spec.ContainerName)
+			return nil
+		case StateExited, StateCreated, StatePaused:
+			s.Report.Warn("↻ Starting existing container '%s'...", spec.ContainerName)
+			status, err := docker.DockerInherit([]string{"start", spec.ContainerName})
+			if err != nil {
+				return err
+			}
+			if status != 0 {
+				return fmt.Errorf("docker start failed")
+			}
+			return nil
 		}
-		return nil
 	}
 
 	args := []string{
@@ -107,11 +117,46 @@ func (s RunService) CopyAIScripts(container string, names []string) error {
 	return nil
 }
 
-func (s RunService) containerState(name string) ContainerState {
-	inspectSvc := InspectService{Report: s.Report}
-	state, err := inspectSvc.ContainerState(name)
-	if err != nil {
-		return ""
+// ValidateContainerName reports an error if name is already used by a
+// container that 'run' cannot safely reuse (i.e. one not created by a
+// previous 'run' invocation). A free name, or one belonging to an existing
+// quick-run container, returns nil. Intended for interactive prompt
+// validation, so the user is asked again rather than failing after the image
+// has already been pulled.
+func (s RunService) ValidateContainerName(name string) error {
+	lookup := s.lookupQuickRunContainer(name)
+	if lookup.Exists && !lookup.QuickRun {
+		return nameConflictErr(name)
 	}
-	return state
+	return nil
+}
+
+func nameConflictErr(name string) error {
+	return fmt.Errorf("container name '%s' is already in use by an existing container that was not created by 'run'; pick a different name (or remove/rename the existing container) and try again", name)
+}
+
+// quickRunLookup describes what's known about an existing container name:
+// whether it exists, its execution state, and whether it carries the
+// quick-run label (i.e. was created by a previous 'run' invocation and is
+// therefore safe to reuse/restart).
+type quickRunLookup struct {
+	Exists   bool
+	State    ContainerState
+	QuickRun bool
+}
+
+// lookupQuickRunContainer inspects name in a single docker call, returning
+// both its state and whether it carries the quick-run label. A non-existent
+// container yields a zero-value (Exists: false) result.
+func (s RunService) lookupQuickRunContainer(name string) quickRunLookup {
+	format := `{{.State.Status}}|{{index .Config.Labels "` + types.LabelQuickRun + `"}}`
+	status, stdout, _, err := docker.DockerCapture([]string{"inspect", "-f", format, name})
+	if err != nil || status != 0 {
+		return quickRunLookup{}
+	}
+	state, label, found := strings.Cut(strings.TrimSpace(stdout), "|")
+	if state == "" {
+		return quickRunLookup{}
+	}
+	return quickRunLookup{Exists: true, State: ContainerState(state), QuickRun: found && label != ""}
 }

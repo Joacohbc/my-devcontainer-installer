@@ -22,9 +22,18 @@ image, without generating a Dockerfile, compose file or any project files.
 
 This is the fast path for a throwaway environment: it pulls the ghcr.io image
 for the chosen variant and runs it directly with 'docker run'. Interactively it
-prompts for the variant, volumes, ports, whether to mount the shared config
-volume and which AI installer scripts to copy; with --no-interactive every value
-must come from a flag (--variant becomes required).
+always prompts for the container name, plus the variant, volumes, ports,
+whether to mount the shared config volume and which AI installer scripts to
+copy; with --no-interactive every value must come from a flag (--variant
+becomes required, --name falls back to dc-<variant>).
+
+The container name (default: dc-<variant>) is validated as you type it: if it
+already belongs to a container created by a previous 'run', that container is
+reused as-is (started if stopped, left alone if already running). If it
+belongs to any other container — a devcontainer project container, or an
+unrelated container entirely — the prompt rejects it and asks again (and
+--name fails the same way non-interactively); pick a different name or remove
+the existing container first.
 
 Variants: ` + strings.Join(types.RemoteVariants, ", ") + `.`,
 		Example: `  # Interactive: pick a variant and options
@@ -39,7 +48,7 @@ Variants: ` + strings.Join(types.RemoteVariants, ", ") + `.`,
 		RunE:         runQuickRun,
 	}
 	cmd.Flags().String("variant", "", "Image variant to run, e.g. ssh, nodejs, python (required with --no-interactive)")
-	cmd.Flags().String("name", "", "Container name (default: dc-<variant>)")
+	cmd.Flags().String("name", "", "Container name (default: dc-<variant>); if it belongs to an existing quick-run container it is reused/restarted, but a name already used by any other container is rejected")
 	cmd.Flags().StringSlice("volumes", nil, "Volume mounts (e.g. myvol:/workspace); repeatable or comma-separated")
 	cmd.Flags().StringSlice("ports", nil, "Port mappings (e.g. 2222:22); bound to 127.0.0.1 unless --expose-all; repeatable or comma-separated")
 	cmd.Flags().Bool("expose-all", false, "Publish ports on all interfaces (0.0.0.0) instead of binding to 127.0.0.1")
@@ -94,6 +103,21 @@ func runQuickRun(cmd *cobra.Command, _ []string) error {
 			return err
 		}
 		variant = picked.Value
+	}
+
+	svc := service.RunService{Report: console}
+
+	if interactive && !cmd.Flags().Changed("name") {
+		raw, err := console.AskDefault("Container name:", "dc-"+variant, func(s string) error {
+			if strings.TrimSpace(s) == "" {
+				return fmt.Errorf("name cannot be empty")
+			}
+			return svc.ValidateContainerName(strings.TrimSpace(s))
+		})
+		if err != nil {
+			return err
+		}
+		name = strings.TrimSpace(raw)
 	}
 
 	if interactive && !cmd.Flags().Changed("volumes") {
@@ -173,7 +197,6 @@ func runQuickRun(cmd *cobra.Command, _ []string) error {
 	}
 	console.NewLine()
 
-	svc := service.RunService{Report: console}
 	if err := svc.Run(service.QuickRunSpec{
 		Variant:       variant,
 		ContainerName: containerName,

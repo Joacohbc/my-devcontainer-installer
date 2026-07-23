@@ -25,7 +25,7 @@ func TestRunCreatesWhenAbsent(t *testing.T) {
 }
 
 func TestRunStartsExisting(t *testing.T) {
-	runner := &fakeRunner{status: 0, stdout: "exited"}
+	runner := &fakeRunner{status: 0, stdout: "exited|ssh"}
 	defer useFakeDocker(runner)()
 
 	svc := RunService{Report: nopReporter{}}
@@ -41,7 +41,7 @@ func TestRunStartsExisting(t *testing.T) {
 }
 
 func TestRunAlreadyRunningIsNoop(t *testing.T) {
-	runner := &fakeRunner{status: 0, stdout: "running"}
+	runner := &fakeRunner{status: 0, stdout: "running|ssh"}
 	defer useFakeDocker(runner)()
 
 	svc := RunService{Report: nopReporter{}}
@@ -50,6 +50,51 @@ func TestRunAlreadyRunningIsNoop(t *testing.T) {
 	}
 	if runner.callContaining("run") != nil || runner.callContaining("start") != nil {
 		t.Errorf("running container should not be started or recreated; calls=%v", runner.calls)
+	}
+}
+
+func TestRunRejectsNameOfUnmanagedContainer(t *testing.T) {
+	runner := &fakeRunner{status: 0, stdout: "running|"}
+	defer useFakeDocker(runner)()
+
+	svc := RunService{Report: nopReporter{}}
+	err := svc.Run(QuickRunSpec{ContainerName: "postgres", Image: "img"})
+	if err == nil {
+		t.Fatal("expected an error when the name collides with a non quick-run container")
+	}
+	if !strings.Contains(err.Error(), "not created by 'run'") {
+		t.Errorf("unexpected error message: %v", err)
+	}
+	if runner.callContaining("run") != nil || runner.callContaining("start") != nil {
+		t.Errorf("must not start or recreate a container it doesn't own; calls=%v", runner.calls)
+	}
+}
+
+func TestValidateContainerName(t *testing.T) {
+	cases := []struct {
+		name    string
+		stdout  string
+		wantErr bool
+	}{
+		{"absent", "", false},
+		{"existing quick-run container", "running|ssh", false},
+		{"existing quick-run container stopped", "exited|nodejs", false},
+		{"existing unmanaged container", "running|", true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			runner := &fakeRunner{status: 0, stdout: c.stdout}
+			defer useFakeDocker(runner)()
+
+			svc := RunService{Report: nopReporter{}}
+			err := svc.ValidateContainerName("dc-ssh")
+			if c.wantErr && err == nil {
+				t.Fatal("expected an error, got nil")
+			}
+			if !c.wantErr && err != nil {
+				t.Fatalf("expected no error, got %v", err)
+			}
+		})
 	}
 }
 
