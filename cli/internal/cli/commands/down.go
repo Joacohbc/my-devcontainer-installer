@@ -2,7 +2,6 @@ package commands
 
 import (
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/ui"
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/service"
 	"github.com/spf13/cobra"
 )
@@ -59,8 +58,7 @@ func runDown(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
-	cfg, _ := domain.LoadConfig(cwd)
-	workspace := domain.ResolveWorkspace(cwd, cfg)
+	workspace := resolveWorkspace(cwd)
 	composeFile, err := resolveProjectComposeFile(cwd)
 	if err != nil {
 		return err

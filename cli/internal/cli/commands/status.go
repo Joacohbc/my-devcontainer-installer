@@ -34,7 +34,6 @@ one container; --all lists every managed container across all workspaces.`,
 		SilenceUsage: true,
 		RunE:         runStatus,
 	}
-	addWorkspaceFlag(cmd)
 	addContainerFlag(cmd)
 	cmd.Flags().Bool("all", false, "Show all CLI-managed containers across all workspaces")
 	return cmd
@@ -46,8 +45,6 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
-	wsFlag := workspaceFlag(cmd)
-
 	// Get all containers from Docker (running and stopped)
 	allContainers := pick.ListAll()
 	containerMap := make(map[string]pick.Container)
@@ -57,7 +54,7 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 
 	// If explicit container flag is provided, show status for just that container
 	if cmd.Flags().Changed("container") {
-		containerName, err := resolveContainer(cmd, wsFlag)
+		containerName, err := resolveContainer(cmd)
 		if err != nil {
 			return err
 		}
@@ -124,7 +121,7 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
-	workspace := resolveWorkspace(cwd, wsFlag)
+	workspace := resolveWorkspace(cwd)
 
 	paths := project.ProjectPaths(cwd, workspace)
 	services := service.ReadComposeServices(paths.ComposeFile)

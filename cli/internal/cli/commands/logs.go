@@ -29,7 +29,6 @@ past lines are shown.`,
   devcontainer-cli logs --container myproject-app --tail 100`,
 		RunE: runLogs,
 	}
-	addWorkspaceFlag(cmd)
 	cmd.Flags().BoolP("follow", "f", false, "Follow log output")
 	cmd.Flags().String("tail", "all", "Number of lines to show from the end of the logs")
 	addContainerFlag(cmd)
@@ -37,13 +36,12 @@ past lines are shown.`,
 }
 
 func runLogs(cmd *cobra.Command, args []string) error {
-	wsFlag := workspaceFlag(cmd)
 	follow, _ := cmd.Flags().GetBool("follow")
 	tail, _ := cmd.Flags().GetString("tail")
 	svc := service.InspectService{Report: ui.Console{}}
 
 	if cmd.Flags().Changed("container") {
-		containerName, err := resolveContainer(cmd, wsFlag)
+		containerName, err := resolveContainer(cmd)
 		if err != nil {
 			return err
 		}
@@ -54,7 +52,7 @@ func runLogs(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	composeFile, err := resolveProjectComposeFileWithWorkspace(cwd, wsFlag)
+	composeFile, err := resolveProjectComposeFile(cwd)
 	if err != nil {
 		return err
 	}

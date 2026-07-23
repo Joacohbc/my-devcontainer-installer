@@ -46,7 +46,6 @@ executable; the single optional positional arg then overrides the destination.`,
 		ValidArgsFunction: runCopyCompletion,
 		RunE:              runCopy,
 	}
-	addWorkspaceFlag(cmd)
 	addContainerFlag(cmd)
 	addAssetFlag(cmd)
 	return cmd
@@ -78,8 +77,7 @@ func copyArgs(cmd *cobra.Command, args []string) error {
 }
 
 func runCopy(cmd *cobra.Command, args []string) error {
-	wsFlag := workspaceFlag(cmd)
-	containerName, err := resolveContainer(cmd, wsFlag)
+	containerName, err := resolveContainer(cmd)
 	if err != nil {
 		return err
 	}
@@ -133,8 +131,7 @@ func runCopyCompletion(cmd *cobra.Command, args []string, toComplete string) ([]
 	if !strings.HasPrefix(toComplete, ":") {
 		return nil, cobra.ShellCompDirectiveDefault
 	}
-	wsFlag := workspaceFlag(cmd)
-	containerName, err := resolveContainer(cmd, wsFlag)
+	containerName, err := resolveContainer(cmd)
 	if err != nil {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
@@ -151,8 +148,7 @@ func completeContainerPathForAsset(cmd *cobra.Command, args []string, toComplete
 	if len(args) > 0 {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
-	wsFlag := workspaceFlag(cmd)
-	containerName, err := resolveContainer(cmd, wsFlag)
+	containerName, err := resolveContainer(cmd)
 	if err != nil {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}

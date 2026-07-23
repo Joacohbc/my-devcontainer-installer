@@ -27,25 +27,23 @@ compose file exists.`,
 		SilenceUsage: true,
 		RunE:         runUp,
 	}
-	addWorkspaceFlag(cmd)
 	cmd.Flags().Bool("build", false, "Build images before starting (docker compose up -d --build); use after changing the Dockerfile or modules")
 	return cmd
 }
 
 func runUp(cmd *cobra.Command, _ []string) error {
-	wsFlag := workspaceFlag(cmd)
 	svc := service.LifecycleService{Report: ui.Console{}}
 
 	cwd, err := currentDir()
 	if err != nil {
 		return err
 	}
-	composeFile, err := resolveProjectComposeFileWithWorkspace(cwd, wsFlag)
+	composeFile, err := resolveProjectComposeFile(cwd)
 	if err != nil {
 		return err
 	}
 
-	workspace := resolveWorkspace(cwd, wsFlag)
+	workspace := resolveWorkspace(cwd)
 
 	build, _ := cmd.Flags().GetBool("build")
 	if err := svc.Up(composeFile, workspace, build); err != nil {

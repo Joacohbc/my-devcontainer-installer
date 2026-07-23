@@ -7,14 +7,14 @@ import (
 )
 
 func init() {
-	register(newLifecycleCommand("restart"))
+	register(newRestartCommand())
 	register(newStartCommand())
 	register(newStopCommand())
 }
 
-func newLifecycleCommand(verb string) *cobra.Command {
-	return &cobra.Command{
-		Use:   verb,
+func newRestartCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "restart",
 		Short: "Restart the project's already-created containers",
 		Long: `devcontainer-cli restart — restart the existing containers of the current
 project without recreating them.
@@ -22,13 +22,37 @@ project without recreating them.
 Wraps 'docker compose -f .dc_<workspace>/build/docker-compose.yml restart'. The
 containers must already exist (run 'up' first); this only stops and starts them
 again, keeping the same containers, volumes and network. Configuration changes
-in the compose file are NOT applied — use 'up' for that.`,
-		Example:      "  devcontainer-cli restart",
+in the compose file are NOT applied — use 'up' for that. Pass --container to
+restart a single container instead of the whole project.`,
+		Example: `  # Restart the whole project
+  devcontainer-cli restart
+
+  # Restart just one container
+  devcontainer-cli restart --container myproject-postgres`,
 		SilenceUsage: true,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runLifecycle(verb)
-		},
+		RunE:         runRestart,
 	}
+	// restart applies to running or stopped containers, so complete any managed one.
+	addContainerFlag(cmd)
+	return cmd
+}
+
+func runRestart(cmd *cobra.Command, _ []string) error {
+	svc := service.LifecycleService{Report: ui.Console{}}
+
+	if cmd.Flags().Changed("container") {
+		containerName, err := resolveContainer(cmd)
+		if err != nil {
+			return err
+		}
+		if err := svc.RestartContainer(containerName); err != nil {
+			return err
+		}
+		ui.Done()
+		return nil
+	}
+
+	return runLifecycle("restart")
 }
 
 func newStartCommand() *cobra.Command {
@@ -50,18 +74,16 @@ project.`,
 		SilenceUsage: true,
 		RunE:         runStart,
 	}
-	addWorkspaceFlag(cmd)
 	// start targets a stopped container, so complete only the stopped ones.
 	addContainerFlagFiltered(cmd, completeStoppedContainers)
 	return cmd
 }
 
 func runStart(cmd *cobra.Command, _ []string) error {
-	wsFlag := workspaceFlag(cmd)
 	svc := service.LifecycleService{Report: ui.Console{}}
 
 	if cmd.Flags().Changed("container") {
-		containerName, err := resolveContainer(cmd, wsFlag)
+		containerName, err := resolveContainer(cmd)
 		if err != nil {
 			return err
 		}
@@ -94,18 +116,16 @@ Wraps 'docker compose -f .dc_<workspace>/build/docker-compose.yml stop'. Use
 		SilenceUsage: true,
 		RunE:         runStop,
 	}
-	addWorkspaceFlag(cmd)
 	// stop targets a running container, so complete only the running ones.
 	addContainerFlagFiltered(cmd, completeRunningContainers)
 	return cmd
 }
 
 func runStop(cmd *cobra.Command, _ []string) error {
-	wsFlag := workspaceFlag(cmd)
 	svc := service.LifecycleService{Report: ui.Console{}}
 
 	if cmd.Flags().Changed("container") {
-		containerName, err := resolveContainer(cmd, wsFlag)
+		containerName, err := resolveContainer(cmd)
 		if err != nil {
 			return err
 		}
