@@ -10,13 +10,48 @@ import (
 // (not user-selectable) so the base stays predictable across all containers.
 const UbuntuLTS = "24.04"
 
+// p10kStyles are the Powerlevel10k presets shipped upstream under
+// powerlevel10k/config/p10k-<style>.zsh. "none" leaves p10k unconfigured, so
+// the container drops into the interactive `p10k configure` wizard on first
+// login (the pre-existing behavior).
+var p10kStyles = map[string]bool{
+	"none":    true,
+	"lean":    true,
+	"classic": true,
+	"rainbow": true,
+	"pure":    true,
+}
+
 var BaseModule = &ModuleSpec{
 	ID:        types.ModuleBase,
 	Label:     "Base (Ubuntu " + UbuntuLTS + " LTS + SSH + zsh + sudo)",
 	Category:  types.CategoryBase,
 	Always:    true,
 	CopyFiles: []string{"zsh-installer.sh"},
+	Options: []types.ModuleOption{
+		{
+			ID:    "p10kStyle",
+			Label: "Powerlevel10k default style",
+			Type:  types.ModuleOptionSelect,
+			Choices: []types.ModuleOptionChoice{
+				{Value: "none", Label: "None (run 'p10k configure' manually)"},
+				{Value: "lean", Label: "Lean"},
+				{Value: "classic", Label: "Classic"},
+				{Value: "rainbow", Label: "Rainbow"},
+				{Value: "pure", Label: "Pure"},
+			},
+			Default: "none",
+		},
+	},
 	Render: func(opts map[string]any) string {
+		p10kStyle, _ := opts["p10kStyle"].(string)
+		if !p10kStyles[p10kStyle] {
+			p10kStyle = "none"
+		}
+		zshInstallerCmd := "/tmp/zsh-installer.sh"
+		if p10kStyle != "none" {
+			zshInstallerCmd += " " + p10kStyle
+		}
 		return fmt.Sprintf(`# Use an Ubuntu base image
 FROM ubuntu:%s
 
@@ -63,13 +98,13 @@ RUN userdel -r ubuntu 2>/dev/null || true; \
 # Install Zsh configuration and plugins
 COPY zsh-installer.sh /tmp/zsh-installer.sh
 RUN chmod +x /tmp/zsh-installer.sh && \
-    su - devuser -c "/tmp/zsh-installer.sh" && \
+    su - devuser -c "%s" && \
     rm /tmp/zsh-installer.sh
 
 # Put ~/.local/bin on PATH for devuser. Tools installed by the post-scripts
 # (Claude Code, Antigravity, …) and pip/uv --user binaries land there, so this
 # is always-on rather than tied to any single language module.
 %s
-`, UbuntuLTS, aptCleanup(), emitShellInit(".local_bin_init.sh", []string{`export PATH="$HOME/.local/bin:$PATH"`}))
+`, UbuntuLTS, aptCleanup(), zshInstallerCmd, emitShellInit(".local_bin_init.sh", []string{`export PATH="$HOME/.local/bin:$PATH"`}))
 	},
 }

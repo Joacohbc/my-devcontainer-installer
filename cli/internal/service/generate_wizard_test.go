@@ -250,6 +250,41 @@ func TestSelectModules(t *testing.T) {
 	}
 }
 
+// The base module is Always-on and never appears in the category multiselects,
+// but its p10kStyle option must still be offered and its answer must survive
+// into the saved config (unlike an ordinary optional module's options, which
+// are only asked/saved when the module itself was selected).
+func TestConfigureSavesAlwaysOnModuleOptions(t *testing.T) {
+	defer useFakeDocker(&fakeRunner{status: 0})()
+
+	svc := GenerateService{Report: nopReporter{}}
+	base := &types.DevcontainerConfig{Env: map[string]string{}}
+	prompter := scriptedPrompter{answers: map[string]any{
+		stepKeyWorkspace:                   "testws",
+		stepKeyMode:                        string(types.BuildModeLocalCached),
+		stepKeySubnet:                      "172.45.0.0/16",
+		optionStepKey("base", "p10kStyle"): "lean",
+	}}
+
+	cfg, err := svc.Configure(base, "/home/user/proj", prompter)
+	if err != nil {
+		t.Fatalf("Configure: %v", err)
+	}
+
+	var got map[string]any
+	for _, m := range cfg.Dockerfile.Modules {
+		if string(m.ID) == "base" {
+			got = m.Options
+		}
+	}
+	if got == nil {
+		t.Fatalf("expected the base module to be present with its options, got modules %v", cfg.Dockerfile.Modules)
+	}
+	if got["p10kStyle"] != "lean" {
+		t.Errorf("p10kStyle = %v, want lean", got["p10kStyle"])
+	}
+}
+
 func TestServiceOptionsOf(t *testing.T) {
 	services := []any{
 		types.SelectedModule{ID: "postgres", Options: map[string]any{"version": "16"}},

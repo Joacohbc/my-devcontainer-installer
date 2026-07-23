@@ -1,6 +1,14 @@
 #!/bin/bash
 # This script installs and configures Zsh with Oh My Zsh, popular plugins,
 # and the Powerlevel10k theme. It also installs necessary fonts.
+#
+# Usage: zsh-installer.sh [p10k-style]
+#   p10k-style: one of lean, classic, rainbow, pure. When given, the matching
+#   preset config from powerlevel10k's upstream config/ directory is installed
+#   as ~/.p10k.zsh and sourced from .zshrc, so the shell is already themed on
+#   first login instead of dropping into the interactive `p10k configure`
+#   wizard. Omitted (default): p10k stays unconfigured.
+P10K_STYLE="$1"
 
 # Update the system and install necessary dependencies
 sudo apt-get update
@@ -33,6 +41,13 @@ git clone --depth=1 https://github.com/romkatv/powerlevel10k.git ${ZSH_CUSTOM:-$
 
 # Edit the .zshrc file to activate the Powerlevel10k theme
 sed -i 's/ZSH_THEME="[^"]*"/ZSH_THEME="powerlevel10k\/powerlevel10k"/' ~/.zshrc
+
+# Install a default Powerlevel10k style, if one was requested, so the shell is
+# already themed on first login instead of the interactive configure wizard.
+if [ -n "$P10K_STYLE" ]; then
+    curl -fsSL -o ~/.p10k.zsh "https://raw.githubusercontent.com/romkatv/powerlevel10k/master/config/p10k-${P10K_STYLE}.zsh"
+    echo '[[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh' >> ~/.zshrc
+fi
 
 echo '> Now, just log out of this shell and log back in to configure p10k (or run p10k configure)...'
 

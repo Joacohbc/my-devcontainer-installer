@@ -14,18 +14,35 @@ func TestBaseModuleRender(t *testing.T) {
 		t.Errorf("base should pin the Ubuntu LTS (24.04):\n%s", out)
 	}
 	// The Ubuntu version is no longer user-selectable: options are ignored and
-	// the LTS is always used.
-	if dockerfile.BaseModule.Options != nil {
-		t.Errorf("base module must not expose user options, got %v", dockerfile.BaseModule.Options)
+	// the LTS is always used. Only the p10k default style is configurable.
+	if len(dockerfile.BaseModule.Options) != 1 || dockerfile.BaseModule.Options[0].ID != "p10kStyle" {
+		t.Errorf("base module must expose exactly the p10kStyle option, got %v", dockerfile.BaseModule.Options)
 	}
 	out = dockerfile.BaseModule.Render(map[string]any{"ubuntu": "22.04"})
 	if !strings.Contains(out, "FROM ubuntu:24.04") {
 		t.Errorf("base must ignore any ubuntu option and stay on the LTS:\n%s", out)
 	}
 	// chmod + run + rm of the zsh installer must be a single consolidated RUN so
-	// the script is removed in the same layer it is used.
+	// the script is removed in the same layer it is used. Without a p10kStyle
+	// option, the script must run with no arguments (pre-existing behavior).
 	if !strings.Contains(out, "RUN chmod +x /tmp/zsh-installer.sh && \\\n    su - devuser -c \"/tmp/zsh-installer.sh\" && \\\n    rm /tmp/zsh-installer.sh") {
 		t.Errorf("zsh installer chmod/run/rm should be a single RUN:\n%s", out)
+	}
+	// An explicit "none" style must also run the script with no arguments.
+	outNone := dockerfile.BaseModule.Render(map[string]any{"p10kStyle": "none"})
+	if !strings.Contains(outNone, `su - devuser -c "/tmp/zsh-installer.sh"`) {
+		t.Errorf("p10kStyle=none must run the zsh installer without arguments:\n%s", outNone)
+	}
+	// A recognized style must be forwarded as the script's argument.
+	outLean := dockerfile.BaseModule.Render(map[string]any{"p10kStyle": "lean"})
+	if !strings.Contains(outLean, `su - devuser -c "/tmp/zsh-installer.sh lean"`) {
+		t.Errorf("p10kStyle=lean must be forwarded to the zsh installer:\n%s", outLean)
+	}
+	// An unrecognized style must fall back to no arguments rather than injecting
+	// an arbitrary value into the shell command.
+	outBogus := dockerfile.BaseModule.Render(map[string]any{"p10kStyle": "not-a-real-style"})
+	if !strings.Contains(outBogus, `su - devuser -c "/tmp/zsh-installer.sh"`) {
+		t.Errorf("unrecognized p10kStyle must fall back to no arguments:\n%s", outBogus)
 	}
 	// devuser's UID/GID come from build args so a local-cached image can match
 	// the host owner of the workspace without a runtime remap; the stock Ubuntu

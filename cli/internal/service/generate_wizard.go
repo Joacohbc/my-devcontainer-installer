@@ -425,7 +425,10 @@ func (w wizardContext) optionSteps(s *State) []Step {
 	localCached := currentMode(s) == types.BuildModeLocalCached
 	var steps []Step
 	for _, m := range catalog.DockerfileModules {
-		if !localCached || !selected[string(m.ID)] {
+		// Always-on modules (e.g. base) never appear in the category multiselects,
+		// so they are never "selected" there — but their own options (e.g. the
+		// default Powerlevel10k style) must still be offered.
+		if !localCached || (!selected[string(m.ID)] && !m.Always) {
 			continue
 		}
 		steps = append(steps, w.entryOptionSteps(string(m.ID), m.Options, moduleOptionsOf(w.base.Dockerfile.Modules, string(m.ID)))...)
@@ -530,7 +533,9 @@ func (w wizardContext) reduce(s *State) *types.DevcontainerConfig {
 	var modules []types.SelectedModule
 	if mode == types.BuildModeLocalCached {
 		for _, m := range catalog.DockerfileModules {
-			if !selected[string(m.ID)] {
+			// Always-on modules are never part of the category selection (see
+			// optionSteps), but their own answered options must still be saved.
+			if !selected[string(m.ID)] && !m.Always {
 				continue
 			}
 			modules = append(modules, types.SelectedModule{ID: m.ID, Options: w.entryOptions(s, string(m.ID), m.Options, moduleOptionsOf(w.base.Dockerfile.Modules, string(m.ID)))})
