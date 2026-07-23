@@ -354,6 +354,15 @@ func (s SshService) ManagedAlias(kind sshdefaults.Kind, ref string) (alias strin
 // (or no matching block) is a no-op returning removed=false. When a block is
 // removed it backs the original up to path+".bak" first and returns that path.
 func (s SshService) RemoveManagedBlock(workspace string) (removed bool, backupPath string, err error) {
+	return s.RemoveManagedBlockByRef(sshdefaults.KindWorkspace, workspace)
+}
+
+// RemoveManagedBlockByRef removes the CLI managed Host block matching kind + ref
+// (a workspace name, or a specific container name in loose --container mode) from
+// ~/.ssh/config. Unlike ReadSSHConfig it does not create the file: a missing
+// config (or no matching block) is a no-op returning removed=false. When a block
+// is removed it backs the original up to path+".bak" first and returns that path.
+func (s SshService) RemoveManagedBlockByRef(kind sshdefaults.Kind, ref string) (removed bool, backupPath string, err error) {
 	path, err := sshConfigPath()
 	if err != nil {
 		return false, "", err
@@ -366,14 +375,14 @@ func (s SshService) RemoveManagedBlock(workspace string) (removed bool, backupPa
 		return false, "", err
 	}
 	content := string(data)
-	if !HasManagedBlock(content, workspace) {
+	if !HasManagedBlockByRef(content, string(kind), ref) {
 		return false, "", nil
 	}
 	backupPath = path + ".bak"
 	if err := os.WriteFile(backupPath, data, 0o600); err != nil {
 		return false, "", err
 	}
-	stripped := strings.TrimRight(StripManagedBlock(content, workspace), "\n")
+	stripped := strings.TrimRight(StripManagedBlockByRef(content, string(kind), ref), "\n")
 	if stripped != "" {
 		stripped += "\n"
 	}

@@ -136,6 +136,54 @@ func TestDestroyLeavesUntaggedSSHBlock(t *testing.T) {
 	}
 }
 
+func TestDestroyRunContainer(t *testing.T) {
+	home := t.TempDir()
+	setHomeDir(t, home)
+	if err := os.MkdirAll(filepath.Join(home, ".ssh"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	sshConfig := filepath.Join(home, ".ssh", "config")
+	const cfg = `# devcontainer-cli:managed v=1 kind=container ref=dc-ssh alias=dc-ssh
+Host dc-ssh
+    HostName 172.18.0.5
+    User devuser
+
+Host keepme
+    HostName example.com
+`
+	if err := os.WriteFile(sshConfig, []byte(cfg), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	runner := &fakeRunner{status: 0}
+	restore := useFakeDocker(runner)
+	defer restore()
+
+	svc := DestroyService{Report: nopReporter{}}
+	if err := svc.RunContainer("dc-ssh"); err != nil {
+		t.Fatalf("RunContainer: %v", err)
+	}
+
+	if call := runner.callContaining("stop"); call == nil {
+		t.Errorf("expected a docker stop call; calls=%v", runner.calls)
+	}
+	if call := runner.callContaining("rm"); call == nil {
+		t.Errorf("expected a docker rm call; calls=%v", runner.calls)
+	}
+
+	data, _ := os.ReadFile(sshConfig)
+	got := string(data)
+	if strings.Contains(got, "Host dc-ssh") || strings.Contains(got, "devcontainer-cli:managed") {
+		t.Errorf("managed SSH block not removed:\n%s", got)
+	}
+	if !strings.Contains(got, "Host keepme") {
+		t.Errorf("unrelated SSH block was removed:\n%s", got)
+	}
+	if _, err := os.Stat(sshConfig + ".bak"); err != nil {
+		t.Errorf("expected ssh config backup: %v", err)
+	}
+}
+
 func TestDestroySkipsDownWhenNoComposeFile(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", tmp)

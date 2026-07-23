@@ -208,6 +208,57 @@ func TestRemoveManagedBlockNoMatch(t *testing.T) {
 	}
 }
 
+const managedContainerConfig = `# devcontainer-cli:managed v=1 kind=container ref=dc-ssh alias=dc-ssh
+Host dc-ssh
+    HostName 172.18.0.5
+    User devuser
+
+Host other
+    HostName example.com
+`
+
+func TestRemoveManagedBlockByRef(t *testing.T) {
+	home := t.TempDir()
+	setHomeDir(t, home)
+	if err := os.MkdirAll(filepath.Join(home, ".ssh"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(home, ".ssh", "config")
+	if err := os.WriteFile(path, []byte(managedContainerConfig), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	svc := SshService{Report: nopReporter{}}
+
+	// A workspace-kind lookup must not match a container-kind block.
+	removed, _, err := svc.RemoveManagedBlockByRef(sshdefaults.KindWorkspace, "dc-ssh")
+	if err != nil {
+		t.Fatalf("RemoveManagedBlockByRef (workspace kind): %v", err)
+	}
+	if removed {
+		t.Error("expected removed=false for a kind that does not match the block")
+	}
+
+	removed, backup, err := svc.RemoveManagedBlockByRef(sshdefaults.KindContainer, "dc-ssh")
+	if err != nil {
+		t.Fatalf("RemoveManagedBlockByRef (container kind): %v", err)
+	}
+	if !removed {
+		t.Fatal("expected removed=true for tagged container")
+	}
+	if _, err := os.Stat(backup); err != nil {
+		t.Errorf("expected backup at %s: %v", backup, err)
+	}
+	data, _ := os.ReadFile(path)
+	got := string(data)
+	if strings.Contains(got, "Host dc-ssh") || strings.Contains(got, "devcontainer-cli:managed") {
+		t.Errorf("managed block not removed from disk:\n%s", got)
+	}
+	if !strings.Contains(got, "Host other") {
+		t.Errorf("unrelated block lost:\n%s", got)
+	}
+}
+
 // newFormatConfig mixes a workspace block and a container block in the modern
 // structured marker format, plus an untagged block.
 const newFormatConfig = `# devcontainer-cli:managed v=1 kind=workspace ref=api-3f9a alias=api

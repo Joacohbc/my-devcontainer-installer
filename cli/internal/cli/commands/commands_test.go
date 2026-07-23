@@ -670,9 +670,22 @@ func TestSshCommandRegistered(t *testing.T) {
 	if sshCmd == nil {
 		t.Fatal("expected 'ssh' command to be registered")
 	}
-	for _, name := range []string{"workspace", "yes", "no-interactive", "forward", "ports"} {
+	for _, name := range []string{"workspace", "yes", "no-interactive", "forward", "ports", "container"} {
 		if sshCmd.Flags().Lookup(name) == nil {
 			t.Errorf("expected 'ssh' to register --%s", name)
+		}
+	}
+}
+
+func TestDestroyCommandRegistered(t *testing.T) {
+	root := NewRootCommand("test")
+	destroyCmd := findSubcommand(root, "destroy")
+	if destroyCmd == nil {
+		t.Fatal("expected 'destroy' command to be registered")
+	}
+	for _, name := range []string{"yes", "no-interactive", "container"} {
+		if destroyCmd.Flags().Lookup(name) == nil {
+			t.Errorf("expected 'destroy' to register --%s", name)
 		}
 	}
 }

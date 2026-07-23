@@ -5,6 +5,7 @@ import (
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/sshdefaults"
 )
 
 // DestroyService tears down a project: it brings the stack down with its
@@ -60,6 +61,28 @@ func (s DestroyService) removeSSHConfigBlock(workspace string) {
 	if removed {
 		s.Report.Info("Removed SSH host block for '%s' from ~/.ssh/config (backup: %s)", workspace, backup)
 	}
+}
+
+// RunContainer tears down a single loose container by name (the --container
+// counterpart to Run, for containers set up outside a workspace project via
+// 'setup-ssh --container' / 'ssh --container'): stop it, remove it, and prune its
+// managed SSH host block. Unlike Run there is no compose stack, project
+// directory, or config file to remove.
+func (s DestroyService) RunContainer(container string) error {
+	if err := (LifecycleService{Report: s.Report}).RemoveContainer(container); err != nil {
+		return err
+	}
+
+	ssh := SshService{Report: s.Report}
+	removed, backup, err := ssh.RemoveManagedBlockByRef(sshdefaults.KindContainer, container)
+	if err != nil {
+		s.Report.Warn("Could not update ~/.ssh/config: %v", err)
+	} else if removed {
+		s.Report.Info("Removed SSH host block for '%s' from ~/.ssh/config (backup: %s)", container, backup)
+	}
+
+	s.Report.Success("Destroyed.")
+	return nil
 }
 
 func (s DestroyService) removeIfExists(path string) {
