@@ -48,7 +48,6 @@ when the session ends.`,
   devcontainer-cli ssh -- go version`,
 		RunE: runSsh,
 	}
-	addWorkspaceFlag(cmd)
 	addYesFlag(cmd)
 	addInteractiveFlag(cmd)
 	addContainerFlag(cmd)
@@ -58,7 +57,6 @@ when the session ends.`,
 }
 
 func runSsh(cmd *cobra.Command, args []string) error {
-	wsFlag := workspaceFlag(cmd)
 	interactive := interactiveFlag(cmd)
 	assumeYes := yesFlag(cmd) || !interactive
 
@@ -77,8 +75,8 @@ func runSsh(cmd *cobra.Command, args []string) error {
 		kind = sshdefaults.KindContainer
 		ref = containerName
 	} else {
-		workspace = resolveWorkspace(cwd, wsFlag)
-		containerName, err = resolveDevcontainerContainer(cwd, wsFlag)
+		workspace = resolveWorkspace(cwd)
+		containerName, err = resolveDevcontainerContainer(cwd)
 		if err != nil {
 			return err
 		}

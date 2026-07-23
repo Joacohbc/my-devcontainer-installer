@@ -31,7 +31,6 @@ to a single container.`,
 		SilenceUsage: true,
 		RunE:         runInfo,
 	}
-	addWorkspaceFlag(cmd)
 	addContainerFlag(cmd)
 	return cmd
 }
@@ -42,10 +41,8 @@ func runInfo(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
-	wsFlag := workspaceFlag(cmd)
-
 	if cmd.Flags().Changed("container") {
-		containerName, err := resolveContainer(cmd, wsFlag)
+		containerName, err := resolveContainer(cmd)
 		if err != nil {
 			return err
 		}
@@ -60,7 +57,7 @@ func runInfo(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
-	workspace := resolveWorkspace(cwd, wsFlag)
+	workspace := resolveWorkspace(cwd)
 
 	paths := project.ProjectPaths(cwd, workspace)
 	services := service.ReadComposeServices(paths.ComposeFile)

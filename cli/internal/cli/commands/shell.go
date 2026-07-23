@@ -33,7 +33,6 @@ Pass -T when piping a command's output to a file so the stream isn't mangled.`,
   devcontainer-cli shell -c <ws>-postgres -T -- pg_dump -U devuser devdb > dump.sql`,
 		RunE: runShell,
 	}
-	addWorkspaceFlag(cmd)
 	cmd.Flags().String("user", "", "User to run the command as (interactive shell defaults to devuser; ignored when an explicit command is passed)")
 	cmd.Flags().String("type", "", "Shell to open: bash, zsh or sh (interactive shell defaults to zsh)")
 	cmd.Flags().BoolP("no-tty", "T", false, "Disable pseudo-TTY allocation (use when piping output to a file, e.g. a DB dump)")
@@ -44,8 +43,7 @@ Pass -T when piping a command's output to a file so the stream isn't mangled.`,
 	})
 
 	_ = cmd.RegisterFlagCompletionFunc("user", func(cmd *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
-		wsFlag := workspaceFlag(cmd)
-		containerName, err := resolveContainer(cmd, wsFlag)
+		containerName, err := resolveContainer(cmd)
 		if err != nil {
 			return nil, cobra.ShellCompDirectiveNoFileComp
 		}
@@ -75,12 +73,11 @@ func shellInteractiveDefaults(user, shellType string, userSet, typeSet, hasComma
 }
 
 func runShell(cmd *cobra.Command, args []string) error {
-	wsFlag := workspaceFlag(cmd)
 	userFlag, _ := cmd.Flags().GetString("user")
 	shellType, _ := cmd.Flags().GetString("type")
 	noTTY, _ := cmd.Flags().GetBool("no-tty")
 
-	containerName, err := resolveContainer(cmd, wsFlag)
+	containerName, err := resolveContainer(cmd)
 	if err != nil {
 		return err
 	}

@@ -45,7 +45,6 @@ be piped.`,
 		SilenceUsage: true,
 		RunE:         runPasswordShow,
 	}
-	addWorkspaceFlag(cmd)
 	addContainerFlag(cmd)
 	return cmd
 }
@@ -68,7 +67,6 @@ by the OS and can no longer be revealed by 'password show'.`,
 		SilenceUsage: true,
 		RunE:         runPasswordChange,
 	}
-	addWorkspaceFlag(cmd)
 	addContainerFlag(cmd)
 	addInteractiveFlag(cmd)
 	cmd.Flags().String("password", "", "New password (non-interactive; omit to be prompted)")
@@ -76,8 +74,7 @@ by the OS and can no longer be revealed by 'password show'.`,
 }
 
 func runPasswordShow(cmd *cobra.Command, _ []string) error {
-	wsFlag := workspaceFlag(cmd)
-	containerName, err := resolveContainer(cmd, wsFlag)
+	containerName, err := resolveContainer(cmd)
 	if err != nil {
 		return err
 	}
@@ -92,8 +89,7 @@ func runPasswordShow(cmd *cobra.Command, _ []string) error {
 }
 
 func runPasswordChange(cmd *cobra.Command, _ []string) error {
-	wsFlag := workspaceFlag(cmd)
-	containerName, err := resolveContainer(cmd, wsFlag)
+	containerName, err := resolveContainer(cmd)
 	if err != nil {
 		return err
 	}

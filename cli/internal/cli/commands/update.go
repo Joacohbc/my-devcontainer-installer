@@ -82,7 +82,7 @@ func runUpdateImages(cmd *cobra.Command, _ []string) error {
 }
 
 func updateContainerImage(cmd *cobra.Command) error {
-	containerName, err := resolveContainer(cmd, "")
+	containerName, err := resolveContainer(cmd)
 	if err != nil {
 		return err
 	}

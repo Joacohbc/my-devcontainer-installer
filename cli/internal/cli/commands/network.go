@@ -52,7 +52,6 @@ register extra DNS names for them on the network.`,
 		RunE:              func(cmd *cobra.Command, args []string) error { return runNetworkOp(cmd, args, "connect") },
 		ValidArgsFunction: completeAnyContainerArgs,
 	}
-	addWorkspaceFlag(cmd)
 	cmd.Flags().StringSlice("alias", nil, "Extra DNS alias(es) to register for the container(s) on the network; repeatable or comma-separated")
 	addInteractiveFlag(cmd)
 	return cmd
@@ -85,7 +84,6 @@ current project's workspace network. Container names tab-complete.`,
 		RunE:              func(cmd *cobra.Command, args []string) error { return runNetworkOp(cmd, args, "disconnect") },
 		ValidArgsFunction: completeAnyContainerArgs,
 	}
-	addWorkspaceFlag(cmd)
 	return cmd
 }
 
@@ -96,7 +94,7 @@ func runNetworkOp(cmd *cobra.Command, args []string, verb string) error {
 	if err != nil {
 		return err
 	}
-	workspace := resolveWorkspace(cwd, workspaceFlag(cmd))
+	workspace := resolveWorkspace(cwd)
 
 	svc := service.NetworkService{Report: console}
 	if err := svc.EnsureDocker(); err != nil {

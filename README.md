@@ -402,8 +402,7 @@ devcontainer-cli network connect svc-a svc-b svc-c
 
 **Flags útiles:**
 
-*   `--alias <nombre>`: registra nombres DNS extra para el contenedor en la red (repetible o separado por comas; se pregunta en modo interactivo).
-*   `--workspace <ws>`: fuerza el workspace cuya red usar (por defecto se deriva del directorio/config actual).
+*   `--alias <nombre>`: registra nombres DNS extra para el contenedor en la red (repetible o separado por comas; se pregunta en modo interactivo). La red usada es siempre la del proyecto del directorio actual.
 
 ## Solución de Problemas (Troubleshooting)
 

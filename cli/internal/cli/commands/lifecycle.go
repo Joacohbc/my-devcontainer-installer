@@ -32,18 +32,16 @@ restart a single container instead of the whole project.`,
 		SilenceUsage: true,
 		RunE:         runRestart,
 	}
-	addWorkspaceFlag(cmd)
 	// restart applies to running or stopped containers, so complete any managed one.
 	addContainerFlag(cmd)
 	return cmd
 }
 
 func runRestart(cmd *cobra.Command, _ []string) error {
-	wsFlag := workspaceFlag(cmd)
 	svc := service.LifecycleService{Report: ui.Console{}}
 
 	if cmd.Flags().Changed("container") {
-		containerName, err := resolveContainer(cmd, wsFlag)
+		containerName, err := resolveContainer(cmd)
 		if err != nil {
 			return err
 		}
@@ -54,7 +52,7 @@ func runRestart(cmd *cobra.Command, _ []string) error {
 		return nil
 	}
 
-	return runLifecycle(wsFlag, "restart")
+	return runLifecycle("restart")
 }
 
 func newStartCommand() *cobra.Command {
@@ -76,18 +74,16 @@ project.`,
 		SilenceUsage: true,
 		RunE:         runStart,
 	}
-	addWorkspaceFlag(cmd)
 	// start targets a stopped container, so complete only the stopped ones.
 	addContainerFlagFiltered(cmd, completeStoppedContainers)
 	return cmd
 }
 
 func runStart(cmd *cobra.Command, _ []string) error {
-	wsFlag := workspaceFlag(cmd)
 	svc := service.LifecycleService{Report: ui.Console{}}
 
 	if cmd.Flags().Changed("container") {
-		containerName, err := resolveContainer(cmd, wsFlag)
+		containerName, err := resolveContainer(cmd)
 		if err != nil {
 			return err
 		}
@@ -98,7 +94,7 @@ func runStart(cmd *cobra.Command, _ []string) error {
 		return nil
 	}
 
-	return runLifecycle(wsFlag, "start")
+	return runLifecycle("start")
 }
 
 func newStopCommand() *cobra.Command {
@@ -120,18 +116,16 @@ Wraps 'docker compose -f .dc_<workspace>/build/docker-compose.yml stop'. Use
 		SilenceUsage: true,
 		RunE:         runStop,
 	}
-	addWorkspaceFlag(cmd)
 	// stop targets a running container, so complete only the running ones.
 	addContainerFlagFiltered(cmd, completeRunningContainers)
 	return cmd
 }
 
 func runStop(cmd *cobra.Command, _ []string) error {
-	wsFlag := workspaceFlag(cmd)
 	svc := service.LifecycleService{Report: ui.Console{}}
 
 	if cmd.Flags().Changed("container") {
-		containerName, err := resolveContainer(cmd, wsFlag)
+		containerName, err := resolveContainer(cmd)
 		if err != nil {
 			return err
 		}
@@ -142,15 +136,15 @@ func runStop(cmd *cobra.Command, _ []string) error {
 		return nil
 	}
 
-	return runLifecycle(wsFlag, "stop")
+	return runLifecycle("stop")
 }
 
-func runLifecycle(wsFlag, verb string) error {
+func runLifecycle(verb string) error {
 	cwd, err := currentDir()
 	if err != nil {
 		return err
 	}
-	composeFile, err := resolveProjectComposeFileWithWorkspace(cwd, wsFlag)
+	composeFile, err := resolveProjectComposeFile(cwd)
 	if err != nil {
 		return err
 	}

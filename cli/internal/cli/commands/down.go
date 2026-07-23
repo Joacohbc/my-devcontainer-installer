@@ -31,7 +31,6 @@ directory and config, use 'destroy' instead.`,
 		RunE:         runDown,
 	}
 	cmd.Flags().BoolP("volumes", "v", false, "Also remove named volumes (down -v); deletes their data, irreversible")
-	addWorkspaceFlag(cmd)
 	addYesFlag(cmd)
 	addInteractiveFlag(cmd)
 	return cmd
@@ -55,13 +54,12 @@ func runDown(cmd *cobra.Command, _ []string) error {
 	console := ui.Console{}
 	svc := service.LifecycleService{Report: console}
 
-	wsFlag := workspaceFlag(cmd)
 	cwd, err := currentDir()
 	if err != nil {
 		return err
 	}
-	workspace := resolveWorkspace(cwd, wsFlag)
-	composeFile, err := resolveProjectComposeFileWithWorkspace(cwd, wsFlag)
+	workspace := resolveWorkspace(cwd)
+	composeFile, err := resolveProjectComposeFile(cwd)
 	if err != nil {
 		return err
 	}

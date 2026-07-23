@@ -21,14 +21,3 @@ func interactiveFlag(cmd *cobra.Command) bool {
 	noi, _ := cmd.Flags().GetBool("no-interactive")
 	return !noi
 }
-
-// addWorkspaceFlag registers the -w/--workspace flag.
-func addWorkspaceFlag(cmd *cobra.Command) {
-	cmd.Flags().StringP("workspace", "w", "", "Workspace name")
-}
-
-// workspaceFlag retrieves the -w/--workspace flag value.
-func workspaceFlag(cmd *cobra.Command) string {
-	v, _ := cmd.Flags().GetString("workspace")
-	return v
-}

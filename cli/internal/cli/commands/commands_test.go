@@ -153,9 +153,6 @@ func TestNetworkCommand_HasConnectAndDisconnect(t *testing.T) {
 			t.Errorf("expected network subcommand %q", name)
 			continue
 		}
-		if sub.Flags().Lookup("workspace") == nil {
-			t.Errorf("network %s missing --workspace flag", name)
-		}
 		if err := sub.Args(sub, nil); err == nil {
 			t.Errorf("network %s should require at least one container argument", name)
 		}
@@ -670,7 +667,7 @@ func TestSshCommandRegistered(t *testing.T) {
 	if sshCmd == nil {
 		t.Fatal("expected 'ssh' command to be registered")
 	}
-	for _, name := range []string{"workspace", "yes", "no-interactive", "forward", "ports", "container"} {
+	for _, name := range []string{"yes", "no-interactive", "forward", "ports", "container"} {
 		if sshCmd.Flags().Lookup(name) == nil {
 			t.Errorf("expected 'ssh' to register --%s", name)
 		}
@@ -983,7 +980,7 @@ func TestShellCommand_HasFlags(t *testing.T) {
 	if shell == nil {
 		t.Fatal("shell command not found")
 	}
-	for _, name := range []string{"workspace", "user", "no-tty"} {
+	for _, name := range []string{"user", "no-tty"} {
 		if shell.Flags().Lookup(name) == nil {
 			t.Errorf("expected shell flag --%s", name)
 		}
@@ -1005,7 +1002,7 @@ func TestLogsCommand_HasFlags(t *testing.T) {
 	if logs == nil {
 		t.Fatal("logs command not found")
 	}
-	for _, name := range []string{"workspace", "follow", "tail"} {
+	for _, name := range []string{"follow", "tail"} {
 		if logs.Flags().Lookup(name) == nil {
 			t.Errorf("expected logs flag --%s", name)
 		}
@@ -1089,9 +1086,12 @@ func TestCopyDirection(t *testing.T) {
 	}
 }
 
-func TestResolveProjectComposeFileWithWorkspace(t *testing.T) {
+func TestResolveProjectComposeFile(t *testing.T) {
 	tempDir := t.TempDir()
-	wsDir := filepath.Join(tempDir, ".dc_my-ws", "build")
+	// With no config, the workspace is derived from the sanitized directory name,
+	// so the compose file lives under .dc_<dir>/build/.
+	workspace := resolveWorkspace(tempDir)
+	wsDir := filepath.Join(tempDir, ".dc_"+workspace, "build")
 	if err := os.MkdirAll(wsDir, 0755); err != nil {
 		t.Fatal(err)
 	}
@@ -1100,7 +1100,7 @@ func TestResolveProjectComposeFileWithWorkspace(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	res, err := resolveProjectComposeFileWithWorkspace(tempDir, "my-ws")
+	res, err := resolveProjectComposeFile(tempDir)
 	if err != nil {
 		t.Fatalf("unexpected error resolving compose file: %v", err)
 	}
@@ -1121,7 +1121,7 @@ func TestCopyCommand_HasFlags(t *testing.T) {
 	if copyCmd == nil {
 		t.Fatal("copy command not found")
 	}
-	for _, name := range []string{"workspace"} {
+	for _, name := range []string{"container", "asset"} {
 		if copyCmd.Flags().Lookup(name) == nil {
 			t.Errorf("expected copy flag --%s", name)
 		}
@@ -1140,7 +1140,7 @@ func TestUpCommand_HasFlags(t *testing.T) {
 	if upCmd == nil {
 		t.Fatal("up command not found")
 	}
-	for _, name := range []string{"workspace", "build"} {
+	for _, name := range []string{"build"} {
 		if upCmd.Flags().Lookup(name) == nil {
 			t.Errorf("expected up flag --%s", name)
 		}
@@ -1173,7 +1173,7 @@ func TestLsCommand_HasFlags(t *testing.T) {
 	if lsCmd == nil {
 		t.Fatal("ls command not found")
 	}
-	for _, name := range []string{"workspace", "all", "long"} {
+	for _, name := range []string{"all", "long"} {
 		if lsCmd.Flags().Lookup(name) == nil {
 			t.Errorf("expected ls flag --%s", name)
 		}
@@ -1200,21 +1200,24 @@ func TestAllCommands_HaveContainerFlag(t *testing.T) {
 	}
 }
 
-func TestLifecycleCommands_HaveWorkspaceFlag(t *testing.T) {
+func TestOperationalCommands_HaveNoWorkspaceFlag(t *testing.T) {
 	root := NewRootCommand("test")
 	byName := map[string]*cobra.Command{}
 	for _, c := range root.Commands() {
 		byName[c.Name()] = c
 	}
-	// Every command that acts on the current project's compose stack must accept
-	// --workspace so it can target a different workspace's .dc_<ws>/ stack.
-	for _, name := range []string{"up", "down", "start", "stop", "restart"} {
+	// Operational commands act only on the current directory's project; none of
+	// them expose a -w/--workspace flag to target another one.
+	for _, name := range []string{"up", "down", "start", "stop", "restart", "shell", "ssh", "copy", "info", "status", "logs", "ls"} {
 		cmd := byName[name]
 		if cmd == nil {
 			t.Fatalf("command %q not found", name)
 		}
-		if cmd.Flags().Lookup("workspace") == nil {
-			t.Errorf("expected command %q to have --workspace flag", name)
+		if cmd.Flags().Lookup("workspace") != nil {
+			t.Errorf("command %q must not have a --workspace flag", name)
+		}
+		if cmd.Flags().ShorthandLookup("w") != nil {
+			t.Errorf("command %q must not have a -w shorthand", name)
 		}
 	}
 }
