@@ -109,6 +109,10 @@ func TestGenerateDockerfile_ZellijModule(t *testing.T) {
 	df := mustGenerateDockerfile(t, cfg)
 	assertContainsStr(t, df, "releases/latest/download/zellij-${ZELLIJ_ARCH}.tar.gz", "zellij")
 	assertContainsStr(t, df, "tar -xzf /tmp/zellij.tar.gz -C /usr/local/bin zellij", "zellij")
+	// default_shell must be pinned to zsh so Zellij opens new panes with the
+	// container's configured shell instead of falling back to an unset $SHELL.
+	assertContainsStr(t, df, `default_shell \"zsh\"`, "zellij")
+	assertContainsStr(t, df, "/home/devuser/.config/zellij/config.kdl", "zellij")
 }
 
 func TestGenerateDockerfile_NgrokModule(t *testing.T) {
