@@ -236,7 +236,7 @@ type enabledServicesResult struct {
 }
 
 func resolveEnabledServices(config *types.DevcontainerConfig) enabledServicesResult {
-	selected := types.NormalizeServices(config.Compose.Services)
+	selected := config.Compose.Services
 	enabled := make(map[string]bool)
 	optionsByID := make(map[string]map[string]any)
 
@@ -600,10 +600,9 @@ func CollectRequiredPostScriptFiles(config *types.DevcontainerConfig) ([]string,
 }
 
 func CollectRequiredEnvVars(config *types.DevcontainerConfig) []types.RequiredEnvVar {
-	selected := types.NormalizeServices(config.Compose.Services)
 	var out []types.RequiredEnvVar
-	for _, s := range selected {
-		svc := catalog.GetComposeService(types.ServiceID(s.ID))
+	for _, s := range config.Compose.Services {
+		svc := catalog.GetComposeService(s.ID)
 		if svc == nil {
 			continue
 		}

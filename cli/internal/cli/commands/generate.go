@@ -573,9 +573,9 @@ func applyGenFlags(config *types.DevcontainerConfig, flags *genFlags) {
 		config.Dockerfile.Modules = modules
 	}
 	if flags.services != nil {
-		var services []any
+		var services []types.SelectedService
 		for _, id := range flags.services {
-			services = append(services, types.SelectedModule{ID: types.ModuleID(id), Options: service.ServiceOptionsOf(config.Compose.Services, id)})
+			services = append(services, types.SelectedService{ID: types.ServiceID(id), Options: service.ServiceOptionsOf(config.Compose.Services, id)})
 		}
 		config.Compose.Services = services
 	}

@@ -1318,7 +1318,7 @@ func TestConfigExportImport(t *testing.T) {
 			},
 		},
 		Compose: types.ComposeConfig{
-			Services: []any{"postgres"},
+			Services: []types.SelectedService{{ID: "postgres"}},
 			Subnet:   "172.28.0.0/24",
 		},
 		Env: map[string]string{"FOO": "BAR"},
@@ -1446,9 +1446,7 @@ func TestApplyGenFlags_PresetWithoutServices(t *testing.T) {
 			},
 		},
 		Compose: types.ComposeConfig{
-			Services: []any{
-				types.SelectedModule{ID: "postgres"},
-			},
+			Services: []types.SelectedService{{ID: "postgres"}},
 		},
 	}
 	flags := &genFlags{

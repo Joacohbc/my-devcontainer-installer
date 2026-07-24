@@ -92,7 +92,7 @@ func DefaultConfig(cwd string) *types.DevcontainerConfig {
 			Modules: []types.SelectedModule{},
 		},
 		Compose: types.ComposeConfig{
-			Services: []any{},
+			Services: []types.SelectedService{},
 			Subnet:   "172.25.0.0/28",
 		},
 		Env: map[string]string{},
