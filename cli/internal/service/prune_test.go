@@ -1,6 +1,7 @@
 package service
 
 import (
+	"errors"
 	"path/filepath"
 	"testing"
 
@@ -324,4 +325,58 @@ func TestSelectByNames(t *testing.T) {
 	if len(missing) != 1 || missing[0] != "nope:latest" {
 		t.Errorf("expected missing [nope:latest], got %v", missing)
 	}
+}
+
+type confirmingPrompter struct {
+	scriptedPrompter
+	answer bool
+	err    error
+	asked  bool
+}
+
+func (p *confirmingPrompter) Confirm(string) (bool, error) {
+	p.asked = true
+	return p.answer, p.err
+}
+
+func TestConfirmDestructive(t *testing.T) {
+	niErr := errors.New("needs --yes")
+
+	t.Run("--yes proceeds without prompting", func(t *testing.T) {
+		p := &confirmingPrompter{answer: false}
+		svc := PruneService{Report: nopReporter{}, Prompt: p}
+		ok, err := svc.confirmDestructive(CleanOptions{Yes: true}, niErr, "Remove?")
+		if err != nil || !ok {
+			t.Fatalf("got ok=%v err=%v, want true/nil", ok, err)
+		}
+		if p.asked {
+			t.Error("should not prompt when --yes is set")
+		}
+	})
+
+	t.Run("non-interactive without --yes returns the error", func(t *testing.T) {
+		svc := PruneService{Report: nopReporter{}}
+		ok, err := svc.confirmDestructive(CleanOptions{Interactive: false}, niErr, "Remove?")
+		if ok || err != niErr {
+			t.Fatalf("got ok=%v err=%v, want false/%v", ok, err, niErr)
+		}
+	})
+
+	t.Run("interactive confirm yes proceeds", func(t *testing.T) {
+		p := &confirmingPrompter{answer: true}
+		svc := PruneService{Report: nopReporter{}, Prompt: p}
+		ok, err := svc.confirmDestructive(CleanOptions{Interactive: true}, niErr, "Remove?")
+		if err != nil || !ok || !p.asked {
+			t.Fatalf("got ok=%v err=%v asked=%v, want true/nil/true", ok, err, p.asked)
+		}
+	})
+
+	t.Run("interactive confirm no cancels", func(t *testing.T) {
+		p := &confirmingPrompter{answer: false}
+		svc := PruneService{Report: nopReporter{}, Prompt: p}
+		ok, err := svc.confirmDestructive(CleanOptions{Interactive: true}, niErr, "Remove?")
+		if err != nil || ok {
+			t.Fatalf("got ok=%v err=%v, want false/nil", ok, err)
+		}
+	})
 }
