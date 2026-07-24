@@ -14,6 +14,11 @@ const (
 	ServiceName = "devcontainer-ssh"
 	Alias       = "devcontainer"
 	KeyName     = types.SSHKeyName
+	// RemoteKnownHostsPath is the known_hosts file referenced by a ProxyCommand
+	// block pasted on the machine you connect FROM. That machine has its own
+	// home, so — like the key — the path must use the ~ form rather than this
+	// host's managed path.
+	RemoteKnownHostsPath = "~/.ssh/devcontainer_known_hosts"
 	// DockerIPFormat emits one IP per line so a container on several networks
 	// does not concatenate addresses with no separator.
 	DockerIPFormat = `{{range .NetworkSettings.Networks}}{{.IPAddress}}{{"\n"}}{{end}}`
@@ -137,6 +142,15 @@ type ConfigBlockOptions struct {
 	// Container is the container name inspected for its IP inside the ProxyCommand;
 	// required in ModeRemote, unused otherwise.
 	Container string
+	// KnownHostsFile, when set, scopes host-key verification for this Host to that
+	// file instead of ~/.ssh/known_hosts. A devcontainer regenerates its host keys
+	// on every image rebuild while keeping the same container IP, so recording
+	// them globally makes ssh report a changed host key ("REMOTE HOST
+	// IDENTIFICATION HAS CHANGED") for what is really a fresh container. Keeping
+	// them in a CLI-owned file lets the key be re-pinned from the docker daemon
+	// (see SshService.PinContainerHostKeys) without ever rewriting the user's own
+	// known_hosts. Left empty the stanza is emitted without host-key options.
+	KnownHostsFile string
 	// Kind and Ref, when both set, prepend a ManagedComment marker above the stanza
 	// so destroy/clean-ssh can find and remove this block. Kind is the target type
 	// (workspace/container) and Ref is its stable identity. Left empty the stanza is
@@ -158,6 +172,43 @@ func BuildConfigBlock(opts ConfigBlockOptions) (string, error) {
 	return stanza, nil
 }
 
+// ConfigOption is one `Keyword Value` line of an ssh config stanza, kept
+// structured so callers can both render it and detect/refresh it in an already
+// written block.
+type ConfigOption struct {
+	Keyword string
+	Value   string
+}
+
+// Line renders the option as it appears inside a Host stanza (4-space indented).
+func (o ConfigOption) Line() string { return "    " + o.Keyword + " " + o.Value }
+
+// HostKeyOptions returns the host-key options that scope verification for a
+// devcontainer Host to knownHostsFile: the file itself, accept-new so a
+// first-seen container is trusted without a prompt, and unhashed entries so the
+// CLI can find and replace a rebuilt container's key by hostname.
+func HostKeyOptions(knownHostsFile string) []ConfigOption {
+	return []ConfigOption{
+		{Keyword: "UserKnownHostsFile", Value: knownHostsFile},
+		{Keyword: "StrictHostKeyChecking", Value: "accept-new"},
+		{Keyword: "HashKnownHosts", Value: "no"},
+	}
+}
+
+// withHostKeyOptions appends the host-key options to stanza, or returns it
+// unchanged when no known_hosts file was requested.
+func withHostKeyOptions(stanza, knownHostsFile string) string {
+	if knownHostsFile == "" {
+		return stanza
+	}
+	var b strings.Builder
+	b.WriteString(stanza)
+	for _, opt := range HostKeyOptions(knownHostsFile) {
+		b.WriteString("\n" + opt.Line())
+	}
+	return b.String()
+}
+
 // buildStanza renders the bare Host stanza for the given mode. Each case returns
 // the whole stanza as one literal so it reads like the file it produces; defaults
 // and validation are applied just before the Sprintf.
@@ -167,11 +218,11 @@ func buildStanza(opts ConfigBlockOptions) (string, error) {
 		if opts.Hostname == "" {
 			return "", fmt.Errorf("hostname required for local mode")
 		}
-		return fmt.Sprintf(`Host %s
+		return withHostKeyOptions(fmt.Sprintf(`Host %s
     HostName %s
     User %s
     IdentityFile %s
-    IdentitiesOnly yes`, opts.Alias, opts.Hostname, opts.User, opts.KeyPath), nil
+    IdentitiesOnly yes`, opts.Alias, opts.Hostname, opts.User, opts.KeyPath), opts.KnownHostsFile), nil
 
 	case ModeRemote:
 		if opts.Remote == "" {
@@ -188,11 +239,11 @@ func buildStanza(opts ConfigBlockOptions) (string, error) {
 		// stays plain Sprintf — feeding it through text/template would collide.
 		escapedFormat := strings.ReplaceAll(DockerIPFormat, `"`, `\"`)
 		ipExpr := fmt.Sprintf(`\$(docker inspect -f '%s' %s | head -n1)`, escapedFormat, opts.Container)
-		return fmt.Sprintf(`Host %s
+		return withHostKeyOptions(fmt.Sprintf(`Host %s
     User %s
     IdentityFile %s
     IdentitiesOnly yes
-    ProxyCommand ssh %s "nc -q0 %s 22"`, opts.Alias, opts.User, opts.KeyPath, opts.Remote, ipExpr), nil
+    ProxyCommand ssh %s "nc -q0 %s 22"`, opts.Alias, opts.User, opts.KeyPath, opts.Remote, ipExpr), opts.KnownHostsFile), nil
 	}
 	return "", fmt.Errorf("unknown mode %q", opts.Mode)
 }

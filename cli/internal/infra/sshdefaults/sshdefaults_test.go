@@ -189,3 +189,86 @@ func TestBuildConfigBlock_UnknownMode(t *testing.T) {
 		t.Error("expected error for unknown mode")
 	}
 }
+
+func TestHostKeyOptions(t *testing.T) {
+	opts := sshdefaults.HostKeyOptions("/cfg/ssh/known_hosts")
+	want := map[string]string{
+		"UserKnownHostsFile":    "/cfg/ssh/known_hosts",
+		"StrictHostKeyChecking": "accept-new",
+		// Unhashed, so the CLI can find and replace a rebuilt container's entry
+		// by hostname.
+		"HashKnownHosts": "no",
+	}
+	if len(opts) != len(want) {
+		t.Fatalf("HostKeyOptions returned %d options, want %d: %+v", len(opts), len(want), opts)
+	}
+	for _, opt := range opts {
+		if w, ok := want[opt.Keyword]; !ok || w != opt.Value {
+			t.Errorf("unexpected option %s %s", opt.Keyword, opt.Value)
+		}
+		if got, wantLine := opt.Line(), "    "+opt.Keyword+" "+opt.Value; got != wantLine {
+			t.Errorf("Line() = %q, want %q", got, wantLine)
+		}
+	}
+}
+
+// A devcontainer regenerates its host keys on every image rebuild while keeping
+// the same IP, so its keys must be recorded in the CLI-managed known_hosts and
+// never in the user's global one.
+func TestBuildConfigBlock_LocalKnownHostsFile(t *testing.T) {
+	got, err := sshdefaults.BuildConfigBlock(sshdefaults.ConfigBlockOptions{
+		Mode:           sshdefaults.ModeLocal,
+		Alias:          "myws",
+		User:           "devuser",
+		KeyPath:        "k",
+		Hostname:       "172.20.0.2",
+		KnownHostsFile: "/cfg/ssh/known_hosts",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, frag := range []string{
+		"    UserKnownHostsFile /cfg/ssh/known_hosts",
+		"    StrictHostKeyChecking accept-new",
+		"    HashKnownHosts no",
+	} {
+		if !strings.Contains(got, frag) {
+			t.Errorf("local block missing %q:\n%s", frag, got)
+		}
+	}
+}
+
+func TestBuildConfigBlock_RemoteKnownHostsFile(t *testing.T) {
+	got, err := sshdefaults.BuildConfigBlock(sshdefaults.ConfigBlockOptions{
+		Mode:           sshdefaults.ModeRemote,
+		Alias:          "myws",
+		User:           "devuser",
+		KeyPath:        "k",
+		Remote:         "user@host",
+		Container:      "c",
+		KnownHostsFile: sshdefaults.RemoteKnownHostsPath,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// The block is pasted on another machine, so the path must be the ~ form.
+	if !strings.Contains(got, "UserKnownHostsFile ~/.ssh/") {
+		t.Errorf("remote block must point at a ~-relative known_hosts:\n%s", got)
+	}
+}
+
+func TestBuildConfigBlock_NoHostKeyOptionsWhenUnset(t *testing.T) {
+	got, err := sshdefaults.BuildConfigBlock(sshdefaults.ConfigBlockOptions{
+		Mode:     sshdefaults.ModeLocal,
+		Alias:    "x",
+		User:     "devuser",
+		KeyPath:  "k",
+		Hostname: "1.2.3.4",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if strings.Contains(got, "UserKnownHostsFile") || strings.Contains(got, "StrictHostKeyChecking") {
+		t.Errorf("did not expect host-key options when KnownHostsFile is empty:\n%s", got)
+	}
+}

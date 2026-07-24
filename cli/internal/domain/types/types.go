@@ -92,6 +92,13 @@ func WorkspaceDir(workspace string) string {
 // config dir; sshdefaults.KeyName aliases this value.
 const SSHKeyName = "id_devcontainer"
 
+// SSHKnownHostsName is the filename of the dedicated known_hosts file the CLI
+// manages for devcontainers, stored next to the managed key. Generated Host
+// blocks point their UserKnownHostsFile at it so container host keys — which
+// change on every image rebuild, while the container IP stays the same — never
+// collide with the real hosts recorded in ~/.ssh/known_hosts.
+const SSHKnownHostsName = "known_hosts"
+
 type ModuleOptionChoice struct {
 	Value string `json:"value"`
 	Label string `json:"label"`

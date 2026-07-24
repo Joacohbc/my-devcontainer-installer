@@ -258,7 +258,8 @@ devcontainer-cli setup-ssh
 2. **Genera (una sola vez) una clave SSH gestionada y compartida.** La CLI mantiene **una única clave** reutilizada por todos los workspaces, almacenada fuera de `~/.ssh` en `~/.config/devcontainer-cli/ssh/id_devcontainer`. Si ya existe, la reutiliza. Podés apuntar a otra clave con `--key <ruta>`.
 3. **Instala la clave pública** dentro del contenedor (vía `docker exec`), agregándola a `~/.ssh/authorized_keys` del usuario `devuser`.
 4. **Escribe un bloque `Host` en tu `~/.ssh/config`** con un comentario marcador estructurado (`# devcontainer-cli:managed v=1 kind=<workspace|container> ref=<id> alias=<alias>`) para que `destroy` y `clean ssh` puedan encontrarlo y limpiarlo después. En modo workspace la clave es el nombre (único) del workspace; con `--container` la clave es el nombre del contenedor. Si el alias ya existe, te ofrece sobrescribir, renombrar o saltar (guardando un backup al sobrescribir).
-5. **Prueba la conexión** (`ssh <alias> echo OK`) y te muestra el comando final para conectarte.
+5. **Fija (pin) la clave de host del contenedor** en un `known_hosts` propio de la CLI (`~/.config/devcontainer-cli/ssh/known_hosts`), leyéndola del contenedor vía Docker en lugar de confiar en ella la primera vez que aparece por la red. Ver [Claves de host y `known_hosts`](#claves-de-host-y-known_hosts).
+6. **Prueba la conexión** (`ssh <alias> echo OK`) y te muestra el comando final para conectarte.
 
 #### Modo Local (por defecto)
 
@@ -270,9 +271,40 @@ Host <workspace>
     User devuser
     IdentityFile ~/.config/devcontainer-cli/ssh/id_devcontainer
     IdentitiesOnly yes
+    UserKnownHostsFile ~/.config/devcontainer-cli/ssh/known_hosts
+    StrictHostKeyChecking accept-new
+    HashKnownHosts no
 ```
 
 Si el contenedor está en varias redes, te deja elegir cuál IP usar.
+
+#### Claves de host y `known_hosts`
+
+Un devcontainer **regenera sus claves de host SSH cada vez que se reconstruye la
+imagen**, pero conserva la misma IP fija. Con el `~/.ssh/known_hosts` global eso
+se ve como si el host hubiera cambiado de identidad, y `ssh` aborta:
+
+```
+@@@ WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED! @@@
+Host key verification failed.
+```
+
+Para que eso no pase, los bloques generados verifican las claves de host contra
+un `known_hosts` propio de la CLI (`~/.config/devcontainer-cli/ssh/known_hosts`)
+en vez del global, y tanto `setup-ssh` como `ssh` **releen la clave actual del
+contenedor a través de Docker y la vuelven a fijar** antes de conectarse. Como la
+clave se aprende del demonio Docker (que es el dueño del contenedor) y no de
+quien conteste en esa IP, la verificación sigue siendo real: no se desactiva
+`StrictHostKeyChecking`, y tu `~/.ssh/known_hosts` nunca se toca.
+
+Los bloques `Host` escritos por versiones anteriores de la CLI se actualizan
+solos a este esquema la primera vez que corrés `devcontainer-cli ssh` (se guarda
+un backup en `~/.ssh/config.bak`). Si te quedó una entrada vieja del contenedor
+en el `known_hosts` global, ya no se consulta; podés borrarla con:
+
+```bash
+ssh-keygen -R <ip-del-contenedor>
+```
 
 #### Modo Remoto (Docker en otro servidor)
 
@@ -290,6 +322,9 @@ Host <workspace>
     IdentityFile ~/.ssh/id_devcontainer
     IdentitiesOnly yes
     ProxyCommand ssh usuario@servidor "nc -q0 $(docker inspect -f '...' <workspace>-devcontainer-ssh | head -n1) 22"
+    UserKnownHostsFile ~/.ssh/devcontainer_known_hosts
+    StrictHostKeyChecking accept-new
+    HashKnownHosts no
 ```
 
 > ⚠️ El snippet de modo remoto contiene una **clave privada**; tratalo como un secreto.

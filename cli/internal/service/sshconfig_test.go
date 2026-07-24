@@ -564,3 +564,168 @@ func TestConfigHostAliasesFromDisk(t *testing.T) {
 		t.Errorf("ConfigHostAliasesFromDisk = %v, want [devcontainer other]", aliases)
 	}
 }
+
+func TestHostNameForAlias(t *testing.T) {
+	cases := []struct {
+		name    string
+		content string
+		alias   string
+		want    string
+	}{
+		{name: "reads the block's HostName", content: sampleConfig, alias: "devcontainer", want: "172.18.0.2"},
+		{name: "does not leak a neighbour's HostName", content: sampleConfig, alias: "other", want: "example.com"},
+		{name: "unknown alias", content: sampleConfig, alias: "nope", want: ""},
+		{
+			// A ProxyCommand block sets no HostName; ssh dials the alias itself,
+			// so there is no local address to pin a host key against.
+			name:    "proxycommand block has none",
+			content: "Host jump\n    User devuser\n    ProxyCommand ssh host \"nc -q0 1.2.3.4 22\"\n",
+			alias:   "jump",
+			want:    "",
+		},
+		{
+			name:    "case-insensitive keyword",
+			content: "Host x\n    hostname 10.0.0.9\n",
+			alias:   "x",
+			want:    "10.0.0.9",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := HostNameForAlias(c.content, c.alias); got != c.want {
+				t.Errorf("HostNameForAlias(%q) = %q, want %q", c.alias, got, c.want)
+			}
+		})
+	}
+}
+
+func TestEnsureHostKeyOptions(t *testing.T) {
+	const knownHosts = "/cfg/ssh/known_hosts"
+
+	t.Run("upgrades a legacy block in place", func(t *testing.T) {
+		content := "Host api\n    HostName 172.25.1.30\n    User devuser\n\nHost other\n    HostName example.com\n"
+		got, changed := EnsureHostKeyOptions(content, "api", knownHosts)
+		if !changed {
+			t.Fatal("expected the legacy block to change")
+		}
+		want := "Host api\n" +
+			"    HostName 172.25.1.30\n" +
+			"    User devuser\n" +
+			"    UserKnownHostsFile " + knownHosts + "\n" +
+			"    StrictHostKeyChecking accept-new\n" +
+			"    HashKnownHosts no\n" +
+			"\n" +
+			"Host other\n    HostName example.com\n"
+		if got != want {
+			t.Errorf("EnsureHostKeyOptions =\n%q\nwant\n%q", got, want)
+		}
+	})
+
+	t.Run("replaces a stale known_hosts path", func(t *testing.T) {
+		content := "Host api\n    HostName 1.2.3.4\n    UserKnownHostsFile /old/known_hosts\n    StrictHostKeyChecking yes\n    HashKnownHosts no\n"
+		got, changed := EnsureHostKeyOptions(content, "api", knownHosts)
+		if !changed {
+			t.Fatal("expected the stale options to change")
+		}
+		if strings.Contains(got, "/old/known_hosts") || strings.Contains(got, "StrictHostKeyChecking yes") {
+			t.Errorf("stale options survived:\n%s", got)
+		}
+		if strings.Count(got, "UserKnownHostsFile") != 1 {
+			t.Errorf("expected exactly one UserKnownHostsFile:\n%s", got)
+		}
+	})
+
+	t.Run("is a no-op when already pinned", func(t *testing.T) {
+		content := "Host api\n    HostName 1.2.3.4\n    UserKnownHostsFile " + knownHosts + "\n    StrictHostKeyChecking accept-new\n    HashKnownHosts no\n"
+		got, changed := EnsureHostKeyOptions(content, "api", knownHosts)
+		if changed || got != content {
+			t.Errorf("expected no change, got changed=%v:\n%s", changed, got)
+		}
+	})
+
+	t.Run("leaves other blocks alone", func(t *testing.T) {
+		got, changed := EnsureHostKeyOptions(sampleConfig, "missing", knownHosts)
+		if changed || got != sampleConfig {
+			t.Errorf("expected no change for an unknown alias, got changed=%v:\n%s", changed, got)
+		}
+	})
+
+	t.Run("keeps the marker comment above the block", func(t *testing.T) {
+		content := "# devcontainer-cli:managed v=1 kind=workspace ref=api alias=api\nHost api\n    HostName 1.2.3.4\n"
+		got, _ := EnsureHostKeyOptions(content, "api", knownHosts)
+		if !strings.HasPrefix(got, "# devcontainer-cli:managed v=1 kind=workspace ref=api alias=api\nHost api\n") {
+			t.Errorf("marker comment lost or moved:\n%s", got)
+		}
+	})
+}
+
+func TestEnsureHostKeyPinning(t *testing.T) {
+	home := t.TempDir()
+	setHomeDir(t, home)
+	sshDir := filepath.Join(home, ".ssh")
+	if err := os.MkdirAll(sshDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	configPath := filepath.Join(sshDir, "config")
+	legacy := "Host api\n    HostName 172.25.1.30\n    User devuser\n"
+	if err := os.WriteFile(configPath, []byte(legacy), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	svc := SshService{Report: nopReporter{}}
+	updated, err := svc.EnsureHostKeyPinning("api", "/cfg/ssh/known_hosts")
+	if err != nil || !updated {
+		t.Fatalf("EnsureHostKeyPinning = %v,%v, want true,nil", updated, err)
+	}
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "UserKnownHostsFile /cfg/ssh/known_hosts") {
+		t.Errorf("config not upgraded:\n%s", data)
+	}
+	backup, err := os.ReadFile(configPath + ".bak")
+	if err != nil || string(backup) != legacy {
+		t.Errorf("expected the original to be backed up, got %q (%v)", backup, err)
+	}
+
+	// A second run has nothing to do and must not churn the backup.
+	updated, err = svc.EnsureHostKeyPinning("api", "/cfg/ssh/known_hosts")
+	if err != nil || updated {
+		t.Errorf("second EnsureHostKeyPinning = %v,%v, want false,nil", updated, err)
+	}
+}
+
+func TestEnsureHostKeyPinningMissingConfig(t *testing.T) {
+	setHomeDir(t, t.TempDir())
+	svc := SshService{Report: nopReporter{}}
+	updated, err := svc.EnsureHostKeyPinning("api", "/cfg/ssh/known_hosts")
+	if err != nil || updated {
+		t.Errorf("EnsureHostKeyPinning with no config = %v,%v, want false,nil", updated, err)
+	}
+}
+
+func TestAliasHostName(t *testing.T) {
+	home := t.TempDir()
+	setHomeDir(t, home)
+	if err := os.MkdirAll(filepath.Join(home, ".ssh"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, ".ssh", "config"), []byte(sampleConfig), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	svc := SshService{Report: nopReporter{}}
+	got, err := svc.AliasHostName("devcontainer")
+	if err != nil || got != "172.18.0.2" {
+		t.Errorf("AliasHostName = %q,%v, want 172.18.0.2,nil", got, err)
+	}
+}
+
+func TestAliasHostNameMissingConfig(t *testing.T) {
+	setHomeDir(t, t.TempDir())
+	svc := SshService{Report: nopReporter{}}
+	got, err := svc.AliasHostName("devcontainer")
+	if err != nil || got != "" {
+		t.Errorf("AliasHostName with no config = %q,%v, want \"\",nil", got, err)
+	}
+}

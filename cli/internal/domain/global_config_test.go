@@ -184,3 +184,27 @@ func TestResolveSSHKeyPath(t *testing.T) {
 		}
 	})
 }
+
+func TestManagedKnownHostsPath(t *testing.T) {
+	withTempXDGDir(t, func() {
+		got := domain.ManagedKnownHostsPath()
+		want := filepath.Join(domain.GlobalConfigDir(), "ssh", "known_hosts")
+		if got != want {
+			t.Errorf("ManagedKnownHostsPath() = %q, want %q", got, want)
+		}
+	})
+}
+
+// The known_hosts file is CLI bookkeeping, not user key material: unlike the key
+// path it must not follow a configured SSHKeyPath override, or the CLI would
+// re-pin keys in a file the generated Host blocks never reference.
+func TestManagedKnownHostsPathIgnoresKeyOverride(t *testing.T) {
+	withTempXDGDir(t, func() {
+		_ = domain.SaveGlobalConfig(domain.GlobalConfig{
+			Defaults: &domain.Defaults{SSHKeyPath: "/custom/key"},
+		})
+		if got, want := domain.ManagedKnownHostsPath(), filepath.Join(domain.GlobalConfigDir(), "ssh", "known_hosts"); got != want {
+			t.Errorf("ManagedKnownHostsPath() = %q, want %q", got, want)
+		}
+	})
+}

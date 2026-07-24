@@ -1763,3 +1763,85 @@ func TestValidateAliasName(t *testing.T) {
 		}
 	}
 }
+
+// The generated local block must scope host-key verification to the CLI-managed
+// known_hosts: a devcontainer regenerates its host keys on every image rebuild
+// while keeping the same IP, which otherwise makes ssh abort with "REMOTE HOST
+// IDENTIFICATION HAS CHANGED" against the user's global known_hosts.
+func TestBuildConfigBlock_LocalPinsManagedKnownHosts(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	cmd := newSetupSshCommand()
+	f, err := collectSetupSshFlags(cmd)
+	if err != nil {
+		t.Fatalf("collectSetupSshFlags: %v", err)
+	}
+	if f.knownHosts != domain.ManagedKnownHostsPath() {
+		t.Errorf("knownHosts = %q, want the managed path %q", f.knownHosts, domain.ManagedKnownHostsPath())
+	}
+	f.alias, f.user = "myws", "devuser"
+
+	block, err := buildConfigBlock(sshdefaults.ModeLocal, f, installResult{hostname: "172.25.1.30"}, sshdefaults.KindWorkspace, "myws")
+	if err != nil {
+		t.Fatalf("buildConfigBlock(local): %v", err)
+	}
+	for _, want := range []string{
+		"UserKnownHostsFile " + domain.ManagedKnownHostsPath(),
+		"StrictHostKeyChecking accept-new",
+		"HashKnownHosts no",
+	} {
+		if !strings.Contains(block, want) {
+			t.Errorf("local block missing %q:\n%s", want, block)
+		}
+	}
+}
+
+// The exported remote block lands in another machine's ~/.ssh/config, so — like
+// IdentityFile — its known_hosts path must be ~-relative, never this host's.
+func TestEmitRemoteConfig_KnownHostsIsTildeRelative(t *testing.T) {
+	dir := t.TempDir()
+	keyPath := filepath.Join(dir, "id_devcontainer")
+	if err := os.WriteFile(keyPath, []byte("PRIV-KEY"), 0o600); err != nil {
+		t.Fatalf("write key: %v", err)
+	}
+	if err := os.WriteFile(keyPath+".pub", []byte("ssh-ed25519 PUB"), 0o644); err != nil {
+		t.Fatalf("write pub: %v", err)
+	}
+
+	f := &setupSshFlags{
+		alias:      "myws",
+		user:       "devuser",
+		key:        keyPath,
+		knownHosts: filepath.Join(dir, "known_hosts"),
+		remote:     "user@host",
+		container:  "myws-devcontainer-ssh",
+	}
+
+	orig := os.Stdout
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe: %v", err)
+	}
+	os.Stdout = w
+	emitErr := emitRemoteConfig(service.SshService{Report: console}, f, sshdefaults.KindWorkspace, "myws")
+	_ = w.Close()
+	os.Stdout = orig
+	if emitErr != nil {
+		t.Fatalf("emitRemoteConfig: %v", emitErr)
+	}
+	out, err := io.ReadAll(r)
+	if err != nil {
+		t.Fatalf("read captured stdout: %v", err)
+	}
+	got := string(out)
+
+	if !strings.Contains(got, "UserKnownHostsFile "+sshdefaults.RemoteKnownHostsPath) {
+		t.Errorf("remote block should point at %s:\n%s", sshdefaults.RemoteKnownHostsPath, got)
+	}
+	if strings.Contains(got, dir) {
+		t.Errorf("remote output must not leak this host's absolute paths:\n%s", got)
+	}
+	// The rewrite is local to the render; f keeps this host's managed path.
+	if f.knownHosts == sshdefaults.RemoteKnownHostsPath {
+		t.Error("emitRemoteConfig mutated f.knownHosts")
+	}
+}
