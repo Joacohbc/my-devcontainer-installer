@@ -270,15 +270,6 @@ func GenerateCompose(config *types.DevcontainerConfig) (string, error) {
 	workspace := config.Workspace
 	networkName := workspace + "-network"
 
-	mapNetwork := func(n string) string {
-		switch n {
-		case "local-network":
-			return networkName
-		default:
-			return n
-		}
-	}
-
 	labels := types.ComposeLabels(config)
 	subnet := config.Compose.Subnet
 	if subnet == "" {
@@ -377,27 +368,8 @@ func GenerateCompose(config *types.DevcontainerConfig) (string, error) {
 		}
 		rendered.Volumes = remappedVolumes
 
-		if networksSlice, ok := rendered.Networks.([]string); ok {
-			mapped := make([]string, len(networksSlice))
-			for i, n := range networksSlice {
-				mapped[i] = mapNetwork(n)
-			}
-			if svc.ID == types.ServiceDevcontainer && devcontainerIP != "" {
-				netObj := make(map[string]any, len(mapped))
-				for _, n := range mapped {
-					if n == networkName {
-						netObj[n] = map[string]any{
-							"ipv4_address": fmt.Sprintf("${DEVCONTAINER_IP:-%s}", devcontainerIP),
-						}
-					} else {
-						netObj[n] = nil
-					}
-				}
-				rendered.Networks = netObj
-			} else {
-				rendered.Networks = mapped
-			}
-		}
+		isDevcontainer := svc.ID == types.ServiceDevcontainer
+		rendered.Networks = remapServiceNetworks(rendered.Networks, networkName, isDevcontainer, devcontainerIP)
 
 		rendered.Labels = copyLabels(labels)
 
@@ -451,6 +423,38 @@ func GenerateCompose(config *types.DevcontainerConfig) (string, error) {
 		return "", fmt.Errorf("yaml marshal: %w", err)
 	}
 	return types.GeneratedHeader + "\n" + string(out), nil
+}
+
+func remapServiceNetworks(raw any, networkName string, isDevcontainer bool, devcontainerIP string) any {
+	networkNames, ok := raw.([]string)
+	if !ok {
+		return raw
+	}
+	mapped := make([]string, len(networkNames))
+	for i, name := range networkNames {
+		mapped[i] = mapLocalNetwork(name, networkName)
+	}
+	if !isDevcontainer || devcontainerIP == "" {
+		return mapped
+	}
+	withAddress := make(map[string]any, len(mapped))
+	for _, name := range mapped {
+		if name == networkName {
+			withAddress[name] = map[string]any{
+				"ipv4_address": fmt.Sprintf("${DEVCONTAINER_IP:-%s}", devcontainerIP),
+			}
+			continue
+		}
+		withAddress[name] = nil
+	}
+	return withAddress
+}
+
+func mapLocalNetwork(name, networkName string) string {
+	if name == "local-network" {
+		return networkName
+	}
+	return name
 }
 
 func GenerateEnv(config *types.DevcontainerConfig) string {
