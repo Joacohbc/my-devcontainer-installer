@@ -61,7 +61,6 @@ func addGenerateFlags(cmd *cobra.Command) {
 	f.Bool(flagNoBuild, false, "Skip the build/pull step after generating")
 	f.BoolP(flagVersion, "v", false, "Print the CLI version")
 
-	// Dynamic completions
 	_ = cmd.RegisterFlagCompletionFunc(flagPreset, func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		ids := make([]string, 0)
 		for _, p := range catalog.All(presetsDir()) {

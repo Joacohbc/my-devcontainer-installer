@@ -327,8 +327,8 @@ func (s InspectService) CopyAsset(name, assetName, dest string) error {
 	}
 	defer os.RemoveAll(tmpDir)
 
-	res := assets.Preflight([]string{asset.File}, tmpDir)
-	if len(res.Missing) > 0 {
+	preflight := assets.Preflight([]string{asset.File}, tmpDir)
+	if len(preflight.Missing) > 0 {
 		return fmt.Errorf("asset '%s' could not be materialized", asset.File)
 	}
 
@@ -501,14 +501,14 @@ func parsePSLines(stdout string) []dockerPSLine {
 		if strings.TrimSpace(line) == "" {
 			continue
 		}
-		var obj dockerPSLine
-		if err := json.Unmarshal([]byte(line), &obj); err != nil {
+		var psLine dockerPSLine
+		if err := json.Unmarshal([]byte(line), &psLine); err != nil {
 			continue
 		}
-		if obj.Names == "" {
+		if psLine.Names == "" {
 			continue
 		}
-		out = append(out, obj)
+		out = append(out, psLine)
 	}
 	return out
 }

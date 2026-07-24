@@ -29,13 +29,13 @@ func stringsFromAny(v any, def []string) []string {
 		}
 		return s
 	}
-	arr, ok := v.([]any)
+	anyValues, ok := v.([]any)
 	if !ok {
 		return def
 	}
-	result := make([]string, 0, len(arr))
-	for _, item := range arr {
-		if s, ok := item.(string); ok {
+	result := make([]string, 0, len(anyValues))
+	for _, value := range anyValues {
+		if s, ok := value.(string); ok {
 			result = append(result, s)
 		}
 	}
