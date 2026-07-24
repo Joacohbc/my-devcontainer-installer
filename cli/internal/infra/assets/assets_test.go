@@ -130,6 +130,26 @@ func TestEntrypointAlignsUIDInsteadOfChangingWorkspaceACLs(t *testing.T) {
 	}
 }
 
+// Antigravity CLI 2.0 reads skills from ~/.gemini/antigravity-cli/skills and
+// does not understand ~/.agents/skills, so the entrypoint must bridge the two
+// with a symlink into the shared .agents skills, without clobbering a real dir.
+func TestEntrypointBridgesAntigravitySkills(t *testing.T) {
+	body, err := os.ReadFile(embeddedScript)
+	if err != nil {
+		t.Fatalf("reading %s: %v", embeddedScript, err)
+	}
+	script := string(body)
+	if !strings.Contains(script, "/home/devuser/.gemini/antigravity-cli") {
+		t.Error("entrypoint must target the Antigravity CLI skills dir under ~/.gemini/antigravity-cli")
+	}
+	if !strings.Contains(script, `ln -sfn "/home/devuser/.agents/skills"`) {
+		t.Error("entrypoint must symlink Antigravity's skills dir to the shared ~/.agents/skills")
+	}
+	if !strings.Contains(script, `[ ! -e "$ag_skills_link" ] || [ -L "$ag_skills_link" ]`) {
+		t.Error("entrypoint must not clobber a real (non-symlink) Antigravity skills dir")
+	}
+}
+
 // The auto-start post-scripts must run as devuser (never root): the whole loop
 // is wrapped in a single 'su - devuser' login shell and backgrounded so SSH is
 // not blocked, with a per-script .done sentinel guarding re-runs.
