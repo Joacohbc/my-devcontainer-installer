@@ -24,11 +24,10 @@ import (
 func TestNewRootCommand_RegistersAllSubcommands(t *testing.T) {
 	root := NewRootCommand("test")
 	want := []string{
-		"ssh", "setup-ssh", "clean-ssh", "port-forward", "run", "down", "destroy",
-		"start", "stop", "restart", "prune", "update",
+		"ssh", "setup-ssh", "clean", "port-forward", "run", "down", "destroy",
+		"start", "stop", "restart", "update",
 		"upgrade-cli", "config", "cleanup-tips", "shell", "logs", "copy",
-		"up", "status", "ls", "info", "remove-container", "remove-image",
-		"network",
+		"up", "status", "ls", "info", "network",
 	}
 	have := map[string]bool{}
 	for _, c := range root.Commands() {
@@ -41,92 +40,98 @@ func TestNewRootCommand_RegistersAllSubcommands(t *testing.T) {
 	}
 }
 
-func TestRemoveCommands_HaveShortAliases(t *testing.T) {
+func TestCleanSubcommands_HaveAliases(t *testing.T) {
 	root := NewRootCommand("test")
-	want := map[string]string{"remove-container": "rm", "remove-image": "rmi"}
+	var clean *cobra.Command
 	for _, c := range root.Commands() {
-		alias, ok := want[c.Name()]
-		if !ok {
-			continue
-		}
-		if !slices.Contains(c.Aliases, alias) {
-			t.Errorf("expected command %q to have alias %q, got %v", c.Name(), alias, c.Aliases)
-		}
-		delete(want, c.Name())
-	}
-	for name := range want {
-		t.Errorf("command %q not registered", name)
-	}
-}
-
-func TestSelectByNames(t *testing.T) {
-	images := []service.LocalImage{
-		{Ref: "devcontainer-cli/a:latest", ID: "ID1"},
-		{Ref: "devcontainer-cli/b:latest", ID: "ID2"},
-		{Ref: "ghcr.io/o/devcontainer-go:latest", ID: "ID3"},
-	}
-	nameOf := func(i service.LocalImage) string { return i.Ref }
-
-	selected, missing := selectByNames(images, []string{"devcontainer-cli/b:latest", "ghcr.io/o/devcontainer-go:latest"}, nameOf)
-	if len(missing) != 0 {
-		t.Fatalf("unexpected missing: %v", missing)
-	}
-	if len(selected) != 2 || selected[0].Ref != "devcontainer-cli/b:latest" || selected[1].Ref != "ghcr.io/o/devcontainer-go:latest" {
-		t.Fatalf("selected mismatch (order should follow names): %+v", selected)
-	}
-
-	selected, missing = selectByNames(images, []string{"devcontainer-cli/a:latest", "nope:latest"}, nameOf)
-	if len(selected) != 1 || selected[0].Ref != "devcontainer-cli/a:latest" {
-		t.Errorf("expected only the matching image, got %+v", selected)
-	}
-	if len(missing) != 1 || missing[0] != "nope:latest" {
-		t.Errorf("expected missing [nope:latest], got %v", missing)
-	}
-}
-
-func TestRemoveCommands_AcceptArgsAndComplete(t *testing.T) {
-	root := NewRootCommand("test")
-	byName := map[string]*cobra.Command{}
-	for _, c := range root.Commands() {
-		byName[c.Name()] = c
-	}
-	for _, name := range []string{"remove-container", "remove-image"} {
-		cmd := byName[name]
-		if cmd == nil {
-			t.Fatalf("command %q not registered", name)
-		}
-		// Positional args must be accepted (default arbitrary args, no validator
-		// that rejects them).
-		if cmd.Args != nil {
-			if err := cmd.Args(cmd, []string{"some-name"}); err != nil {
-				t.Errorf("%s should accept a positional arg: %v", name, err)
-			}
-		}
-		if cmd.ValidArgsFunction == nil {
-			t.Errorf("%s should register positional-arg completion", name)
-		}
-	}
-}
-
-func TestPruneCommand_HasResourceSubcommands(t *testing.T) {
-	root := NewRootCommand("test")
-	var prune *cobra.Command
-	for _, c := range root.Commands() {
-		if c.Name() == "prune" {
-			prune = c
+		if c.Name() == "clean" {
+			clean = c
 			break
 		}
 	}
-	if prune == nil {
-		t.Fatal("prune command not registered")
+	if clean == nil {
+		t.Fatal("clean command not registered")
+	}
+
+	want := map[string][]string{
+		"containers": {"container", "rm"},
+		"images":     {"image", "rmi"},
+		"catalog":    {"deprecated", "registry"},
+		"ssh":        {"sshs"},
+		"networks":   {"network"},
+		"volumes":    {"volume"},
+	}
+
+	for _, sub := range clean.Commands() {
+		aliases, ok := want[sub.Name()]
+		if !ok {
+			continue
+		}
+		for _, a := range aliases {
+			if !slices.Contains(sub.Aliases, a) {
+				t.Errorf("expected clean subcommand %q to have alias %q, got %v", sub.Name(), a, sub.Aliases)
+			}
+		}
+		delete(want, sub.Name())
+	}
+	for name := range want {
+		t.Errorf("clean subcommand %q not found", name)
+	}
+}
+
+func TestCleanCommands_AcceptArgsAndComplete(t *testing.T) {
+	root := NewRootCommand("test")
+	var clean *cobra.Command
+	for _, c := range root.Commands() {
+		if c.Name() == "clean" {
+			clean = c
+			break
+		}
+	}
+	if clean == nil {
+		t.Fatal("clean command not registered")
+	}
+
+	byName := map[string]*cobra.Command{}
+	for _, c := range clean.Commands() {
+		byName[c.Name()] = c
+	}
+
+	for _, name := range []string{"containers", "images"} {
+		cmd := byName[name]
+		if cmd == nil {
+			t.Fatalf("clean subcommand %q not registered", name)
+		}
+		if cmd.Args != nil {
+			if err := cmd.Args(cmd, []string{"some-name"}); err != nil {
+				t.Errorf("clean %s should accept a positional arg: %v", name, err)
+			}
+		}
+		if cmd.ValidArgsFunction == nil {
+			t.Errorf("clean %s should register positional-arg completion", name)
+		}
+	}
+}
+
+func TestCleanCommand_HasResourceSubcommands(t *testing.T) {
+	root := NewRootCommand("test")
+	var clean *cobra.Command
+	for _, c := range root.Commands() {
+		if c.Name() == "clean" {
+			clean = c
+			break
+		}
+	}
+	if clean == nil {
+		t.Fatal("clean command not registered")
 	}
 	have := map[string]bool{}
-	for _, c := range prune.Commands() {
+	for _, c := range clean.Commands() {
 		have[c.Name()] = true
 	}
-	for _, name := range []string{"images", "network", "volume"} {
+	for _, name := range []string{"catalog", "containers", "images", "ssh", "networks", "volumes", "all"} {
 		if !have[name] {
-			t.Errorf("expected prune subcommand %q", name)
+			t.Errorf("expected clean subcommand %q", name)
 		}
 	}
 }
@@ -165,28 +170,35 @@ func TestNetworkCommand_HasConnectAndDisconnect(t *testing.T) {
 	}
 }
 
-func TestPruneAndRemovalCommands_HaveAllFlag(t *testing.T) {
+func TestCleanAndSubcommands_HaveAllFlag(t *testing.T) {
 	root := NewRootCommand("test")
-	byName := map[string]*cobra.Command{}
+	var clean *cobra.Command
 	for _, c := range root.Commands() {
+		if c.Name() == "clean" {
+			clean = c
+			break
+		}
+	}
+	if clean == nil {
+		t.Fatal("clean command not registered")
+	}
+	if clean.Flags().Lookup("all") == nil {
+		t.Error("expected clean command to have --all flag")
+	}
+
+	byName := map[string]*cobra.Command{}
+	for _, c := range clean.Commands() {
 		byName[c.Name()] = c
 	}
-	// Top-level commands carrying --all.
-	for _, name := range []string{"prune", "remove-container", "remove-image"} {
-		cmd := byName[name]
-		if cmd == nil {
-			t.Errorf("command %q not registered", name)
+
+	for _, name := range []string{"containers", "images", "networks", "volumes", "all"} {
+		sub := byName[name]
+		if sub == nil {
+			t.Errorf("clean subcommand %q not registered", name)
 			continue
 		}
-		if cmd.Flags().Lookup("all") == nil {
-			t.Errorf("expected command %q to have --all flag", name)
-		}
-	}
-	// prune subcommands carrying --all.
-	prune := byName["prune"]
-	for _, sub := range prune.Commands() {
 		if sub.Flags().Lookup("all") == nil {
-			t.Errorf("expected prune subcommand %q to have --all flag", sub.Name())
+			t.Errorf("expected clean subcommand %q to have --all flag", name)
 		}
 	}
 }
@@ -204,17 +216,27 @@ func TestCleanSshCommand_Flags(t *testing.T) {
 	root := NewRootCommand("test")
 	var clean *cobra.Command
 	for _, c := range root.Commands() {
-		if c.Name() == "clean-ssh" {
+		if c.Name() == "clean" {
 			clean = c
 			break
 		}
 	}
 	if clean == nil {
-		t.Fatal("clean-ssh command not registered")
+		t.Fatal("clean command not registered")
+	}
+	var sshSub *cobra.Command
+	for _, c := range clean.Commands() {
+		if c.Name() == "ssh" {
+			sshSub = c
+			break
+		}
+	}
+	if sshSub == nil {
+		t.Fatal("clean ssh subcommand not registered")
 	}
 	for _, name := range []string{"dry-run", "yes", "no-interactive"} {
-		if clean.Flags().Lookup(name) == nil {
-			t.Errorf("expected clean-ssh flag --%s", name)
+		if sshSub.Flags().Lookup(name) == nil {
+			t.Errorf("expected clean ssh flag --%s", name)
 		}
 	}
 }
@@ -273,9 +295,9 @@ func TestCleanupInstructionLines(t *testing.T) {
 		"devcontainer-cli ls",
 		"devcontainer-cli down -v",
 		"devcontainer-cli destroy",
-		"devcontainer-cli remove-container",
-		"devcontainer-cli remove-image",
-		"devcontainer-cli prune",
+		"devcontainer-cli clean containers",
+		"devcontainer-cli clean images",
+		"devcontainer-cli clean",
 		"devcontainer-cli update",
 	} {
 		if !strings.Contains(out, native) {
@@ -414,28 +436,28 @@ func TestShellInteractiveDefaults(t *testing.T) {
 	}
 }
 
-func TestPruneVolumeCommand_HasSharedFlag(t *testing.T) {
+func TestCleanVolumesCommand_HasSharedFlag(t *testing.T) {
 	root := NewRootCommand("test")
-	var prune *cobra.Command
+	var clean *cobra.Command
 	for _, c := range root.Commands() {
-		if c.Name() == "prune" {
-			prune = c
+		if c.Name() == "clean" {
+			clean = c
 		}
 	}
-	if prune == nil {
-		t.Fatal("prune command not found")
+	if clean == nil {
+		t.Fatal("clean command not found")
 	}
 	var vol *cobra.Command
-	for _, c := range prune.Commands() {
-		if c.Name() == "volume" {
+	for _, c := range clean.Commands() {
+		if c.Name() == "volumes" {
 			vol = c
 		}
 	}
 	if vol == nil {
-		t.Fatal("prune volume subcommand not found")
+		t.Fatal("clean volumes subcommand not found")
 	}
 	if vol.Flags().Lookup("shared") == nil {
-		t.Error("expected prune volume --shared flag")
+		t.Error("expected clean volumes --shared flag")
 	}
 }
 

@@ -1,7 +1,11 @@
 package service
 
 import (
+	"path/filepath"
 	"testing"
+
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 )
 
 func TestPruneSelectAllParsesImages(t *testing.T) {
@@ -257,4 +261,67 @@ func TestPruneRemoveNetworksAndVolumes(t *testing.T) {
 		t.Errorf("fail runner volumes: removed=%d failed=%d, want 0/2", removed, failed)
 	}
 	restore()
+}
+
+func TestCleanCatalog(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmpDir)
+
+	existingDir := t.TempDir()
+	missingDir := filepath.Join(tmpDir, "nonexistent-project")
+
+	domain.RecordProject(existingDir, &types.DevcontainerConfig{Workspace: "ws1"}, "")
+	domain.RecordProject(missingDir, &types.DevcontainerConfig{Workspace: "ws2"}, "")
+
+	svc := PruneService{Report: nopReporter{}}
+
+	// Dry run test
+	removedDry, err := svc.CleanCatalog(CleanOptions{DryRun: true})
+	if err != nil {
+		t.Fatalf("unexpected error on dry run: %v", err)
+	}
+	if len(removedDry) != 1 || removedDry[0] != missingDir {
+		t.Errorf("dry run removed = %v, want [%s]", removedDry, missingDir)
+	}
+	if entries := domain.ListEntries(); len(entries) != 2 {
+		t.Errorf("dry run should not modify registry, got %d entries", len(entries))
+	}
+
+	// Non-dry run test
+	removed, err := svc.CleanCatalog(CleanOptions{Yes: true})
+	if err != nil {
+		t.Fatalf("unexpected error on clean: %v", err)
+	}
+	if len(removed) != 1 || removed[0] != missingDir {
+		t.Errorf("removed = %v, want [%s]", removed, missingDir)
+	}
+	entries := domain.ListEntries()
+	if len(entries) != 1 || entries[0].ProjectDir != existingDir {
+		t.Errorf("after clean catalog, remaining entries = %v, want only [%s]", entries, existingDir)
+	}
+}
+
+func TestSelectByNames(t *testing.T) {
+	images := []LocalImage{
+		{Ref: "devcontainer-cli/a:latest", ID: "ID1"},
+		{Ref: "devcontainer-cli/b:latest", ID: "ID2"},
+		{Ref: "ghcr.io/o/devcontainer-go:latest", ID: "ID3"},
+	}
+	nameOf := func(i LocalImage) string { return i.Ref }
+
+	selected, missing := selectByNames(images, []string{"devcontainer-cli/b:latest", "ghcr.io/o/devcontainer-go:latest"}, nameOf)
+	if len(missing) != 0 {
+		t.Fatalf("unexpected missing: %v", missing)
+	}
+	if len(selected) != 2 || selected[0].Ref != "devcontainer-cli/b:latest" || selected[1].Ref != "ghcr.io/o/devcontainer-go:latest" {
+		t.Fatalf("selected mismatch (order should follow names): %+v", selected)
+	}
+
+	selected, missing = selectByNames(images, []string{"devcontainer-cli/a:latest", "nope:latest"}, nameOf)
+	if len(selected) != 1 || selected[0].Ref != "devcontainer-cli/a:latest" {
+		t.Errorf("expected only the matching image, got %+v", selected)
+	}
+	if len(missing) != 1 || missing[0] != "nope:latest" {
+		t.Errorf("expected missing [nope:latest], got %v", missing)
+	}
 }

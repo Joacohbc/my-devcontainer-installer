@@ -134,6 +134,21 @@ agents dir .agents
 codex dir .codex
 gh dir .config/gh
 SHARED_CONFIG_ENTRIES
+
+    # Antigravity CLI 2.0 reads skills from ~/.gemini/antigravity-cli/skills but
+    # does not understand ~/.agents/skills, where the shared agent skills live.
+    # Bridge them with a symlink so the (persisted, shared) .agents skills are
+    # visible to Antigravity. Both .agents and .gemini are symlinks into the
+    # shared volume set up above, so this link persists across containers. Never
+    # clobber a real (non-symlink) skills dir.
+    ag_skills_parent="/home/devuser/.gemini/antigravity-cli"
+    ag_skills_link="$ag_skills_parent/skills"
+    if [ ! -e "$ag_skills_link" ] || [ -L "$ag_skills_link" ]; then
+        mkdir -p "$ag_skills_parent" "/home/devuser/.agents/skills"
+        ln -sfn "/home/devuser/.agents/skills" "$ag_skills_link"
+        chown -h "$DEV_UID:$DEV_GID" "$ag_skills_link" 2>/dev/null || true
+        chown "$DEV_UID:$DEV_GID" "$ag_skills_parent" "/home/devuser/.agents/skills" 2>/dev/null || true
+    fi
 fi
 
 # ── Auto-run non-interactive installer post-scripts ─────────────────────────
