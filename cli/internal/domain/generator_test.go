@@ -1,6 +1,8 @@
 package domain_test
 
 import (
+	"fmt"
+	"sort"
 	"strings"
 	"testing"
 
@@ -939,4 +941,62 @@ func TestGenerateDockerfile_Caveman(t *testing.T) {
 	assertContainsStr(t, df, "install-caveman.sh", "caveman script")
 	// caveman requires nodejs
 	assertContainsStr(t, df, "fnm install --lts", "caveman requires nodejs")
+}
+
+func TestGenerateCompose_DependsOnSortedRegardlessOfInputOrder(t *testing.T) {
+	orders := [][]any{
+		{"redis", "postgres", "mongo"},
+		{"mongo", "redis", "postgres"},
+		{"postgres", "mongo", "redis"},
+	}
+	want := []any{"mongo", "postgres", "redis"}
+	for _, services := range orders {
+		cfg := makeConfig(func(c *types.DevcontainerConfig) {
+			c.Compose.Services = services
+			c.Compose.Subnet = "172.25.0.0/24"
+		})
+		yml := mustGenerateCompose(t, cfg)
+		var parsed map[string]any
+		if err := yaml.Unmarshal([]byte(yml), &parsed); err != nil {
+			t.Fatalf("invalid YAML: %v", err)
+		}
+		devSvc := parsed["services"].(map[string]any)["devcontainer-ssh"].(map[string]any)
+		deps, ok := devSvc["depends_on"].([]any)
+		if !ok {
+			t.Fatalf("input %v: expected depends_on slice, got %v", services, devSvc["depends_on"])
+		}
+		if fmt.Sprintf("%v", deps) != fmt.Sprintf("%v", want) {
+			t.Errorf("input %v: depends_on = %v, want %v", services, deps, want)
+		}
+	}
+}
+
+func TestGenerateCompose_DeterministicAcrossRuns(t *testing.T) {
+	cfg := makeConfig(func(c *types.DevcontainerConfig) {
+		c.Compose.Services = []any{"mongo", "postgres", "redis", "tunnel"}
+		c.Compose.Subnet = "172.25.0.0/24"
+	})
+	first := mustGenerateCompose(t, cfg)
+	for i := 0; i < 20; i++ {
+		if got := mustGenerateCompose(t, cfg); got != first {
+			t.Fatalf("compose output not deterministic on run %d", i)
+		}
+	}
+}
+
+func TestGenerateEnv_LinesSortedAfterHeader(t *testing.T) {
+	cfg := makeConfig(func(c *types.DevcontainerConfig) {
+		c.Env = map[string]string{"ZED": "1", "ALPHA": "2", "MID": "3"}
+		c.Compose.Services = []any{}
+		c.Compose.Subnet = "10.0.0.0/8"
+	})
+	env := domain.GenerateEnv(cfg)
+	lines := strings.Split(strings.TrimRight(env, "\n"), "\n")
+	if len(lines) == 0 || !strings.HasPrefix(lines[0], "# Generated") {
+		t.Fatalf("expected generated header first, got %q", env)
+	}
+	body := lines[1:]
+	if !sort.StringsAreSorted(body) {
+		t.Errorf("expected .env lines sorted after header, got %v", body)
+	}
 }
