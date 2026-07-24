@@ -60,7 +60,7 @@ func migrateDbclients(modules []types.SelectedModule) []types.SelectedModule {
 			out = append(out, m)
 			continue
 		}
-		clients := stringSliceFromAny(m.Options["clients"])
+		clients := types.CoerceStrings(m.Options["clients"])
 		if len(clients) == 0 {
 			clients = []string{"postgres", "redis", "mongo"}
 		}
@@ -71,24 +71,6 @@ func migrateDbclients(modules []types.SelectedModule) []types.SelectedModule {
 		}
 	}
 	return out
-}
-
-// stringSliceFromAny coerces a JSON-decoded option value ([]any of strings or
-// []string) into a []string, dropping non-string entries.
-func stringSliceFromAny(v any) []string {
-	switch s := v.(type) {
-	case []string:
-		return s
-	case []any:
-		out := make([]string, 0, len(s))
-		for _, x := range s {
-			if str, ok := x.(string); ok {
-				out = append(out, str)
-			}
-		}
-		return out
-	}
-	return nil
 }
 
 func SaveConfig(config *types.DevcontainerConfig, cwd string) error {

@@ -21,26 +21,3 @@ var aptCleanupCommands = []string{
 func aptCleanup() string {
 	return strings.Join(aptCleanupCommands, " && ")
 }
-
-func stringsFromAny(v any, def []string) []string {
-	if s, ok := v.([]string); ok {
-		if len(s) == 0 {
-			return def
-		}
-		return s
-	}
-	anyValues, ok := v.([]any)
-	if !ok {
-		return def
-	}
-	result := make([]string, 0, len(anyValues))
-	for _, value := range anyValues {
-		if s, ok := value.(string); ok {
-			result = append(result, s)
-		}
-	}
-	if len(result) == 0 {
-		return def
-	}
-	return result
-}

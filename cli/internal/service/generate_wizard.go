@@ -40,19 +40,7 @@ func choicesFromOption(o types.ModuleOption) []Option {
 }
 
 func defaultStrings(v any) []string {
-	switch d := v.(type) {
-	case []string:
-		return d
-	case []any:
-		var out []string
-		for _, x := range d {
-			if s, ok := x.(string); ok {
-				out = append(out, s)
-			}
-		}
-		return out
-	}
-	return nil
+	return types.CoerceStrings(v)
 }
 
 func serviceIDOf(s any) string {

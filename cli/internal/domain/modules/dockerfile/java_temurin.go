@@ -34,13 +34,8 @@ var JavaTemurinModule = &ModuleSpec{
 		},
 	},
 	Render: func(opts map[string]any) string {
-		versions := stringsFromAny(opts["versions"], []string{"17", "21"})
-		maven := true
-		if v, ok := opts["maven"]; ok {
-			if b, ok := v.(bool); ok {
-				maven = b
-			}
-		}
+		versions := types.StringsOpt(opts, "versions", []string{"17", "21"})
+		maven := types.BoolOpt(opts, "maven", true)
 		pkgs := make([]string, 0, len(versions)+1)
 		for _, v := range versions {
 			if v != "none" {

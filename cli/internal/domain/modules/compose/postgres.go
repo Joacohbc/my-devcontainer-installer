@@ -25,10 +25,7 @@ var PostgresService = &ServiceSpec{
 		},
 	},
 	Render: func(ctx RenderContext) *ServiceDef {
-		version, _ := ctx.Options["version"].(string)
-		if version == "" {
-			version = "17-alpine"
-		}
+		version := types.StringOpt(ctx.Options, "version", "17-alpine")
 		user := ctx.DefaultDBUser
 		if user == "" {
 			user = "devuser"

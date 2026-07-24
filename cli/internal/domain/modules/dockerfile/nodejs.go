@@ -36,14 +36,8 @@ var NodejsModule = &ModuleSpec{
 		},
 	},
 	Render: func(opts map[string]any) string {
-		manager, _ := opts["manager"].(string)
-		if manager == "" {
-			manager = "fnm"
-		}
-		version, _ := opts["version"].(string)
-		if version == "" {
-			version = "lts"
-		}
+		manager := types.StringOpt(opts, "manager", "fnm")
+		version := types.StringOpt(opts, "version", "lts")
 		if manager == "nvm" {
 			return renderNvm(version)
 		}

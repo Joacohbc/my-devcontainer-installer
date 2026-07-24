@@ -25,10 +25,7 @@ var MongoService = &ServiceSpec{
 		},
 	},
 	Render: func(ctx RenderContext) *ServiceDef {
-		version, _ := ctx.Options["version"].(string)
-		if version == "" {
-			version = "8.0"
-		}
+		version := types.StringOpt(ctx.Options, "version", "8.0")
 		user := ctx.DefaultDBUser
 		if user == "" {
 			user = "devuser"
