@@ -10,6 +10,7 @@ var MongoService = &ServiceSpec{
 	ID:         types.ServiceMongo,
 	Label:      "MongoDB",
 	UICategory: types.UICategoryDatabases,
+	IsDatabase: true,
 	Volumes:    []string{"mongo_data"},
 	Options: []types.ModuleOption{
 		{

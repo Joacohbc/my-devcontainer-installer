@@ -406,6 +406,8 @@ func (c composeContext) renderContext(svc *compose.ServiceSpec, isDevcontainer b
 }
 
 func (c composeContext) configureDevcontainer(rendered *compose.ServiceDef) {
+	rendered.DependsOn = c.databaseDependencies()
+
 	if c.dockerOutsideDockerEnabled() {
 		rendered.Volumes = append(rendered.Volumes, "/var/run/docker.sock:/var/run/docker.sock")
 	}
@@ -419,6 +421,19 @@ func (c composeContext) configureDevcontainer(rendered *compose.ServiceDef) {
 		rendered.Build = devcontainerBuild(c.config)
 	}
 	rendered.Hostname = c.workspace
+}
+
+// databaseDependencies returns the enabled compose services flagged as
+// databases in the catalog (already sorted, since enabledIDs is sorted), for the
+// devcontainer's depends_on. Returns nil when there are none.
+func (c composeContext) databaseDependencies() []string {
+	var deps []string
+	for _, id := range c.enabledIDs {
+		if svc := catalog.GetComposeService(types.ServiceID(id)); svc != nil && svc.IsDatabase {
+			deps = append(deps, id)
+		}
+	}
+	return deps
 }
 
 func (c composeContext) dockerOutsideDockerEnabled() bool {

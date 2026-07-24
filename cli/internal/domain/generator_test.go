@@ -971,6 +971,23 @@ func TestGenerateCompose_DependsOnSortedRegardlessOfInputOrder(t *testing.T) {
 	}
 }
 
+func TestGenerateCompose_DependsOnExcludesNonDatabaseServices(t *testing.T) {
+	cfg := makeConfig(func(c *types.DevcontainerConfig) {
+		c.Compose.Services = []any{"mongo", "tunnel"}
+		c.Compose.Subnet = "172.25.0.0/24"
+	})
+	yml := mustGenerateCompose(t, cfg)
+	var parsed map[string]any
+	if err := yaml.Unmarshal([]byte(yml), &parsed); err != nil {
+		t.Fatalf("invalid YAML: %v", err)
+	}
+	devSvc := parsed["services"].(map[string]any)["devcontainer-ssh"].(map[string]any)
+	deps, _ := devSvc["depends_on"].([]any)
+	if len(deps) != 1 || deps[0] != "mongo" {
+		t.Errorf("depends_on = %v, want [mongo] (tunnel is not a database)", deps)
+	}
+}
+
 func TestGenerateCompose_DeterministicAcrossRuns(t *testing.T) {
 	cfg := makeConfig(func(c *types.DevcontainerConfig) {
 		c.Compose.Services = []any{"mongo", "postgres", "redis", "tunnel"}

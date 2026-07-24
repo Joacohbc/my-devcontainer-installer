@@ -10,6 +10,7 @@ var RedisService = &ServiceSpec{
 	ID:         types.ServiceRedis,
 	Label:      "Redis",
 	UICategory: types.UICategoryDatabases,
+	IsDatabase: true,
 	Volumes:    []string{"redis_data"},
 	Options: []types.ModuleOption{
 		{

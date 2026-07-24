@@ -72,7 +72,10 @@ func TestRedisRender(t *testing.T) {
 	}
 }
 
-func TestDevcontainerRender_DependsOnEnabledDatabases(t *testing.T) {
+// depends_on is now assembled by the generator (from the catalog's IsDatabase
+// flag), not by Render; the generator_test suite covers that. Render itself
+// leaves DependsOn unset.
+func TestDevcontainerRender_DoesNotSetDependsOn(t *testing.T) {
 	def := compose.DevcontainerService.Render(compose.RenderContext{
 		ImageName:         "myimg:local",
 		EnabledServiceIDs: []string{"devcontainer", "postgres", "redis", "zellij"},
@@ -80,14 +83,8 @@ func TestDevcontainerRender_DependsOnEnabledDatabases(t *testing.T) {
 	if def.Image != "myimg:local" {
 		t.Errorf("Image = %q, want myimg:local", def.Image)
 	}
-	want := map[string]bool{"postgres": true, "redis": true}
-	if len(def.DependsOn) != len(want) {
-		t.Fatalf("DependsOn = %v, want %v", def.DependsOn, want)
-	}
-	for _, d := range def.DependsOn {
-		if !want[d] {
-			t.Errorf("unexpected depends_on entry %q", d)
-		}
+	if def.DependsOn != nil {
+		t.Errorf("DependsOn = %v, want nil (assembled by the generator)", def.DependsOn)
 	}
 }
 

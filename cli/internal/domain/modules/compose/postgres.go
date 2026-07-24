@@ -10,6 +10,7 @@ var PostgresService = &ServiceSpec{
 	ID:         types.ServicePostgres,
 	Label:      "PostgreSQL",
 	UICategory: types.UICategoryDatabases,
+	IsDatabase: true,
 	Volumes:    []string{"postgres_data"},
 	Options: []types.ModuleOption{
 		{

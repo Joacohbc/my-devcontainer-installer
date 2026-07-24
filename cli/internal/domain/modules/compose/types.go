@@ -7,6 +7,7 @@ type ServiceSpec struct {
 	Label          string
 	UICategory     types.UICategory
 	Always         bool
+	IsDatabase     bool
 	RequiresModule types.ModuleID
 	Internal       bool
 	Options        []types.ModuleOption
