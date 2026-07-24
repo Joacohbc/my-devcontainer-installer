@@ -209,3 +209,110 @@ func TestPinContainerHostKeys_RequiresHost(t *testing.T) {
 		t.Error("expected an error when there is no host to pin against")
 	}
 }
+
+func TestKnownHostsHosts(t *testing.T) {
+	content := "172.25.1.30 ssh-ed25519 A\n" +
+		"[172.25.2.30]:2222 ssh-ed25519 B\n" +
+		"myws,172.25.3.30 ssh-rsa C\n" +
+		"172.25.1.30 ssh-rsa D\n" + // second key for an already seen host
+		"# comment\n\n"
+	want := []string{"172.25.1.30", "172.25.2.30", "myws", "172.25.3.30"}
+	if got := KnownHostsHosts(content); !slices.Equal(got, want) {
+		t.Errorf("KnownHostsHosts() = %v, want %v", got, want)
+	}
+}
+
+func TestRemoveKnownHostsEntries(t *testing.T) {
+	content := "172.25.1.30 ssh-ed25519 A\n172.25.1.30 ssh-rsa B\n10.0.0.1 ssh-ed25519 KEEP\n"
+	got, dropped := RemoveKnownHostsEntries(content, []string{"172.25.1.30", "missing"})
+	if dropped != 2 {
+		t.Errorf("dropped = %d, want 2", dropped)
+	}
+	if got != "10.0.0.1 ssh-ed25519 KEEP\n" {
+		t.Errorf("result = %q, want only the surviving host", got)
+	}
+}
+
+// The sweep is keyed by address, so it treats a workspace block and a loose
+// --container block identically — and also catches keys destroy left behind.
+func TestOrphanHosts(t *testing.T) {
+	knownHosts := "172.25.1.30 ssh-ed25519 WS\n" +
+		"172.25.2.30 ssh-ed25519 LOOSE\n" +
+		"172.25.9.99 ssh-ed25519 GONE\n"
+	config := "# devcontainer-cli:managed v=1 kind=workspace ref=api alias=api\n" +
+		"Host api\n    HostName 172.25.1.30\n\n" +
+		"# devcontainer-cli:managed v=1 kind=container ref=dc-ssh alias=dc-ssh\n" +
+		"Host dc-ssh\n    HostName 172.25.2.30\n"
+
+	want := []string{"172.25.9.99"}
+	if got := orphanHosts(knownHosts, config); !slices.Equal(got, want) {
+		t.Errorf("orphanHosts() = %v, want %v", got, want)
+	}
+}
+
+func TestOrphanHosts_KeepsHandWrittenAndAliasTargets(t *testing.T) {
+	knownHosts := "10.0.0.5 ssh-ed25519 HAND\nmybox ssh-ed25519 ALIAS\n"
+	// A hand-written block pointing at the CLI's known_hosts, and a block with no
+	// HostName (ssh dials the alias itself) — neither entry is orphaned.
+	config := "Host tunnel\n    HostName 10.0.0.5\n\nHost mybox\n    User me\n"
+	if got := orphanHosts(knownHosts, config); got != nil {
+		t.Errorf("orphanHosts() = %v, want none", got)
+	}
+}
+
+func TestOrphanHosts_NoConfigOrphansEverything(t *testing.T) {
+	want := []string{"172.25.1.30"}
+	if got := orphanHosts("172.25.1.30 ssh-ed25519 A\n", ""); !slices.Equal(got, want) {
+		t.Errorf("orphanHosts() = %v, want %v", got, want)
+	}
+}
+
+func TestForgetHostKeys(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	path := domain.ManagedKnownHostsPath()
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("172.25.1.30 ssh-ed25519 A\n10.0.0.1 ssh-rsa KEEP\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	svc := SshService{Report: nopReporter{}}
+	dropped, err := svc.ForgetHostKeys([]string{"172.25.1.30"})
+	if err != nil || dropped != 1 {
+		t.Fatalf("ForgetHostKeys = %d,%v, want 1,nil", dropped, err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "10.0.0.1 ssh-rsa KEEP\n" {
+		t.Errorf("known_hosts = %q, want only the surviving host", data)
+	}
+
+	// Nothing to do: no rewrite, no error.
+	if dropped, err := svc.ForgetHostKeys([]string{"172.25.1.30"}); err != nil || dropped != 0 {
+		t.Errorf("second ForgetHostKeys = %d,%v, want 0,nil", dropped, err)
+	}
+	if dropped, err := svc.ForgetHostKeys(nil); err != nil || dropped != 0 {
+		t.Errorf("ForgetHostKeys(nil) = %d,%v, want 0,nil", dropped, err)
+	}
+}
+
+func TestForgetHostKeysMissingFile(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	svc := SshService{Report: nopReporter{}}
+	if dropped, err := svc.ForgetHostKeys([]string{"1.2.3.4"}); err != nil || dropped != 0 {
+		t.Errorf("ForgetHostKeys with no file = %d,%v, want 0,nil", dropped, err)
+	}
+}
+
+func TestOrphanKnownHosts_MissingFile(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	setHomeDir(t, t.TempDir())
+	svc := SshService{Report: nopReporter{}}
+	got, err := svc.OrphanKnownHosts()
+	if err != nil || got != nil {
+		t.Errorf("OrphanKnownHosts with no known_hosts = %v,%v, want nil,nil", got, err)
+	}
+}

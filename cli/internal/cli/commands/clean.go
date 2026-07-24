@@ -20,7 +20,7 @@ Subcommands:
   clean catalog      Prune entries in images.json whose project directory no longer exists.
   clean containers   Remove CLI-managed containers (by name, non-running, or --all).
   clean images       Remove CLI-managed images (by reference, unused, or --all).
-  clean ssh          Prune stale SSH config blocks from ~/.ssh/config.
+  clean ssh          Prune stale SSH config blocks and the host keys they pinned.
   clean networks     Remove CLI-managed Docker networks.
   clean volumes      Remove CLI-managed Docker volumes (--shared includes shared tool config).
   clean all          Sweep every category (catalog, containers, images, ssh, networks, volumes).`,
@@ -168,22 +168,26 @@ func newCleanSshCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "ssh",
 		Aliases: []string{"sshs"},
-		Short:   "Prune stale SSH config blocks from ~/.ssh/config",
-		Long: `devcontainer-cli clean ssh — prune stale SSH config entries this CLI wrote.
+		Short:   "Prune stale SSH config blocks and their pinned host keys",
+		Long: `devcontainer-cli clean ssh — prune stale SSH entries this CLI wrote.
 
 setup-ssh tags every Host block it adds to ~/.ssh/config with a managed marker recording what it targets
-(a workspace or a specific container). This command scans those markers and removes blocks whose target is gone.`,
-		Example: `  # Preview stale SSH blocks
+(a workspace or a specific container). This command scans those markers and removes blocks whose target is gone.
+
+It then sweeps the CLI-managed known_hosts, dropping the host keys no remaining Host block dials — the ones
+left behind by the blocks just removed, by an earlier 'destroy', or by a container that came back on a
+different address. Your own ~/.ssh/known_hosts is never touched.`,
+		Example: `  # Preview stale SSH blocks and orphaned host keys
   devcontainer-cli clean ssh --dry-run
 
-  # Remove stale SSH blocks
+  # Remove stale SSH blocks and their pinned host keys
   devcontainer-cli clean ssh`,
 		SilenceUsage: true,
 		RunE:         runCleanSsh,
 	}
 	addYesFlag(cmd)
 	addInteractiveFlag(cmd)
-	cmd.Flags().Bool("dry-run", false, "List stale blocks without removing them")
+	cmd.Flags().Bool("dry-run", false, "List stale blocks and orphaned host keys without removing them")
 	return cmd
 }
 

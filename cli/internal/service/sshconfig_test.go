@@ -3,6 +3,7 @@ package service
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -727,5 +728,32 @@ func TestAliasHostNameMissingConfig(t *testing.T) {
 	got, err := svc.AliasHostName("devcontainer")
 	if err != nil || got != "" {
 		t.Errorf("AliasHostName with no config = %q,%v, want \"\",nil", got, err)
+	}
+}
+
+func TestConfigHostTargets(t *testing.T) {
+	// Aliases and HostNames both count: a block without HostName dials its alias.
+	// Wildcard patterns name no single host and are skipped.
+	want := []string{"devcontainer", "172.18.0.2", "other", "example.com"}
+	got := ConfigHostTargets(sampleConfig)
+	if len(got) != len(want) {
+		t.Fatalf("ConfigHostTargets() = %v, want %v", got, want)
+	}
+	for i, w := range want {
+		if got[i] != w {
+			t.Errorf("ConfigHostTargets()[%d] = %q, want %q", i, got[i], w)
+		}
+	}
+	for _, unwanted := range []string{"*.internal"} {
+		if slices.Contains(got, unwanted) {
+			t.Errorf("ConfigHostTargets() should skip wildcard %q: %v", unwanted, got)
+		}
+	}
+}
+
+func TestConfigHostTargetsDeduplicates(t *testing.T) {
+	content := "Host a\n    HostName 1.2.3.4\n\nHost b\n    HostName 1.2.3.4\n"
+	if got, want := len(ConfigHostTargets(content)), 3; got != want {
+		t.Errorf("ConfigHostTargets() returned %d targets, want %d (a, b, 1.2.3.4)", got, want)
 	}
 }

@@ -285,6 +285,34 @@ func HostNameForAlias(content, alias string) string {
 	return ""
 }
 
+// ConfigHostTargets returns every address content can dial, de-duplicated and in
+// first-seen order: each block's Host aliases plus its HostName. Wildcard
+// patterns are skipped — they name no single host. It is what clean ssh checks
+// pinned host keys against, so an entry is only ever considered orphaned when
+// no block (managed or hand-written) still reaches it.
+func ConfigHostTargets(content string) []string {
+	var targets []string
+	seen := make(map[string]bool)
+	add := func(value string) {
+		if value == "" || strings.ContainsAny(value, "*?") || seen[value] {
+			return
+		}
+		seen[value] = true
+		targets = append(targets, value)
+	}
+	for _, line := range strings.Split(content, "\n") {
+		for _, alias := range HostAliasesInLine(line) {
+			add(alias)
+		}
+		if strings.EqualFold(optionKeyword(line), "HostName") {
+			if fields := strings.Fields(line); len(fields) >= 2 {
+				add(fields[1])
+			}
+		}
+	}
+	return targets
+}
+
 // EnsureHostKeyOptions returns content with the Host block for alias carrying the
 // host-key options for knownHostsFile — replacing stale values and appending the
 // missing ones in place, so a block written by an older CLI version is upgraded

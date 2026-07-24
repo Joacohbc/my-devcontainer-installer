@@ -359,6 +359,14 @@ devcontainer-cli clean ssh --yes       # elimina sin preguntar
 
 Un bloque de workspace se conserva mientras un contenedor gestionado lo reporte o el proyecto siga registrado, así que un stack apenas detenido (`down`) no se limpia. A diferencia de `destroy` (que quita el bloque del proyecto actual), `clean ssh` barre todos los bloques obsoletos de una sola pasada.
 
+Después de eliminar los bloques, `clean ssh` también **barre el `known_hosts` gestionado** (ver [Claves de host y `known_hosts`](#claves-de-host-y-known_hosts)): borra las claves de host que ya ningún bloque `Host` de tu `~/.ssh/config` usa. El barrido va por dirección, no por marcador, así que cubre por igual:
+
+- bloques de **workspace** y de **contenedor suelto** (`--container`),
+- claves que dejó atrás un `destroy` (que quita el bloque pero no la clave),
+- claves de un contenedor que volvió con otra IP.
+
+Por eso el barrido corre incluso cuando no hay ningún bloque obsoleto que eliminar. Las claves que sí siguen referenciadas por algún bloque —incluidos los que escribiste vos— se conservan, y tu `~/.ssh/known_hosts` global nunca se toca.
+
 ## Copiar archivos y assets (`copy`)
 
 El comando `copy` (alias `cp`) copia archivos o directorios entre el host y el contenedor, **resolviendo el contenedor automáticamente**. Una ruta prefijada con `:` es una ruta *dentro del contenedor*; la dirección se infiere según dónde esté el `:`:

@@ -99,9 +99,22 @@ func writeKnownHosts(path, host string, keys []string) error {
 // the given keys appended as `<host> <type> <base64>` lines. Entries for other
 // hosts, comments and blank lines are preserved.
 func ReplaceKnownHostsEntries(content, host string, keys []string) string {
+	body, _ := RemoveKnownHostsEntries(content, []string{host})
+	for _, key := range keys {
+		body += host + " " + key + "\n"
+	}
+	return body
+}
+
+// RemoveKnownHostsEntries returns content with every entry for any of hosts
+// removed, plus how many lines were dropped. Comments, blank lines and entries
+// for other hosts are preserved.
+func RemoveKnownHostsEntries(content string, hosts []string) (string, int) {
 	var out []string
+	dropped := 0
 	for _, line := range strings.Split(content, "\n") {
-		if knownHostsLineMatches(line, host) {
+		if matchesAnyKnownHost(line, hosts) {
+			dropped++
 			continue
 		}
 		out = append(out, line)
@@ -110,10 +123,120 @@ func ReplaceKnownHostsEntries(content, host string, keys []string) string {
 	if body != "" {
 		body += "\n"
 	}
-	for _, key := range keys {
-		body += host + " " + key + "\n"
+	return body, dropped
+}
+
+func matchesAnyKnownHost(line string, hosts []string) bool {
+	for _, host := range hosts {
+		if knownHostsLineMatches(line, host) {
+			return true
+		}
 	}
-	return body
+	return false
+}
+
+// KnownHostsHosts returns the distinct hosts content records, in first-seen
+// order, with the `[host]:port` spelling reduced to the bare host so callers can
+// compare them against ssh config HostNames.
+func KnownHostsHosts(content string) []string {
+	var hosts []string
+	seen := make(map[string]bool)
+	for _, line := range strings.Split(content, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) > 0 && strings.HasPrefix(fields[0], "@") {
+			fields = fields[1:]
+		}
+		if len(fields) < 2 || strings.HasPrefix(fields[0], "#") {
+			continue
+		}
+		for _, pattern := range strings.Split(fields[0], ",") {
+			host := unbracketHost(pattern)
+			if host == "" || seen[host] {
+				continue
+			}
+			seen[host] = true
+			hosts = append(hosts, host)
+		}
+	}
+	return hosts
+}
+
+// unbracketHost reduces the `[host]:port` known_hosts spelling to `host`, and
+// leaves anything else (including a hashed |1|… entry) untouched.
+func unbracketHost(pattern string) string {
+	if !strings.HasPrefix(pattern, "[") {
+		return pattern
+	}
+	if end := strings.Index(pattern, "]"); end > 1 {
+		return pattern[1:end]
+	}
+	return pattern
+}
+
+// OrphanKnownHosts returns the hosts pinned in the CLI-managed known_hosts that
+// no Host block in ~/.ssh/config dials any more — what is left behind when a
+// block is removed (by clean ssh, by destroy) or when a container comes back on
+// a different address. A missing known_hosts yields no orphans; a missing ssh
+// config orphans everything, since nothing can be reaching those hosts through
+// the CLI's file.
+func (s SshService) OrphanKnownHosts() ([]string, error) {
+	pinned, err := os.ReadFile(domain.ManagedKnownHostsPath())
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	configPath, err := sshConfigPath()
+	if err != nil {
+		return nil, err
+	}
+	config, err := os.ReadFile(configPath)
+	if err != nil && !os.IsNotExist(err) {
+		return nil, err
+	}
+	return orphanHosts(string(pinned), string(config)), nil
+}
+
+// orphanHosts returns the hosts recorded in knownHosts that no Host block in
+// config targets. Both the block's alias and its HostName count as a reference:
+// a block without HostName dials the alias itself.
+func orphanHosts(knownHosts, config string) []string {
+	referenced := make(map[string]bool)
+	for _, target := range ConfigHostTargets(config) {
+		referenced[target] = true
+	}
+	var orphans []string
+	for _, host := range KnownHostsHosts(knownHosts) {
+		if !referenced[host] {
+			orphans = append(orphans, host)
+		}
+	}
+	return orphans
+}
+
+// ForgetHostKeys drops every entry for the given hosts from the CLI-managed
+// known_hosts and reports how many lines it removed. A missing file is a no-op.
+func (s SshService) ForgetHostKeys(hosts []string) (int, error) {
+	if len(hosts) == 0 {
+		return 0, nil
+	}
+	path := domain.ManagedKnownHostsPath()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return 0, nil
+		}
+		return 0, err
+	}
+	content, dropped := RemoveKnownHostsEntries(string(data), hosts)
+	if dropped == 0 {
+		return 0, nil
+	}
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		return 0, err
+	}
+	return dropped, nil
 }
 
 // knownHostsLineMatches reports whether a known_hosts line records host. It

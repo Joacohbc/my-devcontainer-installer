@@ -218,7 +218,8 @@ func (s PruneService) CleanImages(refs []string, opts CleanOptions) (int, error)
 	return removed, nil
 }
 
-// CleanSSH prunes stale SSH config blocks from ~/.ssh/config.
+// CleanSSH prunes stale SSH config blocks from ~/.ssh/config, then drops the
+// host keys those blocks had pinned in the CLI-managed known_hosts.
 func (s PruneService) CleanSSH(opts CleanOptions) (int, error) {
 	ssh := SshService{Report: s.Report}
 	existsWorkspace, existsContainer, err := ssh.LiveTargetPredicates()
@@ -232,7 +233,9 @@ func (s PruneService) CleanSSH(opts CleanOptions) (int, error) {
 	}
 	if len(stale) == 0 {
 		s.Report.Success("No stale SSH config blocks found.")
-		return 0, nil
+		// Keys can outlive their block: destroy removes the block on its own, and
+		// a container coming back on another address leaves the old one pinned.
+		return 0, s.cleanKnownHosts(ssh, opts)
 	}
 
 	s.Report.Info("Found %d stale SSH config block(s):", len(stale))
@@ -283,7 +286,43 @@ func (s PruneService) CleanSSH(opts CleanOptions) (int, error) {
 		s.Report.Info("Backup saved: %s", backup)
 	}
 	s.Report.Success("Removed %d SSH config block(s) from ~/.ssh/config.", len(removed))
+
+	// Runs after the blocks are gone, so the host keys they pinned are orphaned
+	// by then and get swept in the same pass.
+	if err := s.cleanKnownHosts(ssh, opts); err != nil {
+		return len(removed), err
+	}
 	return len(removed), nil
+}
+
+// cleanKnownHosts drops the entries in the CLI-managed known_hosts that no Host
+// block in ~/.ssh/config dials any more. It is keyed by address, not by marker,
+// so it covers workspace and loose --container blocks alike — and also keys left
+// behind by destroy, which removes a block without touching known_hosts.
+func (s PruneService) cleanKnownHosts(ssh SshService, opts CleanOptions) error {
+	orphans, err := ssh.OrphanKnownHosts()
+	if err != nil {
+		return err
+	}
+	if len(orphans) == 0 {
+		return nil
+	}
+
+	s.Report.Info("Found %d orphaned host key entry(ies) in %s:", len(orphans), domain.ManagedKnownHostsPath())
+	for _, host := range orphans {
+		s.Report.Info("  - %s", host)
+	}
+	if opts.DryRun {
+		s.Report.Warn("Dry run — host keys kept. Re-run without --dry-run to apply.")
+		return nil
+	}
+
+	dropped, err := ssh.ForgetHostKeys(orphans)
+	if err != nil {
+		return err
+	}
+	s.Report.Success("Removed %d pinned host key(s).", dropped)
+	return nil
 }
 
 // CleanNetworks removes CLI-managed Docker networks.
