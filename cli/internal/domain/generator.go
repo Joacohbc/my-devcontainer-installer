@@ -390,7 +390,6 @@ func (c composeContext) renderContext(svc *compose.ServiceSpec, isDevcontainer b
 	dbUser, dbPass := ResolveDBCredentials()
 	rc := compose.RenderContext{
 		ImageName:         imageName,
-		EnabledServiceIDs: c.enabledIDs,
 		Options:           options,
 		DefaultDBUser:     dbUser,
 		DefaultDBPassword: dbPass,
@@ -641,7 +640,6 @@ func PlannedComposeNames(config *types.DevcontainerConfig) (containers []string,
 		dbUser, dbPass := ResolveDBCredentials()
 		rendered := svc.Render(compose.RenderContext{
 			ImageName:         config.Image,
-			EnabledServiceIDs: enabledIDs,
 			Options:           opts,
 			DefaultDBUser:     dbUser,
 			DefaultDBPassword: dbPass,

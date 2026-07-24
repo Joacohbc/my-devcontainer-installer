@@ -18,7 +18,6 @@ type ServiceSpec struct {
 
 type RenderContext struct {
 	ImageName         string
-	EnabledServiceIDs []string
 	Options           map[string]any
 	DefaultDBUser     string
 	DefaultDBPassword string
@@ -52,19 +51,22 @@ type BuildDef struct {
 }
 
 type ServiceDef struct {
-	Image         string            `yaml:"image,omitempty"`
-	Build         any               `yaml:"build,omitempty"`
-	ContainerName string            `yaml:"container_name"`
-	Hostname      string            `yaml:"hostname,omitempty"`
-	Command       string            `yaml:"command,omitempty"`
-	Restart       string            `yaml:"restart,omitempty"`
-	Privileged    bool              `yaml:"privileged,omitempty"`
-	Environment   any               `yaml:"environment,omitempty"`
-	Volumes       []string          `yaml:"volumes,omitempty"`
-	Ports         []string          `yaml:"ports,omitempty"`
-	Networks      any               `yaml:"networks,omitempty"`
-	DependsOn     []string          `yaml:"depends_on,omitempty"`
-	Labels        map[string]string `yaml:"labels,omitempty"`
+	Image         string   `yaml:"image,omitempty"`
+	Build         any      `yaml:"build,omitempty"`
+	ContainerName string   `yaml:"container_name"`
+	Hostname      string   `yaml:"hostname,omitempty"`
+	Command       string   `yaml:"command,omitempty"`
+	Restart       string   `yaml:"restart,omitempty"`
+	Privileged    bool     `yaml:"privileged,omitempty"`
+	Environment   any      `yaml:"environment,omitempty"`
+	Volumes       []string `yaml:"volumes,omitempty"`
+	Ports         []string `yaml:"ports,omitempty"`
+	// Networks is any because compose accepts two shapes: a plain []string of
+	// network names, or a map keyed by name (used to pin the devcontainer's
+	// ipv4_address). See remapServiceNetworks in the generator.
+	Networks  any               `yaml:"networks,omitempty"`
+	DependsOn []string          `yaml:"depends_on,omitempty"`
+	Labels    map[string]string `yaml:"labels,omitempty"`
 }
 
 type NetworkDef struct {

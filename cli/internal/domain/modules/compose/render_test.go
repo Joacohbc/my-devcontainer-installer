@@ -77,8 +77,7 @@ func TestRedisRender(t *testing.T) {
 // leaves DependsOn unset.
 func TestDevcontainerRender_DoesNotSetDependsOn(t *testing.T) {
 	def := compose.DevcontainerService.Render(compose.RenderContext{
-		ImageName:         "myimg:local",
-		EnabledServiceIDs: []string{"devcontainer", "postgres", "redis", "zellij"},
+		ImageName: "myimg:local",
 	})
 	if def.Image != "myimg:local" {
 		t.Errorf("Image = %q, want myimg:local", def.Image)
@@ -90,8 +89,7 @@ func TestDevcontainerRender_DoesNotSetDependsOn(t *testing.T) {
 
 func TestDevcontainerRender_NoPersistVolumesKeepsWorkspace(t *testing.T) {
 	def := compose.DevcontainerService.Render(compose.RenderContext{
-		ImageName:         "img",
-		EnabledServiceIDs: []string{"devcontainer"},
+		ImageName: "img",
 	})
 	if len(def.Volumes) != 1 || def.Volumes[0] != "../..:/workspace" {
 		t.Errorf("expected only the workspace mount, got %v", def.Volumes)
@@ -100,9 +98,8 @@ func TestDevcontainerRender_NoPersistVolumesKeepsWorkspace(t *testing.T) {
 
 func TestDevcontainerRender_WorkspaceDir(t *testing.T) {
 	def := compose.DevcontainerService.Render(compose.RenderContext{
-		ImageName:         "img",
-		EnabledServiceIDs: []string{"devcontainer"},
-		WorkspaceDir:      "/workspaces/myproj",
+		ImageName:    "img",
+		WorkspaceDir: "/workspaces/myproj",
 	})
 	if len(def.Volumes) == 0 || def.Volumes[0] != "../..:/workspaces/myproj" {
 		t.Errorf("expected workspace mount at /workspaces/myproj, got %v", def.Volumes)
@@ -111,8 +108,7 @@ func TestDevcontainerRender_WorkspaceDir(t *testing.T) {
 
 func TestDevcontainerRender_WorkspaceDirDefaults(t *testing.T) {
 	def := compose.DevcontainerService.Render(compose.RenderContext{
-		ImageName:         "img",
-		EnabledServiceIDs: []string{"devcontainer"},
+		ImageName: "img",
 	})
 	if len(def.Volumes) == 0 || def.Volumes[0] != "../..:/workspace" {
 		t.Errorf("empty WorkspaceDir should default to /workspace, got %v", def.Volumes)
@@ -122,7 +118,6 @@ func TestDevcontainerRender_WorkspaceDirDefaults(t *testing.T) {
 func TestDevcontainerRender_SharedConfigMount(t *testing.T) {
 	def := compose.DevcontainerService.Render(compose.RenderContext{
 		ImageName:         "img",
-		EnabledServiceIDs: []string{"devcontainer"},
 		SharedConfigMount: "devcontainer-shared-config:/mnt/shared-config",
 	})
 	want := []string{"../..:/workspace", "devcontainer-shared-config:/mnt/shared-config"}
@@ -138,8 +133,7 @@ func TestDevcontainerRender_SharedConfigMount(t *testing.T) {
 
 func TestDevcontainerRender_NoSharedConfigByDefault(t *testing.T) {
 	def := compose.DevcontainerService.Render(compose.RenderContext{
-		ImageName:         "img",
-		EnabledServiceIDs: []string{"devcontainer"},
+		ImageName: "img",
 	})
 	for _, v := range def.Volumes {
 		if v == "devcontainer-shared-config:/mnt/shared-config" {
@@ -150,9 +144,8 @@ func TestDevcontainerRender_NoSharedConfigByDefault(t *testing.T) {
 
 func TestDevcontainerRender_Ports(t *testing.T) {
 	def := compose.DevcontainerService.Render(compose.RenderContext{
-		ImageName:         "img",
-		EnabledServiceIDs: []string{"devcontainer"},
-		Ports:             []string{"127.0.0.1:8080:80", "0.0.0.0:9090:90"},
+		ImageName: "img",
+		Ports:     []string{"127.0.0.1:8080:80", "0.0.0.0:9090:90"},
 	})
 	want := []string{"127.0.0.1:8080:80", "0.0.0.0:9090:90"}
 	if len(def.Ports) != len(want) {
@@ -167,8 +160,7 @@ func TestDevcontainerRender_Ports(t *testing.T) {
 
 func TestDevcontainerRender_NoPortsByDefault(t *testing.T) {
 	def := compose.DevcontainerService.Render(compose.RenderContext{
-		ImageName:         "img",
-		EnabledServiceIDs: []string{"devcontainer"},
+		ImageName: "img",
 	})
 	if len(def.Ports) != 0 {
 		t.Errorf("expected no ports without RenderContext.Ports, got %v", def.Ports)
@@ -177,8 +169,7 @@ func TestDevcontainerRender_NoPortsByDefault(t *testing.T) {
 
 func TestDevcontainerRender_NoDatabasesNoDependsOn(t *testing.T) {
 	def := compose.DevcontainerService.Render(compose.RenderContext{
-		ImageName:         "img",
-		EnabledServiceIDs: []string{"devcontainer"},
+		ImageName: "img",
 	})
 	if def.DependsOn != nil {
 		t.Errorf("expected no depends_on without databases, got %v", def.DependsOn)
