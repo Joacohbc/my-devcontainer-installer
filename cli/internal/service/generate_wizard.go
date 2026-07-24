@@ -40,49 +40,15 @@ func choicesFromOption(o types.ModuleOption) []Option {
 }
 
 func defaultStrings(v any) []string {
-	switch d := v.(type) {
-	case []string:
-		return d
-	case []any:
-		var out []string
-		for _, x := range d {
-			if s, ok := x.(string); ok {
-				out = append(out, s)
-			}
-		}
-		return out
-	}
-	return nil
-}
-
-func serviceIDOf(s any) string {
-	switch v := s.(type) {
-	case string:
-		return v
-	case types.SelectedModule:
-		return string(v.ID)
-	case map[string]any:
-		if id, ok := v["id"].(string); ok {
-			return id
-		}
-	}
-	return ""
+	return types.CoerceStrings(v)
 }
 
 // ServiceOptionsOf returns the stored options for the compose service id within
 // a config's service list.
-func ServiceOptionsOf(services []any, id string) map[string]any {
+func ServiceOptionsOf(services []types.SelectedService, id string) map[string]any {
 	for _, s := range services {
-		if serviceIDOf(s) != id {
-			continue
-		}
-		switch v := s.(type) {
-		case types.SelectedModule:
-			return v.Options
-		case map[string]any:
-			if opts, ok := v["options"].(map[string]any); ok {
-				return opts
-			}
+		if string(s.ID) == id {
+			return s.Options
 		}
 	}
 	return map[string]any{}
@@ -187,9 +153,8 @@ func baseCategoryIDs(base *types.DevcontainerConfig, c types.UICategory) []strin
 		}
 	}
 	for _, s := range base.Compose.Services {
-		id := serviceIDOf(s)
-		if spec := catalog.GetComposeService(types.ServiceID(id)); spec != nil && spec.UICategory == c {
-			ids = append(ids, id)
+		if spec := catalog.GetComposeService(s.ID); spec != nil && spec.UICategory == c {
+			ids = append(ids, string(s.ID))
 		}
 	}
 	return ids
@@ -542,12 +507,12 @@ func (w wizardContext) reduce(s *State) *types.DevcontainerConfig {
 		}
 	}
 
-	var services []any
+	var services []types.SelectedService
 	for _, svc := range catalog.ComposeServices {
 		if !selected[string(svc.ID)] {
 			continue
 		}
-		services = append(services, types.SelectedModule{ID: types.ModuleID(svc.ID), Options: w.entryOptions(s, string(svc.ID), svc.Options, ServiceOptionsOf(w.base.Compose.Services, string(svc.ID)))})
+		services = append(services, types.SelectedService{ID: svc.ID, Options: w.entryOptions(s, string(svc.ID), svc.Options, ServiceOptionsOf(w.base.Compose.Services, string(svc.ID)))})
 	}
 
 	workspace := w.workspace

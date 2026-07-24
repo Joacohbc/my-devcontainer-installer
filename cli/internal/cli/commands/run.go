@@ -57,167 +57,222 @@ Variants: ` + strings.Join(types.RemoteVariants, ", ") + `.`,
 	cmd.Flags().String("registry", "", "Registry prefix override")
 	addInteractiveFlag(cmd)
 
-	_ = cmd.RegisterFlagCompletionFunc("variant", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		return types.RemoteVariants, cobra.ShellCompDirectiveNoFileComp
-	})
+	_ = cmd.RegisterFlagCompletionFunc("variant", staticCompletion(types.RemoteVariants...))
 
 	return cmd
 }
 
+type runOptions struct {
+	variant       string
+	containerName string
+	volumes       []string
+	ports         []string
+	exposeAll     bool
+	sharedConfig  bool
+	aiScripts     []string
+}
+
 func runQuickRun(cmd *cobra.Command, _ []string) error {
-	variant, _ := cmd.Flags().GetString("variant")
-	name, _ := cmd.Flags().GetString("name")
-	volumes, _ := cmd.Flags().GetStringSlice("volumes")
-	ports, _ := cmd.Flags().GetStringSlice("ports")
-	exposeAll, _ := cmd.Flags().GetBool("expose-all")
-	sharedConfig, _ := cmd.Flags().GetBool("shared-config")
-	copyAIScripts, _ := cmd.Flags().GetBool("copy-ai-scripts")
-	registry, _ := cmd.Flags().GetString("registry")
-	interactive := interactiveFlag(cmd)
-
-	// filter empty strings that may come from default flag value
-	volumes = filterEmpty(volumes)
-	ports = filterEmpty(ports)
-
-	if variant != "" {
-		if _, err := types.ParseVariant(variant); err != nil {
-			return err
-		}
-	} else {
-		if !interactive {
-			return fmt.Errorf("--variant required in non-interactive mode")
-		}
-		choices := make([]service.Option, len(types.RemoteVariants))
-		for i, v := range types.RemoteVariants {
-			choices[i] = service.Option{Value: v, Label: types.VariantLabels[v]}
-		}
-		var initial service.Option
-		for _, c := range choices {
-			if c.Value == "nodejs" {
-				initial = c
-				break
-			}
-		}
-		picked, err := console.Select("Image variant:", choices, initial)
-		if err != nil {
-			return err
-		}
-		variant = picked.Value
-	}
-
 	svc := service.RunService{Report: console}
 
-	if interactive && !cmd.Flags().Changed("name") {
-		raw, err := console.AskDefault("Container name:", "dc-"+variant, func(s string) error {
-			if strings.TrimSpace(s) == "" {
-				return fmt.Errorf("name cannot be empty")
-			}
-			return svc.ValidateContainerName(strings.TrimSpace(s))
-		})
-		if err != nil {
+	opts, err := resolveRunOptions(cmd, svc)
+	if err != nil {
+		return err
+	}
+
+	registry, _ := cmd.Flags().GetString("registry")
+	image := domain.ResolveRemoteImage(opts.variant, domain.ResolveRegistry(registry, ""))
+
+	printRunSummary(image, opts)
+
+	if err := svc.Run(service.QuickRunSpec{
+		Variant:       opts.variant,
+		ContainerName: opts.containerName,
+		Image:         image,
+		Volumes:       opts.volumes,
+		Ports:         opts.ports,
+		ExposeAll:     opts.exposeAll,
+		SharedConfig:  opts.sharedConfig,
+	}); err != nil {
+		return err
+	}
+
+	if len(opts.aiScripts) > 0 {
+		if err := svc.CopyAIScripts(opts.containerName, opts.aiScripts); err != nil {
 			return err
 		}
-		name = strings.TrimSpace(raw)
 	}
+
+	console.NewLine()
+	printRunNextSteps(opts.containerName)
+	return nil
+}
+
+func resolveRunOptions(cmd *cobra.Command, svc service.RunService) (runOptions, error) {
+	interactive := interactiveFlag(cmd)
+
+	opts := runOptions{}
+	opts.exposeAll, _ = cmd.Flags().GetBool("expose-all")
+	opts.sharedConfig, _ = cmd.Flags().GetBool("shared-config")
+	rawVolumes, _ := cmd.Flags().GetStringSlice("volumes")
+	rawPorts, _ := cmd.Flags().GetStringSlice("ports")
+	opts.volumes = filterEmpty(rawVolumes)
+	opts.ports = filterEmpty(rawPorts)
+
+	variant, err := resolveRunVariant(cmd, interactive)
+	if err != nil {
+		return runOptions{}, err
+	}
+	opts.variant = variant
+
+	name, _ := cmd.Flags().GetString("name")
+	if interactive && !cmd.Flags().Changed("name") {
+		name, err = promptContainerName(svc, variant)
+		if err != nil {
+			return runOptions{}, err
+		}
+	}
+	if name == "" {
+		name = "dc-" + variant
+	}
+	opts.containerName = name
 
 	if interactive && !cmd.Flags().Changed("volumes") {
-		raw, err := console.AskDefault("Volumes to mount (e.g. myvol:/workspace,data:/data — leave empty to skip):", "", nil)
+		opts.volumes, err = promptCommaList("Volumes to mount (e.g. myvol:/workspace,data:/data — leave empty to skip):")
 		if err != nil {
-			return err
+			return runOptions{}, err
 		}
-		volumes = filterEmpty(strings.Split(raw, ","))
 	}
-
 	if interactive && !cmd.Flags().Changed("ports") {
-		raw, err := console.AskDefault("Port mappings to expose (e.g. 2222:22,8080:80 — leave empty to skip):", "", nil)
+		opts.ports, err = promptCommaList("Port mappings to expose (e.g. 2222:22,8080:80 — leave empty to skip):")
 		if err != nil {
-			return err
+			return runOptions{}, err
 		}
-		ports = filterEmpty(strings.Split(raw, ","))
 	}
 
-	// In interactive mode ask whether to mount the shared config volume unless
-	// the flag was set explicitly. The flag default stays true, so the prompt
-	// defaults to Yes; an explicit --shared-config[=false] skips the prompt.
+	// The shared-config flag defaults to true, so the prompt defaults to Yes; an
+	// explicit --shared-config[=false] skips the prompt entirely.
 	if interactive && !cmd.Flags().Changed("shared-config") {
-		ans, err := console.ConfirmDefault("Mount the shared config volume (persist logins/sessions across containers)?", true)
+		opts.sharedConfig, err = console.ConfirmDefault("Mount the shared config volume (persist logins/sessions across containers)?", true)
 		if err != nil {
-			return err
+			return runOptions{}, err
 		}
-		sharedConfig = ans
 	}
 
-	// AI installer scripts: in interactive mode (unless --copy-ai-scripts was set
-	// explicitly) ask whether to copy them and let the user pick which; in
-	// non-interactive mode --copy-ai-scripts copies all of them.
-	var aiScripts []string
+	opts.aiScripts, err = resolveRunAIScripts(cmd, interactive)
+	if err != nil {
+		return runOptions{}, err
+	}
+	return opts, nil
+}
+
+func resolveRunVariant(cmd *cobra.Command, interactive bool) (string, error) {
+	variant, _ := cmd.Flags().GetString("variant")
+	if variant != "" {
+		if _, err := types.ParseVariant(variant); err != nil {
+			return "", err
+		}
+		return variant, nil
+	}
+	if !interactive {
+		return "", fmt.Errorf("--variant required in non-interactive mode")
+	}
+	return promptVariant()
+}
+
+func promptVariant() (string, error) {
+	choices := make([]service.Option, len(types.RemoteVariants))
+	for i, v := range types.RemoteVariants {
+		choices[i] = service.Option{Value: v, Label: types.VariantLabels[v]}
+	}
+	var initial service.Option
+	for _, c := range choices {
+		if c.Value == "nodejs" {
+			initial = c
+			break
+		}
+	}
+	picked, err := console.Select("Image variant:", choices, initial)
+	if err != nil {
+		return "", err
+	}
+	return picked.Value, nil
+}
+
+func promptContainerName(svc service.RunService, variant string) (string, error) {
+	raw, err := console.AskDefault("Container name:", "dc-"+variant, func(s string) error {
+		if strings.TrimSpace(s) == "" {
+			return fmt.Errorf("name cannot be empty")
+		}
+		return svc.ValidateContainerName(strings.TrimSpace(s))
+	})
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(raw), nil
+}
+
+func promptCommaList(prompt string) ([]string, error) {
+	raw, err := console.AskDefault(prompt, "", nil)
+	if err != nil {
+		return nil, err
+	}
+	return filterEmpty(strings.Split(raw, ",")), nil
+}
+
+// resolveRunAIScripts decides which installer scripts to copy: interactively it
+// asks (unless --copy-ai-scripts was set explicitly and lets the user pick);
+// non-interactively --copy-ai-scripts copies all of them.
+func resolveRunAIScripts(cmd *cobra.Command, interactive bool) ([]string, error) {
 	if interactive && !cmd.Flags().Changed("copy-ai-scripts") {
-		want, err := console.ConfirmDefault("Copy AI tool installer scripts into the container?", false)
-		if err != nil {
-			return err
-		}
-		if want {
-			copyable := assets.CopyableAssets()
-			choices := make([]service.Option, len(copyable))
-			for i, a := range copyable {
-				choices[i] = service.Option{Value: a.Name, Label: a.Label}
-			}
-			picked, err := console.Multiselect("Scripts to copy:", choices, choices)
-			if err != nil {
-				return err
-			}
-			for _, p := range picked {
-				aiScripts = append(aiScripts, p.Value)
-			}
-		}
-	} else if copyAIScripts {
-		aiScripts = assets.CopyableNames()
+		return promptAIScripts()
 	}
-
-	reg := domain.ResolveRegistry(registry, "")
-	image := domain.ResolveRemoteImage(variant, reg)
-	containerName := name
-	if containerName == "" {
-		containerName = "dc-" + variant
+	if copyAIScripts, _ := cmd.Flags().GetBool("copy-ai-scripts"); copyAIScripts {
+		return assets.CopyableNames(), nil
 	}
+	return nil, nil
+}
 
+func promptAIScripts() ([]string, error) {
+	want, err := console.ConfirmDefault("Copy AI tool installer scripts into the container?", false)
+	if err != nil {
+		return nil, err
+	}
+	if !want {
+		return nil, nil
+	}
+	copyable := assets.CopyableAssets()
+	choices := make([]service.Option, len(copyable))
+	for i, a := range copyable {
+		choices[i] = service.Option{Value: a.Name, Label: a.Label}
+	}
+	picked, err := console.Multiselect("Scripts to copy:", choices, choices)
+	if err != nil {
+		return nil, err
+	}
+	var names []string
+	for _, p := range picked {
+		names = append(names, p.Value)
+	}
+	return names, nil
+}
+
+func printRunSummary(image string, opts runOptions) {
 	console.Header("\nQuick run: %s", image)
 	console.NewLine()
-	console.Info("  Container : %s", containerName)
-	if len(volumes) > 0 {
-		console.Info("  Volumes   : %s", strings.Join(volumes, ", "))
+	console.Info("  Container : %s", opts.containerName)
+	if len(opts.volumes) > 0 {
+		console.Info("  Volumes   : %s", strings.Join(opts.volumes, ", "))
 	}
-	if len(ports) > 0 {
-		console.Info("  Ports     : %s", strings.Join(ports, ", "))
-		if exposeAll {
+	if len(opts.ports) > 0 {
+		console.Info("  Ports     : %s", strings.Join(opts.ports, ", "))
+		if opts.exposeAll {
 			console.Info("              (published on all interfaces / 0.0.0.0)")
 		} else {
 			console.Info("              (bound to 127.0.0.1; pass --expose-all for LAN access)")
 		}
 	}
 	console.NewLine()
-
-	if err := svc.Run(service.QuickRunSpec{
-		Variant:       variant,
-		ContainerName: containerName,
-		Image:         image,
-		Volumes:       volumes,
-		Ports:         ports,
-		ExposeAll:     exposeAll,
-		SharedConfig:  sharedConfig,
-	}); err != nil {
-		return err
-	}
-
-	if len(aiScripts) > 0 {
-		if err := svc.CopyAIScripts(containerName, aiScripts); err != nil {
-			return err
-		}
-	}
-
-	console.NewLine()
-	printRunNextSteps(containerName)
-	return nil
 }
 
 func filterEmpty(ss []string) []string {

@@ -58,6 +58,81 @@ func selectByNames[T any](items []T, names []string, nameOf func(T) string) (sel
 	return selected, missing
 }
 
+// removeResources runs `docker <args(item)>` for each item, counting successes
+// and reporting each failure via onFail.
+func removeResources[T any](items []T, args func(T) []string, onFail func(T)) (removed, failed int) {
+	for _, it := range items {
+		if status, _ := docker.DockerInherit(args(it)); status == 0 {
+			removed++
+			continue
+		}
+		onFail(it)
+		failed++
+	}
+	return removed, failed
+}
+
+// captureLines runs `docker <args>` and returns its stdout as trimmed,
+// non-empty lines (nil on error or empty output).
+func captureLines(args []string) []string {
+	status, stdout, _, err := docker.DockerCapture(args)
+	if err != nil || status != 0 || strings.TrimSpace(stdout) == "" {
+		return nil
+	}
+	var lines []string
+	for _, line := range strings.Split(strings.TrimSpace(stdout), "\n") {
+		if trimmed := strings.TrimSpace(line); trimmed != "" {
+			lines = append(lines, trimmed)
+		}
+	}
+	return lines
+}
+
+// reportSelection prints the standard "nothing to do" messages for a resource
+// category and returns whether there is anything to remove.
+func (s PruneService) reportSelection(noun string, anyExist bool, count int) bool {
+	if !anyExist {
+		s.Report.Info("No devcontainer %s found locally.", noun)
+		return false
+	}
+	if count == 0 {
+		s.Report.Info("No unused devcontainer %s found.", noun)
+		s.Report.Warn("Use --all to remove every managed %s.", noun)
+		return false
+	}
+	return true
+}
+
+func (s PruneService) dryRunNotice() {
+	s.Report.Warn("Dry run — nothing removed. Re-run without --dry-run to apply.")
+}
+
+// confirmDestructive gates a removal: --yes proceeds; non-interactive without
+// --yes returns nonInteractiveErr; otherwise it asks and reports cancellation.
+func (s PruneService) confirmDestructive(opts CleanOptions, nonInteractiveErr error, prompt string) (bool, error) {
+	if opts.Yes {
+		return true, nil
+	}
+	if !opts.Interactive || s.Prompt == nil {
+		return false, nonInteractiveErr
+	}
+	proceed, err := s.Prompt.Confirm(prompt)
+	if err != nil {
+		return false, err
+	}
+	if !proceed {
+		s.Report.Warn("Cancelled.")
+	}
+	return proceed, nil
+}
+
+func (s PruneService) reportRemoval(noun string, removed, failed int) {
+	s.Report.Success("\nRemoved %d %s.", removed, noun)
+	if failed > 0 {
+		s.Report.Error("%d failed.", failed)
+	}
+}
+
 // CleanCatalog removes registry entries from images.json whose project directory no longer exists.
 func (s PruneService) CleanCatalog(opts CleanOptions) ([]string, error) {
 	entries := domain.ListEntries()
@@ -118,13 +193,7 @@ func (s PruneService) CleanContainers(names []string, opts CleanOptions) (int, e
 		candidates = selected
 	} else {
 		selected, anyExist := s.SelectContainers(opts.All)
-		if !anyExist {
-			s.Report.Info("No devcontainer containers found locally.")
-			return 0, nil
-		}
-		if len(selected) == 0 {
-			s.Report.Info("No unused devcontainer containers found.")
-			s.Report.Warn("Use --all to remove every managed containers.")
+		if !s.reportSelection("containers", anyExist, len(selected)) {
 			return 0, nil
 		}
 		candidates = selected
@@ -136,29 +205,19 @@ func (s PruneService) CleanContainers(names []string, opts CleanOptions) (int, e
 	}
 
 	if opts.DryRun {
-		s.Report.Warn("Dry run — nothing removed. Re-run without --dry-run to apply.")
+		s.dryRunNotice()
+		return 0, nil
+	}
+	proceed, err := s.confirmDestructive(opts, fmt.Errorf("cannot remove containers in non-interactive mode without --yes"), "Remove these containers?")
+	if err != nil {
+		return 0, err
+	}
+	if !proceed {
 		return 0, nil
 	}
 
-	if !opts.Yes {
-		if !opts.Interactive || s.Prompt == nil {
-			return 0, fmt.Errorf("cannot remove containers in non-interactive mode without --yes")
-		}
-		proceed, err := s.Prompt.Confirm("Remove these containers?")
-		if err != nil {
-			return 0, err
-		}
-		if !proceed {
-			s.Report.Warn("Cancelled.")
-			return 0, nil
-		}
-	}
-
 	removed, failed := s.RemoveContainers(candidates)
-	s.Report.Success("\nRemoved %d containers.", removed)
-	if failed > 0 {
-		s.Report.Error("%d failed.", failed)
-	}
+	s.reportRemoval("containers", removed, failed)
 	return removed, nil
 }
 
@@ -174,13 +233,7 @@ func (s PruneService) CleanImages(refs []string, opts CleanOptions) (int, error)
 		candidates = selected
 	} else {
 		selected, anyExist := s.SelectImages(opts.All)
-		if !anyExist {
-			s.Report.Info("No devcontainer images found locally.")
-			return 0, nil
-		}
-		if len(selected) == 0 {
-			s.Report.Info("No unused devcontainer images found.")
-			s.Report.Warn("Use --all to remove every managed images.")
+		if !s.reportSelection("images", anyExist, len(selected)) {
 			return 0, nil
 		}
 		candidates = selected
@@ -192,29 +245,19 @@ func (s PruneService) CleanImages(refs []string, opts CleanOptions) (int, error)
 	}
 
 	if opts.DryRun {
-		s.Report.Warn("Dry run — nothing removed. Re-run without --dry-run to apply.")
+		s.dryRunNotice()
+		return 0, nil
+	}
+	proceed, err := s.confirmDestructive(opts, fmt.Errorf("cannot remove images in non-interactive mode without --yes"), "Remove these images?")
+	if err != nil {
+		return 0, err
+	}
+	if !proceed {
 		return 0, nil
 	}
 
-	if !opts.Yes {
-		if !opts.Interactive || s.Prompt == nil {
-			return 0, fmt.Errorf("cannot remove images in non-interactive mode without --yes")
-		}
-		proceed, err := s.Prompt.Confirm("Remove these images?")
-		if err != nil {
-			return 0, err
-		}
-		if !proceed {
-			s.Report.Warn("Cancelled.")
-			return 0, nil
-		}
-	}
-
 	removed, failed := s.Remove(candidates)
-	s.Report.Success("\nRemoved %d images.", removed)
-	if failed > 0 {
-		s.Report.Error("%d failed.", failed)
-	}
+	s.reportRemoval("images", removed, failed)
 	return removed, nil
 }
 
@@ -289,13 +332,7 @@ func (s PruneService) CleanSSH(opts CleanOptions) (int, error) {
 // CleanNetworks removes CLI-managed Docker networks.
 func (s PruneService) CleanNetworks(opts CleanOptions) (int, error) {
 	candidates, anyExist := s.SelectNetworks(opts.All)
-	if !anyExist {
-		s.Report.Info("No devcontainer networks found locally.")
-		return 0, nil
-	}
-	if len(candidates) == 0 {
-		s.Report.Info("No unused devcontainer networks found.")
-		s.Report.Warn("Use --all to remove every managed networks.")
+	if !s.reportSelection("networks", anyExist, len(candidates)) {
 		return 0, nil
 	}
 
@@ -305,42 +342,26 @@ func (s PruneService) CleanNetworks(opts CleanOptions) (int, error) {
 	}
 
 	if opts.DryRun {
-		s.Report.Warn("Dry run — nothing removed. Re-run without --dry-run to apply.")
+		s.dryRunNotice()
+		return 0, nil
+	}
+	proceed, err := s.confirmDestructive(opts, fmt.Errorf("cannot remove networks in non-interactive mode without --yes"), "Remove these networks?")
+	if err != nil {
+		return 0, err
+	}
+	if !proceed {
 		return 0, nil
 	}
 
-	if !opts.Yes {
-		if !opts.Interactive || s.Prompt == nil {
-			return 0, fmt.Errorf("cannot remove networks in non-interactive mode without --yes")
-		}
-		proceed, err := s.Prompt.Confirm("Remove these networks?")
-		if err != nil {
-			return 0, err
-		}
-		if !proceed {
-			s.Report.Warn("Cancelled.")
-			return 0, nil
-		}
-	}
-
 	removed, failed := s.RemoveNetworks(candidates)
-	s.Report.Success("\nRemoved %d networks.", removed)
-	if failed > 0 {
-		s.Report.Error("%d failed.", failed)
-	}
+	s.reportRemoval("networks", removed, failed)
 	return removed, nil
 }
 
 // CleanVolumes removes CLI-managed Docker volumes.
 func (s PruneService) CleanVolumes(opts CleanOptions) (int, error) {
 	candidates, anyExist := s.SelectVolumes(opts.All)
-	if !anyExist {
-		s.Report.Info("No devcontainer volumes found locally.")
-		return 0, nil
-	}
-	if len(candidates) == 0 {
-		s.Report.Info("No unused devcontainer volumes found.")
-		s.Report.Warn("Use --all to remove every managed volumes.")
+	if !s.reportSelection("volumes", anyExist, len(candidates)) {
 		return 0, nil
 	}
 
@@ -350,170 +371,172 @@ func (s PruneService) CleanVolumes(opts CleanOptions) (int, error) {
 	}
 
 	if opts.DryRun {
-		s.Report.Warn("Dry run — nothing removed. Re-run without --dry-run to apply.")
+		s.dryRunNotice()
+		return 0, nil
+	}
+	proceed, err := s.confirmDestructive(opts, fmt.Errorf("cannot remove volumes in non-interactive mode without --yes"), "Remove these volumes?")
+	if err != nil {
+		return 0, err
+	}
+	if !proceed {
 		return 0, nil
 	}
 
-	if !opts.Yes {
-		if !opts.Interactive || s.Prompt == nil {
-			return 0, fmt.Errorf("cannot remove volumes in non-interactive mode without --yes")
-		}
-		proceed, err := s.Prompt.Confirm("Remove these volumes?")
-		if err != nil {
-			return 0, err
-		}
-		if !proceed {
-			s.Report.Warn("Cancelled.")
-			return 0, nil
-		}
-	}
-
 	removed, failed := s.RemoveVolumes(candidates)
-	s.Report.Success("\nRemoved %d volumes.", removed)
-	if failed > 0 {
-		s.Report.Error("%d failed.", failed)
-	}
+	s.reportRemoval("volumes", removed, failed)
 	return removed, nil
+}
+
+type cleanTargets struct {
+	catalog       []string
+	containers    []LocalContainer
+	images        []LocalImage
+	ssh           []ManagedMarker
+	networks      []LocalNetwork
+	volumes       []LocalVolume
+	anyContainers bool
+	anyImages     bool
+	anyNetworks   bool
+	anyVolumes    bool
+}
+
+func (t cleanTargets) total() int {
+	return len(t.catalog) + len(t.containers) + len(t.images) + len(t.ssh) + len(t.networks) + len(t.volumes)
+}
+
+func (t cleanTargets) anyManagedResource() bool {
+	return t.anyContainers || t.anyImages || t.anyNetworks || t.anyVolumes ||
+		len(t.catalog) > 0 || len(t.ssh) > 0
 }
 
 // CleanAll sweeps every category (catalog, containers, images, ssh, networks, volumes).
 func (s PruneService) CleanAll(opts CleanOptions) error {
-	sshSvc := SshService{Report: s.Report}
+	targets := s.collectCleanTargets(opts)
 
-	var staleCatalog []string
-	entries := domain.ListEntries()
-	for _, e := range entries {
-		if _, statErr := os.Stat(e.ProjectDir); os.IsNotExist(statErr) {
-			staleCatalog = append(staleCatalog, e.ProjectDir)
-		}
-	}
-
-	toRemoveContainers, anyContainers := s.SelectContainers(opts.All)
-	toRemoveImages, anyImages := s.SelectImages(opts.All)
-
-	var staleSSH []ManagedMarker
-	existsWs, existsCnt, err := sshSvc.LiveTargetPredicates()
-	if err == nil {
-		staleSSH, _, _ = sshSvc.PruneManagedBlocks(existsWs, existsCnt, true)
-	}
-
-	toRemoveNetworks, anyNetworks := s.SelectNetworks(opts.All)
-	toRemoveVolumes, anyVolumes := s.SelectVolumes(opts.All)
-
-	totalItems := len(staleCatalog) + len(toRemoveContainers) + len(toRemoveImages) + len(staleSSH) + len(toRemoveNetworks) + len(toRemoveVolumes)
-
-	if !anyContainers && !anyImages && !anyNetworks && !anyVolumes && len(staleCatalog) == 0 && len(staleSSH) == 0 {
+	if !targets.anyManagedResource() {
 		s.Report.Info("No devcontainer resources or stale entries found locally.")
 		return nil
 	}
-
-	if totalItems == 0 {
+	if targets.total() == 0 {
 		s.Report.Info("No unused devcontainer resources or stale entries found.")
 		s.Report.Warn("Use --all to remove every managed resource.")
 		return nil
 	}
 
-	if len(staleCatalog) > 0 {
-		s.Report.Warn("\nStale catalog entries to remove (%d):", len(staleCatalog))
-		for _, dir := range staleCatalog {
-			s.Report.Info("  %s", dir)
-		}
-	}
-	if len(toRemoveContainers) > 0 {
-		s.Report.Warn("\nContainers to remove (%d):", len(toRemoveContainers))
-		for _, c := range toRemoveContainers {
-			s.Report.Info("  %s", containerLabel(c))
-		}
-	}
-	if len(toRemoveImages) > 0 {
-		s.Report.Warn("\nImages to remove (%d):", len(toRemoveImages))
-		for _, img := range toRemoveImages {
-			s.Report.Info("  %s  (%s)", img.Ref, img.ID)
-		}
-	}
-	if len(staleSSH) > 0 {
-		s.Report.Warn("\nStale SSH config blocks to remove (%d):", len(staleSSH))
-		for _, b := range staleSSH {
-			s.Report.Info("  Host %s  (%s %s)", b.Alias, b.Kind, b.Ref)
-		}
-	}
-	if len(toRemoveNetworks) > 0 {
-		s.Report.Warn("\nNetworks to remove (%d):", len(toRemoveNetworks))
-		for _, net := range toRemoveNetworks {
-			s.Report.Info("  %s", net.Name)
-		}
-	}
-	if len(toRemoveVolumes) > 0 {
-		s.Report.Warn("\nVolumes to remove (%d):", len(toRemoveVolumes))
-		for _, vol := range toRemoveVolumes {
-			s.Report.Info("  %s", vol.Name)
-		}
-	}
+	s.previewCleanTargets(targets)
 
 	if opts.DryRun {
-		s.Report.Warn("Dry run — nothing removed. Re-run without --dry-run to apply.")
+		s.dryRunNotice()
+		return nil
+	}
+	proceed, err := s.confirmDestructive(opts, fmt.Errorf("cannot clean resources in non-interactive mode without --yes"), "Remove these resources and stale entries?")
+	if err != nil {
+		return err
+	}
+	if !proceed {
 		return nil
 	}
 
-	if !opts.Yes {
-		if !opts.Interactive || s.Prompt == nil {
-			return fmt.Errorf("cannot clean resources in non-interactive mode without --yes")
-		}
-		proceed, err := s.Prompt.Confirm("Remove these resources and stale entries?")
-		if err != nil {
-			return err
-		}
-		if !proceed {
-			s.Report.Warn("Cancelled.")
-			return nil
+	removedTotal, failedTotal := s.removeCleanTargets(targets)
+	s.reportRemoval("item(s)", removedTotal, failedTotal)
+	return nil
+}
+
+func (s PruneService) collectCleanTargets(opts CleanOptions) cleanTargets {
+	sshSvc := SshService{Report: s.Report}
+
+	targets := cleanTargets{}
+	for _, e := range domain.ListEntries() {
+		if _, statErr := os.Stat(e.ProjectDir); os.IsNotExist(statErr) {
+			targets.catalog = append(targets.catalog, e.ProjectDir)
 		}
 	}
+	targets.containers, targets.anyContainers = s.SelectContainers(opts.All)
+	targets.images, targets.anyImages = s.SelectImages(opts.All)
+	if existsWs, existsCnt, err := sshSvc.LiveTargetPredicates(); err == nil {
+		targets.ssh, _, _ = sshSvc.PruneManagedBlocks(existsWs, existsCnt, true)
+	}
+	targets.networks, targets.anyNetworks = s.SelectNetworks(opts.All)
+	targets.volumes, targets.anyVolumes = s.SelectVolumes(opts.All)
+	return targets
+}
 
-	var removedCatalogCount, removedSSHCount int
-	for _, dir := range staleCatalog {
+func (s PruneService) previewCleanTargets(t cleanTargets) {
+	if len(t.catalog) > 0 {
+		s.Report.Warn("\nStale catalog entries to remove (%d):", len(t.catalog))
+		for _, dir := range t.catalog {
+			s.Report.Info("  %s", dir)
+		}
+	}
+	if len(t.containers) > 0 {
+		s.Report.Warn("\nContainers to remove (%d):", len(t.containers))
+		for _, c := range t.containers {
+			s.Report.Info("  %s", containerLabel(c))
+		}
+	}
+	if len(t.images) > 0 {
+		s.Report.Warn("\nImages to remove (%d):", len(t.images))
+		for _, img := range t.images {
+			s.Report.Info("  %s  (%s)", img.Ref, img.ID)
+		}
+	}
+	if len(t.ssh) > 0 {
+		s.Report.Warn("\nStale SSH config blocks to remove (%d):", len(t.ssh))
+		for _, b := range t.ssh {
+			s.Report.Info("  Host %s  (%s %s)", b.Alias, b.Kind, b.Ref)
+		}
+	}
+	if len(t.networks) > 0 {
+		s.Report.Warn("\nNetworks to remove (%d):", len(t.networks))
+		for _, net := range t.networks {
+			s.Report.Info("  %s", net.Name)
+		}
+	}
+	if len(t.volumes) > 0 {
+		s.Report.Warn("\nVolumes to remove (%d):", len(t.volumes))
+		for _, vol := range t.volumes {
+			s.Report.Info("  %s", vol.Name)
+		}
+	}
+}
+
+func (s PruneService) removeCleanTargets(t cleanTargets) (removedTotal, failedTotal int) {
+	sshSvc := SshService{Report: s.Report}
+
+	for _, dir := range t.catalog {
 		if domain.RemoveEntry(dir) {
-			removedCatalogCount++
+			removedTotal++
 		}
 	}
-
-	removedContainers, failedContainers := 0, 0
-	if len(toRemoveContainers) > 0 {
-		removedContainers, failedContainers = s.RemoveContainers(toRemoveContainers)
+	if len(t.containers) > 0 {
+		removed, failed := s.RemoveContainers(t.containers)
+		removedTotal += removed
+		failedTotal += failed
 	}
-
-	removedImages, failedImages := 0, 0
-	if len(toRemoveImages) > 0 {
-		removedImages, failedImages = s.Remove(toRemoveImages)
+	if len(t.images) > 0 {
+		removed, failed := s.Remove(t.images)
+		removedTotal += removed
+		failedTotal += failed
 	}
-
-	if len(staleSSH) > 0 {
-		res, backup, err := sshSvc.RemoveManagedBlocks(staleSSH)
-		if err == nil {
-			removedSSHCount = len(res)
+	if len(t.ssh) > 0 {
+		if res, backup, err := sshSvc.RemoveManagedBlocks(t.ssh); err == nil {
+			removedTotal += len(res)
 			if backup != "" {
 				s.Report.Info("SSH backup saved: %s", backup)
 			}
 		}
 	}
-
-	removedNetworks, failedNetworks := 0, 0
-	if len(toRemoveNetworks) > 0 {
-		removedNetworks, failedNetworks = s.RemoveNetworks(toRemoveNetworks)
+	if len(t.networks) > 0 {
+		removed, failed := s.RemoveNetworks(t.networks)
+		removedTotal += removed
+		failedTotal += failed
 	}
-
-	removedVolumes, failedVolumes := 0, 0
-	if len(toRemoveVolumes) > 0 {
-		removedVolumes, failedVolumes = s.RemoveVolumes(toRemoveVolumes)
+	if len(t.volumes) > 0 {
+		removed, failed := s.RemoveVolumes(t.volumes)
+		removedTotal += removed
+		failedTotal += failed
 	}
-
-	removedTotal := removedCatalogCount + removedContainers + removedImages + removedSSHCount + removedNetworks + removedVolumes
-	failedTotal := failedContainers + failedImages + failedNetworks + failedVolumes
-
-	s.Report.Success("\nRemoved %d item(s).", removedTotal)
-	if failedTotal > 0 {
-		s.Report.Error("%d failed.", failedTotal)
-	}
-	return nil
+	return removedTotal, failedTotal
 }
 
 // RunClean drives bare devcontainer-cli clean.
@@ -581,15 +604,11 @@ type LocalImage struct {
 }
 
 func listCliImages() []LocalImage {
-	status, stdout, _, err := docker.DockerCapture([]string{
+	var out []LocalImage
+	for _, line := range captureLines([]string{
 		"images", "--filter", managedFilter,
 		"--format", "{{.Repository}}:{{.Tag}}\t{{.ID}}",
-	})
-	if err != nil || status != 0 || strings.TrimSpace(stdout) == "" {
-		return nil
-	}
-	var out []LocalImage
-	for _, line := range strings.Split(strings.TrimSpace(stdout), "\n") {
+	}) {
 		parts := strings.SplitN(line, "\t", 2)
 		if len(parts) != 2 {
 			continue
@@ -636,16 +655,11 @@ func (s PruneService) SelectImages(all bool) (toRemove []LocalImage, anyExist bo
 }
 
 func (s PruneService) Remove(images []LocalImage) (removed, failed int) {
-	for _, img := range images {
-		status, _ := docker.DockerInherit([]string{"rmi", img.Ref})
-		if status == 0 {
-			removed++
-			continue
-		}
-		s.Report.Error("  ✗ Failed to remove %s (container may be running)", img.Ref)
-		failed++
-	}
-	return removed, failed
+	return removeResources(images,
+		func(i LocalImage) []string { return []string{"rmi", i.Ref} },
+		func(i LocalImage) {
+			s.Report.Error("  ✗ Failed to remove %s (container may be running)", i.Ref)
+		})
 }
 
 // ---------------------------------------------------------------------------
@@ -659,19 +673,11 @@ type LocalContainer struct {
 }
 
 func listCliContainers() []LocalContainer {
-	status, stdout, _, err := docker.DockerCapture([]string{
+	var out []LocalContainer
+	for _, line := range captureLines([]string{
 		"ps", "-a", "--filter", managedFilter,
 		"--format", "{{.Names}}\t{{.State}}",
-	})
-	if err != nil || status != 0 || strings.TrimSpace(stdout) == "" {
-		return nil
-	}
-	var out []LocalContainer
-	for _, line := range strings.Split(strings.TrimSpace(stdout), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
+	}) {
 		parts := strings.SplitN(line, "\t", 2)
 		name := strings.TrimSpace(parts[0])
 		if name == "" {
@@ -703,16 +709,9 @@ func (s PruneService) SelectContainers(all bool) (toRemove []LocalContainer, any
 }
 
 func (s PruneService) RemoveContainers(containers []LocalContainer) (removed, failed int) {
-	for _, c := range containers {
-		status, _ := docker.DockerInherit([]string{"rm", "-f", c.Name})
-		if status == 0 {
-			removed++
-			continue
-		}
-		s.Report.Error("  ✗ Failed to remove container %s", c.Name)
-		failed++
-	}
-	return removed, failed
+	return removeResources(containers,
+		func(c LocalContainer) []string { return []string{"rm", "-f", c.Name} },
+		func(c LocalContainer) { s.Report.Error("  ✗ Failed to remove container %s", c.Name) })
 }
 
 // ---------------------------------------------------------------------------
@@ -725,17 +724,11 @@ type LocalNetwork struct {
 }
 
 func listCliNetworks() []LocalNetwork {
-	status, stdout, _, err := docker.DockerCapture([]string{
-		"network", "ls", "--filter", managedFilter, "--format", "{{.Name}}",
-	})
-	if err != nil || status != 0 || strings.TrimSpace(stdout) == "" {
-		return nil
-	}
 	var out []LocalNetwork
-	for _, line := range strings.Split(strings.TrimSpace(stdout), "\n") {
-		if name := strings.TrimSpace(line); name != "" {
-			out = append(out, LocalNetwork{Name: name})
-		}
+	for _, name := range captureLines([]string{
+		"network", "ls", "--filter", managedFilter, "--format", "{{.Name}}",
+	}) {
+		out = append(out, LocalNetwork{Name: name})
 	}
 	return out
 }
@@ -786,16 +779,9 @@ func (s PruneService) SelectNetworks(all bool) (toRemove []LocalNetwork, anyExis
 }
 
 func (s PruneService) RemoveNetworks(networks []LocalNetwork) (removed, failed int) {
-	for _, net := range networks {
-		status, _ := docker.DockerInherit([]string{"network", "rm", net.Name})
-		if status == 0 {
-			removed++
-			continue
-		}
-		s.Report.Error("  ✗ Failed to remove network %s", net.Name)
-		failed++
-	}
-	return removed, failed
+	return removeResources(networks,
+		func(n LocalNetwork) []string { return []string{"network", "rm", n.Name} },
+		func(n LocalNetwork) { s.Report.Error("  ✗ Failed to remove network %s", n.Name) })
 }
 
 // ---------------------------------------------------------------------------
@@ -813,15 +799,9 @@ func listCliVolumes(unusedOnly bool) []LocalVolume {
 		args = append(args, "--filter", "dangling=true")
 	}
 	args = append(args, "--format", "{{.Name}}")
-	status, stdout, _, err := docker.DockerCapture(args)
-	if err != nil || status != 0 || strings.TrimSpace(stdout) == "" {
-		return nil
-	}
 	var out []LocalVolume
-	for _, line := range strings.Split(strings.TrimSpace(stdout), "\n") {
-		if name := strings.TrimSpace(line); name != "" {
-			out = append(out, LocalVolume{Name: name})
-		}
+	for _, name := range captureLines(args) {
+		out = append(out, LocalVolume{Name: name})
 	}
 	return out
 }
@@ -852,14 +832,7 @@ func (s PruneService) filterSharedConfig(volumes []LocalVolume) []LocalVolume {
 }
 
 func (s PruneService) RemoveVolumes(volumes []LocalVolume) (removed, failed int) {
-	for _, vol := range volumes {
-		status, _ := docker.DockerInherit([]string{"volume", "rm", vol.Name})
-		if status == 0 {
-			removed++
-			continue
-		}
-		s.Report.Error("  ✗ Failed to remove volume %s", vol.Name)
-		failed++
-	}
-	return removed, failed
+	return removeResources(volumes,
+		func(v LocalVolume) []string { return []string{"volume", "rm", v.Name} },
+		func(v LocalVolume) { s.Report.Error("  ✗ Failed to remove volume %s", v.Name) })
 }

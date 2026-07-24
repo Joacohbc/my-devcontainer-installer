@@ -286,8 +286,8 @@ func TestConfigureSavesAlwaysOnModuleOptions(t *testing.T) {
 }
 
 func TestServiceOptionsOf(t *testing.T) {
-	services := []any{
-		types.SelectedModule{ID: "postgres", Options: map[string]any{"version": "16"}},
+	services := []types.SelectedService{
+		{ID: "postgres", Options: map[string]any{"version": "16"}},
 	}
 	if opts := ServiceOptionsOf(services, "postgres"); opts["version"] != "16" {
 		t.Errorf("ServiceOptionsOf returned %v, want version=16", opts)

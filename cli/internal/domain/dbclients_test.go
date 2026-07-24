@@ -19,35 +19,35 @@ func clientVersion(modules []types.SelectedModule, id types.ModuleID) string {
 func TestMatchDBClientVersions(t *testing.T) {
 	cases := []struct {
 		name     string
-		services []any
+		services []types.SelectedService
 		modules  []types.SelectedModule
 		client   types.ModuleID
 		want     string
 	}{
 		{
 			name:     "postgres service default version matches client",
-			services: []any{"postgres"},
+			services: []types.SelectedService{{ID: "postgres"}},
 			modules:  []types.SelectedModule{{ID: types.ModulePostgresClient}},
 			client:   types.ModulePostgresClient,
 			want:     "17", // catalog default 17-alpine -> 17
 		},
 		{
 			name:     "explicit postgres service version, alpine suffix stripped",
-			services: []any{map[string]any{"id": "postgres", "options": map[string]any{"version": "16-alpine"}}},
+			services: []types.SelectedService{{ID: "postgres", Options: map[string]any{"version": "16-alpine"}}},
 			modules:  []types.SelectedModule{{ID: types.ModulePostgresClient, Options: map[string]any{"version": "auto"}}},
 			client:   types.ModulePostgresClient,
 			want:     "16",
 		},
 		{
 			name:     "explicit client version is not overridden",
-			services: []any{"postgres"},
+			services: []types.SelectedService{{ID: "postgres"}},
 			modules:  []types.SelectedModule{{ID: types.ModulePostgresClient, Options: map[string]any{"version": "18"}}},
 			client:   types.ModulePostgresClient,
 			want:     "18",
 		},
 		{
 			name:     "client on auto with no matching service stays auto",
-			services: []any{},
+			services: []types.SelectedService{},
 			modules:  []types.SelectedModule{{ID: types.ModulePostgresClient, Options: map[string]any{"version": "auto"}}},
 			client:   types.ModulePostgresClient,
 			want:     "auto",
@@ -73,7 +73,7 @@ func TestMatchDBClientVersionsDoesNotMutateInput(t *testing.T) {
 		Dockerfile: types.DockerfileConfig{Modules: []types.SelectedModule{
 			{ID: types.ModulePostgresClient, Options: map[string]any{"version": "auto"}},
 		}},
-		Compose: types.ComposeConfig{Services: []any{"postgres"}},
+		Compose: types.ComposeConfig{Services: []types.SelectedService{{ID: "postgres"}}},
 	}
 	_ = MatchDBClientVersions(cfg)
 	if v, _ := cfg.Dockerfile.Modules[0].Options["version"].(string); v != "auto" {

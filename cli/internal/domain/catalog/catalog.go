@@ -78,6 +78,24 @@ func AllModuleIDs() []types.ModuleID {
 	return ids
 }
 
+// ModuleIDs returns every Dockerfile module id as a string, in catalog order.
+func ModuleIDs() []string {
+	ids := make([]string, len(DockerfileModules))
+	for i, m := range DockerfileModules {
+		ids[i] = string(m.ID)
+	}
+	return ids
+}
+
+// ServiceIDs returns every compose service id as a string, in catalog order.
+func ServiceIDs() []string {
+	ids := make([]string, len(ComposeServices))
+	for i, s := range ComposeServices {
+		ids[i] = string(s.ID)
+	}
+	return ids
+}
+
 // AlwaysOnModules returns modules with Always == true.
 func AlwaysOnModules() []*dockerfile.ModuleSpec {
 	var out []*dockerfile.ModuleSpec

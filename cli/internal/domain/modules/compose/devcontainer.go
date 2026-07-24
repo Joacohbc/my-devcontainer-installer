@@ -9,16 +9,6 @@ var DevcontainerService = &ServiceSpec{
 	Label:  SSHServiceName + " (main)",
 	Always: true,
 	Render: func(ctx RenderContext) *ServiceDef {
-		dbServices := []string{"mongo", "redis", "postgres"}
-		depends := []string{}
-		for _, id := range ctx.EnabledServiceIDs {
-			for _, db := range dbServices {
-				if id == db {
-					depends = append(depends, id)
-				}
-			}
-		}
-
 		workspaceDir := ctx.WorkspaceDir
 		if workspaceDir == "" {
 			workspaceDir = "/workspace"
@@ -28,7 +18,7 @@ var DevcontainerService = &ServiceSpec{
 			volumes = append(volumes, ctx.SharedConfigMount)
 		}
 
-		svc := &ServiceDef{
+		return &ServiceDef{
 			Image:         ctx.ImageName,
 			Build:         &BuildDef{Context: "."},
 			ContainerName: SSHServiceName,
@@ -38,11 +28,5 @@ var DevcontainerService = &ServiceSpec{
 			Ports:         ctx.Ports,
 			Networks:      []string{"local-network"},
 		}
-
-		if len(depends) > 0 {
-			svc.DependsOn = depends
-		}
-
-		return svc
 	},
 }

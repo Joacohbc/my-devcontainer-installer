@@ -1318,7 +1318,7 @@ func TestConfigExportImport(t *testing.T) {
 			},
 		},
 		Compose: types.ComposeConfig{
-			Services: []any{"postgres"},
+			Services: []types.SelectedService{{ID: "postgres"}},
 			Subnet:   "172.28.0.0/24",
 		},
 		Env: map[string]string{"FOO": "BAR"},
@@ -1446,9 +1446,7 @@ func TestApplyGenFlags_PresetWithoutServices(t *testing.T) {
 			},
 		},
 		Compose: types.ComposeConfig{
-			Services: []any{
-				types.SelectedModule{ID: "postgres"},
-			},
+			Services: []types.SelectedService{{ID: "postgres"}},
 		},
 	}
 	flags := &genFlags{
@@ -1761,5 +1759,22 @@ func TestValidateAliasName(t *testing.T) {
 		if (err != nil) != c.wantErr {
 			t.Errorf("validateAliasName(%q) err=%v, wantErr=%v", c.in, err, c.wantErr)
 		}
+	}
+}
+
+func TestStaticCompletion(t *testing.T) {
+	fn := staticCompletion("bash", "zsh", "sh")
+	got, directive := fn(nil, nil, "")
+	if directive != cobra.ShellCompDirectiveNoFileComp {
+		t.Errorf("directive=%v, want NoFileComp", directive)
+	}
+	want := []string{"bash", "zsh", "sh"}
+	if !slices.Equal(got, want) {
+		t.Errorf("staticCompletion items=%v, want %v", got, want)
+	}
+
+	empty := staticCompletion()
+	if items, _ := empty(nil, nil, "x"); len(items) != 0 {
+		t.Errorf("empty staticCompletion returned %v", items)
 	}
 }
