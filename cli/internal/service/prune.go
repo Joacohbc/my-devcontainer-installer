@@ -376,79 +376,43 @@ func (s PruneService) CleanVolumes(opts CleanOptions) (int, error) {
 	return removed, nil
 }
 
+type cleanTargets struct {
+	catalog       []string
+	containers    []LocalContainer
+	images        []LocalImage
+	ssh           []ManagedMarker
+	networks      []LocalNetwork
+	volumes       []LocalVolume
+	anyContainers bool
+	anyImages     bool
+	anyNetworks   bool
+	anyVolumes    bool
+}
+
+func (t cleanTargets) total() int {
+	return len(t.catalog) + len(t.containers) + len(t.images) + len(t.ssh) + len(t.networks) + len(t.volumes)
+}
+
+func (t cleanTargets) anyManagedResource() bool {
+	return t.anyContainers || t.anyImages || t.anyNetworks || t.anyVolumes ||
+		len(t.catalog) > 0 || len(t.ssh) > 0
+}
+
 // CleanAll sweeps every category (catalog, containers, images, ssh, networks, volumes).
 func (s PruneService) CleanAll(opts CleanOptions) error {
-	sshSvc := SshService{Report: s.Report}
+	targets := s.collectCleanTargets(opts)
 
-	var staleCatalog []string
-	entries := domain.ListEntries()
-	for _, e := range entries {
-		if _, statErr := os.Stat(e.ProjectDir); os.IsNotExist(statErr) {
-			staleCatalog = append(staleCatalog, e.ProjectDir)
-		}
-	}
-
-	toRemoveContainers, anyContainers := s.SelectContainers(opts.All)
-	toRemoveImages, anyImages := s.SelectImages(opts.All)
-
-	var staleSSH []ManagedMarker
-	existsWs, existsCnt, err := sshSvc.LiveTargetPredicates()
-	if err == nil {
-		staleSSH, _, _ = sshSvc.PruneManagedBlocks(existsWs, existsCnt, true)
-	}
-
-	toRemoveNetworks, anyNetworks := s.SelectNetworks(opts.All)
-	toRemoveVolumes, anyVolumes := s.SelectVolumes(opts.All)
-
-	totalItems := len(staleCatalog) + len(toRemoveContainers) + len(toRemoveImages) + len(staleSSH) + len(toRemoveNetworks) + len(toRemoveVolumes)
-
-	if !anyContainers && !anyImages && !anyNetworks && !anyVolumes && len(staleCatalog) == 0 && len(staleSSH) == 0 {
+	if !targets.anyManagedResource() {
 		s.Report.Info("No devcontainer resources or stale entries found locally.")
 		return nil
 	}
-
-	if totalItems == 0 {
+	if targets.total() == 0 {
 		s.Report.Info("No unused devcontainer resources or stale entries found.")
 		s.Report.Warn("Use --all to remove every managed resource.")
 		return nil
 	}
 
-	if len(staleCatalog) > 0 {
-		s.Report.Warn("\nStale catalog entries to remove (%d):", len(staleCatalog))
-		for _, dir := range staleCatalog {
-			s.Report.Info("  %s", dir)
-		}
-	}
-	if len(toRemoveContainers) > 0 {
-		s.Report.Warn("\nContainers to remove (%d):", len(toRemoveContainers))
-		for _, c := range toRemoveContainers {
-			s.Report.Info("  %s", containerLabel(c))
-		}
-	}
-	if len(toRemoveImages) > 0 {
-		s.Report.Warn("\nImages to remove (%d):", len(toRemoveImages))
-		for _, img := range toRemoveImages {
-			s.Report.Info("  %s  (%s)", img.Ref, img.ID)
-		}
-	}
-	if len(staleSSH) > 0 {
-		s.Report.Warn("\nStale SSH config blocks to remove (%d):", len(staleSSH))
-		for _, b := range staleSSH {
-			s.Report.Info("  Host %s  (%s %s)", b.Alias, b.Kind, b.Ref)
-		}
-	}
-	if len(toRemoveNetworks) > 0 {
-		s.Report.Warn("\nNetworks to remove (%d):", len(toRemoveNetworks))
-		for _, net := range toRemoveNetworks {
-			s.Report.Info("  %s", net.Name)
-		}
-	}
-	if len(toRemoveVolumes) > 0 {
-		s.Report.Warn("\nVolumes to remove (%d):", len(toRemoveVolumes))
-		for _, vol := range toRemoveVolumes {
-			s.Report.Info("  %s", vol.Name)
-		}
-	}
+	s.previewCleanTargets(targets)
 
 	if opts.DryRun {
 		s.Report.Warn("Dry run — nothing removed. Re-run without --dry-run to apply.")
@@ -469,51 +433,110 @@ func (s PruneService) CleanAll(opts CleanOptions) error {
 		}
 	}
 
-	var removedCatalogCount, removedSSHCount int
-	for _, dir := range staleCatalog {
-		if domain.RemoveEntry(dir) {
-			removedCatalogCount++
-		}
-	}
-
-	removedContainers, failedContainers := 0, 0
-	if len(toRemoveContainers) > 0 {
-		removedContainers, failedContainers = s.RemoveContainers(toRemoveContainers)
-	}
-
-	removedImages, failedImages := 0, 0
-	if len(toRemoveImages) > 0 {
-		removedImages, failedImages = s.Remove(toRemoveImages)
-	}
-
-	if len(staleSSH) > 0 {
-		res, backup, err := sshSvc.RemoveManagedBlocks(staleSSH)
-		if err == nil {
-			removedSSHCount = len(res)
-			if backup != "" {
-				s.Report.Info("SSH backup saved: %s", backup)
-			}
-		}
-	}
-
-	removedNetworks, failedNetworks := 0, 0
-	if len(toRemoveNetworks) > 0 {
-		removedNetworks, failedNetworks = s.RemoveNetworks(toRemoveNetworks)
-	}
-
-	removedVolumes, failedVolumes := 0, 0
-	if len(toRemoveVolumes) > 0 {
-		removedVolumes, failedVolumes = s.RemoveVolumes(toRemoveVolumes)
-	}
-
-	removedTotal := removedCatalogCount + removedContainers + removedImages + removedSSHCount + removedNetworks + removedVolumes
-	failedTotal := failedContainers + failedImages + failedNetworks + failedVolumes
+	removedTotal, failedTotal := s.removeCleanTargets(targets)
 
 	s.Report.Success("\nRemoved %d item(s).", removedTotal)
 	if failedTotal > 0 {
 		s.Report.Error("%d failed.", failedTotal)
 	}
 	return nil
+}
+
+func (s PruneService) collectCleanTargets(opts CleanOptions) cleanTargets {
+	sshSvc := SshService{Report: s.Report}
+
+	targets := cleanTargets{}
+	for _, e := range domain.ListEntries() {
+		if _, statErr := os.Stat(e.ProjectDir); os.IsNotExist(statErr) {
+			targets.catalog = append(targets.catalog, e.ProjectDir)
+		}
+	}
+	targets.containers, targets.anyContainers = s.SelectContainers(opts.All)
+	targets.images, targets.anyImages = s.SelectImages(opts.All)
+	if existsWs, existsCnt, err := sshSvc.LiveTargetPredicates(); err == nil {
+		targets.ssh, _, _ = sshSvc.PruneManagedBlocks(existsWs, existsCnt, true)
+	}
+	targets.networks, targets.anyNetworks = s.SelectNetworks(opts.All)
+	targets.volumes, targets.anyVolumes = s.SelectVolumes(opts.All)
+	return targets
+}
+
+func (s PruneService) previewCleanTargets(t cleanTargets) {
+	if len(t.catalog) > 0 {
+		s.Report.Warn("\nStale catalog entries to remove (%d):", len(t.catalog))
+		for _, dir := range t.catalog {
+			s.Report.Info("  %s", dir)
+		}
+	}
+	if len(t.containers) > 0 {
+		s.Report.Warn("\nContainers to remove (%d):", len(t.containers))
+		for _, c := range t.containers {
+			s.Report.Info("  %s", containerLabel(c))
+		}
+	}
+	if len(t.images) > 0 {
+		s.Report.Warn("\nImages to remove (%d):", len(t.images))
+		for _, img := range t.images {
+			s.Report.Info("  %s  (%s)", img.Ref, img.ID)
+		}
+	}
+	if len(t.ssh) > 0 {
+		s.Report.Warn("\nStale SSH config blocks to remove (%d):", len(t.ssh))
+		for _, b := range t.ssh {
+			s.Report.Info("  Host %s  (%s %s)", b.Alias, b.Kind, b.Ref)
+		}
+	}
+	if len(t.networks) > 0 {
+		s.Report.Warn("\nNetworks to remove (%d):", len(t.networks))
+		for _, net := range t.networks {
+			s.Report.Info("  %s", net.Name)
+		}
+	}
+	if len(t.volumes) > 0 {
+		s.Report.Warn("\nVolumes to remove (%d):", len(t.volumes))
+		for _, vol := range t.volumes {
+			s.Report.Info("  %s", vol.Name)
+		}
+	}
+}
+
+func (s PruneService) removeCleanTargets(t cleanTargets) (removedTotal, failedTotal int) {
+	sshSvc := SshService{Report: s.Report}
+
+	for _, dir := range t.catalog {
+		if domain.RemoveEntry(dir) {
+			removedTotal++
+		}
+	}
+	if len(t.containers) > 0 {
+		removed, failed := s.RemoveContainers(t.containers)
+		removedTotal += removed
+		failedTotal += failed
+	}
+	if len(t.images) > 0 {
+		removed, failed := s.Remove(t.images)
+		removedTotal += removed
+		failedTotal += failed
+	}
+	if len(t.ssh) > 0 {
+		if res, backup, err := sshSvc.RemoveManagedBlocks(t.ssh); err == nil {
+			removedTotal += len(res)
+			if backup != "" {
+				s.Report.Info("SSH backup saved: %s", backup)
+			}
+		}
+	}
+	if len(t.networks) > 0 {
+		removed, failed := s.RemoveNetworks(t.networks)
+		removedTotal += removed
+		failedTotal += failed
+	}
+	if len(t.volumes) > 0 {
+		removed, failed := s.RemoveVolumes(t.volumes)
+		removedTotal += removed
+		failedTotal += failed
+	}
+	return removedTotal, failedTotal
 }
 
 // RunClean drives bare devcontainer-cli clean.

@@ -262,160 +262,56 @@ func resolveEnabledServices(config *types.DevcontainerConfig) enabledServicesRes
 	return enabledServicesResult{enabledIDs: enabledIDs, optionsByID: optionsByID}
 }
 
+type composeContext struct {
+	config                *types.DevcontainerConfig
+	workspace             string
+	networkName           string
+	subnet                string
+	labels                map[string]string
+	enabledIDs            []string
+	optionsByID           map[string]map[string]any
+	declaredVolumes       map[string]bool
+	devcontainerImageName string
+	devcontainerIP        string
+}
+
 func GenerateCompose(config *types.DevcontainerConfig) (string, error) {
-	result := resolveEnabledServices(config)
-	enabledIDs := result.enabledIDs
-	optionsByID := result.optionsByID
+	resolved := resolveEnabledServices(config)
 
-	workspace := config.Workspace
-	networkName := workspace + "-network"
-
-	labels := types.ComposeLabels(config)
 	subnet := config.Compose.Subnet
 	if subnet == "" {
 		subnet = DefaultSubnet
 	}
 	devcontainerIP, _ := LastHost(subnet)
 
-	declaredVolumes := make(map[string]bool)
-	for _, id := range enabledIDs {
-		svc := catalog.GetComposeService(types.ServiceID(id))
-		if svc == nil {
-			return "", fmt.Errorf("unknown compose service: %s", id)
-		}
-		for _, v := range svc.Volumes {
-			declaredVolumes[v] = true
-		}
+	declaredVolumes, err := collectDeclaredVolumes(resolved.enabledIDs)
+	if err != nil {
+		return "", err
 	}
 
-	devcontainerImageName := ResolveDevcontainerImageName(config)
-	services := make(map[string]*compose.ServiceDef)
-
-	for _, id := range enabledIDs {
-		svc := catalog.GetComposeService(types.ServiceID(id))
-		if svc == nil {
-			return "", fmt.Errorf("unknown compose service: %s", id)
-		}
-
-		imageNameForSvc := config.Image
-		if svc.ID == types.ServiceDevcontainer {
-			imageNameForSvc = devcontainerImageName
-		}
-
-		opts := optionsByID[id]
-		if opts == nil {
-			opts = map[string]any{}
-		}
-
-		dbUser, dbPass := ResolveDBCredentials()
-		rc := compose.RenderContext{
-			ImageName:         imageNameForSvc,
-			EnabledServiceIDs: enabledIDs,
-			Options:           opts,
-			DefaultDBUser:     dbUser,
-			DefaultDBPassword: dbPass,
-		}
-		if svc.ID == types.ServiceDevcontainer {
-			rc.Ports = devcontainerPorts(config)
-			rc.WorkspaceDir = types.WorkspaceDir(workspace)
-			if types.SharedConfigEnabled(config) {
-				rc.SharedConfigMount = types.SharedConfigMount()
-			}
-		}
-		rendered := svc.Render(rc)
-		if rendered == nil {
-			continue
-		}
-
-		if svc.ID == types.ServiceDevcontainer {
-			hasDod := false
-			for _, m := range config.Dockerfile.Modules {
-				if m.ID == types.ModuleDod {
-					hasDod = true
-					break
-				}
-			}
-			if hasDod {
-				rendered.Volumes = append(rendered.Volumes, "/var/run/docker.sock:/var/run/docker.sock")
-			}
-			// User-defined extra mounts are appended verbatim; named-volume
-			// sources are declared in the top-level volumes section below.
-			rendered.Volumes = append(rendered.Volumes, config.Compose.Volumes...)
-		}
-
-		if svc.ID == types.ServiceDevcontainer {
-			switch config.Mode {
-			case types.BuildModeRemote:
-				rendered.Build = nil
-			default:
-				rendered.Build = devcontainerBuild(config)
-			}
-		}
-
-		if svc.ID == types.ServiceDevcontainer {
-			rendered.Hostname = workspace
-		}
-
-		baseContainer := rendered.ContainerName
-		if baseContainer == "" {
-			baseContainer = string(svc.ID)
-		}
-		rendered.ContainerName = prefixContainer(workspace, baseContainer)
-
-		remappedVolumes := make([]string, len(rendered.Volumes))
-		for i, v := range rendered.Volumes {
-			remappedVolumes[i] = remapVolumeMount(workspace, declaredVolumes, v)
-		}
-		rendered.Volumes = remappedVolumes
-
-		isDevcontainer := svc.ID == types.ServiceDevcontainer
-		rendered.Networks = remapServiceNetworks(rendered.Networks, networkName, isDevcontainer, devcontainerIP)
-
-		rendered.Labels = copyLabels(labels)
-
-		serviceKey := string(svc.ID)
-		if svc.ID == types.ServiceDevcontainer {
-			serviceKey = compose.SSHServiceName
-		}
-		services[serviceKey] = rendered
+	ctx := composeContext{
+		config:                config,
+		workspace:             config.Workspace,
+		networkName:           config.Workspace + "-network",
+		subnet:                subnet,
+		labels:                types.ComposeLabels(config),
+		enabledIDs:            resolved.enabledIDs,
+		optionsByID:           resolved.optionsByID,
+		declaredVolumes:       declaredVolumes,
+		devcontainerImageName: ResolveDevcontainerImageName(config),
+		devcontainerIP:        devcontainerIP,
 	}
 
-	volumes := make(map[string]*compose.VolumeDef)
-	for v := range declaredVolumes {
-		volumes[prefixVolume(workspace, v)] = &compose.VolumeDef{Labels: copyLabels(labels)}
-	}
-	// Declare named-volume sources from the user's extra mounts so compose does
-	// not reject them as undefined. Bind-mount sources (host paths) need no
-	// declaration. Names are kept verbatim (compose prefixes them by project).
-	for _, mount := range config.Compose.Volumes {
-		if name, ok := userNamedVolume(mount); ok {
-			if _, exists := volumes[name]; !exists {
-				volumes[name] = &compose.VolumeDef{Labels: copyLabels(labels)}
-			}
-		}
-	}
-	// The shared tool-config volume is daemon-level (shared by every workspace),
-	// so it is declared external (never prefixed, never removed by compose down -v).
-	if types.SharedConfigEnabled(config) {
-		volumes[types.SharedConfigVolumeName] = &compose.VolumeDef{External: true}
-	}
-
-	networks := make(map[string]*compose.NetworkDef)
-	networks[networkName] = &compose.NetworkDef{
-		Driver: "bridge",
-		IPAM: &compose.IPAMConfig{
-			Config: []compose.IPAMSubnet{
-				{Subnet: fmt.Sprintf("${DOCKER_SUBNET:-%s}", subnet)},
-			},
-		},
-		Labels: copyLabels(labels),
+	services, err := ctx.renderServices()
+	if err != nil {
+		return "", err
 	}
 
 	doc := compose.ComposeDoc{
-		Name:     workspace,
+		Name:     ctx.workspace,
 		Services: services,
-		Networks: networks,
-		Volumes:  volumes,
+		Networks: ctx.networks(),
+		Volumes:  ctx.volumes(),
 	}
 
 	out, err := yaml.Marshal(doc)
@@ -423,6 +319,161 @@ func GenerateCompose(config *types.DevcontainerConfig) (string, error) {
 		return "", fmt.Errorf("yaml marshal: %w", err)
 	}
 	return types.GeneratedHeader + "\n" + string(out), nil
+}
+
+func collectDeclaredVolumes(enabledIDs []string) (map[string]bool, error) {
+	declared := make(map[string]bool)
+	for _, id := range enabledIDs {
+		svc := catalog.GetComposeService(types.ServiceID(id))
+		if svc == nil {
+			return nil, fmt.Errorf("unknown compose service: %s", id)
+		}
+		for _, v := range svc.Volumes {
+			declared[v] = true
+		}
+	}
+	return declared, nil
+}
+
+func (c composeContext) renderServices() (map[string]*compose.ServiceDef, error) {
+	services := make(map[string]*compose.ServiceDef)
+	for _, id := range c.enabledIDs {
+		svc := catalog.GetComposeService(types.ServiceID(id))
+		if svc == nil {
+			return nil, fmt.Errorf("unknown compose service: %s", id)
+		}
+		key, rendered := c.renderService(svc)
+		if rendered == nil {
+			continue
+		}
+		services[key] = rendered
+	}
+	return services, nil
+}
+
+func (c composeContext) renderService(svc *compose.ServiceSpec) (string, *compose.ServiceDef) {
+	isDevcontainer := svc.ID == types.ServiceDevcontainer
+
+	rendered := svc.Render(c.renderContext(svc, isDevcontainer))
+	if rendered == nil {
+		return "", nil
+	}
+	if isDevcontainer {
+		c.configureDevcontainer(rendered)
+	}
+
+	baseContainer := rendered.ContainerName
+	if baseContainer == "" {
+		baseContainer = string(svc.ID)
+	}
+	rendered.ContainerName = prefixContainer(c.workspace, baseContainer)
+	rendered.Volumes = c.remapVolumes(rendered.Volumes)
+	rendered.Networks = remapServiceNetworks(rendered.Networks, c.networkName, isDevcontainer, c.devcontainerIP)
+	rendered.Labels = copyLabels(c.labels)
+
+	if isDevcontainer {
+		return compose.SSHServiceName, rendered
+	}
+	return string(svc.ID), rendered
+}
+
+func (c composeContext) renderContext(svc *compose.ServiceSpec, isDevcontainer bool) compose.RenderContext {
+	imageName := c.config.Image
+	if isDevcontainer {
+		imageName = c.devcontainerImageName
+	}
+	options := c.optionsByID[string(svc.ID)]
+	if options == nil {
+		options = map[string]any{}
+	}
+	dbUser, dbPass := ResolveDBCredentials()
+	rc := compose.RenderContext{
+		ImageName:         imageName,
+		EnabledServiceIDs: c.enabledIDs,
+		Options:           options,
+		DefaultDBUser:     dbUser,
+		DefaultDBPassword: dbPass,
+	}
+	if isDevcontainer {
+		rc.Ports = devcontainerPorts(c.config)
+		rc.WorkspaceDir = types.WorkspaceDir(c.workspace)
+		if types.SharedConfigEnabled(c.config) {
+			rc.SharedConfigMount = types.SharedConfigMount()
+		}
+	}
+	return rc
+}
+
+func (c composeContext) configureDevcontainer(rendered *compose.ServiceDef) {
+	if c.dockerOutsideDockerEnabled() {
+		rendered.Volumes = append(rendered.Volumes, "/var/run/docker.sock:/var/run/docker.sock")
+	}
+	// User-defined extra mounts are appended verbatim; named-volume sources are
+	// declared in the top-level volumes section (see volumes()).
+	rendered.Volumes = append(rendered.Volumes, c.config.Compose.Volumes...)
+
+	if c.config.Mode == types.BuildModeRemote {
+		rendered.Build = nil
+	} else {
+		rendered.Build = devcontainerBuild(c.config)
+	}
+	rendered.Hostname = c.workspace
+}
+
+func (c composeContext) dockerOutsideDockerEnabled() bool {
+	for _, m := range c.config.Dockerfile.Modules {
+		if m.ID == types.ModuleDod {
+			return true
+		}
+	}
+	return false
+}
+
+func (c composeContext) remapVolumes(mounts []string) []string {
+	remapped := make([]string, len(mounts))
+	for i, mount := range mounts {
+		remapped[i] = remapVolumeMount(c.workspace, c.declaredVolumes, mount)
+	}
+	return remapped
+}
+
+func (c composeContext) volumes() map[string]*compose.VolumeDef {
+	volumes := make(map[string]*compose.VolumeDef)
+	for v := range c.declaredVolumes {
+		volumes[prefixVolume(c.workspace, v)] = &compose.VolumeDef{Labels: copyLabels(c.labels)}
+	}
+	// Declare named-volume sources from the user's extra mounts so compose does
+	// not reject them as undefined. Bind-mount sources (host paths) need no
+	// declaration. Names are kept verbatim (compose prefixes them by project).
+	for _, mount := range c.config.Compose.Volumes {
+		name, ok := userNamedVolume(mount)
+		if !ok {
+			continue
+		}
+		if _, exists := volumes[name]; !exists {
+			volumes[name] = &compose.VolumeDef{Labels: copyLabels(c.labels)}
+		}
+	}
+	// The shared tool-config volume is daemon-level (shared by every workspace),
+	// so it is declared external (never prefixed, never removed by compose down -v).
+	if types.SharedConfigEnabled(c.config) {
+		volumes[types.SharedConfigVolumeName] = &compose.VolumeDef{External: true}
+	}
+	return volumes
+}
+
+func (c composeContext) networks() map[string]*compose.NetworkDef {
+	return map[string]*compose.NetworkDef{
+		c.networkName: {
+			Driver: "bridge",
+			IPAM: &compose.IPAMConfig{
+				Config: []compose.IPAMSubnet{
+					{Subnet: fmt.Sprintf("${DOCKER_SUBNET:-%s}", c.subnet)},
+				},
+			},
+			Labels: copyLabels(c.labels),
+		},
+	}
 }
 
 func remapServiceNetworks(raw any, networkName string, isDevcontainer bool, devcontainerIP string) any {
