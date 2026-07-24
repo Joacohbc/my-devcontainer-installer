@@ -38,9 +38,7 @@ Pass -T when piping a command's output to a file so the stream isn't mangled.`,
 	cmd.Flags().BoolP("no-tty", "T", false, "Disable pseudo-TTY allocation (use when piping output to a file, e.g. a DB dump)")
 	addContainerFlag(cmd)
 
-	_ = cmd.RegisterFlagCompletionFunc("type", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
-		return []string{"bash", "zsh", "sh"}, cobra.ShellCompDirectiveNoFileComp
-	})
+	_ = cmd.RegisterFlagCompletionFunc("type", staticCompletion("bash", "zsh", "sh"))
 
 	_ = cmd.RegisterFlagCompletionFunc("user", func(cmd *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
 		containerName, err := resolveContainer(cmd)

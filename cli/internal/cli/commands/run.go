@@ -57,9 +57,7 @@ Variants: ` + strings.Join(types.RemoteVariants, ", ") + `.`,
 	cmd.Flags().String("registry", "", "Registry prefix override")
 	addInteractiveFlag(cmd)
 
-	_ = cmd.RegisterFlagCompletionFunc("variant", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		return types.RemoteVariants, cobra.ShellCompDirectiveNoFileComp
-	})
+	_ = cmd.RegisterFlagCompletionFunc("variant", staticCompletion(types.RemoteVariants...))
 
 	return cmd
 }

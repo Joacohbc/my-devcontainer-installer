@@ -32,11 +32,9 @@ Known tools: ` + strings.Join(types.SharedConfigIDs(), ", ") + `.`,
 
   # Back up only specific tools
   devcontainer-cli config shared backup claude gh -o claude-gh-backup.zip`,
-		SilenceUsage: true,
-		RunE:         runBackupConfig,
-		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-			return types.SharedConfigIDs(), cobra.ShellCompDirectiveNoFileComp
-		},
+		SilenceUsage:      true,
+		RunE:              runBackupConfig,
+		ValidArgsFunction: staticCompletion(types.SharedConfigIDs()...),
 	}
 	cmd.Flags().StringP("output", "o", "", "Destination zip file (default: shared-config-backup-<timestamp>.zip in the current directory)")
 	return cmd

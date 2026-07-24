@@ -1763,3 +1763,20 @@ func TestValidateAliasName(t *testing.T) {
 		}
 	}
 }
+
+func TestStaticCompletion(t *testing.T) {
+	fn := staticCompletion("bash", "zsh", "sh")
+	got, directive := fn(nil, nil, "")
+	if directive != cobra.ShellCompDirectiveNoFileComp {
+		t.Errorf("directive=%v, want NoFileComp", directive)
+	}
+	want := []string{"bash", "zsh", "sh"}
+	if !slices.Equal(got, want) {
+		t.Errorf("staticCompletion items=%v, want %v", got, want)
+	}
+
+	empty := staticCompletion()
+	if items, _ := empty(nil, nil, "x"); len(items) != 0 {
+		t.Errorf("empty staticCompletion returned %v", items)
+	}
+}

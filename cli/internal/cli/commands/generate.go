@@ -68,25 +68,13 @@ func addGenerateFlags(cmd *cobra.Command) {
 		}
 		return ids, cobra.ShellCompDirectiveNoFileComp
 	})
-	_ = cmd.RegisterFlagCompletionFunc(flagMode, func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		return []string{"local-cached", "remote"}, cobra.ShellCompDirectiveNoFileComp
-	})
-	_ = cmd.RegisterFlagCompletionFunc(flagVariant, func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		return types.RemoteVariants, cobra.ShellCompDirectiveNoFileComp
-	})
+	_ = cmd.RegisterFlagCompletionFunc(flagMode, staticCompletion(string(types.BuildModeLocalCached), string(types.BuildModeRemote)))
+	_ = cmd.RegisterFlagCompletionFunc(flagVariant, staticCompletion(types.RemoteVariants...))
 	_ = cmd.RegisterFlagCompletionFunc(flagWith, func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		var moduleIDs []string
-		for _, m := range catalog.DockerfileModules {
-			moduleIDs = append(moduleIDs, string(m.ID))
-		}
-		return completeCSV(toComplete, moduleIDs), cobra.ShellCompDirectiveNoFileComp
+		return completeCSV(toComplete, catalog.ModuleIDs()), cobra.ShellCompDirectiveNoFileComp
 	})
 	completeServiceFunc := func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		var serviceIDs []string
-		for _, s := range catalog.ComposeServices {
-			serviceIDs = append(serviceIDs, string(s.ID))
-		}
-		return completeCSV(toComplete, serviceIDs), cobra.ShellCompDirectiveNoFileComp
+		return completeCSV(toComplete, catalog.ServiceIDs()), cobra.ShellCompDirectiveNoFileComp
 	}
 	_ = cmd.RegisterFlagCompletionFunc(flagService, completeServiceFunc)
 	_ = cmd.RegisterFlagCompletionFunc(flagServices, completeServiceFunc)

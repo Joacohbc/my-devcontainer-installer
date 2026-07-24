@@ -70,6 +70,14 @@ func listComposeServices(composeFile string) []string {
 	return names
 }
 
+// staticCompletion returns a completion function that always offers the given
+// fixed items (with no file completion).
+func staticCompletion(items ...string) func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
+	return func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
+		return items, cobra.ShellCompDirectiveNoFileComp
+	}
+}
+
 // completeCSV autocompletes comma-separated list values, omitting already selected ones.
 func completeCSV(toComplete string, allValues []string) []string {
 	parts := strings.Split(toComplete, ",")
