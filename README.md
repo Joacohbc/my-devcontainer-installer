@@ -129,8 +129,8 @@ curl -fsSL https://raw.githubusercontent.com/Joacohbc/my-devcontainer-installer/
 ### 1. Crear y levantar un entorno
 ```bash
 mkdir mi-proyecto && cd mi-proyecto
-devcontainer-cli                       # Asistente interactivo TUI para elegir módulos
-docker compose -f .dc_mi-proyecto/build/docker-compose.yml up -d
+devcontainer-cli                       # Asistente interactivo TUI para generar el entorno
+devcontainer-cli up                    # Levanta el stack de contenedores (o ejecutá directamente devcontainer-cli ssh)
 ```
 
 ### 2. Conexión y configuración SSH (`devcontainer-cli ssh`)

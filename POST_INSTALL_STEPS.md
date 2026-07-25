@@ -1,8 +1,45 @@
 # Pasos Post-Instalación
 
-Acciones que se ejecutan **dentro del contenedor** una vez levantado. Para instalar la CLI y configurar el acceso SSH, ver [README.md](README.md).
+Acciones y comandos para conectar y trabajar **dentro del contenedor** una vez levantado.
 
 > 💡 **Antes de hacer logins a mano:** si activaste el volumen de config compartida, ejecutá `devcontainer-cli config shared sync` en el **host** para sembrar los logins/sesiones que ya tenés (GitHub CLI, Claude, Codex, Gemini, Antigravity) — así los contenedores arrancan ya autenticados. Ver [README.md → Sembrar logins desde el host](README.md#sembrar-logins-desde-el-host-config-shared-sync). Los pasos manuales de abajo solo hacen falta para lo que `config shared sync` no cubre.
+
+## Acceso al DevContainer (SSH y CLI Shell)
+
+Puedes conectarte al contenedor desde la máquina host mediante `devcontainer-cli` o mediante un cliente SSH directo, tanto en modo **interactivo** (para trabajar en la terminal) como **no interactivo** (para automatizaciones, comandos puntuales o redirección de archivos):
+
+### 1. Vía CLI Shell (`devcontainer-cli shell`)
+
+Utiliza `docker exec` por debajo resolviendo automáticamente el contenedor del workspace actual:
+
+* **Modo Interactivo (predeterminado):** Abre una terminal interactiva (Zsh) con soporte TTY completo.
+  ```bash
+  devcontainer-cli shell                       # Entra a la shell interactiva del devcontainer
+  devcontainer-cli shell -- bash               # Abre la shell especificando bash
+  devcontainer-cli shell -c <contenedor>       # Entra a un contenedor específico del stack (ej. postgres)
+  ```
+* **Modo No Interactivo (`-T` / `--no-tty`):** Ejecuta comandos aislados o canalizaciones (pipes / redirecciones de archivos) desactivando la asignación de TTY para evitar la corrupción de datos (como caracteres `\r`).
+  ```bash
+  devcontainer-cli shell -- uname -a           # Ejecuta un comando puntual y devuelve la salida
+  devcontainer-cli shell -T -- pg_dump -U devuser devdb > backup.sql # Generación limpia de dumps de BD
+  cat script.sh | devcontainer-cli shell -T -- bash                 # Pipe de un script local al contenedor
+  ```
+
+### 2. Vía SSH (`devcontainer-cli ssh` / cliente `ssh`)
+
+Proporciona acceso mediante OpenSSH, ideal para **VS Code Remote - SSH** o sesiones multiplexadas con **Zellij**:
+
+* **Modo Interactivo:**
+  ```bash
+  devcontainer-cli ssh                         # Abre sesión SSH (ejecuta setup-ssh automáticamente si es la 1ª vez)
+  devcontainer-cli ssh --remote user@server    # Conecta por SSH a un devcontainer en un servidor remoto
+  ssh <workspace>                              # Conexión directa mediante el alias registrado en ~/.ssh/config
+  ```
+* **Modo No Interactivo:**
+  ```bash
+  ssh <workspace> "ls -la /workspace"          # Ejecuta un comando remoto por SSH de forma no interactiva
+  cat script_local.sh | ssh <workspace> "bash" # Transmite y ejecuta un script local mediante SSH
+  ```
 
 ## Cambiar la contraseña del DevUser (opcional)
 
@@ -12,9 +49,9 @@ La contraseña temporal del primer login se obtiene en el host con `docker compo
 sudo passwd
 ```
 
-## Scripts horneados en `~/post-script/`
+## Scripts embebidos en `~/post-script/`
 
-La CLI hornea estos scripts dentro de la imagen según los módulos elegidos:
+La CLI incluye estos scripts dentro de la imagen según los módulos elegidos:
 
 ```bash
 ~/post-script/login-github-cli.sh    # login de GitHub CLI (módulo github-cli) — o usá `config shared sync gh` en el host
