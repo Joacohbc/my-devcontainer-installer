@@ -207,3 +207,86 @@ func TestDestroySkipsDownWhenNoComposeFile(t *testing.T) {
 		t.Errorf("compose down must not run when no compose file exists; got %v", call)
 	}
 }
+
+// destroy is the moment a workspace stops existing, so the host key its Host
+// block had pinned goes with the block — no orphan left for a later 'clean ssh'.
+func TestDestroyForgetsPinnedHostKey(t *testing.T) {
+	tmp := t.TempDir()
+	_, knownHostsPath := writeSSHFiles(t,
+		"# devcontainer-cli:managed v=1 kind=workspace ref=ws alias=ws\n"+
+			"Host ws\n    HostName 172.18.0.2\n    User devuser\n\n"+
+			"Host keepme\n    HostName example.com\n",
+		"172.18.0.2 ssh-ed25519 WS\nexample.com ssh-ed25519 KEEP\n")
+
+	restore := useFakeDocker(&fakeRunner{status: 0})
+	defer restore()
+
+	svc := DestroyService{Report: nopReporter{}}
+	if err := svc.Run(DestroyTarget{
+		Workspace:   "ws",
+		ComposeFile: filepath.Join(tmp, "missing", "docker-compose.yml"),
+		ProjectDir:  filepath.Join(tmp, "missing"),
+		ConfigPath:  filepath.Join(tmp, "devcontainer.config.json"),
+		ProjectKey:  tmp,
+	}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	data, err := os.ReadFile(knownHostsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "example.com ssh-ed25519 KEEP\n" {
+		t.Errorf("known_hosts = %q, want only the key the surviving block dials", data)
+	}
+}
+
+func TestDestroyRunContainerForgetsPinnedHostKey(t *testing.T) {
+	_, knownHostsPath := writeSSHFiles(t,
+		"# devcontainer-cli:managed v=1 kind=container ref=dc-ssh alias=dc-ssh\n"+
+			"Host dc-ssh\n    HostName 172.18.0.5\n    User devuser\n",
+		"172.18.0.5 ssh-ed25519 LOOSE\n")
+
+	restore := useFakeDocker(&fakeRunner{status: 0})
+	defer restore()
+
+	svc := DestroyService{Report: nopReporter{}}
+	if err := svc.RunContainer("dc-ssh"); err != nil {
+		t.Fatalf("RunContainer: %v", err)
+	}
+
+	data, err := os.ReadFile(knownHostsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(data) != 0 {
+		t.Errorf("known_hosts = %q, want the pinned key dropped", data)
+	}
+}
+
+// Two aliases can point at the same container; the key survives while anything
+// still dials that address.
+func TestDestroyKeepsHostKeyStillReferenced(t *testing.T) {
+	knownHosts := "172.18.0.5 ssh-ed25519 LOOSE\n"
+	_, knownHostsPath := writeSSHFiles(t,
+		"# devcontainer-cli:managed v=1 kind=container ref=dc-ssh alias=dc-ssh\n"+
+			"Host dc-ssh\n    HostName 172.18.0.5\n\n"+
+			"Host my-shortcut\n    HostName 172.18.0.5\n",
+		knownHosts)
+
+	restore := useFakeDocker(&fakeRunner{status: 0})
+	defer restore()
+
+	svc := DestroyService{Report: nopReporter{}}
+	if err := svc.RunContainer("dc-ssh"); err != nil {
+		t.Fatalf("RunContainer: %v", err)
+	}
+
+	data, err := os.ReadFile(knownHostsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != knownHosts {
+		t.Errorf("known_hosts = %q, want the key kept for the surviving alias", data)
+	}
+}

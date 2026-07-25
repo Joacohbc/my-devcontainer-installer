@@ -112,6 +112,15 @@ func DefaultManagedSSHKeyPath() string {
 	return filepath.Join(GlobalConfigDir(), "ssh", types.SSHKeyName)
 }
 
+// ManagedKnownHostsPath is the path of the dedicated known_hosts file the CLI
+// manages for devcontainers (e.g. <config>/ssh/known_hosts). Unlike the key it
+// is never overridable: it is an internal bookkeeping file, not user key
+// material, and generated Host blocks point at it so a rebuilt container's new
+// host key can be re-pinned without ever touching ~/.ssh/known_hosts.
+func ManagedKnownHostsPath() string {
+	return filepath.Join(GlobalConfigDir(), "ssh", types.SSHKnownHostsName)
+}
+
 // ResolveSSHKeyPath returns the SSH key path to use, with precedence
 // flagOverride → cfg.Defaults.SSHKeyPath → DefaultManagedSSHKeyPath().
 func ResolveSSHKeyPath(flagOverride string) string {

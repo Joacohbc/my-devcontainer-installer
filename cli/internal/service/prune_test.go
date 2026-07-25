@@ -2,7 +2,9 @@ package service
 
 import (
 	"errors"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
@@ -324,6 +326,127 @@ func TestSelectByNames(t *testing.T) {
 	}
 	if len(missing) != 1 || missing[0] != "nope:latest" {
 		t.Errorf("expected missing [nope:latest], got %v", missing)
+	}
+}
+
+// writeSSHFiles seeds ~/.ssh/config and the CLI-managed known_hosts for the
+// clean-ssh tests, pointing both HOME and XDG_CONFIG_HOME at temp dirs.
+func writeSSHFiles(t *testing.T, config, knownHosts string) (configPath, knownHostsPath string) {
+	t.Helper()
+	home := t.TempDir()
+	setHomeDir(t, home)
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	configPath = filepath.Join(home, ".ssh", "config")
+	if err := os.MkdirAll(filepath.Dir(configPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	knownHostsPath = domain.ManagedKnownHostsPath()
+	if err := os.MkdirAll(filepath.Dir(knownHostsPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(knownHostsPath, []byte(knownHosts), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return configPath, knownHostsPath
+}
+
+// Both marker kinds are pruned the same way, and the host keys the removed
+// blocks had pinned go with them.
+func TestCleanSSHRemovesBlocksAndPinnedKeys(t *testing.T) {
+	config := "# devcontainer-cli:managed v=1 kind=workspace ref=api alias=api\n" +
+		"Host api\n    HostName 172.25.1.30\n    User devuser\n\n" +
+		"# devcontainer-cli:managed v=1 kind=container ref=dc-ssh alias=dc-ssh\n" +
+		"Host dc-ssh\n    HostName 172.25.2.30\n    User devuser\n\n" +
+		"Host mine\n    HostName example.com\n"
+	knownHosts := "172.25.1.30 ssh-ed25519 WS\n172.25.2.30 ssh-ed25519 LOOSE\nexample.com ssh-ed25519 KEEP\n"
+	configPath, knownHostsPath := writeSSHFiles(t, config, knownHosts)
+
+	// No managed containers and an empty registry: both targets read as gone.
+	defer useFakeDocker(&fakeRunner{status: 0, stdout: ""})()
+
+	svc := PruneService{Report: nopReporter{}}
+	removed, err := svc.CleanSSH(CleanOptions{Yes: true})
+	if err != nil {
+		t.Fatalf("CleanSSH: %v", err)
+	}
+	if removed != 2 {
+		t.Fatalf("CleanSSH removed %d blocks, want 2 (workspace + container)", removed)
+	}
+
+	gotConfig, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, gone := range []string{"Host api", "Host dc-ssh"} {
+		if strings.Contains(string(gotConfig), gone) {
+			t.Errorf("config still has %q:\n%s", gone, gotConfig)
+		}
+	}
+	if !strings.Contains(string(gotConfig), "Host mine") {
+		t.Errorf("clean ssh dropped a block it does not manage:\n%s", gotConfig)
+	}
+
+	gotKeys, err := os.ReadFile(knownHostsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The hand-written block still dials example.com, so its key survives.
+	if string(gotKeys) != "example.com ssh-ed25519 KEEP\n" {
+		t.Errorf("known_hosts = %q, want only the still-referenced host", gotKeys)
+	}
+}
+
+// destroy removes a block without touching known_hosts, so clean ssh sweeps the
+// leftover key even when no block is stale.
+func TestCleanSSHSweepsOrphanKeysWithoutStaleBlocks(t *testing.T) {
+	_, knownHostsPath := writeSSHFiles(t,
+		"Host mine\n    HostName example.com\n",
+		"172.25.1.30 ssh-ed25519 DESTROYED\nexample.com ssh-ed25519 KEEP\n")
+	defer useFakeDocker(&fakeRunner{status: 0, stdout: ""})()
+
+	svc := PruneService{Report: nopReporter{}}
+	removed, err := svc.CleanSSH(CleanOptions{Yes: true})
+	if err != nil || removed != 0 {
+		t.Fatalf("CleanSSH = %d,%v, want 0,nil", removed, err)
+	}
+	gotKeys, err := os.ReadFile(knownHostsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(gotKeys) != "example.com ssh-ed25519 KEEP\n" {
+		t.Errorf("known_hosts = %q, want the orphaned key swept", gotKeys)
+	}
+}
+
+func TestCleanSSHDryRunKeepsPinnedKeys(t *testing.T) {
+	knownHosts := "172.25.1.30 ssh-ed25519 WS\n"
+	configPath, knownHostsPath := writeSSHFiles(t,
+		"# devcontainer-cli:managed v=1 kind=workspace ref=api alias=api\nHost api\n    HostName 172.25.1.30\n",
+		knownHosts)
+	defer useFakeDocker(&fakeRunner{status: 0, stdout: ""})()
+
+	svc := PruneService{Report: nopReporter{}}
+	if _, err := svc.CleanSSH(CleanOptions{DryRun: true}); err != nil {
+		t.Fatalf("CleanSSH dry run: %v", err)
+	}
+	gotConfig, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(gotConfig), "Host api") {
+		t.Errorf("dry run removed the block:\n%s", gotConfig)
+	}
+	gotKeys, err := os.ReadFile(knownHostsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(gotKeys) != knownHosts {
+		t.Errorf("dry run rewrote known_hosts: %q", gotKeys)
 	}
 }
 

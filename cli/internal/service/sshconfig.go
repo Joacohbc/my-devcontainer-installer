@@ -251,6 +251,157 @@ func ExtractHostBlock(content, alias string) string {
 	return strings.Join(out, "\n")
 }
 
+// optionKeyword returns the ssh config keyword a stanza line sets, or "" when the
+// line declares nothing (blank, comment, Host line). Both the `Keyword value` and
+// the `Keyword=value` spellings are recognized.
+func optionKeyword(line string) string {
+	trimmed := strings.TrimSpace(line)
+	if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+		return ""
+	}
+	keyword := trimmed
+	if i := strings.IndexAny(trimmed, " \t="); i >= 0 {
+		keyword = trimmed[:i]
+	}
+	if strings.EqualFold(keyword, "Host") || strings.EqualFold(keyword, "Match") {
+		return ""
+	}
+	return keyword
+}
+
+// HostNameForAlias returns the HostName the Host block for alias dials, or "" when
+// there is no such block or it sets no HostName (a ProxyCommand block, where ssh
+// falls back to the alias itself).
+func HostNameForAlias(content, alias string) string {
+	for _, line := range strings.Split(ExtractHostBlock(content, alias), "\n") {
+		if !strings.EqualFold(optionKeyword(line), "HostName") {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) >= 2 {
+			return fields[1]
+		}
+	}
+	return ""
+}
+
+// ConfigHostTargets returns every address content can dial, de-duplicated and in
+// first-seen order: each block's Host aliases plus its HostName. Wildcard
+// patterns are skipped — they name no single host. It is what clean ssh checks
+// pinned host keys against, so an entry is only ever considered orphaned when
+// no block (managed or hand-written) still reaches it.
+func ConfigHostTargets(content string) []string {
+	var targets []string
+	seen := make(map[string]bool)
+	add := func(value string) {
+		if value == "" || strings.ContainsAny(value, "*?") || seen[value] {
+			return
+		}
+		seen[value] = true
+		targets = append(targets, value)
+	}
+	for _, line := range strings.Split(content, "\n") {
+		for _, alias := range HostAliasesInLine(line) {
+			add(alias)
+		}
+		if strings.EqualFold(optionKeyword(line), "HostName") {
+			if fields := strings.Fields(line); len(fields) >= 2 {
+				add(fields[1])
+			}
+		}
+	}
+	return targets
+}
+
+// EnsureHostKeyOptions returns content with the Host block for alias carrying the
+// host-key options for knownHostsFile — replacing stale values and appending the
+// missing ones in place, so a block written by an older CLI version is upgraded
+// without being moved or rewritten wholesale. It reports whether anything changed.
+func EnsureHostKeyOptions(content, alias, knownHostsFile string) (string, bool) {
+	lines := strings.Split(content, "\n")
+	start, end := hostBlockRange(lines, alias)
+	if start < 0 {
+		return content, false
+	}
+	rewrittenBlock := append([]string{lines[start]}, rewriteHostKeyOptions(lines[start+1:end], knownHostsFile)...)
+	updated := strings.Join(slices.Concat(lines[:start], rewrittenBlock, lines[end:]), "\n")
+	return updated, updated != content
+}
+
+// hostBlockRange locates the Host block declaring alias: the index of its Host
+// line and of the first line past the block (the next Host declaration, or the
+// end of the file). start is -1 when no block declares alias.
+func hostBlockRange(lines []string, alias string) (start, end int) {
+	start = -1
+	for index, line := range lines {
+		aliases := HostAliasesInLine(line)
+		if len(aliases) == 0 {
+			continue
+		}
+		if start >= 0 {
+			return start, index
+		}
+		if slices.Contains(aliases, alias) {
+			start = index
+		}
+	}
+	if start < 0 {
+		return -1, 0
+	}
+	return start, len(lines)
+}
+
+// rewriteHostKeyOptions returns a block body carrying exactly the host-key
+// options for knownHostsFile: any previous spelling of them is dropped and the
+// current ones are appended below the block's other settings.
+func rewriteHostKeyOptions(body []string, knownHostsFile string) []string {
+	options := sshdefaults.HostKeyOptions(knownHostsFile)
+	settings, trailingBlanks := splitTrailingBlanks(dropOptions(body, options))
+	rewritten := slices.Clone(settings)
+	for _, option := range options {
+		rewritten = append(rewritten, option.Line())
+	}
+	return append(rewritten, trailingBlanks...)
+}
+
+// dropOptions returns body without the lines setting any of options' keywords.
+func dropOptions(body []string, options []sshdefaults.ConfigOption) []string {
+	var kept []string
+	for _, line := range body {
+		if setsAnyOption(line, options) {
+			continue
+		}
+		kept = append(kept, line)
+	}
+	return kept
+}
+
+// setsAnyOption reports whether line sets one of options' keywords, compared
+// case-insensitively as ssh reads them.
+func setsAnyOption(line string, options []sshdefaults.ConfigOption) bool {
+	keyword := optionKeyword(line)
+	if keyword == "" {
+		return false
+	}
+	for _, option := range options {
+		if strings.EqualFold(option.Keyword, keyword) {
+			return true
+		}
+	}
+	return false
+}
+
+// splitTrailingBlanks separates the blank lines closing a block from the settings
+// above them, so appended options land inside the block instead of after the gap
+// that follows it.
+func splitTrailingBlanks(lines []string) (settings, blanks []string) {
+	lastSetting := len(lines)
+	for lastSetting > 0 && strings.TrimSpace(lines[lastSetting-1]) == "" {
+		lastSetting--
+	}
+	return lines[:lastSetting], lines[lastSetting:]
+}
+
 // ConfigHostAliases returns every non-wildcard Host alias declared in content,
 // de-duplicated and in first-seen order.
 func ConfigHostAliases(content string) []string {
@@ -349,12 +500,99 @@ func (s SshService) ManagedAlias(kind sshdefaults.Kind, ref string) (alias strin
 	return alias, ok, nil
 }
 
-// RemoveManagedBlock removes the CLI managed Host block tagged with workspace from
-// ~/.ssh/config. Unlike ReadSSHConfig it does not create the file: a missing config
-// (or no matching block) is a no-op returning removed=false. When a block is
-// removed it backs the original up to path+".bak" first and returns that path.
-func (s SshService) RemoveManagedBlock(workspace string) (removed bool, backupPath string, err error) {
-	return s.RemoveManagedBlockByRef(sshdefaults.KindWorkspace, workspace)
+// AliasHostName returns the HostName the Host block for alias dials in
+// ~/.ssh/config, or "" when the config, the block, or its HostName is absent.
+// It is what the CLI pins host keys against: the exact address ssh will use.
+func (s SshService) AliasHostName(alias string) (string, error) {
+	path, err := sshConfigPath()
+	if err != nil {
+		return "", err
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", nil
+		}
+		return "", err
+	}
+	return HostNameForAlias(string(data), alias), nil
+}
+
+// ManagedHostName returns the address the managed block for kind + ref dials:
+// its alias' HostName. It reads the config once, and yields "" when the config,
+// the block, or its HostName is absent (a ProxyCommand block sets none). Callers
+// use it to learn what a block had pinned *before* removing it.
+func (s SshService) ManagedHostName(kind sshdefaults.Kind, ref string) (string, error) {
+	path, err := sshConfigPath()
+	if err != nil {
+		return "", err
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", nil
+		}
+		return "", err
+	}
+	content := string(data)
+	alias, ok := AliasForManagedRef(content, string(kind), ref)
+	if !ok {
+		return "", nil
+	}
+	return HostNameForAlias(content, alias), nil
+}
+
+// HostIsReferenced reports whether any Host block in ~/.ssh/config still dials
+// host. It guards the removal of a pinned key: two aliases may point at the same
+// container, so a key is only dropped once nothing reaches it any more.
+func (s SshService) HostIsReferenced(host string) (bool, error) {
+	if host == "" {
+		return false, nil
+	}
+	path, err := sshConfigPath()
+	if err != nil {
+		return false, err
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	return slices.Contains(ConfigHostTargets(string(data)), host), nil
+}
+
+// EnsureHostKeyPinning upgrades an already written Host block in place so it
+// verifies host keys against the CLI-managed known_hosts. Blocks generated
+// before host-key pinning existed record container keys in the user's global
+// ~/.ssh/known_hosts, where a rebuilt container's new key reads as a changed
+// host key; this repairs them without the user re-running setup-ssh. It backs
+// the config up to path+".bak" before rewriting and reports whether the block
+// needed changing.
+func (s SshService) EnsureHostKeyPinning(alias, knownHostsFile string) (updated bool, err error) {
+	path, err := sshConfigPath()
+	if err != nil {
+		return false, err
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	content, changed := EnsureHostKeyOptions(string(data), alias, knownHostsFile)
+	if !changed {
+		return false, nil
+	}
+	if err := os.WriteFile(path+".bak", data, 0o600); err != nil {
+		return false, err
+	}
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // RemoveManagedBlockByRef removes the CLI managed Host block matching kind + ref

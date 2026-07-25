@@ -19,6 +19,7 @@ type setupSshFlags struct {
 	remote            string
 	alias             string
 	key               string
+	knownHosts        string
 	assumeYes         bool
 	container         string
 	containerExplicit bool
@@ -39,6 +40,11 @@ the public key into the container's authorized_keys, resolves the container's IP
 and appends a ready-to-use Host block to your ~/.ssh/config — then tests the
 connection. Afterwards you connect with a plain 'ssh <alias>'. If the alias
 already exists you're asked to overwrite it, pick a new name, or skip.
+
+Host keys are pinned in a known_hosts file owned by the CLI, not in your global
+~/.ssh/known_hosts, and are read from the container through docker rather than
+trusted on first sight. A rebuilt image therefore never greets you with "REMOTE
+HOST IDENTIFICATION HAS CHANGED" for what is really a fresh container.
 
 Two modes:
   local (default)  Configure direct SSH from this machine into a local container.
@@ -86,6 +92,7 @@ func collectSetupSshFlags(cmd *cobra.Command) (*setupSshFlags, error) {
 	g.alias = sshdefaults.Alias
 	g.key, _ = f.GetString("key")
 	g.key = domain.ResolveSSHKeyPath(g.key)
+	g.knownHosts = domain.ManagedKnownHostsPath()
 	g.container, _ = f.GetString("container")
 	g.containerExplicit = f.Changed("container")
 	g.service = sshdefaults.ServiceName
@@ -314,16 +321,33 @@ func installKey(ssh service.SshService, f *setupSshFlags, mode sshdefaults.Mode)
 
 func buildConfigBlock(mode sshdefaults.Mode, f *setupSshFlags, inst installResult, kind sshdefaults.Kind, ref string) (string, error) {
 	return sshdefaults.BuildConfigBlock(sshdefaults.ConfigBlockOptions{
-		Mode:      mode,
-		Alias:     f.alias,
-		User:      f.user,
-		KeyPath:   f.key,
-		Hostname:  inst.hostname,
-		Remote:    f.remote,
-		Container: f.container,
-		Kind:      kind,
-		Ref:       ref,
+		Mode:           mode,
+		Alias:          f.alias,
+		User:           f.user,
+		KeyPath:        f.key,
+		Hostname:       inst.hostname,
+		Remote:         f.remote,
+		Container:      f.container,
+		KnownHostsFile: f.knownHosts,
+		Kind:           kind,
+		Ref:            ref,
 	})
+}
+
+// pinHostKeys records the container's current ssh host keys for the address the
+// Host block dials, so the very first connection — and every one after an image
+// rebuild regenerated those keys — verifies instead of prompting or failing with
+// "REMOTE HOST IDENTIFICATION HAS CHANGED". It is best-effort: when the keys
+// cannot be read the block still works, ssh just falls back to accept-new.
+func pinHostKeys(ssh service.SshService, f *setupSshFlags, inst installResult) {
+	if inst.hostname == "" {
+		return
+	}
+	if err := ssh.PinContainerHostKeys(f.container, inst.hostname); err != nil {
+		console.Warn("Could not pin the container host key (%v); ssh will trust it on first use.", err)
+		return
+	}
+	console.Ok(fmt.Sprintf("Pinned host key of %s in %s", inst.hostname, f.knownHosts))
 }
 
 // aliasAction is the user's decision when the target Host alias already exists
@@ -559,6 +583,8 @@ func performSetupSsh(ssh service.SshService, f *setupSshFlags, mode sshdefaults.
 		return emitRemoteConfig(ssh, f, markerKind, markerRef)
 	}
 
+	pinHostKeys(ssh, f, inst)
+
 	if err := updateSshConfig(ssh, f, mode, inst, markerKind, markerRef); err != nil {
 		return err
 	}
@@ -580,10 +606,11 @@ func emitRemoteConfig(ssh service.SshService, f *setupSshFlags, kind sshdefaults
 	displayKey := "~/.ssh/" + sshdefaults.KeyName
 
 	// The block is pasted into the connecting machine's ~/.ssh/config, whose home
-	// is not this host's, so IdentityFile must use the ~ form, not f.key's
-	// absolute local path.
+	// is not this host's, so IdentityFile and UserKnownHostsFile must use the ~
+	// form, not f.key's / f.knownHosts' absolute local paths.
 	rf := *f
 	rf.key = displayKey
+	rf.knownHosts = sshdefaults.RemoteKnownHostsPath
 	block, err := buildConfigBlock(sshdefaults.ModeRemote, &rf, installResult{}, kind, ref)
 	if err != nil {
 		return err
