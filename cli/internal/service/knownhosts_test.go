@@ -210,15 +210,15 @@ func TestPinContainerHostKeys_RequiresHost(t *testing.T) {
 	}
 }
 
-func TestKnownHostsHosts(t *testing.T) {
+func TestPinnedHosts(t *testing.T) {
 	content := "172.25.1.30 ssh-ed25519 A\n" +
 		"[172.25.2.30]:2222 ssh-ed25519 B\n" +
 		"myws,172.25.3.30 ssh-rsa C\n" +
 		"172.25.1.30 ssh-rsa D\n" + // second key for an already seen host
 		"# comment\n\n"
 	want := []string{"172.25.1.30", "172.25.2.30", "myws", "172.25.3.30"}
-	if got := KnownHostsHosts(content); !slices.Equal(got, want) {
-		t.Errorf("KnownHostsHosts() = %v, want %v", got, want)
+	if got := PinnedHosts(content); !slices.Equal(got, want) {
+		t.Errorf("PinnedHosts() = %v, want %v", got, want)
 	}
 }
 

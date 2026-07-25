@@ -318,7 +318,7 @@ is Cobra-native.
 | `port-forward` | `port_forward.go` | Forward host ports into the running container |
 | `run` | `run.go` | `docker run` from a remote image, no project files |
 | `down` | `down.go` | `docker compose down [-v]` for the current directory's project |
-| `destroy` | `destroy.go` | down + delete `.dc_<ws>/` + config (confirmation). `--container` switches to a loose-container mode (`DestroyService.RunContainer`): stop + remove just that container and prune its `kind=container` managed SSH host block — no compose stack/project dir/config involved |
+| `destroy` | `destroy.go` | down + delete `.dc_<ws>/` + config (confirmation). Both modes prune the target's managed SSH state via `DestroyService.removeManagedSSH`: the Host block plus the host keys pinned for the address it dialed (`SshService.ManagedHostName` reads that address *before* the block goes; `HostIsReferenced` keeps the key when another block still dials it). `--container` switches to a loose-container mode (`DestroyService.RunContainer`): stop + remove just that container and prune its `kind=container` block — no compose stack/project dir/config involved |
 | `start`/`stop`/`restart` | `lifecycle.go` | `docker compose start`/`stop`/`restart` for the current directory's project. All accept `--container` to act on a single container instead of the whole stack (`start`→`StartContainer`, `stop`→`StopContainer`, `restart`→`RestartContainer`; start/stop complete stopped/running names respectively, restart completes any managed one) |
 | `update` | `update.go` | Pull/rebuild images; `--all`; per-mode dispatch |
 | `upgrade-cli` | `upgrade_cli.go` | Binary self-update from a GitHub release |

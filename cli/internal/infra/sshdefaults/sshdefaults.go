@@ -218,11 +218,12 @@ func buildStanza(opts ConfigBlockOptions) (string, error) {
 		if opts.Hostname == "" {
 			return "", fmt.Errorf("hostname required for local mode")
 		}
-		return withHostKeyOptions(fmt.Sprintf(`Host %s
+		stanza := fmt.Sprintf(`Host %s
     HostName %s
     User %s
     IdentityFile %s
-    IdentitiesOnly yes`, opts.Alias, opts.Hostname, opts.User, opts.KeyPath), opts.KnownHostsFile), nil
+    IdentitiesOnly yes`, opts.Alias, opts.Hostname, opts.User, opts.KeyPath)
+		return withHostKeyOptions(stanza, opts.KnownHostsFile), nil
 
 	case ModeRemote:
 		if opts.Remote == "" {
@@ -239,11 +240,12 @@ func buildStanza(opts ConfigBlockOptions) (string, error) {
 		// stays plain Sprintf — feeding it through text/template would collide.
 		escapedFormat := strings.ReplaceAll(DockerIPFormat, `"`, `\"`)
 		ipExpr := fmt.Sprintf(`\$(docker inspect -f '%s' %s | head -n1)`, escapedFormat, opts.Container)
-		return withHostKeyOptions(fmt.Sprintf(`Host %s
+		stanza := fmt.Sprintf(`Host %s
     User %s
     IdentityFile %s
     IdentitiesOnly yes
-    ProxyCommand ssh %s "nc -q0 %s 22"`, opts.Alias, opts.User, opts.KeyPath, opts.Remote, ipExpr), opts.KnownHostsFile), nil
+    ProxyCommand ssh %s "nc -q0 %s 22"`, opts.Alias, opts.User, opts.KeyPath, opts.Remote, ipExpr)
+		return withHostKeyOptions(stanza, opts.KnownHostsFile), nil
 	}
 	return "", fmt.Errorf("unknown mode %q", opts.Mode)
 }

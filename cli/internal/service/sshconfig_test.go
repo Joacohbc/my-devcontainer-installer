@@ -171,7 +171,7 @@ func TestRemoveManagedBlock(t *testing.T) {
 	}
 
 	svc := SshService{Report: nopReporter{}}
-	removed, backup, err := svc.RemoveManagedBlock("proj")
+	removed, backup, err := svc.RemoveManagedBlockByRef(sshdefaults.KindWorkspace, "proj")
 	if err != nil {
 		t.Fatalf("RemoveManagedBlock: %v", err)
 	}
@@ -197,7 +197,7 @@ func TestRemoveManagedBlockNoMatch(t *testing.T) {
 	svc := SshService{Report: nopReporter{}}
 
 	// Missing ~/.ssh/config is a no-op and must not create the file.
-	removed, _, err := svc.RemoveManagedBlock("proj")
+	removed, _, err := svc.RemoveManagedBlockByRef(sshdefaults.KindWorkspace, "proj")
 	if err != nil {
 		t.Fatalf("RemoveManagedBlock (missing file): %v", err)
 	}
@@ -755,5 +755,78 @@ func TestConfigHostTargetsDeduplicates(t *testing.T) {
 	content := "Host a\n    HostName 1.2.3.4\n\nHost b\n    HostName 1.2.3.4\n"
 	if got, want := len(ConfigHostTargets(content)), 3; got != want {
 		t.Errorf("ConfigHostTargets() returned %d targets, want %d (a, b, 1.2.3.4)", got, want)
+	}
+}
+
+func TestManagedHostName(t *testing.T) {
+	home := t.TempDir()
+	setHomeDir(t, home)
+	if err := os.MkdirAll(filepath.Join(home, ".ssh"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	cfg := "# devcontainer-cli:managed v=1 kind=workspace ref=api-3f9a alias=api\n" +
+		"Host api\n    HostName 172.25.1.30\n\n" +
+		"# devcontainer-cli:managed v=1 kind=container ref=dc-ssh alias=dc-ssh\n" +
+		"Host dc-ssh\n    HostName 172.25.2.30\n"
+	if err := os.WriteFile(filepath.Join(home, ".ssh", "config"), []byte(cfg), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	svc := SshService{Report: nopReporter{}}
+	cases := []struct {
+		kind sshdefaults.Kind
+		ref  string
+		want string
+	}{
+		// The alias is not the ref, so the lookup must go through the marker.
+		{sshdefaults.KindWorkspace, "api-3f9a", "172.25.1.30"},
+		{sshdefaults.KindContainer, "dc-ssh", "172.25.2.30"},
+		{sshdefaults.KindWorkspace, "gone", ""},
+	}
+	for _, c := range cases {
+		got, err := svc.ManagedHostName(c.kind, c.ref)
+		if err != nil || got != c.want {
+			t.Errorf("ManagedHostName(%s,%s) = %q,%v, want %q,nil", c.kind, c.ref, got, err, c.want)
+		}
+	}
+}
+
+func TestManagedHostNameMissingConfig(t *testing.T) {
+	setHomeDir(t, t.TempDir())
+	svc := SshService{Report: nopReporter{}}
+	got, err := svc.ManagedHostName(sshdefaults.KindWorkspace, "api")
+	if err != nil || got != "" {
+		t.Errorf("ManagedHostName with no config = %q,%v, want \"\",nil", got, err)
+	}
+}
+
+func TestHostIsReferenced(t *testing.T) {
+	home := t.TempDir()
+	setHomeDir(t, home)
+	if err := os.MkdirAll(filepath.Join(home, ".ssh"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, ".ssh", "config"), []byte(sampleConfig), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	svc := SshService{Report: nopReporter{}}
+	cases := []struct {
+		name string
+		host string
+		want bool
+	}{
+		{name: "a HostName", host: "172.18.0.2", want: true},
+		{name: "an alias, which a block without HostName dials", host: "devcontainer", want: true},
+		{name: "an address no block reaches", host: "172.99.0.1", want: false},
+		{name: "no host at all", host: "", want: false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got, err := svc.HostIsReferenced(c.host)
+			if err != nil || got != c.want {
+				t.Errorf("HostIsReferenced(%q) = %v,%v, want %v,nil", c.host, got, err, c.want)
+			}
+		})
 	}
 }

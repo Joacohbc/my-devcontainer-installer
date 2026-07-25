@@ -10,11 +10,11 @@ import (
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
 )
 
-// containerHostKeyCat reads every sshd host public key out of a container. The
-// keys are the ones `sshd` presents on the wire, so pinning them is what makes
+// containerHostKeysCommand reads every sshd host public key out of a container.
+// These are the keys `sshd` presents on the wire, so pinning them is what makes
 // `ssh` skip both the "authenticity of host … can't be established" prompt and
 // the "REMOTE HOST IDENTIFICATION HAS CHANGED" failure.
-const containerHostKeyCat = "cat /etc/ssh/ssh_host_*_key.pub 2>/dev/null"
+const containerHostKeysCommand = "cat /etc/ssh/ssh_host_*_key.pub 2>/dev/null"
 
 // hostKeyTypePrefixes are the leading tokens of a known_hosts/`*.pub` key line.
 // Anything else on stdout (a shell warning, an empty glob) is not a key.
@@ -26,7 +26,7 @@ var hostKeyTypePrefixes = []string{"ssh-", "ecdsa-", "sk-ssh-", "sk-ecdsa-"}
 // learned from the daemon that owns the container, not from whoever answers on
 // the IP.
 func (s SshService) ContainerHostKeys(container string) ([]string, error) {
-	status, stdout, _, err := docker.DockerCapture([]string{"exec", container, "sh", "-c", containerHostKeyCat})
+	status, stdout, _, err := docker.DockerCapture([]string{"exec", container, "sh", "-c", containerHostKeysCommand})
 	if err != nil || status != 0 {
 		return nil, fmt.Errorf("could not read ssh host keys from container '%s'", container)
 	}
@@ -99,31 +99,30 @@ func writeKnownHosts(path, host string, keys []string) error {
 // the given keys appended as `<host> <type> <base64>` lines. Entries for other
 // hosts, comments and blank lines are preserved.
 func ReplaceKnownHostsEntries(content, host string, keys []string) string {
-	body, _ := RemoveKnownHostsEntries(content, []string{host})
+	remaining, _ := RemoveKnownHostsEntries(content, []string{host})
 	for _, key := range keys {
-		body += host + " " + key + "\n"
+		remaining += host + " " + key + "\n"
 	}
-	return body
+	return remaining
 }
 
 // RemoveKnownHostsEntries returns content with every entry for any of hosts
 // removed, plus how many lines were dropped. Comments, blank lines and entries
 // for other hosts are preserved.
-func RemoveKnownHostsEntries(content string, hosts []string) (string, int) {
-	var out []string
-	dropped := 0
+func RemoveKnownHostsEntries(content string, hosts []string) (remaining string, dropped int) {
+	var kept []string
 	for _, line := range strings.Split(content, "\n") {
 		if matchesAnyKnownHost(line, hosts) {
 			dropped++
 			continue
 		}
-		out = append(out, line)
+		kept = append(kept, line)
 	}
-	body := strings.TrimRight(strings.Join(out, "\n"), "\n")
-	if body != "" {
-		body += "\n"
+	remaining = strings.TrimRight(strings.Join(kept, "\n"), "\n")
+	if remaining != "" {
+		remaining += "\n"
 	}
-	return body, dropped
+	return remaining, dropped
 }
 
 func matchesAnyKnownHost(line string, hosts []string) bool {
@@ -135,30 +134,41 @@ func matchesAnyKnownHost(line string, hosts []string) bool {
 	return false
 }
 
-// KnownHostsHosts returns the distinct hosts content records, in first-seen
-// order, with the `[host]:port` spelling reduced to the bare host so callers can
+// PinnedHosts returns the distinct hosts content records, in first-seen order,
+// with the `[host]:port` spelling reduced to the bare host so callers can
 // compare them against ssh config HostNames.
-func KnownHostsHosts(content string) []string {
+func PinnedHosts(content string) []string {
+	var patterns []string
+	for _, line := range strings.Split(content, "\n") {
+		patterns = append(patterns, knownHostsPatterns(line)...)
+	}
+
 	var hosts []string
 	seen := make(map[string]bool)
-	for _, line := range strings.Split(content, "\n") {
-		fields := strings.Fields(line)
-		if len(fields) > 0 && strings.HasPrefix(fields[0], "@") {
-			fields = fields[1:]
-		}
-		if len(fields) < 2 || strings.HasPrefix(fields[0], "#") {
+	for _, pattern := range patterns {
+		host := unbracketHost(pattern)
+		if host == "" || seen[host] {
 			continue
 		}
-		for _, pattern := range strings.Split(fields[0], ",") {
-			host := unbracketHost(pattern)
-			if host == "" || seen[host] {
-				continue
-			}
-			seen[host] = true
-			hosts = append(hosts, host)
-		}
+		seen[host] = true
+		hosts = append(hosts, host)
 	}
 	return hosts
+}
+
+// knownHostsPatterns returns the host patterns one known_hosts line records, or
+// nil when the line records none (blank, comment, truncated). It absorbs the two
+// spellings of the field: an optional `@marker` prefix and a comma-separated
+// pattern list.
+func knownHostsPatterns(line string) []string {
+	fields := strings.Fields(line)
+	if len(fields) > 0 && strings.HasPrefix(fields[0], "@") {
+		fields = fields[1:]
+	}
+	if len(fields) < 2 || strings.HasPrefix(fields[0], "#") {
+		return nil
+	}
+	return strings.Split(fields[0], ",")
 }
 
 // unbracketHost reduces the `[host]:port` known_hosts spelling to `host`, and
@@ -207,7 +217,7 @@ func orphanHosts(knownHosts, config string) []string {
 		referenced[target] = true
 	}
 	var orphans []string
-	for _, host := range KnownHostsHosts(knownHosts) {
+	for _, host := range PinnedHosts(knownHosts) {
 		if !referenced[host] {
 			orphans = append(orphans, host)
 		}
@@ -239,20 +249,12 @@ func (s SshService) ForgetHostKeys(hosts []string) (int, error) {
 	return dropped, nil
 }
 
-// knownHostsLineMatches reports whether a known_hosts line records host. It
-// understands the `@marker` prefix and the comma-separated pattern list, and
-// matches the bare `host` and bracketed `[host]:port` spellings. Hashed entries
-// (|1|…) never match — the CLI writes its file with HashKnownHosts no precisely
-// so its own entries stay findable.
+// knownHostsLineMatches reports whether a known_hosts line records host, in the
+// bare `host` or the bracketed `[host]:port` spelling. Hashed entries (|1|…)
+// never match — the CLI writes its file with HashKnownHosts no precisely so its
+// own entries stay findable.
 func knownHostsLineMatches(line, host string) bool {
-	fields := strings.Fields(line)
-	if len(fields) > 0 && strings.HasPrefix(fields[0], "@") {
-		fields = fields[1:]
-	}
-	if len(fields) < 2 {
-		return false
-	}
-	for _, pattern := range strings.Split(fields[0], ",") {
+	for _, pattern := range knownHostsPatterns(line) {
 		if pattern == host || strings.HasPrefix(pattern, "["+host+"]:") {
 			return true
 		}

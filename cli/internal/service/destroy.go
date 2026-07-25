@@ -46,21 +46,55 @@ func (s DestroyService) Run(t DestroyTarget) error {
 }
 
 // removeSSHConfigBlock drops the managed Host block setup-ssh wrote for this
-// workspace from ~/.ssh/config. Failures here are non-fatal: a missing or locked
-// ssh config must not abort the destroy.
+// workspace from ~/.ssh/config, and with it the container host keys that block
+// had pinned. Failures here are non-fatal: a missing or locked ssh config must
+// not abort the destroy.
 func (s DestroyService) removeSSHConfigBlock(workspace string) {
-	if workspace == "" {
+	s.removeManagedSSH(sshdefaults.KindWorkspace, workspace)
+}
+
+// removeManagedSSH prunes the managed SSH state of one target: its Host block
+// and the host keys pinned for the address that block dialed. Doing both here is
+// what stops a destroyed target from leaving an orphaned key behind until the
+// next 'clean ssh'. The address must be read before the block goes.
+func (s DestroyService) removeManagedSSH(kind sshdefaults.Kind, ref string) {
+	if ref == "" {
 		return
 	}
 	ssh := SshService{Report: s.Report}
-	removed, backup, err := ssh.RemoveManagedBlock(workspace)
+	pinnedHost, err := ssh.ManagedHostName(kind, ref)
+	if err != nil {
+		s.Report.Warn("Could not read ~/.ssh/config: %v", err)
+		return
+	}
+	removed, backup, err := ssh.RemoveManagedBlockByRef(kind, ref)
 	if err != nil {
 		s.Report.Warn("Could not update ~/.ssh/config: %v", err)
 		return
 	}
-	if removed {
-		s.Report.Info("Removed SSH host block for '%s' from ~/.ssh/config (backup: %s)", workspace, backup)
+	if !removed {
+		return
 	}
+	s.Report.Info("Removed SSH host block for '%s' from ~/.ssh/config (backup: %s)", ref, backup)
+	s.forgetPinnedHostKey(ssh, pinnedHost)
+}
+
+// forgetPinnedHostKey drops host's keys from the CLI-managed known_hosts unless
+// another Host block still dials that address — two aliases may point at the
+// same container.
+func (s DestroyService) forgetPinnedHostKey(ssh SshService, host string) {
+	if host == "" {
+		return
+	}
+	isStillReferenced, err := ssh.HostIsReferenced(host)
+	if err != nil || isStillReferenced {
+		return
+	}
+	dropped, err := ssh.ForgetHostKeys([]string{host})
+	if err != nil || dropped == 0 {
+		return
+	}
+	s.Report.Info("Forgot the pinned host key of %s", host)
 }
 
 // RunContainer tears down a single loose container by name (the --container
@@ -73,13 +107,7 @@ func (s DestroyService) RunContainer(container string) error {
 		return err
 	}
 
-	ssh := SshService{Report: s.Report}
-	removed, backup, err := ssh.RemoveManagedBlockByRef(sshdefaults.KindContainer, container)
-	if err != nil {
-		s.Report.Warn("Could not update ~/.ssh/config: %v", err)
-	} else if removed {
-		s.Report.Info("Removed SSH host block for '%s' from ~/.ssh/config (backup: %s)", container, backup)
-	}
+	s.removeManagedSSH(sshdefaults.KindContainer, container)
 
 	s.Report.Success("Destroyed.")
 	return nil
