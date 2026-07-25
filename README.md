@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🚀 DevContainer Installer CLI
+# DevContainer Installer CLI
 
 [![Go](https://img.shields.io/badge/Go-00ADD8?logo=go&logoColor=white)](#)
 [![Docker](https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white)](#)
@@ -12,13 +12,13 @@
 
 </div>
 
-## 📌 Resumen
+## Resumen
 
 **DevContainer Installer CLI** (`devcontainer-cli`) es una herramienta interactiva y extensible construida en Go. Olvídate de perder horas configurando dependencias, resolviendo conflictos de versiones y adecuando tu entorno local para cada nuevo proyecto: esta CLI automatiza la creación, orquestación y gestión de entornos aislados de desarrollo en Docker (*DevContainers*). 
 
 Con un asistente interactivo (*TUI*), te permite componer en segundos un contenedor a medida para desarrollo con tu stack preferido, bases de datos dockerizadas, utilidades avanzadas de terminal y agentes de Inteligencia Artificial (como Claude Code, Copilot y Codex), garantizando la máxima productividad y consistencia sin ensuciar tu sistema operativo anfitrión.
 
-## 🧩 Componentes y Servicios Soportados
+## Componentes y Servicios Soportados
 
 | Categoría | Tecnologías y Herramientas | Descripción |
 | :--- | :--- | :--- |
@@ -30,7 +30,7 @@ Con un asistente interactivo (*TUI*), te permite componer en segundos un contene
 | **Red y Conectividad** | [![OpenSSH](https://img.shields.io/badge/OpenSSH-000000?logo=openssh&logoColor=white)](#) [![Cloudflare](https://img.shields.io/badge/Cloudflare_Tunnel-F38020?logo=cloudflare&logoColor=white)](#) [![ngrok](https://img.shields.io/badge/ngrok-1F1E24?logo=ngrok&logoColor=white)](#) | Automatización de claves SSH, ProxyCommand para servidores remotos, túneles seguros con Cloudflare Zero Trust, Ngrok y gestión de puertos. |
 | **Entorno de Terminal** | [![Zsh](https://img.shields.io/badge/Zsh-F15A24?logo=zsh&logoColor=white)](#) [![Zellij](https://img.shields.io/badge/Zellij-000000?logo=gnu-bash&logoColor=white)](#) [![Micro](https://img.shields.io/badge/Micro-4A154B?logo=visualstudiocode&logoColor=white)](#) | ZSH con Oh My Zsh preconfigurado, multiplexor Zellij, editores `micro`/`nano` y manual integrado (`cat ~/help`). |
 
-## 🏗️ Arquitectura y Modos de Conectividad
+## Arquitectura y Modos de Conectividad
 
 El entorno ofrece un contenedor principal (`devcontainer-ssh`) accesible vía SSH, permitiendo conectar tu editor (VS Code) o terminal según la infraestructura disponible:
 
@@ -109,7 +109,7 @@ graph LR
 ```
 </details>
 
-## 📦 Instalación y Actualización
+## Instalación y Actualización
 
 ```bash
 # Instalación rápida (Linux / macOS)
@@ -168,7 +168,7 @@ devcontainer-cli clean ssh              # Elimina bloques SSH y known_hosts obso
 devcontainer-cli clean all              # Menú interactivo de limpieza de imágenes/volúmenes/redes
 ```
 
-## 🗄️ Bases de Datos y Post-Instalación
+## Bases de Datos y Post-Instalación
 
 Credenciales predeterminadas para los servicios de base de datos (Usuario: `devuser` | Contraseña: `devpass`):
 - **PostgreSQL:** `psql -h postgres -U devuser -d devdb`
@@ -177,7 +177,7 @@ Credenciales predeterminadas para los servicios de base de datos (Usuario: `devu
 
 > Para detalles sobre actualización de contraseñas y preparación posterior, consulta **[POST_INSTALL_STEPS.md](POST_INSTALL_STEPS.md)**.
 
-## ❓ Solución de Problemas
+## Solución de Problemas
 
 <details>
 <summary><b>Permission denied (publickey)</b></summary>
