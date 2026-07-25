@@ -1,6 +1,8 @@
 package domain_test
 
 import (
+	"fmt"
+	"sort"
 	"strings"
 	"testing"
 
@@ -18,7 +20,7 @@ func makeConfig(overrides ...func(*types.DevcontainerConfig)) *types.Devcontaine
 			Modules: []types.SelectedModule{},
 		},
 		Compose: types.ComposeConfig{
-			Services: []any{},
+			Services: []types.SelectedService{},
 			Subnet:   "172.25.0.0/24",
 		},
 		Env: map[string]string{},
@@ -252,7 +254,7 @@ func TestGenerateDockerfile_RemoteModeReturnsEmpty(t *testing.T) {
 
 func TestGenerateCompose_ValidYAMLWithExpectedServices(t *testing.T) {
 	cfg := makeConfig(func(c *types.DevcontainerConfig) {
-		c.Compose.Services = []any{"mongo", "tunnel"}
+		c.Compose.Services = []types.SelectedService{{ID: "mongo"}, {ID: "tunnel"}}
 		c.Compose.Subnet = "10.0.0.0/24"
 	})
 	yml := mustGenerateCompose(t, cfg)
@@ -283,7 +285,7 @@ func TestGenerateCompose_ValidYAMLWithExpectedServices(t *testing.T) {
 
 func TestGenerateCompose_Labels(t *testing.T) {
 	cfg := makeConfig(func(c *types.DevcontainerConfig) {
-		c.Compose.Services = []any{"mongo"}
+		c.Compose.Services = []types.SelectedService{{ID: "mongo"}}
 		c.Compose.Subnet = "172.25.0.0/24"
 		c.Dockerfile.Modules = []types.SelectedModule{{ID: "python"}}
 	})
@@ -328,7 +330,7 @@ func TestGenerateCompose_Labels(t *testing.T) {
 
 func TestGenerateCompose_DependsOnEnabledDBOnly(t *testing.T) {
 	cfg := makeConfig(func(c *types.DevcontainerConfig) {
-		c.Compose.Services = []any{"mongo"}
+		c.Compose.Services = []types.SelectedService{{ID: "mongo"}}
 		c.Compose.Subnet = "172.25.0.0/24"
 	})
 	yml := mustGenerateCompose(t, cfg)
@@ -350,7 +352,7 @@ func TestGenerateCompose_DependsOnEnabledDBOnly(t *testing.T) {
 
 func TestGenerateCompose_NoDependsOnWithoutDB(t *testing.T) {
 	cfg := makeConfig(func(c *types.DevcontainerConfig) {
-		c.Compose.Services = []any{}
+		c.Compose.Services = []types.SelectedService{}
 		c.Compose.Subnet = "172.25.0.0/24"
 	})
 	yml := mustGenerateCompose(t, cfg)
@@ -410,7 +412,7 @@ func TestGenerateCompose_UserVolumes(t *testing.T) {
 
 func TestGenerateCompose_StaticIPFromSubnet(t *testing.T) {
 	cfg := makeConfig(func(c *types.DevcontainerConfig) {
-		c.Compose.Services = []any{}
+		c.Compose.Services = []types.SelectedService{}
 		c.Compose.Subnet = "172.25.0.0/28"
 	})
 	yml := mustGenerateCompose(t, cfg)
@@ -681,7 +683,7 @@ func TestGenerateCompose_DevcontainerHostnameIsWorkspace(t *testing.T) {
 
 func TestGenerateCompose_DBServicesHaveNoHostname(t *testing.T) {
 	cfg := makeConfig(func(c *types.DevcontainerConfig) {
-		c.Compose.Services = []any{"postgres"}
+		c.Compose.Services = []types.SelectedService{{ID: "postgres"}}
 	})
 	yml := mustGenerateCompose(t, cfg)
 	var parsed map[string]any
@@ -721,7 +723,7 @@ func TestGenerateCompose_RemoteModeWithDBService(t *testing.T) {
 		c.Mode = types.BuildModeRemote
 		c.Image = "ghcr.io/joacohbc/devcontainer-nodejs:latest"
 		c.Remote = &types.RemoteConfig{Variant: "nodejs"}
-		c.Compose.Services = []any{"mongo"}
+		c.Compose.Services = []types.SelectedService{{ID: "mongo"}}
 		c.Compose.Subnet = "172.25.0.0/24"
 	})
 	yml := mustGenerateCompose(t, cfg)
@@ -806,7 +808,7 @@ func TestGenerateCompose_LocalCachedBakesHostUIDAsBuildArgs(t *testing.T) {
 func TestGenerateEnv_IncludesEnvVars(t *testing.T) {
 	cfg := makeConfig(func(c *types.DevcontainerConfig) {
 		c.Env = map[string]string{"TUNNEL_TOKEN": "abc"}
-		c.Compose.Services = []any{}
+		c.Compose.Services = []types.SelectedService{}
 		c.Compose.Subnet = "10.0.0.0/8"
 	})
 	env := domain.GenerateEnv(cfg)
@@ -818,7 +820,7 @@ func TestGenerateEnv_IncludesEnvVars(t *testing.T) {
 func TestGenerateEnv_DerivesIPFromDockerSubnetOverride(t *testing.T) {
 	cfg := makeConfig(func(c *types.DevcontainerConfig) {
 		c.Env = map[string]string{"DOCKER_SUBNET": "172.26.0.0/24"}
-		c.Compose.Services = []any{}
+		c.Compose.Services = []types.SelectedService{}
 		c.Compose.Subnet = "172.25.0.0/28"
 	})
 	env := domain.GenerateEnv(cfg)
@@ -829,7 +831,7 @@ func TestGenerateEnv_DerivesIPFromDockerSubnetOverride(t *testing.T) {
 
 func TestGenerateEnv_WritesBothSubnetAndIP(t *testing.T) {
 	cfg := makeConfig(func(c *types.DevcontainerConfig) {
-		c.Compose.Services = []any{}
+		c.Compose.Services = []types.SelectedService{}
 		c.Compose.Subnet = "172.25.0.0/28"
 	})
 	env := domain.GenerateEnv(cfg)
@@ -939,4 +941,79 @@ func TestGenerateDockerfile_Caveman(t *testing.T) {
 	assertContainsStr(t, df, "install-caveman.sh", "caveman script")
 	// caveman requires nodejs
 	assertContainsStr(t, df, "fnm install --lts", "caveman requires nodejs")
+}
+
+func TestGenerateCompose_DependsOnSortedRegardlessOfInputOrder(t *testing.T) {
+	orders := [][]types.SelectedService{
+		{{ID: "redis"}, {ID: "postgres"}, {ID: "mongo"}},
+		{{ID: "mongo"}, {ID: "redis"}, {ID: "postgres"}},
+		{{ID: "postgres"}, {ID: "mongo"}, {ID: "redis"}},
+	}
+	want := []any{"mongo", "postgres", "redis"}
+	for _, services := range orders {
+		cfg := makeConfig(func(c *types.DevcontainerConfig) {
+			c.Compose.Services = services
+			c.Compose.Subnet = "172.25.0.0/24"
+		})
+		yml := mustGenerateCompose(t, cfg)
+		var parsed map[string]any
+		if err := yaml.Unmarshal([]byte(yml), &parsed); err != nil {
+			t.Fatalf("invalid YAML: %v", err)
+		}
+		devSvc := parsed["services"].(map[string]any)["devcontainer-ssh"].(map[string]any)
+		deps, ok := devSvc["depends_on"].([]any)
+		if !ok {
+			t.Fatalf("input %v: expected depends_on slice, got %v", services, devSvc["depends_on"])
+		}
+		if fmt.Sprintf("%v", deps) != fmt.Sprintf("%v", want) {
+			t.Errorf("input %v: depends_on = %v, want %v", services, deps, want)
+		}
+	}
+}
+
+func TestGenerateCompose_DependsOnExcludesNonDatabaseServices(t *testing.T) {
+	cfg := makeConfig(func(c *types.DevcontainerConfig) {
+		c.Compose.Services = []types.SelectedService{{ID: "mongo"}, {ID: "tunnel"}}
+		c.Compose.Subnet = "172.25.0.0/24"
+	})
+	yml := mustGenerateCompose(t, cfg)
+	var parsed map[string]any
+	if err := yaml.Unmarshal([]byte(yml), &parsed); err != nil {
+		t.Fatalf("invalid YAML: %v", err)
+	}
+	devSvc := parsed["services"].(map[string]any)["devcontainer-ssh"].(map[string]any)
+	deps, _ := devSvc["depends_on"].([]any)
+	if len(deps) != 1 || deps[0] != "mongo" {
+		t.Errorf("depends_on = %v, want [mongo] (tunnel is not a database)", deps)
+	}
+}
+
+func TestGenerateCompose_DeterministicAcrossRuns(t *testing.T) {
+	cfg := makeConfig(func(c *types.DevcontainerConfig) {
+		c.Compose.Services = []types.SelectedService{{ID: "mongo"}, {ID: "postgres"}, {ID: "redis"}, {ID: "tunnel"}}
+		c.Compose.Subnet = "172.25.0.0/24"
+	})
+	first := mustGenerateCompose(t, cfg)
+	for i := 0; i < 20; i++ {
+		if got := mustGenerateCompose(t, cfg); got != first {
+			t.Fatalf("compose output not deterministic on run %d", i)
+		}
+	}
+}
+
+func TestGenerateEnv_LinesSortedAfterHeader(t *testing.T) {
+	cfg := makeConfig(func(c *types.DevcontainerConfig) {
+		c.Env = map[string]string{"ZED": "1", "ALPHA": "2", "MID": "3"}
+		c.Compose.Services = []types.SelectedService{}
+		c.Compose.Subnet = "10.0.0.0/8"
+	})
+	env := domain.GenerateEnv(cfg)
+	lines := strings.Split(strings.TrimRight(env, "\n"), "\n")
+	if len(lines) == 0 || !strings.HasPrefix(lines[0], "# Generated") {
+		t.Fatalf("expected generated header first, got %q", env)
+	}
+	body := lines[1:]
+	if !sort.StringsAreSorted(body) {
+		t.Errorf("expected .env lines sorted after header, got %v", body)
+	}
 }

@@ -20,12 +20,7 @@ var PythonModule = &ModuleSpec{
 		},
 	},
 	Render: func(opts map[string]any) string {
-		uv := true
-		if v, ok := opts["uv"]; ok {
-			if b, ok := v.(bool); ok {
-				uv = b
-			}
-		}
+		uv := types.BoolOpt(opts, "uv", true)
 		if !uv {
 			return fmt.Sprintf(`##
 ## PYTHON

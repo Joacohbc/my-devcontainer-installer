@@ -70,13 +70,9 @@ func MatchDBClientVersions(config *types.DevcontainerConfig) []types.SelectedMod
 // default (which is what the service would render anyway).
 func selectedServiceVersions(config *types.DevcontainerConfig) map[types.ServiceID]string {
 	res := make(map[types.ServiceID]string)
-	for _, s := range types.NormalizeServices(config.Compose.Services) {
-		id := types.ServiceID(s.ID)
-		version, _ := s.Options["version"].(string)
-		if version == "" {
-			version = defaultServiceVersion(id)
-		}
-		res[id] = version
+	for _, s := range config.Compose.Services {
+		version := types.StringOpt(s.Options, "version", defaultServiceVersion(s.ID))
+		res[s.ID] = version
 	}
 	return res
 }

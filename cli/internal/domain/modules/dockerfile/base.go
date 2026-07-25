@@ -44,7 +44,7 @@ var BaseModule = &ModuleSpec{
 		},
 	},
 	Render: func(opts map[string]any) string {
-		p10kStyle, _ := opts["p10kStyle"].(string)
+		p10kStyle := types.StringOpt(opts, "p10kStyle", "")
 		if !p10kStyles[p10kStyle] {
 			p10kStyle = "none"
 		}

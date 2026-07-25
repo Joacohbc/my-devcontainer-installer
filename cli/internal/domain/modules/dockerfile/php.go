@@ -20,12 +20,7 @@ var PhpModule = &ModuleSpec{
 		},
 	},
 	Render: func(opts map[string]any) string {
-		composer := true
-		if v, ok := opts["composer"]; ok {
-			if b, ok := v.(bool); ok {
-				composer = b
-			}
-		}
+		composer := types.BoolOpt(opts, "composer", true)
 
 		composerBlock := ""
 		if composer {

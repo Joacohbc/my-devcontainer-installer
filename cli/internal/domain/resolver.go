@@ -25,64 +25,85 @@ type ResolvedModule struct {
 type ResolverError struct{ error }
 
 func ResolveDockerfileModules(selected []types.SelectedModule) ([]ResolvedModule, error) {
-	byID := make(map[types.ModuleID]map[string]any)
+	byID, err := seedSelectedModules(selected)
+	if err != nil {
+		return nil, err
+	}
+	if err := resolveRequiredModules(byID); err != nil {
+		return nil, err
+	}
+	if err := assertNoModuleConflicts(byID); err != nil {
+		return nil, err
+	}
+	return orderModulesByCategory(byID), nil
+}
 
+func seedSelectedModules(selected []types.SelectedModule) (map[types.ModuleID]map[string]any, error) {
+	byID := make(map[types.ModuleID]map[string]any)
 	for _, m := range catalog.DockerfileModules {
 		if m.Always {
 			byID[m.ID] = map[string]any{}
 		}
 	}
-
 	for _, sel := range selected {
-		mod := catalog.GetDockerfileModule(sel.ID)
-		if mod == nil {
+		if catalog.GetDockerfileModule(sel.ID) == nil {
 			return nil, ResolverError{fmt.Errorf("Unknown module: %s", sel.ID)}
 		}
-		opts := sel.Options
-		if opts == nil {
-			opts = map[string]any{}
+		options := sel.Options
+		if options == nil {
+			options = map[string]any{}
 		}
-		byID[sel.ID] = opts
+		byID[sel.ID] = options
 	}
+	return byID, nil
+}
 
+func resolveRequiredModules(byID map[types.ModuleID]map[string]any) error {
 	stack := make([]types.ModuleID, 0, len(byID))
 	for id := range byID {
 		stack = append(stack, id)
 	}
-
 	for len(stack) > 0 {
 		id := stack[len(stack)-1]
 		stack = stack[:len(stack)-1]
-		mod := catalog.GetDockerfileModule(id)
-		for _, req := range mod.Requires {
-			if _, exists := byID[req]; !exists {
-				if catalog.GetDockerfileModule(req) == nil {
-					return nil, ResolverError{fmt.Errorf("Module %s requires unknown module %s", id, req)}
-				}
-				byID[req] = map[string]any{}
-				stack = append(stack, req)
+		for _, req := range catalog.GetDockerfileModule(id).Requires {
+			if _, exists := byID[req]; exists {
+				continue
 			}
+			if catalog.GetDockerfileModule(req) == nil {
+				return ResolverError{fmt.Errorf("Module %s requires unknown module %s", id, req)}
+			}
+			byID[req] = map[string]any{}
+			stack = append(stack, req)
 		}
 	}
+	return nil
+}
 
+func assertNoModuleConflicts(byID map[types.ModuleID]map[string]any) error {
 	for id := range byID {
-		mod := catalog.GetDockerfileModule(id)
-		for _, conflict := range mod.Conflicts {
+		for _, conflict := range catalog.GetDockerfileModule(id).Conflicts {
 			if _, exists := byID[conflict]; exists {
-				return nil, ResolverError{fmt.Errorf("Module %s conflicts with %s", id, conflict)}
+				return ResolverError{fmt.Errorf("Module %s conflicts with %s", id, conflict)}
 			}
 		}
 	}
+	return nil
+}
 
+func orderModulesByCategory(byID map[types.ModuleID]map[string]any) []ResolvedModule {
 	resolved := make([]ResolvedModule, 0, len(byID))
 	for _, cat := range categoryOrder {
 		for _, mod := range catalog.DockerfileModules {
-			if mod.Category == cat {
-				if opts, exists := byID[mod.ID]; exists {
-					resolved = append(resolved, ResolvedModule{Module: mod, Options: opts})
-				}
+			if mod.Category != cat {
+				continue
 			}
+			options, exists := byID[mod.ID]
+			if !exists {
+				continue
+			}
+			resolved = append(resolved, ResolvedModule{Module: mod, Options: options})
 		}
 	}
-	return resolved, nil
+	return resolved
 }

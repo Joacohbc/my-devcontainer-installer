@@ -10,6 +10,7 @@ var RedisService = &ServiceSpec{
 	ID:         types.ServiceRedis,
 	Label:      "Redis",
 	UICategory: types.UICategoryDatabases,
+	IsDatabase: true,
 	Volumes:    []string{"redis_data"},
 	Options: []types.ModuleOption{
 		{
@@ -25,10 +26,7 @@ var RedisService = &ServiceSpec{
 		},
 	},
 	Render: func(ctx RenderContext) *ServiceDef {
-		version, _ := ctx.Options["version"].(string)
-		if version == "" {
-			version = "7.4-alpine"
-		}
+		version := types.StringOpt(ctx.Options, "version", "7.4-alpine")
 		return &ServiceDef{
 			Image:         fmt.Sprintf("redis:%s", version),
 			ContainerName: "redis",

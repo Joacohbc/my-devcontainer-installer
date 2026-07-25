@@ -33,11 +33,9 @@ Known tools: ` + strings.Join(types.SharedConfigIDs(), ", ") + `.`,
 
   # Overwrite existing volume data with the host copy, unattended
   devcontainer-cli config shared sync --force --yes`,
-		SilenceUsage: true,
-		RunE:         runSyncConfig,
-		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-			return types.SharedConfigIDs(), cobra.ShellCompDirectiveNoFileComp
-		},
+		SilenceUsage:      true,
+		RunE:              runSyncConfig,
+		ValidArgsFunction: staticCompletion(types.SharedConfigIDs()...),
 	}
 	cmd.Flags().Bool("force", false, "Replace entries that already have data in the volume with the host copy")
 	addYesFlag(cmd)

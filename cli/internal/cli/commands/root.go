@@ -54,7 +54,6 @@ Run 'devcontainer-cli --help' for the full flag list, or
   devcontainer-cli shell
   devcontainer-cli logs -f
   devcontainer-cli down`,
-		// Run the generate flow when no subcommand is given.
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

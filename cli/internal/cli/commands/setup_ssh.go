@@ -70,7 +70,6 @@ Two modes:
 	f.String("user", sshdefaults.User, "SSH user inside container")
 	f.BoolP("yes", "y", false, `Assume "yes" to all prompts (overwrite a conflicting alias, auto-start the stack)`)
 
-	// Dynamic completions
 	_ = cmd.RegisterFlagCompletionFunc("container", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return listContainers(), cobra.ShellCompDirectiveNoFileComp
 	})

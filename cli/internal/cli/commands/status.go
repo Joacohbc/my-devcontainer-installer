@@ -45,78 +45,77 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
-	// Get all containers from Docker (running and stopped)
-	allContainers := pick.ListAll()
 	containerMap := make(map[string]pick.Container)
-	for _, c := range allContainers {
+	for _, c := range pick.ListAll() {
 		containerMap[c.Name] = c
 	}
 
-	// If explicit container flag is provided, show status for just that container
 	if cmd.Flags().Changed("container") {
-		containerName, err := resolveContainer(cmd)
-		if err != nil {
-			return err
-		}
-
-		t := table.New().
-			Border(lipgloss.NormalBorder()).
-			BorderStyle(lipgloss.NewStyle().Foreground(ui.ColorSubtle)).
-			Headers("CONTAINER NAME", "STATUS", "PORTS", "IMAGE").
-			StyleFunc(func(row, col int) lipgloss.Style {
-				if row == 0 {
-					return ui.StyleBold.Foreground(ui.ColorPrimary)
-				}
-				return lipgloss.NewStyle().Padding(0, 1)
-			})
-
-		if c, found := containerMap[containerName]; found {
-			t.Row(c.Name, pick.StatusLabel(c), c.Ports, c.Image)
-		} else if state, serr := svc.ContainerState(containerName); serr == nil {
-			t.Row(containerName, console.ErrorS("%s", state), "", svc.ContainerImage(containerName))
-		} else {
-			t.Row(containerName, console.ErrorS("not found"), "", "")
-		}
-
-		console.NewLine()
-		console.Print(t.String())
-		console.NewLine()
-		return nil
+		return statusForContainer(cmd, svc, containerMap)
 	}
-
-	// --all: show every CLI-managed container across all workspaces
 	if allFlag, _ := cmd.Flags().GetBool("all"); allFlag {
-		managed := pick.ListManaged()
+		return statusForAllManaged()
+	}
+	return statusForProject(containerMap)
+}
 
-		console.NewLine()
-		console.Header("All managed containers")
-		console.NewLine()
+func newStatusTable(headers ...string) *table.Table {
+	return table.New().
+		Border(lipgloss.NormalBorder()).
+		BorderStyle(lipgloss.NewStyle().Foreground(ui.ColorSubtle)).
+		Headers(headers...).
+		StyleFunc(func(row, col int) lipgloss.Style {
+			if row == 0 {
+				return ui.StyleBold.Foreground(ui.ColorPrimary)
+			}
+			return lipgloss.NewStyle().Padding(0, 1)
+		})
+}
 
-		t := table.New().
-			Border(lipgloss.NormalBorder()).
-			BorderStyle(lipgloss.NewStyle().Foreground(ui.ColorSubtle)).
-			Headers("CONTAINER NAME", "WORKSPACE", "STATUS", "PORTS", "IMAGE").
-			StyleFunc(func(row, col int) lipgloss.Style {
-				if row == 0 {
-					return ui.StyleBold.Foreground(ui.ColorPrimary)
-				}
-				return lipgloss.NewStyle().Padding(0, 1)
-			})
+func statusForContainer(cmd *cobra.Command, svc service.InspectService, containerMap map[string]pick.Container) error {
+	containerName, err := resolveContainer(cmd)
+	if err != nil {
+		return err
+	}
 
-		if len(managed) == 0 {
-			console.Warn("No managed containers found.")
-			console.NewLine()
-			return nil
-		}
-		for _, c := range managed {
-			t.Row(c.Name, workspaceTag(c), pick.StatusLabel(c), c.Ports, c.Image)
-		}
-		console.Print(t.String())
+	t := newStatusTable("CONTAINER NAME", "STATUS", "PORTS", "IMAGE")
+	if c, found := containerMap[containerName]; found {
+		t.Row(c.Name, pick.StatusLabel(c), c.Ports, c.Image)
+	} else if state, serr := svc.ContainerState(containerName); serr == nil {
+		t.Row(containerName, console.ErrorS("%s", state), "", svc.ContainerImage(containerName))
+	} else {
+		t.Row(containerName, console.ErrorS("not found"), "", "")
+	}
+
+	console.NewLine()
+	console.Print(t.String())
+	console.NewLine()
+	return nil
+}
+
+func statusForAllManaged() error {
+	managed := pick.ListManaged()
+
+	console.NewLine()
+	console.Header("All managed containers")
+	console.NewLine()
+
+	if len(managed) == 0 {
+		console.Warn("No managed containers found.")
 		console.NewLine()
 		return nil
 	}
 
-	// Default project mode (like docker compose ps)
+	t := newStatusTable("CONTAINER NAME", "WORKSPACE", "STATUS", "PORTS", "IMAGE")
+	for _, c := range managed {
+		t.Row(c.Name, workspaceTag(c), pick.StatusLabel(c), c.Ports, c.Image)
+	}
+	console.Print(t.String())
+	console.NewLine()
+	return nil
+}
+
+func statusForProject(containerMap map[string]pick.Container) error {
 	cwd, err := currentDir()
 	if err != nil {
 		return err
@@ -133,36 +132,13 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 	console.Header("Workspace: %s", workspace)
 	console.NewLine()
 
-	t := table.New().
-		Border(lipgloss.NormalBorder()).
-		BorderStyle(lipgloss.NewStyle().Foreground(ui.ColorSubtle)).
-		Headers("SERVICE", "CONTAINER NAME", "STATUS", "PORTS", "IMAGE").
-		StyleFunc(func(row, col int) lipgloss.Style {
-			if row == 0 {
-				return ui.StyleBold.Foreground(ui.ColorPrimary)
-			}
-			return lipgloss.NewStyle().Padding(0, 1)
-		})
-
-	// Helper to prefix container name per workspace
-	prefixContainerLocal := func(workspace, base string) string {
-		if base == workspace || strings.HasPrefix(base, workspace+"-") {
-			return base
-		}
-		return workspace + "-" + base
-	}
-
+	t := newStatusTable("SERVICE", "CONTAINER NAME", "STATUS", "PORTS", "IMAGE")
 	for serviceKey, svc := range services {
-		baseContainer := svc.ContainerName
-		if baseContainer == "" {
-			baseContainer = serviceKey
-		}
-		expectedName := prefixContainerLocal(workspace, baseContainer)
+		expectedName := statusContainerName(workspace, svc.ContainerName, serviceKey)
 
 		statusText := console.ErrorS("not created")
 		portsText := ""
 		imageText := ""
-
 		if c, found := containerMap[expectedName]; found {
 			statusText = pick.StatusLabel(c)
 			portsText = c.Ports
@@ -175,4 +151,14 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 	console.Print(t.String())
 	console.NewLine()
 	return nil
+}
+
+func statusContainerName(workspace, base, serviceKey string) string {
+	if base == "" {
+		base = serviceKey
+	}
+	if base == workspace || strings.HasPrefix(base, workspace+"-") {
+		return base
+	}
+	return workspace + "-" + base
 }

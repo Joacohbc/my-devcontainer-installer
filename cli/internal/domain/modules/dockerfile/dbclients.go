@@ -75,7 +75,7 @@ var PostgresClientModule = &ModuleSpec{
 		}),
 	},
 	Render: func(opts map[string]any) string {
-		version, _ := opts["version"].(string)
+		version := types.StringOpt(opts, "version", "")
 		if !isPostgresClientVersion(version) {
 			// Generic client from Ubuntu's repos (no version pin requested).
 			return fmt.Sprintf(`##
