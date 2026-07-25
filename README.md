@@ -124,7 +124,7 @@ curl -fsSL https://raw.githubusercontent.com/Joacohbc/my-devcontainer-installer/
 
 > **Descargas manuales:** Disponibles en los [Releases de GitHub](https://github.com/Joacohbc/my-devcontainer-installer/releases/latest) (binarios standalone para `linux-x64`, `linux-arm64`, `darwin-x64` y `darwin-arm64`). El autocompletado en Zsh y Bash se configura automáticamente tras instalar.
 
-## ⚡ Uso Rápido y Flujo de Trabajo
+## Uso Rápido y Flujo de Trabajo
 
 ### 1. Crear y levantar un entorno
 ```bash
