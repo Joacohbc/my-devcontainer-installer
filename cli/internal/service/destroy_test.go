@@ -58,7 +58,7 @@ func TestDestroyRemovesManagedSSHBlock(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(home, ".ssh"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	sshConfig := filepath.Join(home, ".ssh", "config")
+	sshConfig := managedSSHConfig(home)
 	const cfg = `# devcontainer-cli:managed workspace=ws
 Host ws
     HostName 172.18.0.2
@@ -108,7 +108,7 @@ func TestDestroyLeavesUntaggedSSHBlock(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(home, ".ssh"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	sshConfig := filepath.Join(home, ".ssh", "config")
+	sshConfig := managedSSHConfig(home)
 	const cfg = `Host ws
     HostName 172.18.0.2
 `
@@ -142,7 +142,7 @@ func TestDestroyRunContainer(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(home, ".ssh"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	sshConfig := filepath.Join(home, ".ssh", "config")
+	sshConfig := managedSSHConfig(home)
 	const cfg = `# devcontainer-cli:managed v=1 kind=container ref=dc-ssh alias=dc-ssh
 Host dc-ssh
     HostName 172.18.0.5
@@ -288,5 +288,54 @@ func TestDestroyKeepsHostKeyStillReferenced(t *testing.T) {
 	}
 	if string(data) != knownHosts {
 		t.Errorf("known_hosts = %q, want the key kept for the surviving alias", data)
+	}
+}
+
+// A managed block an older version wrote straight into ~/.ssh/config must still
+// be found and removed: destroy migrates it into the managed config first.
+func TestDestroyRemovesLegacySSHBlockFromUserConfig(t *testing.T) {
+	tmp := t.TempDir()
+	home := t.TempDir()
+	setHomeDir(t, home)
+	t.Setenv("XDG_CONFIG_HOME", tmp)
+	if err := os.MkdirAll(filepath.Join(home, ".ssh"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	const legacy = `Host keepme
+    HostName example.com
+
+# devcontainer-cli:managed workspace=ws
+Host ws
+    HostName 172.18.0.2
+    User devuser
+`
+	if err := os.WriteFile(userSSHConfig(home), []byte(legacy), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	runner := &fakeRunner{status: 0}
+	defer useFakeDocker(runner)()
+
+	svc := DestroyService{Report: nopReporter{}}
+	if err := svc.Run(DestroyTarget{
+		Workspace:   "ws",
+		ComposeFile: filepath.Join(tmp, "missing", "docker-compose.yml"),
+		ProjectDir:  filepath.Join(tmp, "missing"),
+		ConfigPath:  filepath.Join(tmp, "devcontainer.config.json"),
+		ProjectKey:  tmp,
+	}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	user, _ := os.ReadFile(userSSHConfig(home))
+	if strings.Contains(string(user), "Host ws") {
+		t.Errorf("legacy managed block left in the user config:\n%s", user)
+	}
+	if !strings.Contains(string(user), "Host keepme") {
+		t.Errorf("destroy removed a block it does not own:\n%s", user)
+	}
+	managed, _ := os.ReadFile(managedSSHConfig(home))
+	if strings.Contains(string(managed), "Host ws") {
+		t.Errorf("migrated block should have been removed from the managed config too:\n%s", managed)
 	}
 }

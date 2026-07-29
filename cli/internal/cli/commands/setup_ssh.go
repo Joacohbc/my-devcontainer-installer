@@ -37,9 +37,15 @@ func newSetupSshCommand() *cobra.Command {
 It generates (once) a single shared ed25519 key managed by the CLI, makes sure
 the target container is running (offering to start the stack if not), installs
 the public key into the container's authorized_keys, resolves the container's IP,
-and appends a ready-to-use Host block to your ~/.ssh/config — then tests the
-connection. Afterwards you connect with a plain 'ssh <alias>'. If the alias
+and appends a ready-to-use Host block to the CLI's own SSH config — then tests
+the connection. Afterwards you connect with a plain 'ssh <alias>'. If the alias
 already exists you're asked to overwrite it, pick a new name, or skip.
+
+Host blocks go into a file the CLI owns (~/.ssh/devcontainer-cli.config, see
+'config ssh-config-file'), not into your ~/.ssh/config — that file only ever
+gains a single 'Include' line at the top, added on first run. Blocks written by
+older versions are moved across automatically. Alias collisions are still
+checked against both files, so this never shadows a Host you wrote yourself.
 
 Host keys are pinned in a known_hosts file owned by the CLI, not in your global
 ~/.ssh/known_hosts, and are read from the container through docker rather than
@@ -351,7 +357,7 @@ func pinHostKeys(ssh service.SshService, f *setupSshFlags, inst installResult) {
 }
 
 // aliasAction is the user's decision when the target Host alias already exists
-// in ~/.ssh/config.
+// in either SSH config.
 type aliasAction int
 
 const (
@@ -403,14 +409,37 @@ func resolveAliasConflict(p aliasPrompter, f *setupSshFlags) (aliasAction, error
 	}
 }
 
-// updateSshConfig writes the freshly built Host block into ~/.ssh/config,
-// appending it when the alias is free or, when it collides, letting the user
-// overwrite the existing block or pick a new alias (re-checking the new name for
-// a fresh conflict). All file parsing/IO lives in the service layer.
+// updateSshConfig writes the freshly built Host block into the CLI-managed SSH
+// config file, appending it when the alias is free or, when it collides, letting
+// the user overwrite the existing block or pick a new alias (re-checking the new
+// name for a fresh conflict).
+//
+// The user's own ~/.ssh/config is never rewritten here: it only gains the
+// Include directive (EnsureInclude) that pulls the managed file in, and any
+// managed block older versions left inside it is lifted out first
+// (MigrateManagedBlocks). Conflicts are still checked against BOTH files, so
+// the CLI cannot silently shadow a Host the user wrote by hand. All file
+// parsing/IO lives in the service layer.
 func updateSshConfig(ssh service.SshService, f *setupSshFlags, mode sshdefaults.Mode, inst installResult, kind sshdefaults.Kind, ref string) error {
-	configPath, current, err := ssh.ReadSSHConfig()
+	moved, err := ssh.MigrateManagedBlocks()
 	if err != nil {
 		return err
+	}
+	for _, m := range moved {
+		console.Ok(fmt.Sprintf("Moved managed Host '%s' out of %s", m.Alias, domain.UserSSHConfigPath()))
+	}
+
+	added, err := ssh.EnsureInclude()
+	if err != nil {
+		return err
+	}
+
+	configPath, current, err := ssh.ReadManagedConfig()
+	if err != nil {
+		return err
+	}
+	if added {
+		console.Ok(fmt.Sprintf("Added 'Include' for %s to %s", configPath, domain.UserSSHConfigPath()))
 	}
 
 	for {
@@ -419,7 +448,11 @@ func updateSshConfig(ssh service.SshService, f *setupSshFlags, mode sshdefaults.
 			return berr
 		}
 
-		if !service.HasHostAlias(current, f.alias) {
+		conflict, cerr := ssh.FindHostAliasConflict(f.alias)
+		if cerr != nil {
+			return cerr
+		}
+		if conflict == nil {
 			if err := ssh.AppendHostBlock(configPath, current, newBlock); err != nil {
 				return err
 			}
@@ -427,9 +460,13 @@ func updateSshConfig(ssh service.SshService, f *setupSshFlags, mode sshdefaults.
 			return nil
 		}
 
-		console.Warn("Host '%s' already defined in %s", f.alias, configPath)
+		console.Warn("Host '%s' already defined in %s", f.alias, conflict.Path)
+		if !conflict.Managed {
+			console.Warn("That is your own config, which this CLI never rewrites. Overwriting writes the")
+			console.Warn("block to %s instead, which wins because the Include sits above your blocks.", configPath)
+		}
 		console.Info("---- existing ----")
-		console.Print(service.ExtractHostBlock(current, f.alias) + "\n")
+		console.Print(conflict.Block + "\n")
 		console.Info("---- proposed ----")
 		console.Print(newBlock + "\n")
 
@@ -440,7 +477,7 @@ func updateSshConfig(ssh service.SshService, f *setupSshFlags, mode sshdefaults.
 		switch action {
 		case aliasRename:
 			// Re-loop: rebuild the block for the new alias and re-check for a
-			// collision against the (still unmodified) config.
+			// collision against the (still unmodified) configs.
 			continue
 		case aliasSkip:
 			console.Warn("Skipping ssh config update.")

@@ -15,7 +15,33 @@ func TestResolveDockerfileModules_AlwaysOnIncluded(t *testing.T) {
 	}
 	ids := moduleIDs(resolved)
 	assertContains(t, ids, "base")
+	assertContains(t, ids, "aliases")
 	assertContains(t, ids, "cleanup")
+}
+
+// The aliases module appends to the rc files, and base's zsh installer rewrites
+// ~/.zshrc from scratch, so aliases must always render AFTER base.
+func TestResolveDockerfileModules_AliasesOrderedAfterBase(t *testing.T) {
+	resolved, err := domain.ResolveDockerfileModules([]types.SelectedModule{{ID: "python"}})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	ids := moduleIDs(resolved)
+	base, aliases := -1, -1
+	for i, id := range ids {
+		switch id {
+		case "base":
+			base = i
+		case "aliases":
+			aliases = i
+		}
+	}
+	if base == -1 || aliases == -1 {
+		t.Fatalf("expected both base and aliases in %v", ids)
+	}
+	if aliases < base {
+		t.Errorf("aliases (%d) must come after base (%d): %v", aliases, base, ids)
+	}
 }
 
 func TestResolveDockerfileModules_RequiresAutoAdded(t *testing.T) {

@@ -46,7 +46,7 @@ func (s DestroyService) Run(t DestroyTarget) error {
 }
 
 // removeSSHConfigBlock drops the managed Host block setup-ssh wrote for this
-// workspace from ~/.ssh/config, and with it the container host keys that block
+// workspace from the managed SSH config, and with it the container host keys that block
 // had pinned. Failures here are non-fatal: a missing or locked ssh config must
 // not abort the destroy.
 func (s DestroyService) removeSSHConfigBlock(workspace string) {
@@ -62,20 +62,26 @@ func (s DestroyService) removeManagedSSH(kind sshdefaults.Kind, ref string) {
 		return
 	}
 	ssh := SshService{Report: s.Report}
+	// Managed blocks live in the CLI's own SSH config now. Lift any that an
+	// older version left inside the user's ~/.ssh/config first, or destroy would
+	// look in the wrong file and leave the block (and its pinned key) behind.
+	if _, err := ssh.MigrateManagedBlocks(); err != nil {
+		s.Report.Warn("Could not migrate managed SSH blocks: %v", err)
+	}
 	pinnedHost, err := ssh.ManagedHostName(kind, ref)
 	if err != nil {
-		s.Report.Warn("Could not read ~/.ssh/config: %v", err)
+		s.Report.Warn("Could not read the managed SSH config: %v", err)
 		return
 	}
 	removed, backup, err := ssh.RemoveManagedBlockByRef(kind, ref)
 	if err != nil {
-		s.Report.Warn("Could not update ~/.ssh/config: %v", err)
+		s.Report.Warn("Could not update the managed SSH config: %v", err)
 		return
 	}
 	if !removed {
 		return
 	}
-	s.Report.Info("Removed SSH host block for '%s' from ~/.ssh/config (backup: %s)", ref, backup)
+	s.Report.Info("Removed SSH host block for '%s' from the managed SSH config (backup: %s)", ref, backup)
 	s.forgetPinnedHostKey(ssh, pinnedHost)
 }
 

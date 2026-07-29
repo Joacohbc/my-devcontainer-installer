@@ -33,7 +33,7 @@ it fits) — no third-party test framework.
 
 Applies to:
 
-- `internal/domain/modules/dockerfile/*.go` — Dockerfile modules (base, nodejs, python,
+- `internal/domain/modules/dockerfile/*.go` — Dockerfile modules (base, aliases, nodejs, python,
   java_temurin, java_openjdk, golang, bun, pnpm, yarn, sqlite, dbclients, github_cli,
   ai_clis, zellij, cleanup, shell_init).
 - `internal/domain/modules/compose/*.go` — compose services (devcontainer, dind_engine,
@@ -251,6 +251,44 @@ selected script and `docker cp`s it into `types.DevUserHome` (`/home/devuser`),
 left owned by devuser and executable. Add a new `.sh` → add a `Registry` entry
 (name, file, label) so it's selectable/completable; cover it in `registry_test.go`.
 
+### The two alias layers and `~/CONTEXT.md`
+
+Every container sources two alias files, in this order (both wired up by the
+always-on `aliases` module in `modules/dockerfile/aliases.go`, which must stay
+directly after `BaseModule` in the catalog — the zsh installer inside
+`BaseModule` rewrites `~/.zshrc` from scratch, so an earlier append is lost):
+
+| File | Origin | Changing it |
+|---|---|---|
+| `~/.devcontainer_aliases.sh` | the `alias.sh` asset, `COPY`d at build time | edits the asset → new fingerprint → image rebuild |
+| `~/.alias.sh` | the `alias.sh` **shared-config entry**, symlinked into the shared volume by the entrypoint | `config alias edit` + `config shared sync alias.sh --force` → no rebuild |
+
+The user's file is sourced last, so it always wins. `emitShellSources`
+(`shell_init.go`) appends both source lines in one RUN; the user's is *guarded*
+(`if [ -r … ]`) because it does not exist when the shared volume is opted out of.
+Note `emitShellInit` **panics on any single quote**, which is exactly why the
+defaults ship as a real `.sh` asset instead of literal lines — `kill_port` is a
+shell function and the aliases are single-quoted.
+
+Defaults in `alias.sh`: `kill_port <port>` (needs `lsof`, installed by
+`BaseModule`), `npm`→`pnpm` / `npx`→`pnpm dlx`, `pip`/`pip3`→`uv pip` with
+`UV_SYSTEM_PYTHON=1`, and the agent aliases (`claude`/`codex`/`copilot` with
+their skip-permission flags). Every block is `command -v`-guarded so one file is
+valid in every image variant. The agent block is gated on
+`~/.devcontainer_agents_yolo`, which the module `touch`es only when its
+`yoloAgents` option is on — that keeps the shipped script un-templated, so the
+option can never change which files are installed.
+
+`setup-context.sh` writes the static `~/CONTEXT.md` (you are in Docker, uv for
+Python, pnpm for JS, sibling DB services, `kill_port`);
+`get-devcontainer-context.sh` installs to `~/.local/bin/get-devcontainer-context`
+and prints that document plus a live inventory (tools + versions, workspace,
+reachable services), with `--json` for agents. The entrypoint also appends a
+marker-delimited summary to `~/.claude/CLAUDE.md` and `~/.codex/AGENTS.md`
+(idempotent, opt out with `DEVCONTAINER_AGENT_CONTEXT=0`) so agents read it
+without being told to. Keep that block short and toolset-agnostic: the shared
+volume is used by containers with different toolsets.
+
 ### `internal/domain/types/labels.go` — Docker label constants
 
 `LabelNamespace`, `LabelManaged`, `LabelProject`, `LabelVersion`,
@@ -312,18 +350,19 @@ is Cobra-native.
 | `argv[0]` | File | Purpose |
 |---|---|---|
 | _(default)_ | `root.go` (+ `generate_prompts.go`) | Generate Dockerfile + compose + .env |
-| `setup-ssh` | `setup_ssh.go` | Automated SSH key + config. Each generated `~/.ssh/config` Host block is tagged with a structured managed marker (`# devcontainer-cli:managed v=1 kind=<workspace\|container> ref=<id> alias=<alias>`) — workspace mode keys by the (unique) workspace name, loose `--container` mode by the container name — so `destroy`/`clean ssh` can find and remove it. The block also pins host-key verification to the CLI-managed `known_hosts` (`domain.ManagedKnownHostsPath()`, rendered by `sshdefaults.HostKeyOptions`) and the container's current host keys are read through `docker exec` and re-pinned (`SshService.PinContainerHostKeys`), so a rebuilt image never trips "REMOTE HOST IDENTIFICATION HAS CHANGED" |
+| `setup-ssh` | `setup_ssh.go` | Automated SSH key + config. Host blocks are written to the **CLI-owned** SSH config (`~/.ssh/devcontainer-cli.config` by default, `domain.ResolveSSHConfigPath` / `config ssh-config-file`), never into the user's `~/.ssh/config` — that file only ever gains one `Include` line at the very top (`SshService.EnsureInclude`; it must precede every `Host`/`Match`, since OpenSSH keeps the first value per keyword). Blocks older versions left inside `~/.ssh/config` are lifted across by `SshService.MigrateManagedBlocks`, called from `setup-ssh`, `ssh`, `destroy` and `clean ssh`. Alias collisions are checked against **both** files (`SshService.FindHostAliasConflict`), as are `HostIsReferenced`, `AliasHostName`, `ConfigHostTargets`/`OrphanKnownHosts` and completion (`SshService.bothConfigs`) — reading only the managed file there would unpin keys and shadow hand-written Hosts. Each generated block is tagged with a structured managed marker (`# devcontainer-cli:managed v=1 kind=<workspace\|container> ref=<id> alias=<alias>`) — workspace mode keys by the (unique) workspace name, loose `--container` mode by the container name — so `destroy`/`clean ssh` can find and remove it. The block also pins host-key verification to the CLI-managed `known_hosts` (`domain.ManagedKnownHostsPath()`, rendered by `sshdefaults.HostKeyOptions`) and the container's current host keys are read through `docker exec` and re-pinned (`SshService.PinContainerHostKeys`), so a rebuilt image never trips "REMOTE HOST IDENTIFICATION HAS CHANGED" |
 | `clean` | `clean.go` | Consolidate all cleanup actions under subcommands: `clean catalog` (stale images.json entries), `clean containers` (managed containers, alias `rm`), `clean images` (managed images, alias `rmi`), `clean ssh` (stale SSH config blocks — both `kind=workspace` and `kind=container` — plus the host keys they pinned in the managed `known_hosts`, swept by address via `SshService.OrphanKnownHosts`/`ForgetHostKeys` so keys left behind by `destroy` go too; alias `sshs`), `clean networks` (managed networks), `clean volumes` (managed volumes), and `clean all` (sweep every category). Bare `clean` interactively prompts for categories or sweeps all with `--all`/`-y` |
 | `ssh` | `ssh.go` | Open a real SSH session into the project's own devcontainer (unlike `shell`'s `docker exec`); auto-runs the `setup-ssh` flow first when no managed alias exists yet for the target (`SshService.ManagedAlias` looks it up by the `kind=workspace`/`kind=container` marker, not by assuming alias==workspace). `--container` switches to loose mode, targeting any other managed container by name (keyed by `kind=container` instead of the workspace) — mirrors `setup-ssh --container`. `--forward`/`--ports` additionally open SSH tunnels alongside the session (`PortForwardService.OpenTunnelsDetached`, non-blocking), torn down when the session ends. Before connecting through an existing alias it re-pins the container's host keys and upgrades pre-pinning Host blocks in place (`SshService.EnsureHostKeyPinning`) |
 | `port-forward` | `port_forward.go` | Forward host ports into the running container |
 | `run` | `run.go` | `docker run` from a remote image, no project files |
 | `down` | `down.go` | `docker compose down [-v]` for the current directory's project |
-| `destroy` | `destroy.go` | down + delete `.dc_<ws>/` + config (confirmation). Both modes prune the target's managed SSH state via `DestroyService.removeManagedSSH`: the Host block plus the host keys pinned for the address it dialed (`SshService.ManagedHostName` reads that address *before* the block goes; `HostIsReferenced` keeps the key when another block still dials it). `--container` switches to a loose-container mode (`DestroyService.RunContainer`): stop + remove just that container and prune its `kind=container` block — no compose stack/project dir/config involved |
+| `destroy` | `destroy.go` | down + delete `.dc_<ws>/` + config (confirmation). Both modes prune the target's managed SSH state via `DestroyService.removeManagedSSH`: the Host block plus the host keys pinned for the address it dialed (`SshService.ManagedHostName` reads that address *before* the block goes; `HostIsReferenced` — which reads both configs — keeps the key when another block still dials it; `MigrateManagedBlocks` runs first so a block left in `~/.ssh/config` by an older version is still found). `--container` switches to a loose-container mode (`DestroyService.RunContainer`): stop + remove just that container and prune its `kind=container` block — no compose stack/project dir/config involved |
 | `start`/`stop`/`restart` | `lifecycle.go` | `docker compose start`/`stop`/`restart` for the current directory's project. All accept `--container` to act on a single container instead of the whole stack (`start`→`StartContainer`, `stop`→`StopContainer`, `restart`→`RestartContainer`; start/stop complete stopped/running names respectively, restart completes any managed one) |
 | `update` | `update.go` | Pull/rebuild images; `--all`; per-mode dispatch |
 | `upgrade-cli` | `upgrade_cli.go` | Binary self-update from a GitHub release |
-| `config` | `config.go` | Read/write global config (subcommands `registry`, `preset`, `shared`); `config preset` (`preset.go`) lists/creates/copies/removes reusable **module-bundle** presets saved under `~/.devcontainer-cli/presets/` (`remove <id...>` deletes user presets only — built-ins are not removable; tab-completed, `-y` to skip confirmation). A preset is just a list of module ids (no services/ports/volumes/mode); `create` prompts for the id and runs a modules-only wizard (`GenerateService.SelectModules`). The interactive `generate` wizard also offers an optional "start from a user preset" step (local-cached only) that pre-selects the preset's modules before the user continues with services/ports/volumes. `config shared` (`config_shared.go`) groups the shared tool-config volume ops — `config shared sync` (`sync_config.go`, seed from host configs `~/.claude`, `~/.config/gh`, …; `--force` replaces), `config shared backup` (`backup_config.go`, zip the volume; `-o` sets the destination, default a timestamped file in cwd), `config shared restore` (`restore_config.go`, load a zip made by `config shared backup`; `--force` replaces existing entries) |
+| `config` | `config.go` | Read/write global config (subcommands `registry`, `db-user`, `db-password`, `ssh-key`, `ssh-config-file`, `alias`, `preset`, `shared`); `config ssh-config-file` sets where managed SSH Host blocks live (default `~/.ssh/devcontainer-cli.config`) — it is global rather than a per-command flag on purpose, so `setup-ssh`, `ssh`, `destroy` and `clean ssh` can never disagree about which file to read. `config alias` (`config_alias.go`) shows/edits/resets `~/.alias.sh`, the user's own shell aliases: it is the host side of the `alias.sh` shared-config entry, so `config shared sync alias.sh --force` pushes it into every container without an image rebuild; `config preset` (`preset.go`) lists/creates/copies/removes reusable **module-bundle** presets saved under `~/.devcontainer-cli/presets/` (`remove <id...>` deletes user presets only — built-ins are not removable; tab-completed, `-y` to skip confirmation). A preset is just a list of module ids (no services/ports/volumes/mode); `create` prompts for the id and runs a modules-only wizard (`GenerateService.SelectModules`). The interactive `generate` wizard also offers an optional "start from a user preset" step (local-cached only) that pre-selects the preset's modules before the user continues with services/ports/volumes. `config shared` (`config_shared.go`) groups the shared tool-config volume ops — `config shared sync` (`sync_config.go`, seed from host configs `~/.claude`, `~/.config/gh`, …; `--force` replaces), `config shared backup` (`backup_config.go`, zip the volume; `-o` sets the destination, default a timestamped file in cwd), `config shared restore` (`restore_config.go`, load a zip made by `config shared backup`; `--force` replaces existing entries) |
 | `cleanup-tips` | `cleanup_tips.go` | Print docker cleanup commands |
+| `context` | `context.go` | Print the container's own context and installed tools: runs `get-devcontainer-context` inside it via `InspectService.Context` and streams the output (`--json` for structured output). Falls back to `copy --asset get-devcontainer-context` when the image predates the `aliases` module. Complements `info` (Docker metadata) by reporting what is *inside* the container |
 | `network` | `network.go` | Attach/detach any container to the workspace network; subcommands `network connect`/`network disconnect <container...>` (tab-completed); `connect` takes `--alias` (extra DNS names; prompted when interactive) |
 | `completion` | _(Cobra built-in)_ | Print shell completion script |
 
@@ -414,7 +453,7 @@ three plus `BuildModes` and tests.
    = both sides + a `generator_test.go` assertion. `ssh` is the full image from
    `build-base` → `devcontainer-ssh:latest` (not a `build-variants` entry).
 2. **Full-image `--with` list** — `docker-image.yml` job `build-base` passes one
-   id per Dockerfile module **except** `base`/`cleanup` (auto-applied) and
+   id per Dockerfile module **except** `base`/`aliases`/`cleanup` (auto-applied) and
    `java-openjdk` (mutually exclusive with `java-temurin`; the full image uses
    `java-temurin`). Compose-only modules (`postgres`, `redis`, `mongo`, `tunnel`)
    never go in `--with`. Add a module → append its id here.

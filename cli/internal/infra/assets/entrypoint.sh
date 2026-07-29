@@ -133,6 +133,7 @@ gemini dir .gemini
 agents dir .agents
 codex dir .codex
 gh dir .config/gh
+alias.sh file .alias.sh
 SHARED_CONFIG_ENTRIES
 
     # Antigravity CLI 2.0 reads skills from ~/.gemini/antigravity-cli/skills but
@@ -149,6 +150,55 @@ SHARED_CONFIG_ENTRIES
         chown -h "$DEV_UID:$DEV_GID" "$ag_skills_link" 2>/dev/null || true
         chown "$DEV_UID:$DEV_GID" "$ag_skills_parent" "/home/devuser/.agents/skills" 2>/dev/null || true
     fi
+fi
+
+# ── Devcontainer context for AI agents ──────────────────────────────────────
+# Agents read their user-scope memory file on startup but have no way to learn
+# they are inside a container, so drop a short marked block into each one. Only
+# runs when the shared-config volume is mounted (that is what makes ~/.claude
+# and ~/.codex real, persisted directories) and can be turned off entirely with
+# DEVCONTAINER_AGENT_CONTEXT=0.
+#
+# The block is deliberately SHORT and toolset-agnostic: the volume is shared by
+# every container the CLI creates, so anything variant-specific belongs in
+# get-devcontainer-context, not here. It is delimited by markers, so re-running
+# is idempotent and removing it is a clean cut; nothing outside the markers is
+# ever touched. Runs as devuser so the shared volume keeps its ownership.
+if [ -d "$SHARED_CONFIG_DIR" ] && [ "${DEVCONTAINER_AGENT_CONTEXT:-1}" != "0" ]; then
+    su - devuser -s /bin/bash -c '
+        marker_open="<!-- devcontainer-cli:context v=1 -->"
+        for target in "$HOME/.claude/CLAUDE.md" "$HOME/.codex/AGENTS.md"; do
+            target_dir="$(dirname "$target")"
+            [ -d "$target_dir" ] || continue
+            [ -f "$target" ] || : > "$target"
+            # Already present at this exact version: nothing to do.
+            grep -qF "$marker_open" "$target" 2>/dev/null && continue
+            # Drop any older version of the block before appending the current one.
+            sed -i "/<!-- devcontainer-cli:context v=/,/<!-- \/devcontainer-cli:context -->/d" "$target"
+            printf "\n" >> "$target"
+            cat >> "$target" <<"AGENT_CONTEXT_BLOCK"
+<!-- devcontainer-cli:context v=1 -->
+## Devcontainer
+
+You are working inside a Docker container managed by devcontainer-cli. The
+project is bind-mounted at /workspace; anything written outside /workspace and
+/home/devuser is discarded when the container is recreated.
+
+- Python: use uv (uv pip install X, uv run script.py, uv tool install X). Do not
+  create a virtualenv and do not call pip directly.
+- JavaScript/TypeScript: use pnpm (pnpm install, pnpm add X, pnpm dlx X). Do not
+  call npm or npx directly.
+- Database services (postgres, redis, mongo) are sibling containers, reachable
+  by service name, never on localhost.
+- Free a busy port with: kill_port <port>
+- There is no systemd; do not use systemctl or service.
+
+Run get-devcontainer-context for the tools and versions actually installed in
+this container, and read ~/CONTEXT.md for the full conventions.
+<!-- /devcontainer-cli:context -->
+AGENT_CONTEXT_BLOCK
+        done
+    ' || echo "warning: could not write the agent context block" >&2
 fi
 
 # ── Auto-run non-interactive installer post-scripts ─────────────────────────

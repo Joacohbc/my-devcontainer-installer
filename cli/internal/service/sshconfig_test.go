@@ -7,13 +7,29 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/sshdefaults"
 )
 
-// setHomeDir points os.UserHomeDir() at dir via the HOME env var.
+// setHomeDir points os.UserHomeDir() at dir via the HOME env var. It also
+// isolates the global config (which resolves the managed SSH config path) so a
+// developer's real ~/.config/devcontainer-cli never leaks into a test.
 func setHomeDir(t *testing.T, dir string) {
 	t.Helper()
 	t.Setenv("HOME", dir)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(dir, ".config"))
+}
+
+// managedSSHConfig is the CLI-owned SSH config file for a fake HOME — where
+// every managed Host block lives.
+func managedSSHConfig(home string) string {
+	return filepath.Join(home, ".ssh", types.SSHConfigName)
+}
+
+// userSSHConfig is the user's own ~/.ssh/config for a fake HOME — the file the
+// CLI only ever adds an Include to.
+func userSSHConfig(home string) string {
+	return filepath.Join(home, ".ssh", "config")
 }
 
 const sampleConfig = `Host devcontainer
@@ -78,15 +94,15 @@ func TestReadAndWriteSSHConfig(t *testing.T) {
 
 	svc := SshService{Report: nopReporter{}}
 
-	// ReadSSHConfig creates ~/.ssh/config when absent.
-	path, content, err := svc.ReadSSHConfig()
+	// ReadManagedConfig creates the managed config when absent.
+	path, content, err := svc.ReadManagedConfig()
 	if err != nil {
-		t.Fatalf("ReadSSHConfig: %v", err)
+		t.Fatalf("ReadManagedConfig: %v", err)
 	}
 	if content != "" {
 		t.Errorf("expected empty config, got %q", content)
 	}
-	if path != filepath.Join(home, ".ssh", "config") {
+	if path != managedSSHConfig(home) {
 		t.Errorf("unexpected config path: %s", path)
 	}
 
@@ -94,7 +110,7 @@ func TestReadAndWriteSSHConfig(t *testing.T) {
 	if err := svc.AppendHostBlock(path, content, "Host devcontainer\n    HostName 1.2.3.4"); err != nil {
 		t.Fatalf("AppendHostBlock: %v", err)
 	}
-	_, content, _ = svc.ReadSSHConfig()
+	_, content, _ = svc.ReadManagedConfig()
 	if !HasHostAlias(content, "devcontainer") {
 		t.Fatalf("appended block missing:\n%s", content)
 	}
@@ -107,7 +123,7 @@ func TestReadAndWriteSSHConfig(t *testing.T) {
 	if _, err := os.Stat(backup); err != nil {
 		t.Errorf("expected backup at %s: %v", backup, err)
 	}
-	_, content, _ = svc.ReadSSHConfig()
+	_, content, _ = svc.ReadManagedConfig()
 	if strings.Contains(content, "1.2.3.4") || !strings.Contains(content, "5.6.7.8") {
 		t.Errorf("block not replaced:\n%s", content)
 	}
@@ -165,7 +181,7 @@ func TestRemoveManagedBlock(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(home, ".ssh"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(home, ".ssh", "config")
+	path := managedSSHConfig(home)
 	if err := os.WriteFile(path, []byte(managedConfig), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -204,7 +220,7 @@ func TestRemoveManagedBlockNoMatch(t *testing.T) {
 	if removed {
 		t.Error("expected removed=false when config is absent")
 	}
-	if _, err := os.Stat(filepath.Join(home, ".ssh", "config")); !os.IsNotExist(err) {
+	if _, err := os.Stat(managedSSHConfig(home)); !os.IsNotExist(err) {
 		t.Error("RemoveManagedBlock must not create ~/.ssh/config")
 	}
 }
@@ -224,7 +240,7 @@ func TestRemoveManagedBlockByRef(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(home, ".ssh"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(home, ".ssh", "config")
+	path := managedSSHConfig(home)
 	if err := os.WriteFile(path, []byte(managedContainerConfig), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -367,7 +383,7 @@ func TestManagedAlias(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(home, ".ssh"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(home, ".ssh", "config"), []byte(newFormatConfig), 0o600); err != nil {
+	if err := os.WriteFile(managedSSHConfig(home), []byte(newFormatConfig), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -397,7 +413,7 @@ func TestPruneManagedBlocks(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(home, ".ssh"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(home, ".ssh", "config")
+	path := managedSSHConfig(home)
 	if err := os.WriteFile(path, []byte(newFormatConfig), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -449,7 +465,7 @@ func TestPruneManagedBlocksNoStale(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(home, ".ssh"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(home, ".ssh", "config")
+	path := managedSSHConfig(home)
 	if err := os.WriteFile(path, []byte(newFormatConfig), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -476,7 +492,7 @@ func TestPruneManagedBlocksMissingConfig(t *testing.T) {
 	if len(stale) != 0 {
 		t.Errorf("expected empty result for missing config, got %+v", stale)
 	}
-	if _, err := os.Stat(filepath.Join(home, ".ssh", "config")); !os.IsNotExist(err) {
+	if _, err := os.Stat(managedSSHConfig(home)); !os.IsNotExist(err) {
 		t.Error("PruneManagedBlocks must not create ~/.ssh/config")
 	}
 }
@@ -487,7 +503,7 @@ func TestRemoveManagedBlocksSubset(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(home, ".ssh"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(home, ".ssh", "config")
+	path := managedSSHConfig(home)
 	if err := os.WriteFile(path, []byte(newFormatConfig), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -522,7 +538,7 @@ func TestRemoveManagedBlocksEmpty(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(home, ".ssh"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(home, ".ssh", "config")
+	path := managedSSHConfig(home)
 	if err := os.WriteFile(path, []byte(newFormatConfig), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -556,7 +572,7 @@ func TestConfigHostAliasesFromDisk(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(home, ".ssh"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(home, ".ssh", "config"), []byte(sampleConfig), 0o600); err != nil {
+	if err := os.WriteFile(managedSSHConfig(home), []byte(sampleConfig), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	svc := SshService{Report: nopReporter{}}
@@ -667,7 +683,7 @@ func TestEnsureHostKeyPinning(t *testing.T) {
 	if err := os.MkdirAll(sshDir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	configPath := filepath.Join(sshDir, "config")
+	configPath := managedSSHConfig(home)
 	legacy := "Host api\n    HostName 172.25.1.30\n    User devuser\n"
 	if err := os.WriteFile(configPath, []byte(legacy), 0o600); err != nil {
 		t.Fatal(err)
@@ -712,7 +728,7 @@ func TestAliasHostName(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(home, ".ssh"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(home, ".ssh", "config"), []byte(sampleConfig), 0o600); err != nil {
+	if err := os.WriteFile(managedSSHConfig(home), []byte(sampleConfig), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	svc := SshService{Report: nopReporter{}}
@@ -768,7 +784,7 @@ func TestManagedHostName(t *testing.T) {
 		"Host api\n    HostName 172.25.1.30\n\n" +
 		"# devcontainer-cli:managed v=1 kind=container ref=dc-ssh alias=dc-ssh\n" +
 		"Host dc-ssh\n    HostName 172.25.2.30\n"
-	if err := os.WriteFile(filepath.Join(home, ".ssh", "config"), []byte(cfg), 0o600); err != nil {
+	if err := os.WriteFile(managedSSHConfig(home), []byte(cfg), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -806,7 +822,7 @@ func TestHostIsReferenced(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(home, ".ssh"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(home, ".ssh", "config"), []byte(sampleConfig), 0o600); err != nil {
+	if err := os.WriteFile(managedSSHConfig(home), []byte(sampleConfig), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -828,5 +844,254 @@ func TestHostIsReferenced(t *testing.T) {
 				t.Errorf("HostIsReferenced(%q) = %v,%v, want %v,nil", c.host, got, err, c.want)
 			}
 		})
+	}
+}
+
+// ── Separate managed config file ────────────────────────────────────────────
+
+func TestEnsureIncludeCreatesUserConfig(t *testing.T) {
+	home := t.TempDir()
+	setHomeDir(t, home)
+	svc := SshService{Report: nopReporter{}}
+
+	added, err := svc.EnsureInclude()
+	if err != nil || !added {
+		t.Fatalf("EnsureInclude = %v,%v, want true,nil", added, err)
+	}
+	data, err := os.ReadFile(userSSHConfig(home))
+	if err != nil {
+		t.Fatalf("expected ~/.ssh/config to be created: %v", err)
+	}
+	// A managed file inside ~/.ssh is referenced relatively, the way OpenSSH
+	// resolves relative includes.
+	if !strings.Contains(string(data), "Include "+types.SSHConfigName) {
+		t.Errorf("missing Include directive:\n%s", data)
+	}
+	if !strings.Contains(string(data), includeMarker) {
+		t.Errorf("Include must carry the managed marker:\n%s", data)
+	}
+
+	// Idempotent: a second run changes nothing.
+	added, err = svc.EnsureInclude()
+	if err != nil || added {
+		t.Errorf("second EnsureInclude = %v,%v, want false,nil", added, err)
+	}
+	again, _ := os.ReadFile(userSSHConfig(home))
+	if string(again) != string(data) {
+		t.Errorf("second EnsureInclude rewrote the config:\n%s", again)
+	}
+}
+
+func TestEnsureIncludeGoesAboveHostBlocks(t *testing.T) {
+	home := t.TempDir()
+	setHomeDir(t, home)
+	if err := os.MkdirAll(filepath.Join(home, ".ssh"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	existing := "ServerAliveInterval 30\n\nHost mine\n    HostName example.com\n"
+	if err := os.WriteFile(userSSHConfig(home), []byte(existing), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	svc := SshService{Report: nopReporter{}}
+	if added, err := svc.EnsureInclude(); err != nil || !added {
+		t.Fatalf("EnsureInclude = %v,%v, want true,nil", added, err)
+	}
+
+	data, _ := os.ReadFile(userSSHConfig(home))
+	got := string(data)
+	// OpenSSH keeps the FIRST value obtained for each keyword, so the Include
+	// must precede every Host/Match block or it would be shadowed.
+	inc, host := strings.Index(got, "Include "), strings.Index(got, "Host mine")
+	if inc == -1 || host == -1 || inc > host {
+		t.Errorf("Include (%d) must come before the first Host block (%d):\n%s", inc, host, got)
+	}
+	// The user's own content survives untouched, and is backed up.
+	if !strings.Contains(got, "ServerAliveInterval 30") || !strings.Contains(got, "HostName example.com") {
+		t.Errorf("user config content was lost:\n%s", got)
+	}
+	backup, err := os.ReadFile(userSSHConfig(home) + ".bak")
+	if err != nil || string(backup) != existing {
+		t.Errorf("expected the original to be backed up, got %q (%v)", backup, err)
+	}
+}
+
+func TestEnsureIncludeAcceptsExistingSpellings(t *testing.T) {
+	for _, spelling := range []string{
+		"Include " + types.SSHConfigName,
+		"Include ~/.ssh/" + types.SSHConfigName,
+		"include " + types.SSHConfigName,
+	} {
+		t.Run(spelling, func(t *testing.T) {
+			home := t.TempDir()
+			setHomeDir(t, home)
+			if err := os.MkdirAll(filepath.Join(home, ".ssh"), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(userSSHConfig(home), []byte(spelling+"\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			svc := SshService{Report: nopReporter{}}
+			added, err := svc.EnsureInclude()
+			if err != nil || added {
+				t.Errorf("EnsureInclude = %v,%v, want false,nil (already included as %q)", added, err, spelling)
+			}
+		})
+	}
+}
+
+func TestEnsureIncludeUsesAbsolutePathOutsideSSHDir(t *testing.T) {
+	home := t.TempDir()
+	setHomeDir(t, home)
+	custom := filepath.Join(home, "elsewhere", "dc.config")
+	svc := ConfigService{Report: nopReporter{}}
+	if err := svc.SetGlobalDefault("ssh-config-file", custom); err != nil {
+		t.Fatal(err)
+	}
+
+	ssh := SshService{Report: nopReporter{}}
+	if added, err := ssh.EnsureInclude(); err != nil || !added {
+		t.Fatalf("EnsureInclude = %v,%v, want true,nil", added, err)
+	}
+	data, _ := os.ReadFile(userSSHConfig(home))
+	if !strings.Contains(string(data), "Include "+custom) {
+		t.Errorf("a managed file outside ~/.ssh needs an absolute Include:\n%s", data)
+	}
+}
+
+func TestMigrateManagedBlocks(t *testing.T) {
+	home := t.TempDir()
+	setHomeDir(t, home)
+	if err := os.MkdirAll(filepath.Join(home, ".ssh"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	legacy := "Host handwritten\n    HostName example.com\n\n" + managedContainerConfig
+	if err := os.WriteFile(userSSHConfig(home), []byte(legacy), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	svc := SshService{Report: nopReporter{}}
+	moved, err := svc.MigrateManagedBlocks()
+	if err != nil {
+		t.Fatalf("MigrateManagedBlocks: %v", err)
+	}
+	if len(moved) != 1 || moved[0].Ref != "dc-ssh" {
+		t.Fatalf("MigrateManagedBlocks = %v, want the dc-ssh block", moved)
+	}
+
+	user, _ := os.ReadFile(userSSHConfig(home))
+	if strings.Contains(string(user), "dc-ssh") || strings.Contains(string(user), "devcontainer-cli:managed") {
+		t.Errorf("managed block left behind in the user config:\n%s", user)
+	}
+	// Blocks the user wrote by hand are never touched.
+	if !strings.Contains(string(user), "Host handwritten") || !strings.Contains(string(user), "Host other") {
+		t.Errorf("migration removed blocks it does not own:\n%s", user)
+	}
+	// The original is backed up before the rewrite.
+	if backup, err := os.ReadFile(userSSHConfig(home) + ".bak"); err != nil || string(backup) != legacy {
+		t.Errorf("expected the original user config to be backed up, got %q (%v)", backup, err)
+	}
+
+	managed, err := os.ReadFile(managedSSHConfig(home))
+	if err != nil {
+		t.Fatalf("expected the managed config to be written: %v", err)
+	}
+	if !strings.Contains(string(managed), "Host dc-ssh") || !strings.Contains(string(managed), "172.18.0.5") {
+		t.Errorf("block did not land in the managed config:\n%s", managed)
+	}
+	// The block stays findable by its marker after the move.
+	if alias, ok, _ := svc.ManagedAlias(sshdefaults.KindContainer, "dc-ssh"); !ok || alias != "dc-ssh" {
+		t.Errorf("ManagedAlias after migration = %q,%v, want dc-ssh,true", alias, ok)
+	}
+
+	// Idempotent: nothing left to move.
+	moved, err = svc.MigrateManagedBlocks()
+	if err != nil || len(moved) != 0 {
+		t.Errorf("second MigrateManagedBlocks = %v,%v, want empty,nil", moved, err)
+	}
+}
+
+func TestMigrateManagedBlocksNoConfig(t *testing.T) {
+	home := t.TempDir()
+	setHomeDir(t, home)
+	svc := SshService{Report: nopReporter{}}
+	moved, err := svc.MigrateManagedBlocks()
+	if err != nil || len(moved) != 0 {
+		t.Fatalf("MigrateManagedBlocks with no config = %v,%v, want empty,nil", moved, err)
+	}
+	// A no-op migration must not create either file.
+	if _, err := os.Stat(managedSSHConfig(home)); !os.IsNotExist(err) {
+		t.Error("migration must not create the managed config when there is nothing to move")
+	}
+}
+
+func TestFindHostAliasConflict(t *testing.T) {
+	home := t.TempDir()
+	setHomeDir(t, home)
+	if err := os.MkdirAll(filepath.Join(home, ".ssh"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(managedSSHConfig(home), []byte("Host proj\n    HostName 10.0.0.1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(userSSHConfig(home), []byte("Host mine\n    HostName example.com\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	svc := SshService{Report: nopReporter{}}
+
+	got, err := svc.FindHostAliasConflict("proj")
+	if err != nil || got == nil || !got.Managed || got.Path != managedSSHConfig(home) {
+		t.Fatalf("FindHostAliasConflict(proj) = %+v,%v, want the managed config", got, err)
+	}
+	if !strings.Contains(got.Block, "10.0.0.1") {
+		t.Errorf("expected the existing stanza for display, got %q", got.Block)
+	}
+
+	// A collision with the user's own config must be reported too — otherwise
+	// the CLI would silently shadow a Host they maintain themselves.
+	got, err = svc.FindHostAliasConflict("mine")
+	if err != nil || got == nil || got.Managed || got.Path != userSSHConfig(home) {
+		t.Fatalf("FindHostAliasConflict(mine) = %+v,%v, want the user config", got, err)
+	}
+
+	if got, err := svc.FindHostAliasConflict("free"); err != nil || got != nil {
+		t.Errorf("FindHostAliasConflict(free) = %+v,%v, want nil,nil", got, err)
+	}
+}
+
+// The read-only queries that guard destructive work must see the user's own
+// hand-written blocks, not just the managed file.
+func TestDualConfigReads(t *testing.T) {
+	home := t.TempDir()
+	setHomeDir(t, home)
+	if err := os.MkdirAll(filepath.Join(home, ".ssh"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(managedSSHConfig(home), []byte("Host proj\n    HostName 10.0.0.1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(userSSHConfig(home), []byte("Host mine\n    HostName 10.0.0.2\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	svc := SshService{Report: nopReporter{}}
+
+	// A key still dialed by the user's own block must not be treated as orphaned.
+	for _, host := range []string{"10.0.0.1", "10.0.0.2"} {
+		if got, err := svc.HostIsReferenced(host); err != nil || !got {
+			t.Errorf("HostIsReferenced(%s) = %v,%v, want true,nil", host, got, err)
+		}
+	}
+
+	if got, err := svc.AliasHostName("mine"); err != nil || got != "10.0.0.2" {
+		t.Errorf("AliasHostName(mine) = %q,%v, want 10.0.0.2,nil", got, err)
+	}
+
+	aliases := svc.ConfigHostAliasesFromDisk()
+	for _, want := range []string{"proj", "mine"} {
+		if !slices.Contains(aliases, want) {
+			t.Errorf("completion must offer %q, got %v", want, aliases)
+		}
 	}
 }

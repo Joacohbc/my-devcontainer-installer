@@ -261,10 +261,23 @@ func (s PruneService) CleanImages(refs []string, opts CleanOptions) (int, error)
 	return removed, nil
 }
 
-// CleanSSH prunes stale SSH config blocks from ~/.ssh/config, then drops the
-// host keys those blocks had pinned in the CLI-managed known_hosts.
+// CleanSSH prunes stale SSH config blocks from the CLI-managed SSH config, then
+// drops the host keys those blocks had pinned in the CLI-managed known_hosts.
+//
+// Managed blocks that older versions wrote directly into the user's
+// ~/.ssh/config are lifted into the managed file first, so a clean run still
+// finds and prunes them. A dry run skips that, since migrating is itself a write.
 func (s PruneService) CleanSSH(opts CleanOptions) (int, error) {
 	ssh := SshService{Report: s.Report}
+	if !opts.DryRun {
+		moved, merr := ssh.MigrateManagedBlocks()
+		if merr != nil {
+			return 0, merr
+		}
+		if len(moved) > 0 {
+			s.Report.Info("Moved %d managed Host block(s) out of the user SSH config.", len(moved))
+		}
+	}
 	existsWorkspace, existsContainer, err := ssh.LiveTargetPredicates()
 	if err != nil {
 		return 0, err
@@ -328,7 +341,7 @@ func (s PruneService) CleanSSH(opts CleanOptions) (int, error) {
 	if backup != "" {
 		s.Report.Info("Backup saved: %s", backup)
 	}
-	s.Report.Success("Removed %d SSH config block(s) from ~/.ssh/config.", len(removed))
+	s.Report.Success("Removed %d SSH config block(s) from the managed SSH config.", len(removed))
 
 	// Runs after the blocks are gone, so the host keys they pinned are orphaned
 	// by then and get swept in the same pass.
@@ -339,7 +352,7 @@ func (s PruneService) CleanSSH(opts CleanOptions) (int, error) {
 }
 
 // cleanKnownHosts drops the entries in the CLI-managed known_hosts that no Host
-// block in ~/.ssh/config dials any more. It is keyed by address, not by marker,
+// block in either SSH config dials any more. It is keyed by address, not by marker,
 // so it covers workspace and loose --container blocks alike — and also keys left
 // behind by destroy, which removes a block without touching known_hosts.
 func (s PruneService) cleanKnownHosts(ssh SshService, opts CleanOptions) error {
@@ -588,7 +601,7 @@ func (s PruneService) RunClean(opts CleanOptions) error {
 		{Value: "catalog", Label: "Stale catalog entries (images.json)"},
 		{Value: "containers", Label: "Managed Docker containers"},
 		{Value: "images", Label: "Managed Docker images"},
-		{Value: "ssh", Label: "Stale SSH config blocks (~/.ssh/config)"},
+		{Value: "ssh", Label: "Stale SSH config blocks (managed SSH config)"},
 		{Value: "networks", Label: "Managed Docker networks"},
 		{Value: "volumes", Label: "Managed Docker volumes"},
 		{Value: "all", Label: "All categories (sweep everything)"},

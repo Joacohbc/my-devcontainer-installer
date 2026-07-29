@@ -351,6 +351,53 @@ func (s InspectService) CopyAsset(name, assetName, dest string) error {
 	return nil
 }
 
+// ContextAssetName is the copyable asset that reports a container's context and
+// installed tools. The aliases module installs it on PATH at build time; for
+// images built before that module existed, Context() falls back to copying it in.
+const ContextAssetName = "get-devcontainer-context"
+
+// contextBinPath is where the aliases module installs the context script.
+const contextBinPath = types.DevUserHome + "/.local/bin/" + ContextAssetName
+
+// Context runs the container's own get-devcontainer-context and streams its
+// output. Images built before the aliases module do not ship the script, so it
+// is copied in on the fly and run from there — the report is about the running
+// container either way.
+func (s InspectService) Context(name string, asJSON bool) error {
+	if err := s.ensureRunning(name); err != nil {
+		return err
+	}
+
+	bin := contextBinPath
+	if !s.containerHasFile(name, bin) {
+		s.Report.Warn("'%s' is not installed in '%s' (image predates it); copying it in...", ContextAssetName, name)
+		dest := types.DevUserHome + "/" + ContextAssetName + ".sh"
+		if err := s.CopyAsset(name, ContextAssetName, dest); err != nil {
+			return err
+		}
+		bin = dest
+	}
+
+	args := []string{"exec", "-u", "devuser", name, bin}
+	if asJSON {
+		args = append(args, "--json")
+	}
+	exitCode, err := docker.DockerInherit(args)
+	if err != nil {
+		return err
+	}
+	if exitCode != 0 {
+		return fmt.Errorf("%s failed with exit code %d", ContextAssetName, exitCode)
+	}
+	return nil
+}
+
+// containerHasFile reports whether an executable file exists in the container.
+func (s InspectService) containerHasFile(name, path string) bool {
+	status, _, _, err := docker.DockerCapture([]string{"exec", name, "test", "-x", path})
+	return err == nil && status == 0
+}
+
 // ContainerLogs streams `docker logs` for a single container.
 func (s InspectService) ContainerLogs(name string, follow bool, tail string) error {
 	args := []string{"logs"}

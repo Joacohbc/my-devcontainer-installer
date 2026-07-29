@@ -184,11 +184,10 @@ func unbracketHost(pattern string) string {
 }
 
 // OrphanKnownHosts returns the hosts pinned in the CLI-managed known_hosts that
-// no Host block in ~/.ssh/config dials any more — what is left behind when a
+// no Host block in either SSH config dials any more — what is left behind when a
 // block is removed (by clean ssh, by destroy) or when a container comes back on
-// a different address. A missing known_hosts yields no orphans; a missing ssh
-// config orphans everything, since nothing can be reaching those hosts through
-// the CLI's file.
+// a different address. A missing known_hosts yields no orphans; missing configs
+// orphan everything, since nothing can be reaching those hosts any more.
 func (s SshService) OrphanKnownHosts() ([]string, error) {
 	pinned, err := os.ReadFile(domain.ManagedKnownHostsPath())
 	if err != nil {
@@ -197,15 +196,12 @@ func (s SshService) OrphanKnownHosts() ([]string, error) {
 		}
 		return nil, err
 	}
-	configPath, err := sshConfigPath()
+	// Both configs: a host a hand-written block still dials is not an orphan.
+	config, err := s.bothConfigs()
 	if err != nil {
 		return nil, err
 	}
-	config, err := os.ReadFile(configPath)
-	if err != nil && !os.IsNotExist(err) {
-		return nil, err
-	}
-	return orphanHosts(string(pinned), string(config)), nil
+	return orphanHosts(string(pinned), config), nil
 }
 
 // orphanHosts returns the hosts recorded in knownHosts that no Host block in

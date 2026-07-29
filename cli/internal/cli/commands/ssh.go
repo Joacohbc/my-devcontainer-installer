@@ -24,8 +24,9 @@ func newSshCommand() *cobra.Command {
 Unlike 'shell' (a 'docker exec' wrapper), this opens a genuine SSH session, so
 it exercises the same path a human or tool connecting via 'ssh <alias>' would.
 If no managed SSH alias exists yet for the target it runs the same setup
-'setup-ssh' does (generate/install the shared key, append a ~/.ssh/config Host
-block) automatically before connecting — no separate 'setup-ssh' call needed.
+'setup-ssh' does (generate/install the shared key, append a Host block to the
+CLI's own SSH config) automatically before connecting — no separate 'setup-ssh'
+call needed.
 
 By default it targets the project's own devcontainer service, the same one
 'shell'/'setup-ssh' resolve by default. Pass --container to connect to any other
@@ -90,6 +91,14 @@ func runSsh(cmd *cobra.Command, args []string) error {
 	}
 
 	ssh := service.SshService{Report: console}
+	// Managed blocks live in the CLI's own SSH config now. Lift any left in the
+	// user's ~/.ssh/config by an older version before looking one up, so an
+	// already-configured alias is found instead of being set up a second time.
+	if moved, merr := ssh.MigrateManagedBlocks(); merr != nil {
+		return merr
+	} else if len(moved) > 0 {
+		console.Ok(fmt.Sprintf("Moved %d managed Host block(s) out of %s", len(moved), domain.UserSSHConfigPath()))
+	}
 	alias, ok, err := ssh.ManagedAlias(kind, ref)
 	if err != nil {
 		return err

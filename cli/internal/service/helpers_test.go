@@ -50,6 +50,20 @@ func (r *fakeRunner) callContaining(token string) []string {
 	return nil
 }
 
+// lastCallContaining returns the LAST recorded invocation that includes token.
+// Use it when an earlier call legitimately mentions the same token (e.g. a
+// `test -x <path>` probe preceding the real `exec <path>`).
+func (r *fakeRunner) lastCallContaining(token string) []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for i := len(r.calls) - 1; i >= 0; i-- {
+		if slices.Contains(r.calls[i], token) {
+			return r.calls[i]
+		}
+	}
+	return nil
+}
+
 // scriptedPrompter drives the wizard forward-only, answering each step from
 // answers (keyed by step Key) or falling back to the field's seeded default.
 // The non-wizard Prompter methods are unused by the wizard and return zero values.
@@ -99,8 +113,10 @@ func defaultForField(f Field) any {
 }
 
 // useFakeDocker installs r as the docker Runner and returns a restore func that
-// resets the runner and availability cache.
-func useFakeDocker(r *fakeRunner) func() {
+// resets the runner and availability cache. It takes a docker.Runner rather
+// than a concrete *fakeRunner so tests can wrap it (see missingScriptRunner in
+// inspect_test.go).
+func useFakeDocker(r docker.Runner) func() {
 	docker.SetRunner(r)
 	docker.ResetDockerCache()
 	return func() {

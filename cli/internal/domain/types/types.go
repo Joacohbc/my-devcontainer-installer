@@ -10,6 +10,7 @@ type ModuleID string
 
 const (
 	ModuleBase           ModuleID = "base"
+	ModuleAliases        ModuleID = "aliases"
 	ModuleGithubCli      ModuleID = "github-cli"
 	ModuleJavaTemurin    ModuleID = "java-temurin"
 	ModuleJavaOpenjdk    ModuleID = "java-openjdk"
@@ -98,6 +99,12 @@ const SSHKeyName = "id_devcontainer"
 // change on every image rebuild, while the container IP stays the same — never
 // collide with the real hosts recorded in ~/.ssh/known_hosts.
 const SSHKnownHostsName = "known_hosts"
+
+// SSHConfigName is the filename of the SSH config file the CLI owns, kept next
+// to the user's own ~/.ssh/config rather than inside it. Every managed Host
+// block is written there and pulled in by a single `Include` directive at the
+// top of ~/.ssh/config, so the CLI never rewrites config it did not author.
+const SSHConfigName = "devcontainer-cli.config"
 
 type ModuleOptionChoice struct {
 	Value string `json:"value"`

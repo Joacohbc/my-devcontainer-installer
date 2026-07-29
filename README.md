@@ -134,7 +134,10 @@ devcontainer-cli up                    # Levanta el stack de contenedores (o eje
 ```
 
 ### 2. Conexión y configuración SSH (`devcontainer-cli ssh`)
-`devcontainer-cli ssh` abre una sesión SSH en el contenedor. Si aún no está configurado el acceso SSH para el proyecto, ejecuta automáticamente el asistente de `setup-ssh` (creación de claves, alias en `~/.ssh/config` y fijado de `known_hosts`):
+`devcontainer-cli ssh` abre una sesión SSH en el contenedor. Si aún no está configurado el acceso SSH para el proyecto, ejecuta automáticamente el asistente de `setup-ssh` (creación de claves, alias SSH y fijado de `known_hosts`).
+
+Los bloques `Host` se escriben en un archivo propio de la CLI, **`~/.ssh/devcontainer-cli.config`**, y no en tu `~/.ssh/config`: a ese último sólo se le agrega una línea `Include` al principio, la primera vez. Los bloques que versiones anteriores dejaron dentro de `~/.ssh/config` se mueven solos. Cambiá la ubicación con `devcontainer-cli config ssh-config-file <ruta>`.
+
 ```bash
 devcontainer-cli ssh                      # Conecta al devcontainer (ejecuta setup-ssh si es la primera vez)
 devcontainer-cli ssh --remote user@server # Conexión remota (ejecuta setup-ssh --remote si no existe el alias)
@@ -156,13 +159,29 @@ devcontainer-cli config shared backup -o backup.zip            # Respaldar volum
 devcontainer-cli config shared restore backup.zip              # Restaurar volumen desde un file .zip
 ```
 
-### 5. Conectar otros servicios a la red (`network`)
+### 5. Contexto del contenedor para agentes de IA (`context`)
+Cada contenedor trae `~/CONTEXT.md` (estás dentro de Docker, `uv` para Python, `pnpm` para JS, los servicios de base de datos son contenedores hermanos) y el comando `get-devcontainer-context`, que además lista las herramientas realmente instaladas con sus versiones. El entrypoint inyecta un resumen marcado en `~/.claude/CLAUDE.md` y `~/.codex/AGENTS.md` para que los agentes lo lean sin que se lo pidas (se desactiva con `DEVCONTAINER_AGENT_CONTEXT=0`).
+```bash
+devcontainer-cli context                 # Reporte legible del contenedor del proyecto
+devcontainer-cli context --json          # Salida estructurada, pensada para agentes
+get-devcontainer-context                 # Lo mismo, desde adentro del contenedor
+```
+
+### 6. Aliases en todos los contenedores (`config alias`)
+La imagen trae aliases por defecto: `kill_port <puerto>`, `npm`→`pnpm`, `npx`→`pnpm dlx`, `pip`/`pip3`→`uv pip`, y los agentes (`claude`, `codex`, `copilot`) sin prompts de permisos —el contenedor ya es el sandbox— con `command claude` como escape. Tus propios aliases van en `~/.alias.sh`, que se aplica a **todos** los contenedores sin reconstruir ninguna imagen:
+```bash
+devcontainer-cli config alias                          # Ver el archivo y su contenido
+devcontainer-cli config alias edit                     # Editarlo con $EDITOR
+devcontainer-cli config shared sync alias.sh --force   # Aplicarlo a todos los contenedores
+```
+
+### 7. Conectar otros servicios a la red (`network`)
 Conecta cualquier otro contenedor Docker a la red privada del workspace actual:
 ```bash
 devcontainer-cli network connect mi-servicio-extra --alias db-extra
 ```
 
-### 6. Limpieza del sistema (`clean`)
+### 8. Limpieza del sistema (`clean`)
 ```bash
 devcontainer-cli clean ssh              # Elimina bloques SSH y known_hosts obsoletos
 devcontainer-cli clean all              # Menú interactivo de limpieza de imágenes/volúmenes/redes

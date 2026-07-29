@@ -10,9 +10,10 @@ import (
 )
 
 type Defaults struct {
-	DBUser     string `json:"dbUser,omitempty"`
-	DBPassword string `json:"dbPassword,omitempty"`
-	SSHKeyPath string `json:"sshKeyPath,omitempty"`
+	DBUser        string `json:"dbUser,omitempty"`
+	DBPassword    string `json:"dbPassword,omitempty"`
+	SSHKeyPath    string `json:"sshKeyPath,omitempty"`
+	SSHConfigFile string `json:"sshConfigFile,omitempty"`
 }
 
 type GlobalConfig struct {
@@ -119,6 +120,52 @@ func DefaultManagedSSHKeyPath() string {
 // host key can be re-pinned without ever touching ~/.ssh/known_hosts.
 func ManagedKnownHostsPath() string {
 	return filepath.Join(GlobalConfigDir(), "ssh", types.SSHKnownHostsName)
+}
+
+// DefaultManagedSSHConfigPath is the path of the SSH config file the CLI owns
+// (~/.ssh/devcontainer-cli.config). Every managed Host block lives there instead
+// of in the user's ~/.ssh/config, which only ever gains a single Include line.
+func DefaultManagedSSHConfigPath() string {
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".ssh", types.SSHConfigName)
+}
+
+// UserSSHConfigPath is the path of the user's own ~/.ssh/config. The CLI reads
+// it (to detect alias collisions and host references) but only ever writes the
+// Include directive pointing at the managed file.
+func UserSSHConfigPath() string {
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".ssh", "config")
+}
+
+// ResolveSSHConfigPath returns the managed SSH config path to use, with
+// precedence flagOverride → cfg.Defaults.SSHConfigFile → the default.
+func ResolveSSHConfigPath(flagOverride string) string {
+	if flagOverride != "" {
+		return flagOverride
+	}
+	cfg := LoadGlobalConfig()
+	if cfg.Defaults != nil && cfg.Defaults.SSHConfigFile != "" {
+		return cfg.Defaults.SSHConfigFile
+	}
+	return DefaultManagedSSHConfigPath()
+}
+
+// UserAliasFilePath is the host path of the user's own shell alias file.
+//
+// It deliberately lives in the home directory rather than under
+// GlobalConfigDir(): it is the host side of the "alias.sh" shared-config entry
+// (types.SharedConfigEntries), whose host source is always
+// $HOME/<entry.Target>. Keeping the two in sync is what lets
+// `config shared sync alias.sh` push this exact file into the shared volume
+// with no special-casing.
+func UserAliasFilePath() string {
+	home, _ := os.UserHomeDir()
+	entry, ok := types.SharedConfigEntryByID(types.SharedConfigAliasID)
+	if !ok {
+		return filepath.Join(home, ".alias.sh")
+	}
+	return filepath.Join(home, entry.Target)
 }
 
 // ResolveSSHKeyPath returns the SSH key path to use, with precedence

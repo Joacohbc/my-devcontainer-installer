@@ -58,7 +58,17 @@ var SharedConfigEntries = []SharedConfigEntry{
 	{ID: "agents", Target: ".agents", Kind: SharedConfigDir}, // reusable agent rules/workflows/skills (Graphify, Caveman, Antigravity, …)
 	{ID: "codex", Target: ".codex", Kind: SharedConfigDir},
 	{ID: "gh", Target: ".config/gh", Kind: SharedConfigDir},
+	// The user's own shell aliases. Persisting them here is what makes
+	// `config alias` edits apply to every container without an image rebuild:
+	// the baked defaults (~/.devcontainer_aliases.sh, from the aliases module)
+	// are sourced first, then this file, so user definitions win.
+	{ID: SharedConfigAliasID, Target: ".alias.sh", Kind: SharedConfigFile},
 }
+
+// SharedConfigAliasID is the entry id of the user's own shell alias file. It is
+// referenced by name from domain.UserAliasFilePath() and the `config alias`
+// commands, so keep it a named constant rather than a bare string.
+const SharedConfigAliasID = "alias.sh"
 
 // SharedConfigEntryByID returns the entry for an id and whether it exists.
 func SharedConfigEntryByID(id string) (SharedConfigEntry, bool) {

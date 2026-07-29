@@ -337,7 +337,7 @@ func writeSSHFiles(t *testing.T, config, knownHosts string) (configPath, knownHo
 	setHomeDir(t, home)
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 
-	configPath = filepath.Join(home, ".ssh", "config")
+	configPath = managedSSHConfig(home)
 	if err := os.MkdirAll(filepath.Dir(configPath), 0o700); err != nil {
 		t.Fatal(err)
 	}

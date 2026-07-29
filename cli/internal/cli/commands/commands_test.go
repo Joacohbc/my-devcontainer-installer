@@ -27,7 +27,7 @@ func TestNewRootCommand_RegistersAllSubcommands(t *testing.T) {
 		"ssh", "setup-ssh", "clean", "port-forward", "run", "down", "destroy",
 		"start", "stop", "restart", "update",
 		"upgrade-cli", "config", "cleanup-tips", "shell", "logs", "copy",
-		"up", "status", "ls", "info", "network",
+		"up", "status", "ls", "info", "network", "context",
 	}
 	have := map[string]bool{}
 	for _, c := range root.Commands() {
@@ -537,6 +537,69 @@ func TestConfigSharedCommand_Exists(t *testing.T) {
 		if findSubcommand(sharedCmd, name) == nil {
 			t.Errorf("expected 'config shared %s' subcommand", name)
 		}
+	}
+}
+
+func TestConfigAliasCommand_Structure(t *testing.T) {
+	root := NewRootCommand("test")
+	configCmd := findSubcommand(root, "config")
+	if configCmd == nil {
+		t.Fatal("expected 'config' command to be registered")
+	}
+	aliasCmd := findSubcommand(configCmd, "alias")
+	if aliasCmd == nil {
+		t.Fatal("expected 'config alias' command to be registered")
+	}
+	// Bare `config alias` prints the file; it takes no positional args.
+	if err := aliasCmd.Args(aliasCmd, []string{"extra"}); err == nil {
+		t.Error("expected 'config alias' to reject positional arguments")
+	}
+	for _, name := range []string{"edit", "reset"} {
+		if findSubcommand(aliasCmd, name) == nil {
+			t.Errorf("expected 'config alias %s' subcommand", name)
+		}
+	}
+	// reset is destructive, so it must carry the standard confirmation flags.
+	reset := findSubcommand(aliasCmd, "reset")
+	for _, name := range []string{"yes", "no-interactive"} {
+		if reset.Flags().Lookup(name) == nil {
+			t.Errorf("expected config alias reset flag --%s", name)
+		}
+	}
+	// It is not a top-level command.
+	if findSubcommand(root, "alias") != nil {
+		t.Error("expected no top-level 'alias' command; it lives under 'config'")
+	}
+}
+
+func TestConfigCommand_HasSSHConfigFileSubcommand(t *testing.T) {
+	root := NewRootCommand("test")
+	configCmd := findSubcommand(root, "config")
+	if configCmd == nil {
+		t.Fatal("expected 'config' command to be registered")
+	}
+	sub := findSubcommand(configCmd, "ssh-config-file")
+	if sub == nil {
+		t.Fatal("expected 'config ssh-config-file' command to be registered")
+	}
+	if sub.Flags().Lookup("unset") == nil {
+		t.Error("expected config ssh-config-file flag --unset")
+	}
+}
+
+func TestContextCommand_Flags(t *testing.T) {
+	root := NewRootCommand("test")
+	ctx := findSubcommand(root, "context")
+	if ctx == nil {
+		t.Fatal("expected 'context' command to be registered")
+	}
+	for _, name := range []string{"container", "json"} {
+		if ctx.Flags().Lookup(name) == nil {
+			t.Errorf("expected context flag --%s", name)
+		}
+	}
+	if err := ctx.Args(ctx, []string{"extra"}); err == nil {
+		t.Error("expected 'context' to reject positional arguments")
 	}
 }
 

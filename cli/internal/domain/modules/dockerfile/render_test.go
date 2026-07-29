@@ -57,6 +57,11 @@ func TestBaseModuleRender(t *testing.T) {
 	if !strings.Contains(out, "\n    micro \\") {
 		t.Errorf("base must install the micro editor by default:\n%s", out)
 	}
+	// lsof ships in the base image so the kill_port helper from the aliases
+	// module (kill -9 $(lsof -t -i:<port>)) works in every container.
+	if !strings.Contains(out, "\n    lsof \\") {
+		t.Errorf("base must install lsof by default:\n%s", out)
+	}
 	// The ~/help quick reference (micro + zellij shortcuts) is materialized into
 	// devuser's home at build time, then its installer script is removed.
 	for _, frag := range []string{

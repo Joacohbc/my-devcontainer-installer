@@ -25,7 +25,9 @@ type Asset struct {
 // KindScript are runtime-copyable via `copy --asset`; KindBuild scripts are
 // build-time only and never offered for copying.
 var Registry = []Asset{
+	{Name: "alias", File: "alias.sh", Kind: KindBuild, Label: "Default shell aliases and helpers"},
 	{Name: "entrypoint", File: "entrypoint.sh", Kind: KindBuild, Label: "Container entrypoint"},
+	{Name: "get-devcontainer-context", File: "get-devcontainer-context.sh", Kind: KindScript, Label: "Container context / installed-tool report"},
 	{Name: "golang-utils", File: "golang_utils.sh", Kind: KindBuild, Label: "Go install/update utilities"},
 	{Name: "install-antigravity", File: "install-antigravity.sh", Kind: KindScript, Label: "Antigravity CLI installer"},
 	{Name: "install-caveman", File: "install-caveman.sh", Kind: KindScript, Label: "Caveman installer"},
@@ -35,6 +37,7 @@ var Registry = []Asset{
 	{Name: "install-graphify", File: "install-graphify.sh", Kind: KindScript, Label: "Graphify installer"},
 	{Name: "install-opencode", File: "install-opencode.sh", Kind: KindScript, Label: "OpenCode installer"},
 	{Name: "login-github-cli", File: "login-github-cli.sh", Kind: KindScript, Label: "GitHub CLI login helper"},
+	{Name: "setup-context", File: "setup-context.sh", Kind: KindBuild, Label: "~/CONTEXT.md orientation doc writer"},
 	{Name: "setup-help", File: "setup-help.sh", Kind: KindBuild, Label: "~/help quick reference writer"},
 	{Name: "update-golang", File: "update_golang.sh", Kind: KindBuild, Label: "Go update script"},
 	{Name: "zsh-installer", File: "zsh-installer.sh", Kind: KindBuild, Label: "Zsh configuration installer"},

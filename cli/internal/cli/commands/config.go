@@ -28,6 +28,9 @@ Subcommands:
   db-user             Default database user for DB services.
   db-password         Default database password for DB services.
   ssh-key             Path to the shared managed SSH key (and key utilities).
+  ssh-config-file     Path of the CLI-managed SSH config file (Include'd from
+                      ~/.ssh/config, which the CLI otherwise leaves alone).
+  alias               Your own shell aliases, applied to every container.
   preset              List/create/copy/remove reusable module-bundle presets.
   shared              Sync/backup/restore the shared tool-config volume.
   export / import     Export the project config to YAML / import it back.
@@ -46,6 +49,8 @@ Config file: ` + domain.GlobalConfigPath(),
 	cmd.AddCommand(newConfigKeyCommand("db-user", "DB user"))
 	cmd.AddCommand(newConfigKeyCommand("db-password", "DB password"))
 	cmd.AddCommand(newConfigSSHKeyCommand())
+	cmd.AddCommand(newConfigKeyCommand("ssh-config-file", "CLI-managed SSH config file"))
+	cmd.AddCommand(newConfigAliasCommand())
 	cmd.AddCommand(newConfigExportCommand())
 	cmd.AddCommand(newConfigImportCommand())
 	cmd.AddCommand(newPresetCommand())
