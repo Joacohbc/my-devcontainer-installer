@@ -25,6 +25,27 @@ var PostgresService = &ServiceSpec{
 			Default: "17-alpine",
 		},
 	},
+	Context: func(ctx RenderContext) *types.ContextSection {
+		version := types.StringOpt(ctx.Options, "version", "17-alpine")
+		user, password := dbCredentials(ctx)
+		return &types.ContextSection{
+			Title: "PostgreSQL (sibling container)",
+			Body: ctxBody(
+				"Running as a separate container on the project network — **not** on",
+				"`localhost`. Reach it at host `postgres`, port `5432`.",
+				"",
+				"- image: `postgres:"+version+"`",
+				"- database: `devdb`",
+				"- user: `"+user+"`",
+				"- password: `"+password+"`",
+				"",
+				"    psql -h postgres -U "+user+" devdb   # needs the postgres-client module",
+				"",
+				"Its data lives in the `postgres_data` volume, so it survives a restart but",
+				"is deleted by `devcontainer-cli down -v` and `destroy`.",
+			),
+		}
+	},
 	Render: func(ctx RenderContext) *ServiceDef {
 		version := types.StringOpt(ctx.Options, "version", "17-alpine")
 		user := ctx.DefaultDBUser

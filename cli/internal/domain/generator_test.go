@@ -85,7 +85,7 @@ func TestGenerateDockerfile_MinimalIncludesAliasesAndContext(t *testing.T) {
 	assertContainsStr(t, df, "\n    lsof \\", "minimal dockerfile")
 	assertContainsStr(t, df, "COPY alias.sh /home/devuser/.devcontainer_aliases.sh", "minimal dockerfile")
 	assertContainsStr(t, df, "COPY get-devcontainer-context.sh /home/devuser/.local/bin/get-devcontainer-context", "minimal dockerfile")
-	assertContainsStr(t, df, "COPY setup-context.sh /tmp/setup-context.sh", "minimal dockerfile")
+	assertContainsStr(t, df, "COPY CONTEXT.md /home/devuser/CONTEXT.md", "minimal dockerfile")
 	// yoloAgents defaults on, so the flag file alias.sh keys off is created.
 	assertContainsStr(t, df, `touch \$HOME/.devcontainer_agents_yolo`, "minimal dockerfile")
 	// The user's own alias file is sourced last so it overrides the defaults.

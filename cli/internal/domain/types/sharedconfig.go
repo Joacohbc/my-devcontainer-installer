@@ -62,13 +62,18 @@ var SharedConfigEntries = []SharedConfigEntry{
 	// `config alias` edits apply to every container without an image rebuild:
 	// the baked defaults (~/.devcontainer_aliases.sh, from the aliases module)
 	// are sourced first, then this file, so user definitions win.
-	{ID: SharedConfigAliasID, Target: ".alias.sh", Kind: SharedConfigFile},
+	{ID: SharedConfigAliasID, Target: SharedConfigAliasTarget, Kind: SharedConfigFile},
 }
 
 // SharedConfigAliasID is the entry id of the user's own shell alias file. It is
 // referenced by name from domain.UserAliasFilePath() and the `config alias`
 // commands, so keep it a named constant rather than a bare string.
 const SharedConfigAliasID = "alias.sh"
+
+// SharedConfigAliasTarget is where that entry is symlinked inside the container,
+// relative to DevUserHome. The aliases module sources it from every rc file, so
+// the two must agree.
+const SharedConfigAliasTarget = ".alias.sh"
 
 // SharedConfigEntryByID returns the entry for an id and whether it exists.
 func SharedConfigEntryByID(id string) (SharedConfigEntry, bool) {

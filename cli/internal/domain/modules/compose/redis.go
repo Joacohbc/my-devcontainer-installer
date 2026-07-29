@@ -25,6 +25,23 @@ var RedisService = &ServiceSpec{
 			Default: "7.4-alpine",
 		},
 	},
+	Context: func(ctx RenderContext) *types.ContextSection {
+		version := types.StringOpt(ctx.Options, "version", "7.4-alpine")
+		return &types.ContextSection{
+			Title: "Redis (sibling container)",
+			Body: ctxBody(
+				"Running as a separate container on the project network — **not** on",
+				"`localhost`. Reach it at host `redis`, port `6379`, image `redis:"+version+"`.",
+				"",
+				"No password is set.",
+				"",
+				"    redis-cli -h redis   # needs the redis-client module",
+				"",
+				"Its data lives in the `redis_data` volume, so it survives a restart but is",
+				"deleted by `devcontainer-cli down -v` and `destroy`.",
+			),
+		}
+	},
 	Render: func(ctx RenderContext) *ServiceDef {
 		version := types.StringOpt(ctx.Options, "version", "7.4-alpine")
 		return &ServiceDef{

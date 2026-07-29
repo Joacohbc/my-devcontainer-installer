@@ -25,4 +25,13 @@ type ModuleSpec struct {
 	// back to the default order.
 	PostScriptStartOrder int
 	Render               func(opts map[string]any) string
+	// Context is this module's entry in the generated ~/CONTEXT.md: what it puts
+	// in the container and how an AI agent is expected to use it. Nil means the
+	// module adds nothing an agent needs to know (pure build plumbing). Returning
+	// nil for a given opts is also allowed, so a module can stay silent when the
+	// option that made it interesting is off.
+	//
+	// It is rendered at build time from the resolved options, so anything it
+	// mentions must be the value actually baked into this image.
+	Context func(opts map[string]any) *types.ContextSection
 }

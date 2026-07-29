@@ -7,16 +7,16 @@ import (
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 )
 
-// The aliases module must ship all three of its assets and wire both alias
-// layers into every rc file.
+// The aliases module must ship all three of its files — the two embedded
+// assets plus the generated CONTEXT.md — and wire both alias layers into every
+// rc file.
 func TestAliasesModuleRender(t *testing.T) {
 	out := AliasesModule.Render(nil)
 
 	for _, frag := range []string{
 		"COPY alias.sh /home/devuser/.devcontainer_aliases.sh",
 		"COPY get-devcontainer-context.sh /home/devuser/.local/bin/get-devcontainer-context",
-		"COPY setup-context.sh /tmp/setup-context.sh",
-		"rm /tmp/setup-context.sh",
+		"COPY CONTEXT.md /home/devuser/CONTEXT.md",
 	} {
 		if !strings.Contains(out, frag) {
 			t.Errorf("aliases module must contain %q:\n%s", frag, out)
@@ -83,7 +83,9 @@ func TestAliasesModuleSpec(t *testing.T) {
 	if AliasesModule.Category != types.CategoryBase {
 		t.Errorf("aliases module must be in CategoryBase (it appends to rc files rewritten by base), got %q", AliasesModule.Category)
 	}
-	want := []string{"alias.sh", "setup-context.sh", "get-devcontainer-context.sh"}
+	// CONTEXT.md is generated, not embedded, so it must NOT be in CopyFiles —
+	// preflight would look for it in the embedded FS and report it missing.
+	want := []string{"alias.sh", "get-devcontainer-context.sh"}
 	if len(AliasesModule.CopyFiles) != len(want) {
 		t.Fatalf("expected CopyFiles %v, got %v", want, AliasesModule.CopyFiles)
 	}

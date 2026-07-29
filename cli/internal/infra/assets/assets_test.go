@@ -150,6 +150,51 @@ func TestEntrypointBridgesAntigravitySkills(t *testing.T) {
 	}
 }
 
+// The user's alias file must always exist and be devuser-owned, so "edit your
+// aliases" has an answer even when the shared-config volume is opted out of.
+// With the volume mounted the entry is already a symlink, and the -e test must
+// leave it alone rather than replacing it with a local file.
+func TestEntrypointEnsuresUserAliasFile(t *testing.T) {
+	body, err := os.ReadFile(embeddedScript)
+	if err != nil {
+		t.Fatalf("reading %s: %v", embeddedScript, err)
+	}
+	script := string(body)
+
+	if !strings.Contains(script, `[ ! -e /home/devuser/.alias.sh ]`) {
+		t.Error("entrypoint must only create ~/.alias.sh when nothing is there (a symlink counts)")
+	}
+	if !strings.Contains(script, `su - devuser -c 'cat > "$HOME/.alias.sh"'`) {
+		t.Error("entrypoint must write ~/.alias.sh as devuser, not root")
+	}
+	if !strings.Contains(script, `chown "$DEV_UID:$DEV_GID" /home/devuser/.alias.sh`) {
+		t.Error("entrypoint must leave ~/.alias.sh owned by devuser's actual UID/GID")
+	}
+
+	// The fallback must come after the shared-config block, or it would win the
+	// race and the volume symlink would never be created.
+	if shared, alias := strings.Index(script, "SHARED_CONFIG_ENTRIES"), strings.Index(script, "/home/devuser/.alias.sh"); shared == -1 || alias == -1 || shared > alias {
+		t.Errorf("the ~/.alias.sh fallback must run after the shared-config symlinks (shared=%d alias=%d)", shared, alias)
+	}
+}
+
+// The container context reaches agents through the generated ~/CONTEXT.md and
+// get-devcontainer-context only. The entrypoint must NOT write into the agents'
+// own memory files: those live in the shared volume and are the user's.
+func TestEntrypointDoesNotTouchAgentMemoryFiles(t *testing.T) {
+	body, err := os.ReadFile(embeddedScript)
+	if err != nil {
+		t.Fatalf("reading %s: %v", embeddedScript, err)
+	}
+	script := string(body)
+
+	for _, frag := range []string{"CLAUDE.md", "AGENTS.md", "devcontainer-cli:context", "DEVCONTAINER_AGENT_CONTEXT"} {
+		if strings.Contains(script, frag) {
+			t.Errorf("entrypoint must not reference %q; ~/CONTEXT.md is the only context channel", frag)
+		}
+	}
+}
+
 // The auto-start post-scripts must run as devuser (never root): the whole loop
 // is wrapped in a single 'su - devuser' login shell and backgrounded so SSH is
 // not blocked, with a per-script .done sentinel guarding re-runs.

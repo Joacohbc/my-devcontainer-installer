@@ -11,13 +11,18 @@ import (
 // Each client is its own selectable module under the "clients" UI category so
 // they can be picked individually in the wizard. setupCmds are optional shell
 // commands (e.g. adding a vendor apt repo) chained into the same RUN, before the
-// install, so the whole client is a single layer.
-func aptClientModule(id types.ModuleID, label, title string, setupCmds []string, pkg string) *ModuleSpec {
+// install, so the whole client is a single layer. section is the module's entry
+// in the generated ~/CONTEXT.md; these clients take no options, so it is a fixed
+// value rather than a function of opts.
+func aptClientModule(id types.ModuleID, label, title string, setupCmds []string, pkg string, section *types.ContextSection) *ModuleSpec {
 	return &ModuleSpec{
 		ID:         id,
 		Label:      label,
 		Category:   types.CategoryDB,
 		UICategory: types.UICategoryClients,
+		Context: func(opts map[string]any) *types.ContextSection {
+			return section
+		},
 		Render: func(opts map[string]any) string {
 			setup := ""
 			for _, c := range setupCmds {
@@ -74,6 +79,20 @@ var PostgresClientModule = &ModuleSpec{
 			{Value: "16", Label: "PostgreSQL 16 (PGDG)"},
 		}),
 	},
+	Context: func(opts map[string]any) *types.ContextSection {
+		version := types.StringOpt(opts, "version", "")
+		which := "the version from the Ubuntu repositories"
+		if isPostgresClientVersion(version) {
+			which = "PostgreSQL " + version + " from the PGDG repository"
+		}
+		return &types.ContextSection{
+			Title: "PostgreSQL client",
+			Body: ctxBody(
+				"`psql` is installed ("+which+"). It is only the client — the",
+				"server, if any, is a sibling container described below.",
+			),
+		}
+	},
 	Render: func(opts map[string]any) string {
 		version := types.StringOpt(opts, "version", "")
 		if !isPostgresClientVersion(version) {
@@ -105,6 +124,13 @@ var RedisClientModule = aptClientModule(
 	"REDIS CLIENT",
 	nil,
 	"redis-tools",
+	&types.ContextSection{
+		Title: "Redis client",
+		Body: ctxBody(
+			"`redis-cli` is installed. It is only the client — the server, if any, is a",
+			"sibling container described below.",
+		),
+	},
 )
 
 // mongoClientSetup adds the MongoDB apt repo (mongosh is decoupled from the
@@ -121,4 +147,11 @@ var MongoClientModule = aptClientModule(
 	"MONGODB CLIENT",
 	mongoClientSetup,
 	"mongodb-mongosh",
+	&types.ContextSection{
+		Title: "MongoDB client",
+		Body: ctxBody(
+			"`mongosh` is installed. It is only the client — the server, if any, is a",
+			"sibling container described below.",
+		),
+	},
 )

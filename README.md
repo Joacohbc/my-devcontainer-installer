@@ -160,7 +160,9 @@ devcontainer-cli config shared restore backup.zip              # Restaurar volum
 ```
 
 ### 5. Contexto del contenedor para agentes de IA (`context`)
-Cada contenedor trae `~/CONTEXT.md` (estás dentro de Docker, `uv` para Python, `pnpm` para JS, los servicios de base de datos son contenedores hermanos) y el comando `get-devcontainer-context`, que además lista las herramientas realmente instaladas con sus versiones. El entrypoint inyecta un resumen marcado en `~/.claude/CLAUDE.md` y `~/.codex/AGENTS.md` para que los agentes lo lean sin que se lo pidas (se desactiva con `DEVCONTAINER_AGENT_CONTEXT=0`).
+Cada contenedor trae `~/CONTEXT.md`, el documento que un agente de IA debería leer primero. **Se genera para cada proyecto** a partir de los módulos y servicios que elegiste, así que describe lo que realmente hay en esa imagen: que estás dentro de Docker, `uv` para Python, `pnpm` para JS, qué versión de Node quedó fija, y a qué host, puerto y credenciales responde cada base de datos (contenedores hermanos, nunca `localhost`). Elegir otros módulos cambia el documento.
+
+Para lo que sólo se sabe en tiempo de ejecución está `get-devcontainer-context`, que lista las herramientas realmente instaladas con sus versiones, los servicios alcanzables y el workspace resuelto.
 ```bash
 devcontainer-cli context                 # Reporte legible del contenedor del proyecto
 devcontainer-cli context --json          # Salida estructurada, pensada para agentes
@@ -168,12 +170,16 @@ get-devcontainer-context                 # Lo mismo, desde adentro del contenedo
 ```
 
 ### 6. Aliases en todos los contenedores (`config alias`)
-La imagen trae aliases por defecto: `kill_port <puerto>`, `npm`→`pnpm`, `npx`→`pnpm dlx`, `pip`/`pip3`→`uv pip`, y los agentes (`claude`, `codex`, `copilot`) sin prompts de permisos —el contenedor ya es el sandbox— con `command claude` como escape. Tus propios aliases van en `~/.alias.sh`, que se aplica a **todos** los contenedores sin reconstruir ninguna imagen:
+La imagen trae aliases por defecto: `kill_port <puerto>`, `npm`→`pnpm`, `npx`→`pnpm dlx`, `pip`/`pip3`→`uv pip`, y los agentes (`claude`, `codex`, `copilot`) sin prompts de permisos —el contenedor ya es el sandbox— con `command claude` como escape.
+
+Tus propios aliases van en `~/.alias.sh`, y los podés cambiar **cuando quieras**: vive en el volumen compartido, así que se aplica a **todos** los contenedores sin reconstruir ninguna imagen y sin reiniciar nada (toma efecto en la próxima shell). Editalo desde el host o desde adentro del contenedor, da igual:
 ```bash
 devcontainer-cli config alias                          # Ver el archivo y su contenido
 devcontainer-cli config alias edit                     # Editarlo con $EDITOR
-devcontainer-cli config shared sync alias.sh --force   # Aplicarlo a todos los contenedores
+devcontainer-cli config alias reset                    # Volver a la plantilla por defecto
+devcontainer-cli config shared sync alias.sh --force   # Empujar la versión del host a todos
 ```
+Como se sourcea después de los defaults de la imagen, lo que definas ahí siempre gana.
 
 ### 7. Conectar otros servicios a la red (`network`)
 Conecta cualquier otro contenedor Docker a la red privada del workspace actual:

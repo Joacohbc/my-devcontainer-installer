@@ -10,6 +10,15 @@ var YarnModule = &ModuleSpec{
 	Category:   types.CategoryRuntime,
 	UICategory: types.UICategoryLanguages,
 	Requires:   []types.ModuleID{types.ModuleNodejs},
+	Context: func(opts map[string]any) *types.ContextSection {
+		return &types.ContextSection{
+			Title: "Yarn",
+			Body: ctxBody(
+				"Enabled through Corepack and pinned to the stable release. Use it for projects",
+				"that already have a `yarn.lock`; otherwise prefer pnpm.",
+			),
+		}
+	},
 	Render: func(opts map[string]any) string {
 		// Yarn ships with Node via Corepack. We source the node init script
 		// (.nodejs_init.sh, written by the nodejs module for both nvm and fnm)

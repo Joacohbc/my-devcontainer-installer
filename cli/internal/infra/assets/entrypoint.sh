@@ -152,53 +152,26 @@ SHARED_CONFIG_ENTRIES
     fi
 fi
 
-# ── Devcontainer context for AI agents ──────────────────────────────────────
-# Agents read their user-scope memory file on startup but have no way to learn
-# they are inside a container, so drop a short marked block into each one. Only
-# runs when the shared-config volume is mounted (that is what makes ~/.claude
-# and ~/.codex real, persisted directories) and can be turned off entirely with
-# DEVCONTAINER_AGENT_CONTEXT=0.
+# ── The user's own alias file ───────────────────────────────────────────────
+# ~/.alias.sh is sourced by every shell after the image's baked defaults, so the
+# user can redefine anything at any time. Normally it is a symlink into the
+# shared-config volume (created above), which is what makes an edit apply to
+# every container and survive a rebuild. When that volume is opted out of there
+# is nothing to link, so create a plain local file instead — the file must always
+# exist and be writable by devuser, or "edit your aliases" has no answer.
+if [ ! -e /home/devuser/.alias.sh ]; then
+    su - devuser -c 'cat > "$HOME/.alias.sh"' <<'USER_ALIASES'
+# Your own shell aliases and functions.
 #
-# The block is deliberately SHORT and toolset-agnostic: the volume is shared by
-# every container the CLI creates, so anything variant-specific belongs in
-# get-devcontainer-context, not here. It is delimited by markers, so re-running
-# is idempotent and removing it is a clean cut; nothing outside the markers is
-# ever touched. Runs as devuser so the shared volume keeps its ownership.
-if [ -d "$SHARED_CONFIG_DIR" ] && [ "${DEVCONTAINER_AGENT_CONTEXT:-1}" != "0" ]; then
-    su - devuser -s /bin/bash -c '
-        marker_open="<!-- devcontainer-cli:context v=1 -->"
-        for target in "$HOME/.claude/CLAUDE.md" "$HOME/.codex/AGENTS.md"; do
-            target_dir="$(dirname "$target")"
-            [ -d "$target_dir" ] || continue
-            [ -f "$target" ] || : > "$target"
-            # Already present at this exact version: nothing to do.
-            grep -qF "$marker_open" "$target" 2>/dev/null && continue
-            # Drop any older version of the block before appending the current one.
-            sed -i "/<!-- devcontainer-cli:context v=/,/<!-- \/devcontainer-cli:context -->/d" "$target"
-            printf "\n" >> "$target"
-            cat >> "$target" <<"AGENT_CONTEXT_BLOCK"
-<!-- devcontainer-cli:context v=1 -->
-## Devcontainer
-
-You are working inside a Docker container managed by devcontainer-cli. The
-project is bind-mounted at /workspace; anything written outside /workspace and
-/home/devuser is discarded when the container is recreated.
-
-- Python: use uv (uv pip install X, uv run script.py, uv tool install X). Do not
-  create a virtualenv and do not call pip directly.
-- JavaScript/TypeScript: use pnpm (pnpm install, pnpm add X, pnpm dlx X). Do not
-  call npm or npx directly.
-- Database services (postgres, redis, mongo) are sibling containers, reachable
-  by service name, never on localhost.
-- Free a busy port with: kill_port <port>
-- There is no systemd; do not use systemctl or service.
-
-Run get-devcontainer-context for the tools and versions actually installed in
-this container, and read ~/CONTEXT.md for the full conventions.
-<!-- /devcontainer-cli:context -->
-AGENT_CONTEXT_BLOCK
-        done
-    ' || echo "warning: could not write the agent context block" >&2
+# Sourced by every shell AFTER the CLI's baked defaults
+# (~/.devcontainer_aliases.sh), so anything defined here wins. Changes take
+# effect in the next shell — no rebuild, no restart.
+#
+# NOTE: the shared-config volume is not mounted in this container, so this file
+# is local to it and is lost when the container is recreated. Edit it on the host
+# with `devcontainer-cli config alias edit` to have it persist everywhere.
+USER_ALIASES
+    chown "$DEV_UID:$DEV_GID" /home/devuser/.alias.sh 2>/dev/null || true
 fi
 
 # ── Auto-run non-interactive installer post-scripts ─────────────────────────

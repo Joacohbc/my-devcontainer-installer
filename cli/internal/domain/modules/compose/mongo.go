@@ -25,6 +25,26 @@ var MongoService = &ServiceSpec{
 			Default: "8.0",
 		},
 	},
+	Context: func(ctx RenderContext) *types.ContextSection {
+		version := types.StringOpt(ctx.Options, "version", "8.0")
+		user, password := dbCredentials(ctx)
+		return &types.ContextSection{
+			Title: "MongoDB (sibling container)",
+			Body: ctxBody(
+				"Running as a separate container on the project network — **not** on",
+				"`localhost`. Reach it at host `mongo`, port `27017`.",
+				"",
+				"- image: `mongo:"+version+"`",
+				"- root user: `"+user+"`",
+				"- root password: `"+password+"`",
+				"",
+				"    mongosh \"mongodb://"+user+":"+password+"@mongo:27017/?authSource=admin\"   # needs the mongo-client module",
+				"",
+				"Its data lives in the `mongo_data` volume, so it survives a restart but is",
+				"deleted by `devcontainer-cli down -v` and `destroy`.",
+			),
+		}
+	},
 	Render: func(ctx RenderContext) *ServiceDef {
 		version := types.StringOpt(ctx.Options, "version", "8.0")
 		user := ctx.DefaultDBUser

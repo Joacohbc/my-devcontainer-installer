@@ -14,6 +14,13 @@ type ServiceSpec struct {
 	RequiresEnv    []types.RequiredEnvVar
 	Volumes        []string
 	Render         func(ctx RenderContext) *ServiceDef
+	// Context is this service's entry in the generated ~/CONTEXT.md: how to
+	// reach it from inside the devcontainer and with which credentials. Nil (or
+	// a nil return) means the service is invisible to an agent.
+	//
+	// It receives the same RenderContext as Render, so the host name, port and
+	// credentials it prints are the ones actually written into the compose file.
+	Context func(ctx RenderContext) *types.ContextSection
 }
 
 type RenderContext struct {

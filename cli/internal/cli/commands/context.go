@@ -17,9 +17,10 @@ installed in it.
 
 It runs the container's own 'get-devcontainer-context' and streams the result,
 so the report always describes the live container rather than what the project
-config asked for. Output is ~/CONTEXT.md (Docker layout, uv for Python, pnpm for
-JS, sibling database services) followed by the detected tools with their
-versions and the reachable services.
+config asked for. Output is ~/CONTEXT.md — generated when the image was built,
+from the modules and services that project selected, so it names the actual
+package managers, versions and database endpoints — followed by the detected
+tools with their versions and the reachable services.
 
 Unlike 'info', which reports Docker metadata (image, ports, mounts), this
 reports what is inside the container. Inside a container the same report is one

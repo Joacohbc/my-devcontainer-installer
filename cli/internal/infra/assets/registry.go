@@ -37,7 +37,6 @@ var Registry = []Asset{
 	{Name: "install-graphify", File: "install-graphify.sh", Kind: KindScript, Label: "Graphify installer"},
 	{Name: "install-opencode", File: "install-opencode.sh", Kind: KindScript, Label: "OpenCode installer"},
 	{Name: "login-github-cli", File: "login-github-cli.sh", Kind: KindScript, Label: "GitHub CLI login helper"},
-	{Name: "setup-context", File: "setup-context.sh", Kind: KindBuild, Label: "~/CONTEXT.md orientation doc writer"},
 	{Name: "setup-help", File: "setup-help.sh", Kind: KindBuild, Label: "~/help quick reference writer"},
 	{Name: "update-golang", File: "update_golang.sh", Kind: KindBuild, Label: "Go update script"},
 	{Name: "zsh-installer", File: "zsh-installer.sh", Kind: KindBuild, Label: "Zsh configuration installer"},

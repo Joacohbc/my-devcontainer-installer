@@ -11,6 +11,19 @@ var GithubCliModule = &ModuleSpec{
 	Label:      "GitHub CLI (gh)",
 	Category:   types.CategoryInfra,
 	UICategory: types.UICategoryDevTools,
+	Context: func(opts map[string]any) *types.ContextSection {
+		return &types.ContextSection{
+			Title: "GitHub CLI",
+			Body: ctxBody(
+				"`gh` is installed. Its credentials live in `~/.config/gh`, a symlink into the",
+				"shared-config volume, so a login done in any container is already valid here —",
+				"check with `gh auth status` before assuming you need to log in again.",
+				"",
+				"Run `~/post-script/login-github-cli.sh` for the interactive web login; it also",
+				"runs `gh auth setup-git` and sets the global git identity.",
+			),
+		}
+	},
 	Render: func(opts map[string]any) string {
 		return fmt.Sprintf(`##
 ## GITHUB CLI

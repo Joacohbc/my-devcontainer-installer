@@ -19,6 +19,18 @@ var PhpModule = &ModuleSpec{
 			Default: true,
 		},
 	},
+	Context: func(opts map[string]any) *types.ContextSection {
+		lines := []string{
+			"The latest PHP from the Ondřej PPA, with the `xml`, `zip`, `curl`, `mbstring`,",
+			"`gd`, `mysql` and `sqlite3` extensions plus `php-fpm`.",
+		}
+		if types.BoolOpt(opts, "composer", true) {
+			lines = append(lines, "", "Composer is installed as `/usr/local/bin/composer`.")
+		} else {
+			lines = append(lines, "", "Composer is **not** installed in this image.")
+		}
+		return &types.ContextSection{Title: "PHP", Body: ctxBody(lines...)}
+	},
 	Render: func(opts map[string]any) string {
 		composer := types.BoolOpt(opts, "composer", true)
 

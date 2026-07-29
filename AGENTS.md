@@ -265,10 +265,19 @@ directly after `BaseModule` in the catalog — the zsh installer inside
 
 The user's file is sourced last, so it always wins. `emitShellSources`
 (`shell_init.go`) appends both source lines in one RUN; the user's is *guarded*
-(`if [ -r … ]`) because it does not exist when the shared volume is opted out of.
+(`if [ -r … ]`) because it is created at runtime, not at build time.
 Note `emitShellInit` **panics on any single quote**, which is exactly why the
 defaults ship as a real `.sh` asset instead of literal lines — `kill_port` is a
 shell function and the aliases are single-quoted.
+
+`~/.alias.sh` must be editable at any time, from anywhere. With the shared
+volume mounted the entrypoint symlinks it into the volume, so an edit made in
+any container (or on the host via `config alias edit`) applies everywhere and
+survives a rebuild. **When the volume is opted out of**, the entrypoint instead
+creates a plain local file seeded with a commented template — the file must
+never be absent, or "edit your aliases" has no answer. The order matters: that
+fallback runs *after* the shared-config block, and its `[ ! -e ]` test treats an
+existing symlink as present, so it never clobbers the volume entry.
 
 Defaults in `alias.sh`: `kill_port <port>` (needs `lsof`, installed by
 `BaseModule`), `npm`→`pnpm` / `npx`→`pnpm dlx`, `pip`/`pip3`→`uv pip` with
@@ -279,15 +288,61 @@ valid in every image variant. The agent block is gated on
 `yoloAgents` option is on — that keeps the shipped script un-templated, so the
 option can never change which files are installed.
 
-`setup-context.sh` writes the static `~/CONTEXT.md` (you are in Docker, uv for
-Python, pnpm for JS, sibling DB services, `kill_port`);
+### `~/CONTEXT.md` is generated per project
+
+`~/CONTEXT.md` is the orientation document an AI agent reads first. It is
+**generated**, not a shipped asset: `domain.GenerateContext(config)`
+(`internal/domain/context.go`) assembles it from a static preamble plus one
+section per resolved Dockerfile module and compose service, so it only ever
+describes what this image actually contains.
+
+Each module/service declares its own entry through a `Context` field:
+
+```go
+// dockerfile.ModuleSpec
+Context func(opts map[string]any) *types.ContextSection
+// compose.ServiceSpec — same RenderContext its Render gets
+Context func(ctx RenderContext) *types.ContextSection
+```
+
+`types.ContextSection{Title, Body}` is plain markdown; the generator writes the
+title as an `## ` heading and drops any section with an empty body. **Everything
+is resolved at build time**: a section prints the node version that was pinned,
+the database password that went into the compose file, the ports that were
+published. Return `nil` when the module has nothing to say for those options
+(e.g. Java with every version deselected) — that is how a module stays out of
+the document instead of announcing an empty toolchain. Bodies are written as
+double-quoted Go strings joined by the local `ctxBody(...)` helper, because
+markdown code spans use backticks and a raw Go literal cannot contain one.
+
+Plumbing:
+
+- **Adding a module/service** → give it a `Context`, and cover it in the
+  package's `context_test.go` (option-dependent branches especially).
+  `TestModuleContextSectionsAreNonEmpty` and `TestCatalogContextSectionsAreWellFormed`
+  guard the shape.
+- The document is written to `paths.ContextPath`
+  (`.dc_<ws>/build/CONTEXT.md`) by `prepareBuildDir`, **not** by
+  `assets.Preflight` — it is generated, so it is deliberately absent from the
+  aliases module's `CopyFiles` (preflight would look for it in the embedded FS
+  and report it missing).
+- It is folded into `copyContents`, so it **feeds the fingerprint**. This is
+  load-bearing: adding a database service changes `CONTEXT.md` but not the
+  Dockerfile, and without it two such projects would share one image and one
+  would ship the wrong document.
+- Remote builds generate nothing (like `GenerateDockerfile`): the prebuilt image
+  ships the document it was built with.
+
 `get-devcontainer-context.sh` installs to `~/.local/bin/get-devcontainer-context`
-and prints that document plus a live inventory (tools + versions, workspace,
-reachable services), with `--json` for agents. The entrypoint also appends a
-marker-delimited summary to `~/.claude/CLAUDE.md` and `~/.codex/AGENTS.md`
-(idempotent, opt out with `DEVCONTAINER_AGENT_CONTEXT=0`) so agents read it
-without being told to. Keep that block short and toolset-agnostic: the shared
-volume is used by containers with different toolsets.
+and prints that document plus a *live* inventory (tools + versions, workspace,
+reachable services), with `--json` for agents. Anything that can only be known at
+runtime belongs there, not in `CONTEXT.md`.
+
+`~/CONTEXT.md` is the **only** channel the CLI uses to brief agents. The
+entrypoint must never write into `~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md` or
+any other agent memory file: those live in the shared volume, they are the
+user's, and they are shared across containers with different toolsets.
+`TestEntrypointDoesNotTouchAgentMemoryFiles` enforces this.
 
 ### `internal/domain/types/labels.go` — Docker label constants
 

@@ -27,8 +27,12 @@ Containers source two files, in this order:
   ~/.alias.sh                  YOURS — this file
 
 Because yours is sourced last it always wins, and because it lives in the shared
-config volume it applies to every container without rebuilding any image. It is
-the same file as the 'alias.sh' shared-config entry, so push your edits with
+config volume it applies to every container without rebuilding any image and
+without restarting anything — a change takes effect in the next shell.
+
+Edit it whenever you like, from either side: inside a container ~/.alias.sh is a
+symlink into that volume, so editing it there is immediately shared with every
+other container. This command edits the host's copy; push it out with
 'config shared sync alias.sh --force'.
 
 With no subcommand this prints the file's path and contents.`,

@@ -22,6 +22,20 @@ var ChromeModule = &ModuleSpec{
 	Label:      "Chromium (headless-capable, cross-arch)",
 	Category:   types.CategoryInfra,
 	UICategory: types.UICategoryDevTools,
+	Context: func(opts map[string]any) *types.ContextSection {
+		return &types.ContextSection{
+			Title: "Chromium (headless browser)",
+			Body: ctxBody(
+				"The system binary is `chromium`. There is no display, so always run it",
+				"headless (`--headless=new --no-sandbox`).",
+				"",
+				"No automation framework is installed. Add Playwright, Puppeteer or Selenium",
+				"in the project's own language and point it at the system binary rather than",
+				"downloading a bundled browser — for Playwright that is",
+				"`executablePath: '/usr/bin/chromium'`.",
+			),
+		}
+	},
 	Render: func(opts map[string]any) string {
 		return fmt.Sprintf(`##
 ## CHROMIUM

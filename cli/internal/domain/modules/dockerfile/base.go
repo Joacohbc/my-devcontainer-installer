@@ -43,6 +43,20 @@ var BaseModule = &ModuleSpec{
 			Default: "none",
 		},
 	},
+	Context: func(opts map[string]any) *types.ContextSection {
+		return &types.ContextSection{
+			Title: "Base image",
+			Body: ctxBody(
+				"Ubuntu "+UbuntuLTS+" LTS. The login shell is zsh (oh-my-zsh + powerlevel10k),",
+				"but every init file the CLI writes is sourced from `.zshrc`, `.bashrc` and",
+				"`.profile` alike, so a non-interactive `bash -lc` sees the same PATH.",
+				"",
+				"Preinstalled: `git`, `curl`, `wget`, `jq`, `unzip`, `lsof`, plus the `micro` and",
+				"`nano` terminal editors. `cat ~/help` prints a micro/zellij keyboard",
+				"cheat-sheet.",
+			),
+		}
+	},
 	Render: func(opts map[string]any) string {
 		p10kStyle := types.StringOpt(opts, "p10kStyle", "")
 		if !p10kStyles[p10kStyle] {

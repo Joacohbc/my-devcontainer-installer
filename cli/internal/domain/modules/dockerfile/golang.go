@@ -11,6 +11,18 @@ var GolangModule = &ModuleSpec{
 	PostScriptFiles: func(opts map[string]any) []string {
 		return []string{"update_golang.sh", "golang_utils.sh"}
 	},
+	Context: func(opts map[string]any) *types.ContextSection {
+		return &types.ContextSection{
+			Title: "Go",
+			Body: ctxBody(
+				"The latest stable Go toolchain is installed system-wide (`go version` for the",
+				"exact build). `go install` puts binaries in `~/go/bin`.",
+				"",
+				"Upgrade it in place with `~/post-script/update_golang.sh` rather than",
+				"`apt`, which has no Go package new enough to matter.",
+			),
+		}
+	},
 	Render: func(opts map[string]any) string {
 		return `##
 ## GO

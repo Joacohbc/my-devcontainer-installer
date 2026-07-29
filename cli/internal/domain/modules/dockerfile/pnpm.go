@@ -12,6 +12,25 @@ var PnpmModule = &ModuleSpec{
 	Category:   types.CategoryRuntime,
 	UICategory: types.UICategoryLanguages,
 	Requires:   []types.ModuleID{types.ModuleNodejs},
+	Context: func(opts map[string]any) *types.ContextSection {
+		return &types.ContextSection{
+			Title: "JavaScript / TypeScript — use `pnpm`, not `npm`",
+			Body: ctxBody(
+				"| Instead of | Use |",
+				"|---|---|",
+				"| `npm install` | `pnpm install` |",
+				"| `npm install X` | `pnpm add X` |",
+				"| `npm run X` | `pnpm run X` |",
+				"| `npx X` | `pnpm dlx X` |",
+				"",
+				"`npm` and `npx` are already aliased to `pnpm` and `pnpm dlx`.",
+				"",
+				"**Respect a lockfile that is already in the repo.** If the project has a",
+				"`package-lock.json` and no `pnpm-lock.yaml`, run `command npm …` instead of",
+				"silently switching the project's package manager.",
+			),
+		}
+	},
 	Render: func(opts map[string]any) string {
 		// pnpm aborts every command (even `config set`) when its configured
 		// global bin dir is not on PATH, and that dir has moved between pnpm
