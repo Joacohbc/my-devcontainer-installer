@@ -550,21 +550,21 @@ func TestConfigAliasCommand_Structure(t *testing.T) {
 	if aliasCmd == nil {
 		t.Fatal("expected 'config alias' command to be registered")
 	}
-	// Bare `config alias` prints the file; it takes no positional args.
+	// Bare `config alias` lists the aliases; it takes no positional args.
 	if err := aliasCmd.Args(aliasCmd, []string{"extra"}); err == nil {
 		t.Error("expected 'config alias' to reject positional arguments")
 	}
-	for _, name := range []string{"edit", "reset"} {
+	for _, name := range []string{"set", "unset", "sync"} {
 		if findSubcommand(aliasCmd, name) == nil {
 			t.Errorf("expected 'config alias %s' subcommand", name)
 		}
 	}
-	// reset is destructive, so it must carry the standard confirmation flags.
-	reset := findSubcommand(aliasCmd, "reset")
-	for _, name := range []string{"yes", "no-interactive"} {
-		if reset.Flags().Lookup(name) == nil {
-			t.Errorf("expected config alias reset flag --%s", name)
-		}
+	// set takes a name plus a command; unset takes exactly the name.
+	if err := findSubcommand(aliasCmd, "set").Args(nil, []string{"only-name"}); err == nil {
+		t.Error("expected 'config alias set' to require a name and a command")
+	}
+	if err := findSubcommand(aliasCmd, "unset").Args(nil, []string{"a", "b"}); err == nil {
+		t.Error("expected 'config alias unset' to accept exactly one argument")
 	}
 	// It is not a top-level command.
 	if findSubcommand(root, "alias") != nil {

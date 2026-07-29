@@ -86,8 +86,9 @@ func TestGenerateDockerfile_MinimalIncludesAliasesAndContext(t *testing.T) {
 	assertContainsStr(t, df, "COPY alias.sh /home/devuser/.devcontainer_aliases.sh", "minimal dockerfile")
 	assertContainsStr(t, df, "COPY get-devcontainer-context.sh /home/devuser/.local/bin/get-devcontainer-context", "minimal dockerfile")
 	assertContainsStr(t, df, "COPY CONTEXT.md /home/devuser/CONTEXT.md", "minimal dockerfile")
-	// yoloAgents defaults on, so the flag file alias.sh keys off is created.
-	assertContainsStr(t, df, `touch \$HOME/.devcontainer_agents_yolo`, "minimal dockerfile")
+	// The agent aliases live unconditionally in the shipped script now, so the
+	// old build-time yolo flag file must be gone.
+	assertNotContainsStr(t, df, `devcontainer_agents_yolo`, "minimal dockerfile")
 	// The user's own alias file is sourced last so it overrides the defaults.
 	assertContainsStr(t, df, `if [ -r \$HOME/.alias.sh ]; then . \$HOME/.alias.sh; fi`, "minimal dockerfile")
 }
@@ -106,16 +107,21 @@ func TestGenerateDockerfile_AliasesRenderAfterBase(t *testing.T) {
 	}
 }
 
-func TestGenerateDockerfile_AliasesYoloAgentsOff(t *testing.T) {
-	cfg := makeConfig(func(c *types.DevcontainerConfig) {
+// The aliases module ignores options, so passing one must not change the
+// Dockerfile it produces.
+func TestGenerateDockerfile_AliasesIgnoresOptions(t *testing.T) {
+	withOpt := mustGenerateDockerfile(t, makeConfig(func(c *types.DevcontainerConfig) {
 		c.Dockerfile.Modules = []types.SelectedModule{
 			{ID: "aliases", Options: map[string]any{"yoloAgents": false}},
 		}
-	})
-	df := mustGenerateDockerfile(t, cfg)
-	assertNotContainsStr(t, df, `touch \$HOME/.devcontainer_agents_yolo`, "aliases yoloAgents=false")
-	// The alias file itself still ships — only the agent block is gated.
-	assertContainsStr(t, df, "COPY alias.sh /home/devuser/.devcontainer_aliases.sh", "aliases yoloAgents=false")
+	}))
+	plain := mustGenerateDockerfile(t, makeConfig(func(c *types.DevcontainerConfig) {
+		c.Dockerfile.Modules = []types.SelectedModule{{ID: "aliases"}}
+	}))
+	if withOpt != plain {
+		t.Error("the aliases module must render identically regardless of options")
+	}
+	assertContainsStr(t, plain, "COPY alias.sh /home/devuser/.devcontainer_aliases.sh", "aliases")
 }
 
 func TestGenerateDockerfile_AllSelectedModules(t *testing.T) {

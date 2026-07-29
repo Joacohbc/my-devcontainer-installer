@@ -51,6 +51,61 @@ func TestEnsureSharedConfigVolume_SkipsWhenPresent(t *testing.T) {
 	}
 }
 
+// SyncAliases writes the rendered script into the volume's alias.sh entry via a
+// throwaway helper, always overwriting and re-owning to the host uid/gid. It
+// never reads a host file.
+func TestSyncAliases_WritesRenderedContentIntoVolume(t *testing.T) {
+	// status 0: `volume inspect` succeeds (no create), and the writer `run`
+	// exits cleanly.
+	r := &fakeRunner{status: 0}
+	restore := useFakeDocker(r)
+	defer restore()
+
+	content := "#!/bin/sh\nalias ll='ls -la'\n"
+	if err := (SharedConfigService{Report: nopReporter{}}).SyncAliases(content); err != nil {
+		t.Fatalf("SyncAliases: %v", err)
+	}
+
+	run := r.callContaining("--rm")
+	if run == nil {
+		t.Fatalf("expected a helper `run` call, got %v", r.calls)
+	}
+	for _, want := range []string{
+		types.SharedConfigVolumeName + ":/vol",
+		"ENTRY_ID=" + types.SharedConfigAliasID,
+		"ENTRY_CONTENT=" + content,
+		"ENTRY_OWNER=" + hostOwnerString(),
+	} {
+		if !sliceHas(run, want) {
+			t.Errorf("helper run missing %q: %v", want, run)
+		}
+	}
+	// It must never mount a host home read-only — the content comes from config.
+	for _, arg := range run {
+		if strings.HasSuffix(arg, ":/host:ro") {
+			t.Errorf("SyncAliases must not read a host file, saw %q", arg)
+		}
+	}
+}
+
+// A non-zero helper exit must surface as an error rather than silently claiming
+// success.
+func TestSyncAliases_ReportsHelperFailure(t *testing.T) {
+	r := &fakeRunner{status: 0}
+	restore := useFakeDocker(r)
+	defer restore()
+	// Volume inspect (status 0) succeeds; make the writer run fail by flipping
+	// status after the volume check is not possible with this fake, so instead
+	// use a runner that fails everything except version and inspect. Simpler:
+	// status 1 makes inspect fail (triggering create, which also "fails" but is
+	// only warned) and then the writer run fails too.
+	r.status = 1
+	err := (SharedConfigService{Report: nopReporter{}}).SyncAliases("x")
+	if err == nil {
+		t.Error("SyncAliases must return an error when the helper exits non-zero")
+	}
+}
+
 // TestSharedConfigEntriesMatchEntrypoint is the contract test keeping the Go
 // registry (types.SharedConfigEntries) in sync with the shell table baked into
 // entrypoint.sh. Every entry must appear as "<id> <kind> <target>".

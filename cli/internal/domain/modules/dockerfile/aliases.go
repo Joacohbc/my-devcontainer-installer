@@ -10,16 +10,12 @@ import (
 // every rc file. It is owned by the CLI and rewritten on every build.
 const BakedAliasFile = ".devcontainer_aliases.sh"
 
-// UserAliasFile is the user's own alias file. The entrypoint symlinks it into
-// the shared-config volume (types.SharedConfigEntries), so it persists across
-// every container and is edited on the host with `config alias edit`. It is
+// UserAliasFile is the user's own alias file inside the container. The
+// entrypoint symlinks it into the shared-config volume (types.SharedConfigEntries)
+// so it persists across every container; its contents come from the CLI config
+// (`config alias set`), pushed into the volume with `config alias sync`. It is
 // sourced AFTER BakedAliasFile so user definitions win.
 const UserAliasFile = ".alias.sh"
-
-// YoloAgentsFlagFile gates the agent aliases inside alias.sh. Its mere presence
-// turns them on, which keeps the build-time difference between yoloAgents on and
-// off down to a single `touch` — no templating of the shipped script.
-const YoloAgentsFlagFile = ".devcontainer_agents_yolo"
 
 // ContextScriptName is the introspection command installed on PATH.
 const ContextScriptName = "get-devcontainer-context"
@@ -30,7 +26,9 @@ const ContextScriptName = "get-devcontainer-context"
 //
 // It is Always-on and sits in CategoryBase directly after BaseModule: the zsh
 // installer inside BaseModule rewrites ~/.zshrc from scratch, so anything that
-// appends to the rc files must run after it.
+// appends to the rc files must run after it. It takes no options: the agent
+// aliases are unconditional (each guarded by `command -v` inside alias.sh), so
+// the shipped script is never templated and the build is identical everywhere.
 var AliasesModule = &ModuleSpec{
 	ID:       types.ModuleAliases,
 	Label:    "Aliases & container context (kill_port, npm→pnpm, pip→uv, ~/CONTEXT.md)",
@@ -41,71 +39,54 @@ var AliasesModule = &ModuleSpec{
 	// domain.GenerateContext. The generate flow writes it into the build dir and
 	// folds it into the fingerprint itself.
 	CopyFiles: []string{"alias.sh", ContextScriptName + ".sh"},
-	Options: []types.ModuleOption{
-		{
-			ID:      "yoloAgents",
-			Label:   "Run AI agents without permission prompts (the container is the sandbox)",
-			Type:    types.ModuleOptionConfirm,
-			Default: true,
-		},
-	},
 	Context: func(opts map[string]any) *types.ContextSection {
-		lines := []string{
-			"`kill_port <port>` frees a port that is already taken",
-			"(`kill -9` on whatever `lsof` reports listening on it).",
-			"",
-			"Two alias files are sourced by every shell, in this order:",
-			"",
-			"- `~/" + BakedAliasFile + "` — the CLI's defaults, baked into the image.",
-			"  Editing it inside the container is pointless; the change is lost on recreate.",
-			"- `~/" + UserAliasFile + "` — **the user's own aliases**, and the one to edit. It lives in",
-			"  the shared-config Docker volume, so it persists across every container and",
-			"  applies to all of them. It is sourced last, so it overrides the defaults.",
-			"  Changes take effect in the next shell — no rebuild, no restart.",
-		}
-		if types.BoolOpt(opts, "yoloAgents", true) {
-			lines = append(lines,
+		return &types.ContextSection{
+			Title: "Aliases and shell helpers",
+			Body: ctxBody(
+				"`kill_port <port>` frees a port that is already taken",
+				"(`kill -9` on whatever `lsof` reports listening on it).",
 				"",
-				"The AI agent CLIs are aliased to skip their interactive permission prompts",
-				"(the container is the sandbox). Use `command claude …` or `\\claude …` to get",
-				"the unaliased binary back.",
-			)
+				"The AI agent CLIs (`claude`, `codex`, `copilot`, `agy`) are aliased to skip",
+				"their interactive permission prompts — the container is the sandbox. Use",
+				"`command claude …` or `\\claude …` to get the unaliased binary back.",
+				"",
+				"Two alias files are sourced by every shell, in this order:",
+				"",
+				"- `~/"+BakedAliasFile+"` — the CLI's defaults, baked into the image.",
+				"  Editing it inside the container is pointless; the change is lost on recreate.",
+				"- `~/"+UserAliasFile+"` — **the user's own aliases**. These are managed on the host",
+				"  with `devcontainer-cli config alias set/unset` (stored in the CLI config, not",
+				"  in a file you edit here) and pushed to every container via the shared volume,",
+				"  so they persist and need no rebuild. Sourced last, so they override the defaults.",
+			),
 		}
-		return &types.ContextSection{Title: "Aliases and shell helpers", Body: ctxBody(lines...)}
 	},
 	Render: func(opts map[string]any) string {
-		// The yoloAgents difference is a single `touch`: alias.sh keys off the flag
-		// file's existence, so the shipped script never has to be templated.
-		yoloStep := ""
-		if types.BoolOpt(opts, "yoloAgents", true) {
-			yoloStep = " && \\\n    su - devuser -c \"touch \\$HOME/" + YoloAgentsFlagFile + "\""
-		}
 		return fmt.Sprintf(`##
 ## SHELL ALIASES & CONTAINER CONTEXT
 ##
 # Default aliases/functions (kill_port, npm->pnpm, pip->uv, prompt-free agents),
-# the generated ~/%[6]s orientation document for AI agents and the
+# the generated ~/%[4]s orientation document for AI agents and the
 # get-devcontainer-context introspection command, in a single layer.
 #
-# %[6]s is GENERATED by the CLI from this project's modules and services (see
+# %[4]s is GENERATED by the CLI from this project's modules and services (see
 # domain.GenerateContext) and written into the build dir next to this Dockerfile,
 # so it describes the image it is baked into.
 COPY alias.sh %[1]s/%[2]s
 COPY %[3]s.sh %[1]s/.local/bin/%[3]s
-COPY %[6]s %[1]s/%[6]s
-RUN chmod 0644 %[1]s/%[2]s %[1]s/%[6]s && \
+COPY %[4]s %[1]s/%[4]s
+RUN chmod 0644 %[1]s/%[2]s %[1]s/%[4]s && \
     chmod 0755 %[1]s/.local/bin/%[3]s && \
-    chown -R devuser:devuser %[1]s/%[2]s %[1]s/%[6]s %[1]s/.local%[4]s
+    chown -R devuser:devuser %[1]s/%[2]s %[1]s/%[4]s %[1]s/.local
 %[5]s
 `,
-			devuserHome, BakedAliasFile, ContextScriptName, yoloStep,
+			devuserHome, BakedAliasFile, ContextScriptName, types.ContextFileName,
 			emitShellSources(
 				shellSource{File: BakedAliasFile},
 				// The user's own file is sourced last so it overrides the defaults,
 				// and guarded because the entrypoint only creates it at runtime.
 				shellSource{File: UserAliasFile, Guarded: true},
 			),
-			types.ContextFileName,
 		)
 	},
 }

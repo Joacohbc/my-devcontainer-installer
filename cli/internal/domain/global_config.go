@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
@@ -19,6 +21,11 @@ type Defaults struct {
 type GlobalConfig struct {
 	Registry string    `json:"registry,omitempty"`
 	Defaults *Defaults `json:"defaults,omitempty"`
+	// Aliases are the user's own shell aliases, name → command. They are the
+	// single source of truth for ~/.alias.sh in every container: rendered by
+	// RenderUserAliases and pushed into the shared-config volume with
+	// `config alias sync`. Managed with `config alias set/unset`, never by hand.
+	Aliases map[string]string `json:"aliases,omitempty"`
 }
 
 const DefaultRegistry = "ghcr.io/joacohbc/"
@@ -151,21 +158,38 @@ func ResolveSSHConfigPath(flagOverride string) string {
 	return DefaultManagedSSHConfigPath()
 }
 
-// UserAliasFilePath is the host path of the user's own shell alias file.
-//
-// It deliberately lives in the home directory rather than under
-// GlobalConfigDir(): it is the host side of the "alias.sh" shared-config entry
-// (types.SharedConfigEntries), whose host source is always
-// $HOME/<entry.Target>. Keeping the two in sync is what lets
-// `config shared sync alias.sh` push this exact file into the shared volume
-// with no special-casing.
-func UserAliasFilePath() string {
-	home, _ := os.UserHomeDir()
-	entry, ok := types.SharedConfigEntryByID(types.SharedConfigAliasID)
-	if !ok {
-		return filepath.Join(home, ".alias.sh")
+// aliasNamePattern is the accepted shape of an alias name: a POSIX-ish
+// identifier optionally with '-' and '.', so it is safe to write as
+// `alias <name>=...` without quoting the left-hand side.
+var aliasNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_.-]*$`)
+
+// IsValidAliasName reports whether name is a legal alias name.
+func IsValidAliasName(name string) bool {
+	return aliasNamePattern.MatchString(name)
+}
+
+// RenderUserAliases renders the user's aliases into a POSIX shell script, the
+// body of ~/.alias.sh inside every container. Names are emitted in sorted order
+// so the output is deterministic (stable diffs, stable volume writes), and each
+// value is single-quoted with embedded quotes escaped the POSIX way ('\”) so an
+// arbitrary command survives verbatim. Returns just the managed header when
+// there are no aliases, so the file is always valid to source.
+func RenderUserAliases(aliases map[string]string) string {
+	var b strings.Builder
+	b.WriteString("#!/bin/sh\n")
+	b.WriteString("# devcontainer-cli — your own shell aliases.\n")
+	b.WriteString("# GENERATED from the CLI config; edit with `devcontainer-cli config alias set/unset`\n")
+	b.WriteString("# and apply with `devcontainer-cli config alias sync`. Manual edits are overwritten.\n")
+
+	names := make([]string, 0, len(aliases))
+	for name := range aliases {
+		names = append(names, name)
 	}
-	return filepath.Join(home, entry.Target)
+	sort.Strings(names)
+	for _, name := range names {
+		b.WriteString("alias " + name + "='" + strings.ReplaceAll(aliases[name], "'", `'\''`) + "'\n")
+	}
+	return b.String()
 }
 
 // ResolveSSHKeyPath returns the SSH key path to use, with precedence

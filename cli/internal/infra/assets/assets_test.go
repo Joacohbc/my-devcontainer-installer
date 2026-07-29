@@ -150,6 +150,50 @@ func TestEntrypointBridgesAntigravitySkills(t *testing.T) {
 	}
 }
 
+// The baked defaults must ship kill_port and the pip/npm redirects, and the
+// agent aliases must be present unconditionally (each guarded only by command -v,
+// with no build-time flag-file gate) — agy included.
+func TestAliasScriptShipsDefaults(t *testing.T) {
+	body, err := os.ReadFile("alias.sh")
+	if err != nil {
+		t.Fatalf("reading alias.sh: %v", err)
+	}
+	script := string(body)
+
+	for _, frag := range []string{
+		"kill_port()",
+		"lsof -t -i:",
+		"alias npm='pnpm'",
+		"alias npx='pnpm dlx'",
+		"pip() { uv pip",
+		"UV_SYSTEM_PYTHON=1",
+	} {
+		if !strings.Contains(script, frag) {
+			t.Errorf("alias.sh must contain %q", frag)
+		}
+	}
+
+	agents := map[string]string{
+		"claude":  "claude --dangerously-skip-permissions",
+		"codex":   "codex --dangerously-bypass-approvals-and-sandbox",
+		"copilot": "copilot --allow-all-tools",
+		"agy":     "agy --dangerously-skip-permissions",
+	}
+	for name, aliasBody := range agents {
+		if !strings.Contains(script, "command -v "+name+" >/dev/null 2>&1") {
+			t.Errorf("alias.sh must guard the %q alias on `command -v %s`", name, name)
+		}
+		if !strings.Contains(script, "alias "+name+"='"+aliasBody+"'") {
+			t.Errorf("alias.sh must define alias %s='%s'", name, aliasBody)
+		}
+	}
+
+	// The old opt-in gate is gone: the aliases are unconditional now.
+	if strings.Contains(script, "devcontainer_agents_yolo") {
+		t.Errorf("alias.sh must no longer gate the agent block on a flag file:\n%s", script)
+	}
+}
+
 // The user's alias file must always exist and be devuser-owned, so "edit your
 // aliases" has an answer even when the shared-config volume is opted out of.
 // With the volume mounted the entry is already a symlink, and the -e test must

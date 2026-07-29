@@ -261,7 +261,7 @@ directly after `BaseModule` in the catalog — the zsh installer inside
 | File | Origin | Changing it |
 |---|---|---|
 | `~/.devcontainer_aliases.sh` | the `alias.sh` asset, `COPY`d at build time | edits the asset → new fingerprint → image rebuild |
-| `~/.alias.sh` | the `alias.sh` **shared-config entry**, symlinked into the shared volume by the entrypoint | `config alias edit` + `config shared sync alias.sh --force` → no rebuild |
+| `~/.alias.sh` | rendered from the CLI config (`GlobalConfig.Aliases`) into the `alias.sh` **shared-config entry** | `config alias set/unset` + `config alias sync` → no rebuild |
 
 The user's file is sourced last, so it always wins. `emitShellSources`
 (`shell_init.go`) appends both source lines in one RUN; the user's is *guarded*
@@ -270,23 +270,26 @@ Note `emitShellInit` **panics on any single quote**, which is exactly why the
 defaults ship as a real `.sh` asset instead of literal lines — `kill_port` is a
 shell function and the aliases are single-quoted.
 
-`~/.alias.sh` must be editable at any time, from anywhere. With the shared
-volume mounted the entrypoint symlinks it into the volume, so an edit made in
-any container (or on the host via `config alias edit`) applies everywhere and
-survives a rebuild. **When the volume is opted out of**, the entrypoint instead
-creates a plain local file seeded with a commented template — the file must
-never be absent, or "edit your aliases" has no answer. The order matters: that
-fallback runs *after* the shared-config block, and its `[ ! -e ]` test treats an
-existing symlink as present, so it never clobbers the volume entry.
+**User aliases live in the CLI config, not in a file the user edits.**
+`GlobalConfig.Aliases` (a `name → command` map) is the single source of truth.
+`config alias set/unset` (`config_alias.go` → `ConfigService.SetAlias/UnsetAlias`)
+write it; `domain.RenderUserAliases` turns it into a POSIX script (sorted,
+single-quote-escaped); `config alias sync` (`SharedConfigService.SyncAliases`)
+writes that script straight into the volume's `alias.sh` entry via a throwaway
+helper container — no host `~/.alias.sh` file is ever read. So `config shared
+sync` skips `alias.sh` (it has no host source); `runSyncConfig` drops it and
+points at `config alias sync`. Backup/restore still include the entry (they work
+volume↔zip). The entrypoint still seeds an empty `~/.alias.sh` when the volume is
+opted out of, so sourcing never fails; those aliases just can't be pushed
+without a volume.
 
 Defaults in `alias.sh`: `kill_port <port>` (needs `lsof`, installed by
 `BaseModule`), `npm`→`pnpm` / `npx`→`pnpm dlx`, `pip`/`pip3`→`uv pip` with
-`UV_SYSTEM_PYTHON=1`, and the agent aliases (`claude`/`codex`/`copilot` with
-their skip-permission flags). Every block is `command -v`-guarded so one file is
-valid in every image variant. The agent block is gated on
-`~/.devcontainer_agents_yolo`, which the module `touch`es only when its
-`yoloAgents` option is on — that keeps the shipped script un-templated, so the
-option can never change which files are installed.
+`UV_SYSTEM_PYTHON=1`, and the agent aliases (`claude`/`codex`/`copilot`/`agy`,
+each with its skip-permission flag). Every block is `command -v`-guarded so one
+file is valid in every image variant. The agent aliases are **unconditional**
+(no build-time gate, no module option): a tool that is not installed simply
+never gets its alias, so the shipped script is identical in every image.
 
 ### `~/CONTEXT.md` is generated per project
 
@@ -415,7 +418,7 @@ is Cobra-native.
 | `start`/`stop`/`restart` | `lifecycle.go` | `docker compose start`/`stop`/`restart` for the current directory's project. All accept `--container` to act on a single container instead of the whole stack (`start`→`StartContainer`, `stop`→`StopContainer`, `restart`→`RestartContainer`; start/stop complete stopped/running names respectively, restart completes any managed one) |
 | `update` | `update.go` | Pull/rebuild images; `--all`; per-mode dispatch |
 | `upgrade-cli` | `upgrade_cli.go` | Binary self-update from a GitHub release |
-| `config` | `config.go` | Read/write global config (subcommands `registry`, `db-user`, `db-password`, `ssh-key`, `ssh-config-file`, `alias`, `preset`, `shared`); `config ssh-config-file` sets where managed SSH Host blocks live (default `~/.ssh/devcontainer-cli.config`) — it is global rather than a per-command flag on purpose, so `setup-ssh`, `ssh`, `destroy` and `clean ssh` can never disagree about which file to read. `config alias` (`config_alias.go`) shows/edits/resets `~/.alias.sh`, the user's own shell aliases: it is the host side of the `alias.sh` shared-config entry, so `config shared sync alias.sh --force` pushes it into every container without an image rebuild; `config preset` (`preset.go`) lists/creates/copies/removes reusable **module-bundle** presets saved under `~/.devcontainer-cli/presets/` (`remove <id...>` deletes user presets only — built-ins are not removable; tab-completed, `-y` to skip confirmation). A preset is just a list of module ids (no services/ports/volumes/mode); `create` prompts for the id and runs a modules-only wizard (`GenerateService.SelectModules`). The interactive `generate` wizard also offers an optional "start from a user preset" step (local-cached only) that pre-selects the preset's modules before the user continues with services/ports/volumes. `config shared` (`config_shared.go`) groups the shared tool-config volume ops — `config shared sync` (`sync_config.go`, seed from host configs `~/.claude`, `~/.config/gh`, …; `--force` replaces), `config shared backup` (`backup_config.go`, zip the volume; `-o` sets the destination, default a timestamped file in cwd), `config shared restore` (`restore_config.go`, load a zip made by `config shared backup`; `--force` replaces existing entries) |
+| `config` | `config.go` | Read/write global config (subcommands `registry`, `db-user`, `db-password`, `ssh-key`, `ssh-config-file`, `alias`, `preset`, `shared`); `config ssh-config-file` sets where managed SSH Host blocks live (default `~/.ssh/devcontainer-cli.config`) — it is global rather than a per-command flag on purpose, so `setup-ssh`, `ssh`, `destroy` and `clean ssh` can never disagree about which file to read. `config alias` (`config_alias.go`) manages the user's own shell aliases, stored in the CLI config (`GlobalConfig.Aliases`), not a host file: `config alias set <name> <command>` / `config alias unset <name>` edit the map, bare `config alias` lists it, and `config alias sync` renders it into the `alias.sh` shared-config volume entry (`SharedConfigService.SyncAliases`) so every container picks it up without an image rebuild; `config preset` (`preset.go`) lists/creates/copies/removes reusable **module-bundle** presets saved under `~/.devcontainer-cli/presets/` (`remove <id...>` deletes user presets only — built-ins are not removable; tab-completed, `-y` to skip confirmation). A preset is just a list of module ids (no services/ports/volumes/mode); `create` prompts for the id and runs a modules-only wizard (`GenerateService.SelectModules`). The interactive `generate` wizard also offers an optional "start from a user preset" step (local-cached only) that pre-selects the preset's modules before the user continues with services/ports/volumes. `config shared` (`config_shared.go`) groups the shared tool-config volume ops — `config shared sync` (`sync_config.go`, seed from host configs `~/.claude`, `~/.config/gh`, …; `--force` replaces), `config shared backup` (`backup_config.go`, zip the volume; `-o` sets the destination, default a timestamped file in cwd), `config shared restore` (`restore_config.go`, load a zip made by `config shared backup`; `--force` replaces existing entries) |
 | `cleanup-tips` | `cleanup_tips.go` | Print docker cleanup commands |
 | `context` | `context.go` | Print the container's own context and installed tools: runs `get-devcontainer-context` inside it via `InspectService.Context` and streams the output (`--json` for structured output). Falls back to `copy --asset get-devcontainer-context` when the image predates the `aliases` module. Complements `info` (Docker metadata) by reporting what is *inside* the container |
 | `network` | `network.go` | Attach/detach any container to the workspace network; subcommands `network connect`/`network disconnect <container...>` (tab-completed); `connect` takes `--alias` (extra DNS names; prompted when interactive) |

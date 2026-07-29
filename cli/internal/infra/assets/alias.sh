@@ -8,8 +8,9 @@
 #
 # For your OWN aliases use ~/.alias.sh instead — it lives in the shared-config
 # volume, persists across every container, and is sourced AFTER this file so it
-# always wins. Edit it on the host with `devcontainer-cli config alias edit`,
-# then push it with `devcontainer-cli config shared sync alias.sh`.
+# always wins. It is generated from the CLI config: manage it on the host with
+# `devcontainer-cli config alias set/unset`, then `devcontainer-cli config alias
+# sync` to push it into every container.
 #
 # Every block below is guarded by `command -v`, so this single file is valid in
 # every image variant regardless of which language modules were selected. Each
@@ -53,20 +54,20 @@ fi
 
 # ── AI agents: skip the permission prompts ───────────────────────────────────
 # You are inside a disposable, isolated container, so the interactive approval
-# prompts only add friction. The whole block is opt-in: the aliases module
-# creates ~/.devcontainer_agents_yolo at build time only when its yoloAgents
-# option is on (the default). Delete that file to get the plain commands back.
+# prompts only add friction. Each alias is set only when its CLI is installed
+# (command -v guard), so this one file is valid in every image variant.
 #
 # Escape hatch, always available even with the aliases active:
 #     command claude ...     (or)     \claude ...
-if [ -r "$HOME/.devcontainer_agents_yolo" ]; then
-    if command -v claude >/dev/null 2>&1; then
-        alias claude='claude --dangerously-skip-permissions'
-    fi
-    if command -v codex >/dev/null 2>&1; then
-        alias codex='codex --dangerously-bypass-approvals-and-sandbox'
-    fi
-    if command -v copilot >/dev/null 2>&1; then
-        alias copilot='copilot --allow-all-tools'
-    fi
+if command -v claude >/dev/null 2>&1; then
+    alias claude='claude --dangerously-skip-permissions'
+fi
+if command -v codex >/dev/null 2>&1; then
+    alias codex='codex --dangerously-bypass-approvals-and-sandbox'
+fi
+if command -v copilot >/dev/null 2>&1; then
+    alias copilot='copilot --allow-all-tools'
+fi
+if command -v agy >/dev/null 2>&1; then
+    alias agy='agy --dangerously-skip-permissions'
 fi

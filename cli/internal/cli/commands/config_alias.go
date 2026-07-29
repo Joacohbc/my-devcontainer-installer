@@ -2,11 +2,9 @@ package commands
 
 import (
 	"fmt"
-	"os"
-	"os/exec"
-	"strings"
+	"sort"
 
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/service"
 	"github.com/spf13/cobra"
 )
@@ -17,160 +15,167 @@ func newConfigAliasCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "alias",
 		Short: "Manage your own shell aliases for every container",
-		Long: `devcontainer-cli config alias — manage the alias file that every container
-picks up.
+		Long: `devcontainer-cli config alias — manage your own shell aliases.
 
-Containers source two files, in this order:
+Aliases are stored in the CLI config (not in a file you hand-edit) and shared by
+every container. Each container sources two files, in this order:
 
   ~/.devcontainer_aliases.sh   the CLI's defaults, baked into the image
                                (kill_port, npm->pnpm, pip->uv, prompt-free agents)
-  ~/.alias.sh                  YOURS — this file
+  ~/.alias.sh                  YOURS — rendered from these aliases
 
-Because yours is sourced last it always wins, and because it lives in the shared
-config volume it applies to every container without rebuilding any image and
-without restarting anything — a change takes effect in the next shell.
+Because yours is sourced last it always wins. Set them with 'config alias set',
+then push them into the shared volume with 'config alias sync' so every
+container picks them up — no image rebuild, no restart (a new shell is enough).
 
-Edit it whenever you like, from either side: inside a container ~/.alias.sh is a
-symlink into that volume, so editing it there is immediately shared with every
-other container. This command edits the host's copy; push it out with
-'config shared sync alias.sh --force'.
-
-With no subcommand this prints the file's path and contents.`,
-		Example: `  # Show the current aliases
+With no subcommand this lists the configured aliases.`,
+		Example: `  # List configured aliases
   devcontainer-cli config alias
 
-  # Edit them, then push them to every container
-  devcontainer-cli config alias edit
-  devcontainer-cli config shared sync alias.sh --force
+  # Add or update one, then apply it everywhere
+  devcontainer-cli config alias set ll "ls -la"
+  devcontainer-cli config alias sync
 
-  # Start over from the commented template
-  devcontainer-cli config alias reset`,
+  # Remove one
+  devcontainer-cli config alias unset ll`,
 		Args:         cobra.NoArgs,
 		SilenceUsage: true,
-		RunE:         runConfigAliasShow,
+		RunE:         runConfigAliasList,
 	}
-	cmd.AddCommand(newConfigAliasEditCommand())
-	cmd.AddCommand(newConfigAliasResetCommand())
+	cmd.AddCommand(newConfigAliasSetCommand())
+	cmd.AddCommand(newConfigAliasUnsetCommand())
+	cmd.AddCommand(newConfigAliasSyncCommand())
 	return cmd
 }
 
-func newConfigAliasEditCommand() *cobra.Command {
+func newConfigAliasSetCommand() *cobra.Command {
 	return &cobra.Command{
-		Use:   "edit",
-		Short: "Open your alias file in $EDITOR",
-		Long: `devcontainer-cli config alias edit — open your alias file in an editor,
-creating it from a commented template when it does not exist yet.
+		Use:   "set <name> <command>",
+		Short: "Add or update an alias in the CLI config",
+		Long: `devcontainer-cli config alias set — store an alias in the CLI config.
 
-The editor is $EDITOR, then $VISUAL, then nano. Edits only reach running
-containers after 'config shared sync alias.sh --force'.`,
-		Example:      `  EDITOR=vim devcontainer-cli config alias edit`,
-		Args:         cobra.NoArgs,
+The name must be a shell identifier (letters, digits, '_', '-', '.'); the command
+is everything after it. This only writes the config — run 'config alias sync' to
+push it into running containers.`,
+		Example: `  devcontainer-cli config alias set gs "git status"
+  devcontainer-cli config alias set k kubectl`,
+		Args:         cobra.MinimumNArgs(2),
 		SilenceUsage: true,
-		RunE:         runConfigAliasEdit,
+		RunE:         runConfigAliasSet,
 	}
 }
 
-func newConfigAliasResetCommand() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "reset",
-		Short: "Overwrite your alias file with the default template",
-		Long: `devcontainer-cli config alias reset — discard your alias file and rewrite it
-from the commented template.
-
-Destructive: whatever is in the file is lost. It only affects your own file; the
-CLI's baked defaults are part of the image and are unaffected.`,
-		Example:      `  devcontainer-cli config alias reset -y`,
-		Args:         cobra.NoArgs,
-		SilenceUsage: true,
-		RunE:         runConfigAliasReset,
+func newConfigAliasUnsetCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:               "unset <name>",
+		Short:             "Remove an alias from the CLI config",
+		Long:              `devcontainer-cli config alias unset — remove an alias. Run 'config alias sync' afterwards to drop it from running containers.`,
+		Example:           `  devcontainer-cli config alias unset gs`,
+		Args:              cobra.ExactArgs(1),
+		SilenceUsage:      true,
+		ValidArgsFunction: completeAliasNames,
+		RunE:              runConfigAliasUnset,
 	}
-	addYesFlag(cmd)
-	addInteractiveFlag(cmd)
-	return cmd
 }
 
-func runConfigAliasShow(_ *cobra.Command, _ []string) error {
+func newConfigAliasSyncCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "sync",
+		Short: "Push the configured aliases into the shared volume",
+		Long: `devcontainer-cli config alias sync — render the configured aliases into the
+shared-config volume as ~/.alias.sh, so every container that mounts it applies
+them. Running containers pick the change up in the next shell; no rebuild.`,
+		Example:      `  devcontainer-cli config alias sync`,
+		Args:         cobra.NoArgs,
+		SilenceUsage: true,
+		RunE:         runConfigAliasSync,
+	}
+}
+
+func runConfigAliasList(_ *cobra.Command, _ []string) error {
 	svc := service.ConfigService{Report: console}
-	path, content, exists, err := svc.ReadAliasFile()
-	if err != nil {
-		return err
-	}
-	console.Info("%s", path)
-	if !exists {
-		console.Warn("Not created yet (run: config alias edit).")
+	aliases := svc.Aliases()
+	console.Info("Aliases stored in %s", domain.GlobalConfigPath())
+	if len(aliases) == 0 {
+		console.Warn("No aliases configured yet (add one with: config alias set <name> <command>).")
 		return nil
 	}
-	if strings.TrimSpace(content) == "" {
-		console.Warn("(empty)")
-		return nil
+	names := make([]string, 0, len(aliases))
+	for name := range aliases {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	console.NewLine()
+	for _, name := range names {
+		console.Print(fmt.Sprintf("  %s = %s\n", name, aliases[name]))
 	}
 	console.NewLine()
-	console.Print(strings.TrimRight(content, "\n") + "\n")
+	console.Info("Apply them to every container with: devcontainer-cli config alias sync")
 	return nil
 }
 
-func runConfigAliasEdit(_ *cobra.Command, _ []string) error {
+func runConfigAliasSet(cmd *cobra.Command, args []string) error {
 	svc := service.ConfigService{Report: console}
-	path, _, err := svc.EnsureAliasFile()
+	// Everything after the name is the command, joined so quoting is optional.
+	name, command := args[0], joinArgs(args[1:])
+	if err := svc.SetAlias(name, command); err != nil {
+		return err
+	}
+	console.Info("Apply it to every container with: devcontainer-cli config alias sync")
+	return nil
+}
+
+func runConfigAliasUnset(cmd *cobra.Command, args []string) error {
+	svc := service.ConfigService{Report: console}
+	existed, err := svc.UnsetAlias(args[0])
 	if err != nil {
 		return err
 	}
-
-	editor := firstNonEmptyEnv("EDITOR", "VISUAL")
-	if editor == "" {
-		editor = "nano"
+	if !existed {
+		console.Warn("No alias named %q.", args[0])
+		return nil
 	}
-	// The editor takes over the terminal, so it must inherit stdio.
-	ed := exec.Command("sh", "-c", editor+" "+quoteShellArg(path))
-	ed.Stdin, ed.Stdout, ed.Stderr = os.Stdin, os.Stdout, os.Stderr
-	if err := ed.Run(); err != nil {
-		return fmt.Errorf("editor %q failed: %w", editor, err)
-	}
-
-	console.Ok(fmt.Sprintf("Saved %s", path))
-	console.Info("Apply it to every container with: devcontainer-cli config shared sync %s --force", types.SharedConfigAliasID)
+	console.Info("Apply the removal to every container with: devcontainer-cli config alias sync")
 	return nil
 }
 
-func runConfigAliasReset(cmd *cobra.Command, _ []string) error {
+func runConfigAliasSync(cmd *cobra.Command, _ []string) error {
+	cfg := service.ConfigService{Report: console}
+	content := cfg.RenderedAliases()
+
+	shared := service.SharedConfigService{Report: console}
+	if err := shared.SyncAliases(content); err != nil {
+		return err
+	}
+	console.Success("Pushed %d alias(es) into the shared volume.", len(cfg.Aliases()))
+	console.Info("Open a new shell in any running container to pick them up.")
+	return nil
+}
+
+// completeAliasNames tab-completes existing alias names for `unset`.
+func completeAliasNames(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	if len(args) > 0 {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
 	svc := service.ConfigService{Report: console}
-	path, _, exists, err := svc.ReadAliasFile()
-	if err != nil {
-		return err
+	names := make([]string, 0)
+	for name := range svc.Aliases() {
+		names = append(names, name)
 	}
-	if exists && !yesFlag(cmd) {
-		if !interactiveFlag(cmd) {
-			return fmt.Errorf("%s already exists; pass --yes to overwrite it in non-interactive mode", path)
-		}
-		proceed, cerr := console.ConfirmDefault(fmt.Sprintf("Overwrite %s with the default template?", path), false)
-		if cerr != nil {
-			return cerr
-		}
-		if !proceed {
-			console.Warn("Cancelled.")
-			return nil
-		}
-	}
-	if _, err := svc.ResetAliasFile(); err != nil {
-		return err
-	}
-	console.Info("Apply it to every container with: devcontainer-cli config shared sync %s --force", types.SharedConfigAliasID)
-	return nil
+	sort.Strings(names)
+	return names, cobra.ShellCompDirectiveNoFileComp
 }
 
-// firstNonEmptyEnv returns the value of the first environment variable that is
-// set and non-empty.
-func firstNonEmptyEnv(names ...string) string {
-	for _, n := range names {
-		if v := strings.TrimSpace(os.Getenv(n)); v != "" {
-			return v
+// joinArgs re-joins the command tokens with single spaces, so both
+// `set k "kubectl get pods"` and `set k kubectl get pods` produce the same
+// stored command.
+func joinArgs(parts []string) string {
+	out := ""
+	for i, p := range parts {
+		if i > 0 {
+			out += " "
 		}
+		out += p
 	}
-	return ""
-}
-
-// quoteShellArg single-quotes a path so it survives being handed to `sh -c`
-// alongside a user-supplied $EDITOR (which may itself carry flags).
-func quoteShellArg(s string) string {
-	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+	return out
 }

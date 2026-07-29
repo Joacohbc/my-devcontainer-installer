@@ -105,23 +105,15 @@ func TestGenerateContext_SectionsReflectModuleOptions(t *testing.T) {
 	}
 }
 
-// yoloAgents off must remove the "agents skip permission prompts" paragraph:
-// telling an agent it may bypass prompts when it may not is worse than silence.
-func TestGenerateContext_YoloAgentsOptionChangesAliasSection(t *testing.T) {
-	const frag = "skip their interactive permission prompts"
-
-	on := mustGenerateContext(t, makeConfig())
-	if !strings.Contains(on, frag) {
-		t.Errorf("yoloAgents defaults on, so the document must mention it:\n%s", on)
+// The aliases section always documents the permission-prompt-free agents (the
+// gate is gone), and names agy alongside the others.
+func TestGenerateContext_AliasSectionDocumentsAgents(t *testing.T) {
+	out := mustGenerateContext(t, makeConfig())
+	if !strings.Contains(out, "skip") || !strings.Contains(out, "permission prompts") {
+		t.Errorf("the aliases section must mention the prompt-free agents:\n%s", out)
 	}
-
-	config := makeConfig()
-	config.Dockerfile.Modules = []types.SelectedModule{
-		{ID: types.ModuleAliases, Options: map[string]any{"yoloAgents": false}},
-	}
-	off := mustGenerateContext(t, config)
-	if strings.Contains(off, frag) {
-		t.Errorf("yoloAgents=false must not claim prompts are skipped:\n%s", off)
+	if !strings.Contains(out, "`agy`") {
+		t.Errorf("the aliases section must name agy:\n%s", out)
 	}
 }
 

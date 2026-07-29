@@ -170,16 +170,16 @@ get-devcontainer-context                 # Lo mismo, desde adentro del contenedo
 ```
 
 ### 6. Aliases en todos los contenedores (`config alias`)
-La imagen trae aliases por defecto: `kill_port <puerto>`, `npm`→`pnpm`, `npx`→`pnpm dlx`, `pip`/`pip3`→`uv pip`, y los agentes (`claude`, `codex`, `copilot`) sin prompts de permisos —el contenedor ya es el sandbox— con `command claude` como escape.
+La imagen trae aliases por defecto: `kill_port <puerto>`, `npm`→`pnpm`, `npx`→`pnpm dlx`, `pip`/`pip3`→`uv pip`, y los agentes (`claude`, `codex`, `copilot`, `agy`) sin prompts de permisos —el contenedor ya es el sandbox— con `command claude` como escape.
 
-Tus propios aliases van en `~/.alias.sh`, y los podés cambiar **cuando quieras**: vive en el volumen compartido, así que se aplica a **todos** los contenedores sin reconstruir ninguna imagen y sin reiniciar nada (toma efecto en la próxima shell). Editalo desde el host o desde adentro del contenedor, da igual:
+Tus propios aliases los definís **por comandos** y se guardan en la configuración de la CLI (`config.json`), no en un archivo suelto de tu home. `config alias sync` los renderiza dentro del volumen compartido, así que se aplican a **todos** los contenedores sin reconstruir ninguna imagen y sin reiniciar nada (toman efecto en la próxima shell):
 ```bash
-devcontainer-cli config alias                          # Ver el archivo y su contenido
-devcontainer-cli config alias edit                     # Editarlo con $EDITOR
-devcontainer-cli config alias reset                    # Volver a la plantilla por defecto
-devcontainer-cli config shared sync alias.sh --force   # Empujar la versión del host a todos
+devcontainer-cli config alias                    # Listar los aliases configurados
+devcontainer-cli config alias set ll "ls -la"    # Agregar o actualizar uno
+devcontainer-cli config alias unset ll           # Quitar uno
+devcontainer-cli config alias sync               # Aplicarlos a todos los contenedores
 ```
-Como se sourcea después de los defaults de la imagen, lo que definas ahí siempre gana.
+Como se sourcean después de los defaults de la imagen, lo que definas ahí siempre gana.
 
 ### 7. Conectar otros servicios a la red (`network`)
 Conecta cualquier otro contenedor Docker a la red privada del workspace actual:

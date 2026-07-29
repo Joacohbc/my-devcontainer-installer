@@ -168,8 +168,9 @@ if [ ! -e /home/devuser/.alias.sh ]; then
 # effect in the next shell — no rebuild, no restart.
 #
 # NOTE: the shared-config volume is not mounted in this container, so this file
-# is local to it and is lost when the container is recreated. Edit it on the host
-# with `devcontainer-cli config alias edit` to have it persist everywhere.
+# is local to it and is lost when the container is recreated. Configure aliases
+# on the host with `devcontainer-cli config alias set` (and `config alias sync`)
+# to have them persist across every container.
 USER_ALIASES
     chown "$DEV_UID:$DEV_GID" /home/devuser/.alias.sh 2>/dev/null || true
 fi

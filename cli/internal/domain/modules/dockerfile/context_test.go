@@ -137,13 +137,20 @@ func TestAliasesContextPointsAtTheUserFile(t *testing.T) {
 	}
 }
 
-func TestAliasesContextFollowsYoloAgentsOption(t *testing.T) {
-	const frag = "skip their interactive permission prompts"
-	if !strings.Contains(contextBodyFor(t, AliasesModule, nil), frag) {
-		t.Error("yoloAgents defaults on, so the section must mention it")
+func TestAliasesContextDocumentsAgentAliases(t *testing.T) {
+	body := contextBodyFor(t, AliasesModule, nil)
+	if !strings.Contains(body, "skip") || !strings.Contains(body, "permission prompts") {
+		t.Errorf("the section must explain the agents skip permission prompts:\n%s", body)
 	}
-	if body := contextBodyFor(t, AliasesModule, map[string]any{"yoloAgents": false}); strings.Contains(body, frag) {
-		t.Errorf("yoloAgents=false must not claim prompts are skipped:\n%s", body)
+	// Every aliased agent must be named, agy included.
+	for _, agent := range []string{"claude", "codex", "copilot", "agy"} {
+		if !strings.Contains(body, "`"+agent+"`") {
+			t.Errorf("the section must name the %q alias:\n%s", agent, body)
+		}
+	}
+	// The section no longer depends on any option.
+	if contextBodyFor(t, AliasesModule, map[string]any{"yoloAgents": false}) != body {
+		t.Error("the aliases context must not depend on options anymore")
 	}
 }
 

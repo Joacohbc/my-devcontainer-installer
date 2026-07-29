@@ -1,10 +1,9 @@
 package service
 
 import (
-	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/goccy/go-yaml"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
@@ -125,81 +124,57 @@ func ensureDefaults(cfg *domain.GlobalConfig) {
 	}
 }
 
-// aliasFileTemplate seeds a fresh user alias file. It is intentionally all
-// comments: an empty-but-documented file makes the two-layer model obvious and
-// cannot change any container's behaviour on its own.
-const aliasFileTemplate = `#!/bin/sh
-# Your own devcontainer shell aliases and functions.
-#
-# This file is synced into the shared-config Docker volume and symlinked into
-# every container as ~/.alias.sh, so it applies everywhere WITHOUT rebuilding
-# any image. It is sourced after the CLI's baked defaults
-# (~/.devcontainer_aliases.sh), so anything defined here overrides them.
-#
-# After editing, push it to the volume with:
-#     devcontainer-cli config shared sync alias.sh --force
-#
-# Guard anything tool-specific so this file stays valid in every image variant:
-#
-#     if command -v kubectl >/dev/null 2>&1; then
-#         alias k='kubectl'
-#     fi
-#
-# Undo one of the defaults by unaliasing it:
-#
-#     unalias npm 2>/dev/null   # go back to the real npm
-`
-
-// AliasFilePath returns the host path of the user's own alias file.
-func (s ConfigService) AliasFilePath() string {
-	return domain.UserAliasFilePath()
+// Aliases returns the user's configured shell aliases (name → command) from the
+// global CLI config. The map is never nil.
+func (s ConfigService) Aliases() map[string]string {
+	cfg := domain.LoadGlobalConfig()
+	if cfg.Aliases == nil {
+		return map[string]string{}
+	}
+	return cfg.Aliases
 }
 
-// ReadAliasFile returns the user alias file's path and contents. exists is
-// false (with no error) when the file has not been created yet.
-func (s ConfigService) ReadAliasFile() (path, content string, exists bool, err error) {
-	path = domain.UserAliasFilePath()
-	data, err := os.ReadFile(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return path, "", false, nil
+// SetAlias validates and persists a single alias in the global config. An
+// existing name is overwritten. It does not touch any container — call
+// SyncAliasesToVolume (or `config alias sync`) to apply it.
+func (s ConfigService) SetAlias(name, command string) error {
+	if !domain.IsValidAliasName(name) {
+		return fmt.Errorf("invalid alias name %q: use letters, digits, '_', '-' or '.', starting with a letter or '_'", name)
 	}
-	if err != nil {
-		return path, "", false, err
+	if strings.TrimSpace(command) == "" {
+		return fmt.Errorf("alias %q needs a non-empty command", name)
 	}
-	return path, string(data), true, nil
+	cfg := domain.LoadGlobalConfig()
+	if cfg.Aliases == nil {
+		cfg.Aliases = map[string]string{}
+	}
+	cfg.Aliases[name] = command
+	if err := domain.SaveGlobalConfig(cfg); err != nil {
+		return err
+	}
+	s.Report.Success("✓ Set alias %s='%s' (in %s)", name, command, domain.GlobalConfigPath())
+	return nil
 }
 
-// EnsureAliasFile creates the user alias file from the template when missing and
-// reports whether it had to create it. An existing file is never touched.
-func (s ConfigService) EnsureAliasFile() (path string, created bool, err error) {
-	path = domain.UserAliasFilePath()
-	if _, statErr := os.Stat(path); statErr == nil {
-		return path, false, nil
-	} else if !errors.Is(statErr, os.ErrNotExist) {
-		return path, false, statErr
+// UnsetAlias removes an alias from the global config, reporting whether it was
+// present. Removing an absent alias is a no-op, not an error.
+func (s ConfigService) UnsetAlias(name string) (existed bool, err error) {
+	cfg := domain.LoadGlobalConfig()
+	if _, ok := cfg.Aliases[name]; !ok {
+		return false, nil
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return path, false, err
+	delete(cfg.Aliases, name)
+	if err := domain.SaveGlobalConfig(cfg); err != nil {
+		return true, err
 	}
-	if err := os.WriteFile(path, []byte(aliasFileTemplate), 0o644); err != nil {
-		return path, false, err
-	}
-	s.Report.Success("✓ Created %s", path)
-	return path, true, nil
+	s.Report.Success("✓ Removed alias %s", name)
+	return true, nil
 }
 
-// ResetAliasFile overwrites the user alias file with the template, discarding
-// whatever was there. Destructive: the caller must have confirmed first.
-func (s ConfigService) ResetAliasFile() (string, error) {
-	path := domain.UserAliasFilePath()
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return path, err
-	}
-	if err := os.WriteFile(path, []byte(aliasFileTemplate), 0o644); err != nil {
-		return path, err
-	}
-	s.Report.Success("✓ Reset %s to the default template", path)
-	return path, nil
+// RenderedAliases returns the shell script that ~/.alias.sh is populated with,
+// derived from the configured aliases.
+func (s ConfigService) RenderedAliases() string {
+	return domain.RenderUserAliases(s.Aliases())
 }
 
 // ExportConfigYAML renders the project's devcontainer config as YAML.

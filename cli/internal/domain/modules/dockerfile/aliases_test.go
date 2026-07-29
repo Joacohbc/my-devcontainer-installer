@@ -46,30 +46,25 @@ func TestAliasesModuleRender(t *testing.T) {
 	}
 }
 
-// yoloAgents only ever changes whether the flag file alias.sh keys off is
-// created — the shipped script itself is never templated.
-func TestAliasesModuleYoloAgentsOption(t *testing.T) {
-	flagTouch := `touch \$HOME/` + YoloAgentsFlagFile
-
-	on := AliasesModule.Render(map[string]any{"yoloAgents": true})
-	if !strings.Contains(on, flagTouch) {
-		t.Errorf("yoloAgents=true must create the flag file:\n%s", on)
+// The module is build-identical for every project: it takes no options and the
+// agent aliases live unconditionally in the shipped script, so Render never
+// depends on opts.
+func TestAliasesModuleRenderIsOptionIndependent(t *testing.T) {
+	if len(AliasesModule.Options) != 0 {
+		t.Errorf("aliases module must expose no options, got %v", AliasesModule.Options)
 	}
-
-	off := AliasesModule.Render(map[string]any{"yoloAgents": false})
-	if strings.Contains(off, flagTouch) {
-		t.Errorf("yoloAgents=false must NOT create the flag file:\n%s", off)
+	base := AliasesModule.Render(nil)
+	for _, opts := range []map[string]any{
+		{"yoloAgents": false},
+		{"anything": true},
+	} {
+		if got := AliasesModule.Render(opts); got != base {
+			t.Errorf("Render must ignore options; %v changed the output", opts)
+		}
 	}
-
-	// Default (nil options) is on.
-	if !strings.Contains(AliasesModule.Render(nil), flagTouch) {
-		t.Error("yoloAgents must default to true")
-	}
-
-	// Everything else is identical between the two, so the option can never
-	// change which files are installed.
-	if strings.Count(on, "COPY ") != strings.Count(off, "COPY ") {
-		t.Errorf("yoloAgents must not change the COPY set:\non=%s\noff=%s", on, off)
+	// The gate mechanism is gone: nothing touches a flag file anymore.
+	if strings.Contains(base, "devcontainer_agents_yolo") {
+		t.Errorf("the agent-yolo flag file must no longer be referenced:\n%s", base)
 	}
 }
 
@@ -100,7 +95,7 @@ func TestAliasesModuleSpec(t *testing.T) {
 			t.Errorf("CopyFiles must include %q, got %v", w, AliasesModule.CopyFiles)
 		}
 	}
-	if len(AliasesModule.Options) != 1 || AliasesModule.Options[0].ID != "yoloAgents" {
-		t.Errorf("aliases module must expose exactly the yoloAgents option, got %v", AliasesModule.Options)
+	if len(AliasesModule.Options) != 0 {
+		t.Errorf("aliases module must expose no options, got %v", AliasesModule.Options)
 	}
 }

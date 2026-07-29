@@ -48,6 +48,24 @@ func runSyncConfig(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+	// alias.sh is authored by `config alias`, not seeded from a host file, so it
+	// has no host source to copy here. Drop it and point to the right command.
+	kept := entries[:0]
+	aliasRequested := false
+	for _, e := range entries {
+		if e.ID == types.SharedConfigAliasID {
+			aliasRequested = true
+			continue
+		}
+		kept = append(kept, e)
+	}
+	entries = kept
+	if aliasRequested {
+		console.Info("Aliases are managed with 'devcontainer-cli config alias' — use 'config alias sync' to push them.")
+	}
+	if len(entries) == 0 {
+		return nil
+	}
 	force, _ := cmd.Flags().GetBool("force")
 
 	home, err := os.UserHomeDir()

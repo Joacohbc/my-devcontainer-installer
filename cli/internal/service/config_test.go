@@ -96,55 +96,90 @@ func TestConfigSSHConfigFileRoundTrip(t *testing.T) {
 	}
 }
 
-func TestConfigAliasFile(t *testing.T) {
+// Aliases are stored in the CLI config, set and unset by command, and never
+// touch a file in the user's home.
+func TestConfigAliasesRoundTrip(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	svc := ConfigService{Report: nopReporter{}}
 
-	// The host path must be the host side of the shared-config entry, so
-	// `config shared sync alias.sh` pushes exactly this file.
-	entry, ok := types.SharedConfigEntryByID(types.SharedConfigAliasID)
-	if !ok {
-		t.Fatal("the alias.sh shared-config entry must exist")
-	}
-	wantPath := filepath.Join(home, entry.Target)
-	if got := svc.AliasFilePath(); got != wantPath {
-		t.Errorf("AliasFilePath = %q, want %q", got, wantPath)
+	if got := svc.Aliases(); len(got) != 0 {
+		t.Fatalf("fresh config must have no aliases, got %v", got)
 	}
 
-	// Missing file: no error, exists=false.
-	path, content, exists, err := svc.ReadAliasFile()
-	if err != nil || exists || content != "" || path != wantPath {
-		t.Fatalf("fresh ReadAliasFile = (%q, %q, %v, %v)", path, content, exists, err)
+	if err := svc.SetAlias("ll", "ls -la"); err != nil {
+		t.Fatalf("SetAlias: %v", err)
+	}
+	if err := svc.SetAlias("gs", "git status"); err != nil {
+		t.Fatalf("SetAlias: %v", err)
+	}
+	// Overwriting an existing name keeps a single entry.
+	if err := svc.SetAlias("ll", "ls -lah"); err != nil {
+		t.Fatalf("SetAlias overwrite: %v", err)
 	}
 
-	// EnsureAliasFile seeds the template.
-	path, created, err := svc.EnsureAliasFile()
-	if err != nil || !created || path != wantPath {
-		t.Fatalf("EnsureAliasFile = (%q, %v, %v)", path, created, err)
-	}
-	_, content, exists, _ = svc.ReadAliasFile()
-	if !exists || !strings.Contains(content, "devcontainer-cli config shared sync alias.sh") {
-		t.Errorf("seeded alias file should document the sync command, got:\n%s", content)
+	got := svc.Aliases()
+	if len(got) != 2 || got["ll"] != "ls -lah" || got["gs"] != "git status" {
+		t.Fatalf("aliases = %v, want ll=ls -lah, gs=git status", got)
 	}
 
-	// An existing file is never overwritten by EnsureAliasFile.
-	if err := os.WriteFile(wantPath, []byte("alias mine=yes\n"), 0o644); err != nil {
-		t.Fatal(err)
+	// The rendered script is deterministic (sorted) and single-quotes commands.
+	rendered := svc.RenderedAliases()
+	for _, frag := range []string{"alias gs='git status'", "alias ll='ls -lah'"} {
+		if !strings.Contains(rendered, frag) {
+			t.Errorf("rendered aliases missing %q:\n%s", frag, rendered)
+		}
 	}
-	if _, created, err = svc.EnsureAliasFile(); err != nil || created {
-		t.Errorf("EnsureAliasFile on an existing file: created=%v err=%v", created, err)
-	}
-	if _, content, _, _ = svc.ReadAliasFile(); content != "alias mine=yes\n" {
-		t.Errorf("EnsureAliasFile must not touch existing content, got %q", content)
+	if strings.Index(rendered, "alias gs=") > strings.Index(rendered, "alias ll=") {
+		t.Errorf("aliases must render in sorted order:\n%s", rendered)
 	}
 
-	// ResetAliasFile does overwrite it.
-	if _, err := svc.ResetAliasFile(); err != nil {
-		t.Fatalf("ResetAliasFile: %v", err)
+	// Nothing was written to the user's home.
+	if _, err := os.Stat(filepath.Join(home, ".alias.sh")); !os.IsNotExist(err) {
+		t.Errorf("aliases must not create ~/.alias.sh on the host, stat err = %v", err)
 	}
-	if _, content, _, _ = svc.ReadAliasFile(); strings.Contains(content, "alias mine=yes") {
-		t.Errorf("ResetAliasFile must discard the old content, got:\n%s", content)
+
+	existed, err := svc.UnsetAlias("gs")
+	if err != nil || !existed {
+		t.Fatalf("UnsetAlias(gs) = (%v, %v), want (true, nil)", existed, err)
+	}
+	if existed, _ := svc.UnsetAlias("nope"); existed {
+		t.Error("UnsetAlias on an absent name must report existed=false")
+	}
+	if got := svc.Aliases(); len(got) != 1 || got["ll"] == "" {
+		t.Errorf("after unset, aliases = %v, want just ll", got)
+	}
+}
+
+// An invalid alias name is rejected before anything is persisted.
+func TestConfigSetAliasRejectsBadNames(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	svc := ConfigService{Report: nopReporter{}}
+	for _, bad := range []string{"", "1abc", "has space", "a=b", "no/slash"} {
+		if err := svc.SetAlias(bad, "echo hi"); err == nil {
+			t.Errorf("SetAlias(%q) must be rejected", bad)
+		}
+	}
+	if err := svc.SetAlias("ok", "   "); err == nil {
+		t.Error("SetAlias with an empty command must be rejected")
+	}
+	if got := svc.Aliases(); len(got) != 0 {
+		t.Errorf("no invalid alias should have been stored, got %v", got)
+	}
+}
+
+// A command containing a single quote must survive the round-trip into the
+// rendered POSIX script.
+func TestRenderedAliasesEscapesSingleQuotes(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	svc := ConfigService{Report: nopReporter{}}
+	if err := svc.SetAlias("say", "echo 'hi there'"); err != nil {
+		t.Fatalf("SetAlias: %v", err)
+	}
+	rendered := svc.RenderedAliases()
+	if !strings.Contains(rendered, `alias say='echo '\''hi there'\'''`) {
+		t.Errorf("single quotes must be POSIX-escaped:\n%s", rendered)
 	}
 }
 

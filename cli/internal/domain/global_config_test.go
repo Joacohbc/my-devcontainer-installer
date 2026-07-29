@@ -3,6 +3,7 @@ package domain_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
@@ -207,4 +208,51 @@ func TestManagedKnownHostsPathIgnoresKeyOverride(t *testing.T) {
 			t.Errorf("ManagedKnownHostsPath() = %q, want %q", got, want)
 		}
 	})
+}
+
+func TestIsValidAliasName(t *testing.T) {
+	valid := []string{"ll", "g", "gco", "k8s", "my_alias", "my-alias", "a.b", "_x"}
+	for _, name := range valid {
+		if !domain.IsValidAliasName(name) {
+			t.Errorf("IsValidAliasName(%q) = false, want true", name)
+		}
+	}
+	invalid := []string{"", "1abc", "has space", "a=b", "a/b", "a$b", "a'b", "-x"}
+	for _, name := range invalid {
+		if domain.IsValidAliasName(name) {
+			t.Errorf("IsValidAliasName(%q) = true, want false", name)
+		}
+	}
+}
+
+func TestRenderUserAliases(t *testing.T) {
+	// Empty map still yields a valid, sourceable header-only script (comments
+	// only, no actual `alias` statement).
+	empty := domain.RenderUserAliases(nil)
+	if !strings.HasPrefix(empty, "#!/bin/sh") {
+		t.Errorf("rendered script must start with a shebang:\n%s", empty)
+	}
+	for _, line := range strings.Split(empty, "\n") {
+		if strings.HasPrefix(line, "alias ") {
+			t.Errorf("empty aliases must render no alias statements, got %q", line)
+		}
+	}
+
+	out := domain.RenderUserAliases(map[string]string{
+		"ll":  "ls -la",
+		"gs":  "git status",
+		"say": "echo 'hi'",
+	})
+	// Sorted order: gs, ll, say.
+	gs, ll, say := strings.Index(out, "alias gs="), strings.Index(out, "alias ll="), strings.Index(out, "alias say=")
+	if gs == -1 || ll == -1 || say == -1 || !(gs < ll && ll < say) {
+		t.Errorf("aliases must render in sorted order (gs<ll<say), got %d/%d/%d:\n%s", gs, ll, say, out)
+	}
+	if !strings.Contains(out, "alias ll='ls -la'") {
+		t.Errorf("plain command must be single-quoted verbatim:\n%s", out)
+	}
+	// POSIX single-quote escaping: ' becomes '\''.
+	if !strings.Contains(out, `alias say='echo '\''hi'\'''`) {
+		t.Errorf("embedded single quotes must be escaped the POSIX way:\n%s", out)
+	}
 }

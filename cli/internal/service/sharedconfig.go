@@ -153,6 +153,49 @@ func (s SharedConfigService) syncEntry(e types.SharedConfigEntry, hostHome, owne
 	return strings.Contains(stdout, "COPIED"), nil
 }
 
+// writeFileEntryScript writes $ENTRY_CONTENT into /vol/$ENTRY_ID and re-owns it.
+// Unlike syncEntryScript it always overwrites: the caller (config alias) holds
+// the single source of truth, so there is nothing in the volume to protect.
+const writeFileEntryScript = `set -e
+dst="/vol/$ENTRY_ID"
+printf '%s' "$ENTRY_CONTENT" > "$dst"
+[ -n "$ENTRY_OWNER" ] && chown "$ENTRY_OWNER" "$dst"
+echo COPIED`
+
+// SyncAliases writes the rendered alias script into the shared volume's
+// alias.sh entry, so every container that mounts the volume picks it up as
+// ~/.alias.sh on its next start (or immediately in already-running containers,
+// since the file is symlinked). The content is authored by the CLI, not read
+// from a host file, which is why it always overwrites. Ownership matches the
+// host uid/gid, i.e. what devuser is remapped to on boot.
+func (s SharedConfigService) SyncAliases(content string) error {
+	if err := docker.EnsureDocker(); err != nil {
+		return err
+	}
+	if err := EnsureSharedConfigVolume(s.Report); err != nil {
+		return err
+	}
+	entry, ok := types.SharedConfigEntryByID(types.SharedConfigAliasID)
+	if !ok {
+		return fmt.Errorf("no shared-config entry for %q", types.SharedConfigAliasID)
+	}
+	status, _, stderr, err := docker.DockerCapture([]string{
+		"run", "--rm",
+		"-v", types.SharedConfigVolumeName + ":/vol",
+		"-e", "ENTRY_ID=" + entry.ID,
+		"-e", "ENTRY_CONTENT=" + content,
+		"-e", "ENTRY_OWNER=" + hostOwnerString(),
+		syncHelperImage, "sh", "-c", writeFileEntryScript,
+	})
+	if err != nil {
+		return err
+	}
+	if status != 0 {
+		return fmt.Errorf("writing aliases into the volume failed (status %d): %s", status, strings.TrimSpace(stderr))
+	}
+	return nil
+}
+
 // hostOwnerString returns "uid:gid" for the current host user, used to
 // re-own volume content copied in from (or extracted for) the host so it
 // matches devuser's uid/gid remap on container boot.
