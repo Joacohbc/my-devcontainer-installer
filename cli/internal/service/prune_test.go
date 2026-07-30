@@ -450,6 +450,144 @@ func TestCleanSSHDryRunKeepsPinnedKeys(t *testing.T) {
 	}
 }
 
+// --all lists a currently-alive block alongside the stale one, but --yes must
+// never auto-remove it: only the confirmed-stale block goes.
+func TestCleanSSHAll_YesListsButDoesNotRemoveAliveBlocks(t *testing.T) {
+	config := "# devcontainer-cli:managed v=1 kind=workspace ref=api alias=api\n" +
+		"Host api\n    HostName 172.25.1.30\n    User devuser\n\n" +
+		"# devcontainer-cli:managed v=1 kind=container ref=dc-ssh alias=dc-ssh\n" +
+		"Host dc-ssh\n    HostName 172.25.2.30\n    User devuser\n"
+	configPath, _ := writeSSHFiles(t, config, "")
+
+	stdout := `{"Names":"api-devcontainer-ssh","Image":"img","Status":"Up","State":"running","Labels":"` +
+		types.LabelManaged + `=true,com.docker.compose.project=api","Ports":""}`
+	defer useFakeDocker(&fakeRunner{status: 0, stdout: stdout})()
+
+	svc := PruneService{Report: nopReporter{}}
+	removed, err := svc.CleanSSH(CleanOptions{Yes: true, All: true})
+	if err != nil {
+		t.Fatalf("CleanSSH: %v", err)
+	}
+	if removed != 1 {
+		t.Fatalf("CleanSSH removed %d, want 1 (only the stale container block)", removed)
+	}
+	gotConfig, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(gotConfig), "Host api") {
+		t.Errorf("--all + --yes must not auto-remove an alive block:\n%s", gotConfig)
+	}
+	if strings.Contains(string(gotConfig), "Host dc-ssh") {
+		t.Errorf("the stale block should still be removed:\n%s", gotConfig)
+	}
+}
+
+// Without --all, an alive block is invisible to clean-ssh entirely — nothing
+// stale, so it's a no-op.
+func TestCleanSSHWithoutAll_IgnoresAliveBlocks(t *testing.T) {
+	config := "# devcontainer-cli:managed v=1 kind=workspace ref=api alias=api\n" +
+		"Host api\n    HostName 172.25.1.30\n    User devuser\n"
+	writeSSHFiles(t, config, "")
+
+	stdout := `{"Names":"api-devcontainer-ssh","Image":"img","Status":"Up","State":"running","Labels":"` +
+		types.LabelManaged + `=true,com.docker.compose.project=api","Ports":""}`
+	defer useFakeDocker(&fakeRunner{status: 0, stdout: stdout})()
+
+	svc := PruneService{Report: nopReporter{}}
+	removed, err := svc.CleanSSH(CleanOptions{Yes: true})
+	if err != nil || removed != 0 {
+		t.Fatalf("CleanSSH = %d,%v, want 0,nil", removed, err)
+	}
+}
+
+type multiselectingPrompter struct {
+	scriptedPrompter
+	gotChoices []Option
+	gotInitial []Option
+	pick       func([]Option) []Option
+}
+
+func (p *multiselectingPrompter) Multiselect(_ string, choices []Option, initial []Option) ([]Option, error) {
+	p.gotChoices = choices
+	p.gotInitial = initial
+	if p.pick != nil {
+		return p.pick(choices), nil
+	}
+	return initial, nil
+}
+
+// --all's alive block is offered in the interactive picker, but unchecked by
+// default like an unverified one — only stale blocks come pre-selected.
+func TestCleanSSHAll_Interactive_AliveBlockOfferedButNotPreselected(t *testing.T) {
+	config := "# devcontainer-cli:managed v=1 kind=workspace ref=api alias=api\n" +
+		"Host api\n    HostName 172.25.1.30\n    User devuser\n\n" +
+		"# devcontainer-cli:managed v=1 kind=container ref=dc-ssh alias=dc-ssh\n" +
+		"Host dc-ssh\n    HostName 172.25.2.30\n    User devuser\n"
+	configPath, _ := writeSSHFiles(t, config, "")
+
+	stdout := `{"Names":"api-devcontainer-ssh","Image":"img","Status":"Up","State":"running","Labels":"` +
+		types.LabelManaged + `=true,com.docker.compose.project=api","Ports":""}`
+	defer useFakeDocker(&fakeRunner{status: 0, stdout: stdout})()
+
+	prompter := &multiselectingPrompter{}
+	svc := PruneService{Report: nopReporter{}, Prompt: prompter}
+	removed, err := svc.CleanSSH(CleanOptions{All: true, Interactive: true})
+	if err != nil {
+		t.Fatalf("CleanSSH: %v", err)
+	}
+	if len(prompter.gotChoices) != 2 {
+		t.Fatalf("Multiselect choices = %d, want 2 (stale + alive)", len(prompter.gotChoices))
+	}
+	if len(prompter.gotInitial) != 1 {
+		t.Errorf("Multiselect initial = %d, want 1 (only the stale block pre-checked)", len(prompter.gotInitial))
+	}
+	aliveLabel := prompter.gotChoices[1].Label
+	if !strings.Contains(aliveLabel, "[ALIVE]") {
+		t.Errorf("alive choice label = %q, want it marked [ALIVE]", aliveLabel)
+	}
+	// The default pick (== initial) removes only the stale block.
+	if removed != 1 {
+		t.Fatalf("CleanSSH removed %d, want 1", removed)
+	}
+	gotConfig, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(gotConfig), "Host api") {
+		t.Errorf("the alive block was not selected and must survive:\n%s", gotConfig)
+	}
+}
+
+// Explicitly picking the alive block in the interactive picker does remove it
+// — --all only changes what's offered, never what the user is allowed to do.
+func TestCleanSSHAll_Interactive_CanExplicitlyRemoveAliveBlock(t *testing.T) {
+	config := "# devcontainer-cli:managed v=1 kind=workspace ref=api alias=api\n" +
+		"Host api\n    HostName 172.25.1.30\n    User devuser\n"
+	configPath, _ := writeSSHFiles(t, config, "")
+
+	stdout := `{"Names":"api-devcontainer-ssh","Image":"img","Status":"Up","State":"running","Labels":"` +
+		types.LabelManaged + `=true,com.docker.compose.project=api","Ports":""}`
+	defer useFakeDocker(&fakeRunner{status: 0, stdout: stdout})()
+
+	prompter := &multiselectingPrompter{pick: func(choices []Option) []Option { return choices }}
+	svc := PruneService{Report: nopReporter{}, Prompt: prompter}
+	removed, err := svc.CleanSSH(CleanOptions{All: true, Interactive: true})
+	if err != nil {
+		t.Fatalf("CleanSSH: %v", err)
+	}
+	if removed != 1 {
+		t.Fatalf("CleanSSH removed %d, want 1 (the explicitly-picked alive block)", removed)
+	}
+	gotConfig, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(gotConfig), "Host api") {
+		t.Errorf("explicitly picking the alive block should remove it:\n%s", gotConfig)
+	}
+}
+
 type confirmingPrompter struct {
 	scriptedPrompter
 	answer bool

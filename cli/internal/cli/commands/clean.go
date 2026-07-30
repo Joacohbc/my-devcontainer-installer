@@ -182,6 +182,10 @@ removed or renamed, the machine is off, ...) its blocks are never auto-removed, 
 unverified — in interactive mode you can still select them for removal if you know they're really gone;
 non-interactive (--yes) runs skip them and report how many were skipped.
 
+--all additionally lists every managed SSH block regardless of status, including ones that are currently
+alive and working — useful to review or manually remove a healthy entry. It only widens what is shown and
+selectable in interactive mode: --yes never auto-removes an alive block just because --all was passed.
+
 It then sweeps the CLI-managed known_hosts, dropping the host keys no remaining Host block dials — the ones
 left behind by the blocks just removed, by an earlier 'destroy', or by a container that came back on a
 different address. Your own ~/.ssh/known_hosts is never touched.`,
@@ -189,13 +193,17 @@ different address. Your own ~/.ssh/known_hosts is never touched.`,
   devcontainer-cli clean ssh --dry-run
 
   # Remove stale SSH blocks and their pinned host keys
-  devcontainer-cli clean ssh`,
+  devcontainer-cli clean ssh
+
+  # Review every managed SSH block, including healthy ones
+  devcontainer-cli clean ssh --all --dry-run`,
 		SilenceUsage: true,
 		RunE:         runCleanSsh,
 	}
 	addYesFlag(cmd)
 	addInteractiveFlag(cmd)
 	cmd.Flags().Bool("dry-run", false, "List stale blocks and orphaned host keys without removing them")
+	cmd.Flags().Bool("all", false, "Also list every managed block regardless of status, including alive ones (never auto-removed by --yes)")
 	return cmd
 }
 
@@ -204,6 +212,7 @@ func runCleanSsh(cmd *cobra.Command, _ []string) error {
 	svc := service.PruneService{Report: console, Prompt: console}
 	_, err := svc.CleanSSH(service.CleanOptions{
 		DryRun:      dryRun,
+		All:         allFlag(cmd),
 		Yes:         yesFlag(cmd),
 		Interactive: interactiveFlag(cmd),
 	})

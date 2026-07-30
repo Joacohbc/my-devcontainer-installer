@@ -408,6 +408,60 @@ func TestManagedAliasMissingConfig(t *testing.T) {
 	}
 }
 
+func TestListManagedSSHBlocks(t *testing.T) {
+	home := t.TempDir()
+	setHomeDir(t, home)
+	if err := os.MkdirAll(filepath.Join(home, ".ssh"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(managedSSHConfig(home), []byte(newFormatConfig), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	svc := SshService{Report: nopReporter{}}
+	blocks, err := svc.ListManagedSSHBlocks()
+	if err != nil {
+		t.Fatalf("ListManagedSSHBlocks: %v", err)
+	}
+	if len(blocks) != 2 {
+		t.Fatalf("ListManagedSSHBlocks = %+v, want 2 blocks (api workspace + dc-ssh container)", blocks)
+	}
+}
+
+func TestListManagedSSHBlocks_DedupesDuplicateMarkers(t *testing.T) {
+	home := t.TempDir()
+	setHomeDir(t, home)
+	if err := os.MkdirAll(filepath.Join(home, ".ssh"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	content := "# devcontainer-cli:managed v=1 kind=workspace ref=myproj alias=myproj\n" +
+		"\n" +
+		"# devcontainer-cli:managed v=1 kind=workspace ref=myproj alias=myproj\n" +
+		"Host myproj\n    HostName 172.20.0.2\n"
+	if err := os.WriteFile(managedSSHConfig(home), []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	svc := SshService{Report: nopReporter{}}
+	blocks, err := svc.ListManagedSSHBlocks()
+	if err != nil {
+		t.Fatalf("ListManagedSSHBlocks: %v", err)
+	}
+	if len(blocks) != 1 {
+		t.Fatalf("ListManagedSSHBlocks = %+v, want the duplicate collapsed to 1", blocks)
+	}
+}
+
+func TestListManagedSSHBlocks_MissingConfig(t *testing.T) {
+	home := t.TempDir()
+	setHomeDir(t, home)
+	svc := SshService{Report: nopReporter{}}
+	blocks, err := svc.ListManagedSSHBlocks()
+	if err != nil || len(blocks) != 0 {
+		t.Errorf("ListManagedSSHBlocks with no config = %+v,%v, want empty,nil", blocks, err)
+	}
+}
+
 func TestPruneManagedBlocks(t *testing.T) {
 	home := t.TempDir()
 	setHomeDir(t, home)

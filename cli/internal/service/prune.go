@@ -268,6 +268,72 @@ func viaOriginNote(b ManagedMarker) string {
 	return fmt.Sprintf("  [via %s — remote container, not managed on this machine's Docker]", b.Host)
 }
 
+// aliveSSHBlocks returns every managed block that is neither stale nor
+// unverified — the --all category, useful to review or manually remove a
+// healthy entry.
+func (s PruneService) aliveSSHBlocks(ssh SshService, stale, unverified []ManagedMarker) ([]ManagedMarker, error) {
+	all, err := ssh.ListManagedSSHBlocks()
+	if err != nil {
+		return nil, err
+	}
+	excluded := make(map[string]bool, len(stale)+len(unverified))
+	for _, b := range stale {
+		excluded[b.Kind+"|"+b.Ref] = true
+	}
+	for _, b := range unverified {
+		excluded[b.Kind+"|"+b.Ref] = true
+	}
+	var alive []ManagedMarker
+	for _, b := range all {
+		if !excluded[b.Kind+"|"+b.Ref] {
+			alive = append(alive, b)
+		}
+	}
+	return alive, nil
+}
+
+// pickSSHBlocksToRemove asks the user which SSH config blocks to remove:
+// stale ones pre-checked, unverified and alive ones offered but unchecked
+// (removing either needs an explicit choice — see CleanSSH).
+func (s PruneService) pickSSHBlocksToRemove(stale, unverified, alive []ManagedMarker) ([]ManagedMarker, error) {
+	candidates := make([]ManagedMarker, 0, len(stale)+len(unverified)+len(alive))
+	candidates = append(candidates, stale...)
+	candidates = append(candidates, unverified...)
+	candidates = append(candidates, alive...)
+	unverifiedStart := len(stale)
+	aliveStart := len(stale) + len(unverified)
+
+	choices := make([]Option, len(candidates))
+	initial := make([]Option, 0, len(stale))
+	for i, b := range candidates {
+		label := fmt.Sprintf("Host %s  (%s %s)%s", b.Alias, b.Kind, b.Ref, viaOriginNote(b))
+		switch {
+		case i >= aliveStart:
+			label = fmt.Sprintf("Host %s  (%s %s)  [ALIVE]", b.Alias, b.Kind, b.Ref)
+		case i >= unverifiedStart:
+			label = fmt.Sprintf("Host %s  (%s %s)  [UNVERIFIED — could not reach %s]", b.Alias, b.Kind, b.Ref, b.Host)
+		}
+		choices[i] = Option{Value: strconv.Itoa(i), Label: label}
+		if i < unverifiedStart {
+			initial = append(initial, choices[i])
+		}
+	}
+
+	picked, err := s.Prompt.Multiselect("Select SSH config blocks to remove:", choices, initial)
+	if err != nil {
+		return nil, err
+	}
+	toRemove := make([]ManagedMarker, len(picked))
+	for i, p := range picked {
+		idx, err := strconv.Atoi(p.Value)
+		if err != nil {
+			return nil, err
+		}
+		toRemove[i] = candidates[idx]
+	}
+	return toRemove, nil
+}
+
 // CleanSSH prunes stale SSH config blocks from the CLI-managed SSH config, then
 // drops the host keys those blocks had pinned in the CLI-managed known_hosts.
 //
@@ -294,7 +360,16 @@ func (s PruneService) CleanSSH(opts CleanOptions) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	if len(stale) == 0 && len(unverified) == 0 {
+
+	var alive []ManagedMarker
+	if opts.All {
+		alive, err = s.aliveSSHBlocks(ssh, stale, unverified)
+		if err != nil {
+			return 0, err
+		}
+	}
+
+	if len(stale) == 0 && len(unverified) == 0 && len(alive) == 0 {
 		s.Report.Success("No stale SSH config blocks found.")
 		// Keys can outlive their block: destroy removes the block on its own, and
 		// a container coming back on another address leaves the old one pinned.
@@ -313,6 +388,12 @@ func (s PruneService) CleanSSH(opts CleanOptions) (int, error) {
 			s.Report.Info("  - Host %s  (%s %s)%s", b.Alias, b.Kind, b.Ref, viaOriginNote(b))
 		}
 	}
+	if len(alive) > 0 {
+		s.Report.Info("Also listing %d SSH config block(s) that are currently alive (--all):", len(alive))
+		for _, b := range alive {
+			s.Report.Info("  - Host %s  (%s %s)%s", b.Alias, b.Kind, b.Ref, viaOriginNote(b))
+		}
+	}
 
 	if opts.DryRun {
 		s.Report.Warn("Dry run — nothing removed. Re-run without --dry-run to apply.")
@@ -321,32 +402,20 @@ func (s PruneService) CleanSSH(opts CleanOptions) (int, error) {
 
 	var toRemove []ManagedMarker
 	if opts.Yes {
-		// Deleting an unverified block on a guess could throw away still-valid
-		// SSH access, so --yes only ever removes confirmed-stale blocks.
+		// --all only widens what is shown/selectable; --yes never auto-removes
+		// an alive or unverified block just because it was listed.
 		toRemove = stale
 		if len(unverified) > 0 {
 			s.Report.Warn("Skipping %d unverified block(s) in non-interactive mode; re-run interactively to remove them.", len(unverified))
+		}
+		if len(alive) > 0 {
+			s.Report.Warn("Skipping %d alive block(s) in non-interactive mode; re-run interactively to remove them.", len(alive))
 		}
 	} else {
 		if !opts.Interactive || s.Prompt == nil {
 			return 0, fmt.Errorf("refusing to remove SSH config blocks without confirmation; pass --yes to confirm in non-interactive mode")
 		}
-		candidates := make([]ManagedMarker, 0, len(stale)+len(unverified))
-		candidates = append(candidates, stale...)
-		candidates = append(candidates, unverified...)
-		choices := make([]Option, len(candidates))
-		initial := make([]Option, 0, len(stale))
-		for i, b := range candidates {
-			label := fmt.Sprintf("Host %s  (%s %s)%s", b.Alias, b.Kind, b.Ref, viaOriginNote(b))
-			if i >= len(stale) {
-				label = fmt.Sprintf("Host %s  (%s %s)  [UNVERIFIED — could not reach %s]", b.Alias, b.Kind, b.Ref, b.Host)
-			}
-			choices[i] = Option{Value: strconv.Itoa(i), Label: label}
-			if i < len(stale) {
-				initial = append(initial, choices[i])
-			}
-		}
-		picked, err := s.Prompt.Multiselect("Select SSH config blocks to remove:", choices, initial)
+		picked, err := s.pickSSHBlocksToRemove(stale, unverified, alive)
 		if err != nil {
 			return 0, err
 		}
@@ -354,14 +423,7 @@ func (s PruneService) CleanSSH(opts CleanOptions) (int, error) {
 			s.Report.Warn("Cancelled.")
 			return 0, nil
 		}
-		toRemove = make([]ManagedMarker, len(picked))
-		for i, p := range picked {
-			idx, err := strconv.Atoi(p.Value)
-			if err != nil {
-				return 0, err
-			}
-			toRemove[i] = candidates[idx]
-		}
+		toRemove = picked
 	}
 
 	if len(toRemove) == 0 {

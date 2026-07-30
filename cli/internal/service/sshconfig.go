@@ -937,6 +937,35 @@ func FindOrphanedMarkers(content string) []ManagedMarker {
 	return out
 }
 
+// ListManagedSSHBlocks returns every managed block in the managed SSH config,
+// deduplicated by kind+ref the same way PruneManagedBlocks collapses
+// duplicates — regardless of whether the target is alive, stale, or
+// unverified. A missing config returns no blocks, not an error.
+func (s SshService) ListManagedSSHBlocks() ([]ManagedMarker, error) {
+	path, err := managedConfigPath()
+	if err != nil {
+		return nil, err
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	var out []ManagedMarker
+	seen := make(map[string]bool)
+	for _, b := range ListManagedBlocks(string(data)) {
+		key := b.Kind + "|" + b.Ref
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, b)
+	}
+	return out, nil
+}
+
 // PruneManagedBlocks removes CLI managed Host blocks whose target no longer
 // exists, plus any orphaned/duplicate marker from FindOrphanedMarkers
 // regardless of target liveness. Results are deduplicated by kind+ref:
