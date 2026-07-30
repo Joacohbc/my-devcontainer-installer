@@ -193,11 +193,32 @@ func refreshHostKey(ssh service.SshService, alias, containerName string) {
 	}
 
 	host, err := ssh.AliasHostName(alias)
-	if err != nil || host == "" {
-		return // no HostName (e.g. a ProxyCommand block, --via included): nothing local to pin
+	if err != nil {
+		return
 	}
-	if err := ssh.PinContainerHostKeys(containerName, host); err != nil {
-		console.Debug("could not pin host key for %s: %v", host, err)
+	if host != "" {
+		// Local block: HostName is the container IP, so ssh verifies (and we pin)
+		// the host key under that address, read from the local daemon.
+		if err := ssh.PinContainerHostKeys(containerName, host); err != nil {
+			console.Debug("could not pin host key for %s: %v", host, err)
+		}
+		return
+	}
+
+	// No HostName means a --via ProxyCommand block. ssh then verifies host keys
+	// under the alias itself, so that is where they must be pinned — pinning under
+	// the IP (as a local block does) would never be consulted, which is exactly
+	// why a rebuilt --via container kept aborting with "REMOTE HOST IDENTIFICATION
+	// HAS CHANGED". The container lives on the --via daemon, so its keys are read
+	// through the host recorded in the block's marker.
+	via, err := ssh.ManagedViaHost(alias)
+	if err != nil || via == "" {
+		return // legacy/--remote block: no local daemon owns the container
+	}
+	if err := service.WithHostOverride(via, func() error {
+		return ssh.PinContainerHostKeys(containerName, alias)
+	}); err != nil {
+		console.Debug("could not pin host key for %s: %v", alias, err)
 	}
 }
 

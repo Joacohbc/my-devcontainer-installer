@@ -742,6 +742,34 @@ func (s SshService) ManagedAlias(kind sshdefaults.Kind, ref string) (alias strin
 	return alias, ok, nil
 }
 
+// ManagedViaHost returns the --via jump target recorded in the managed marker of
+// the block configuring alias (the marker's host= field), or "" when the block
+// is absent or is an ordinary local block (which records no host). It reads the
+// managed config only: --via blocks are always CLI-written there.
+//
+// It is what lets refreshHostKey re-pin a ProxyCommand block's host keys: such a
+// block has no HostName, so its container lives on a *remote* daemon and its keys
+// must be read through the daemon named here, not the local one.
+func (s SshService) ManagedViaHost(alias string) (string, error) {
+	path, err := managedConfigPath()
+	if err != nil {
+		return "", err
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", nil
+		}
+		return "", err
+	}
+	for _, m := range ListManagedBlocks(string(data)) {
+		if m.Alias == alias {
+			return m.Host, nil
+		}
+	}
+	return "", nil
+}
+
 // HostAliasConflict describes an existing Host block that already claims an
 // alias the CLI is about to write.
 type HostAliasConflict struct {

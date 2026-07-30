@@ -1028,6 +1028,48 @@ func TestManagedHostNameMissingConfig(t *testing.T) {
 	}
 }
 
+func TestManagedViaHost(t *testing.T) {
+	home := t.TempDir()
+	setHomeDir(t, home)
+	if err := os.MkdirAll(filepath.Join(home, ".ssh"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	// A local block (records no host=) and a --via block (host=rbpi) whose
+	// ProxyCommand stanza has no HostName.
+	cfg := "# devcontainer-cli:managed v=1 kind=workspace ref=api-3f9a alias=api\n" +
+		"Host api\n    HostName 172.25.1.30\n\n" +
+		"# devcontainer-cli:managed v=1 kind=container ref=dc-ssh alias=dc-ssh host=rbpi\n" +
+		"Host dc-ssh\n    User devuser\n    ProxyCommand ssh rbpi \"nc -q0 172.25.2.30 22\"\n"
+	if err := os.WriteFile(managedSSHConfig(home), []byte(cfg), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	svc := SshService{Report: nopReporter{}}
+	cases := []struct {
+		alias string
+		want  string
+	}{
+		{"dc-ssh", "rbpi"}, // --via block: its jump target is recovered from the marker
+		{"api", ""},        // local block: no host= recorded
+		{"gone", ""},       // unknown alias
+	}
+	for _, c := range cases {
+		got, err := svc.ManagedViaHost(c.alias)
+		if err != nil || got != c.want {
+			t.Errorf("ManagedViaHost(%s) = %q,%v, want %q,nil", c.alias, got, err, c.want)
+		}
+	}
+}
+
+func TestManagedViaHostMissingConfig(t *testing.T) {
+	setHomeDir(t, t.TempDir())
+	svc := SshService{Report: nopReporter{}}
+	got, err := svc.ManagedViaHost("dc-ssh")
+	if err != nil || got != "" {
+		t.Errorf("ManagedViaHost with no config = %q,%v, want \"\",nil", got, err)
+	}
+}
+
 func TestHostIsReferenced(t *testing.T) {
 	home := t.TempDir()
 	setHomeDir(t, home)

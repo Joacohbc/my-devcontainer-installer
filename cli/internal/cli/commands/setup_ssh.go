@@ -372,20 +372,30 @@ func buildConfigBlock(mode sshdefaults.Mode, f *setupSshFlags, inst installResul
 	})
 }
 
-// pinHostKeys records the container's current ssh host keys for the address the
-// Host block dials, so the very first connection — and every one after an image
-// rebuild regenerated those keys — verifies instead of prompting or failing with
-// "REMOTE HOST IDENTIFICATION HAS CHANGED". It is best-effort: when the keys
-// cannot be read the block still works, ssh just falls back to accept-new.
+// pinHostKeys records the container's current ssh host keys for the identity the
+// Host block verifies against, so the very first connection — and every one after
+// an image rebuild regenerated those keys — verifies instead of prompting or
+// failing with "REMOTE HOST IDENTIFICATION HAS CHANGED". It is best-effort: when
+// the keys cannot be read the block still works, ssh just falls back to
+// accept-new.
+//
+// A local block has a HostName (the container IP) and ssh checks the key under
+// that address. A --via block renders as ModeRemote — a ProxyCommand with no
+// HostName — so ssh checks (and we must pin) the key under the alias itself;
+// pinning under the IP there would never be consulted.
 func pinHostKeys(ssh service.SshService, f *setupSshFlags, inst installResult) {
-	if inst.hostname == "" {
+	host := inst.hostname
+	if f.via != "" {
+		host = f.alias
+	}
+	if host == "" {
 		return
 	}
-	if err := ssh.PinContainerHostKeys(f.container, inst.hostname); err != nil {
+	if err := ssh.PinContainerHostKeys(f.container, host); err != nil {
 		console.Warn("Could not pin the container host key (%v); ssh will trust it on first use.", err)
 		return
 	}
-	console.Ok(fmt.Sprintf("Pinned host key of %s in %s", inst.hostname, f.knownHosts))
+	console.Ok(fmt.Sprintf("Pinned host key of %s in %s", host, f.knownHosts))
 }
 
 // aliasAction is the user's decision when the target Host alias already exists
@@ -661,11 +671,14 @@ func performSetupSsh(ssh service.SshService, f *setupSshFlags, mode sshdefaults.
 			return emitRemoteConfig(ssh, f, markerKind, markerRef)
 		}
 
-		pinHostKeys(ssh, f, inst)
-
 		if err := updateSshConfig(ssh, f, mode, inst, markerKind, markerRef); err != nil {
 			return err
 		}
+
+		// After updateSshConfig so an interactively-renamed alias is the one pinned:
+		// a --via block pins under the alias, and resolveAliasConflict may have
+		// changed it.
+		pinHostKeys(ssh, f, inst)
 
 		testConnection(ssh, f.alias)
 		console.Ok(fmt.Sprintf("Done. Connect with:  ssh %s", f.alias))
