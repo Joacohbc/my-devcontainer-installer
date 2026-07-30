@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -230,17 +231,69 @@ func TestSyncFromHostForcePassesFlagToHelper(t *testing.T) {
 	}
 }
 
-// TestSyncEntryScriptDereferencesSymlinks guards against a regression to plain
-// `cp -a`: global skills/agents installed via the skills.sh CLI are symlinked
-// into each tool's config dir (e.g. ~/.claude/skills/<name> ->
-// ~/.agents/skills/<name>), so the copy into the volume must follow (-L)
-// those links and persist real content, not a dangling host-path symlink.
-func TestSyncEntryScriptDereferencesSymlinks(t *testing.T) {
-	if strings.Contains(syncEntryScript, "cp -a \"") {
-		t.Errorf("syncEntryScript must use `cp -aL` (dereference symlinks), found plain `cp -a`: %s", syncEntryScript)
+// TestSyncEntryScriptUsesDerefSymlinksForDirs guards against a regression to
+// plain `cp -a` for directory entries: global skills/agents installed via the
+// skills.sh CLI are symlinked into each tool's config dir (e.g.
+// ~/.claude/skills/<name> -> ~/.agents/skills/<name>), so the copy into the
+// volume must dereference those links and persist real content, not a
+// dangling host-path symlink. The actual dereferencing behavior (including
+// tolerance for already-dangling symlinks) is exercised directly against the
+// shell in TestDerefSymlinksFunc.
+func TestSyncEntryScriptUsesDerefSymlinksForDirs(t *testing.T) {
+	if !strings.Contains(syncEntryScript, `deref_symlinks "$dst"`) {
+		t.Errorf("syncEntryScript must call deref_symlinks on directory entries, got: %s", syncEntryScript)
 	}
-	if !strings.Contains(syncEntryScript, "cp -aL") {
-		t.Errorf("syncEntryScript must use `cp -aL` to dereference symlinked skills/agents, got: %s", syncEntryScript)
+}
+
+// TestDerefSymlinksFunc runs the actual `deref_symlinks` shell function (used
+// by syncEntryScript) against a real directory to verify: a symlink whose
+// target exists is replaced with a real copy of that content, and a dangling
+// symlink (e.g. the ~/.claude/debug/latest pointer Claude Code itself leaves
+// behind) is left alone instead of aborting the script. Before this test,
+// syncEntryScript used a bare `cp -aL`, which errors "cannot stat" on a
+// dangling symlink and failed the whole sync for any entry containing one.
+func TestDerefSymlinksFunc(t *testing.T) {
+	if _, err := exec.LookPath("sh"); err != nil {
+		t.Skip("sh not available")
+	}
+
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "real.txt"), []byte("hello"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(dir, "real.txt"), filepath.Join(dir, "resolvable-link")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(dir, "does-not-exist"), filepath.Join(dir, "dangling-link")); err != nil {
+		t.Fatal(err)
+	}
+
+	script := derefSymlinksFunc + `deref_symlinks "$1"`
+	cmd := exec.Command("sh", "-c", script, "sh", dir)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("deref_symlinks failed: %v, output: %s", err, out)
+	}
+
+	resolvable := filepath.Join(dir, "resolvable-link")
+	info, err := os.Lstat(resolvable)
+	if err != nil {
+		t.Fatalf("resolvable-link: %v", err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		t.Errorf("resolvable-link should have been replaced with a real copy, still a symlink")
+	}
+	content, err := os.ReadFile(resolvable)
+	if err != nil || string(content) != "hello" {
+		t.Errorf("resolvable-link content = %q, %v; want %q", content, err, "hello")
+	}
+
+	dangling := filepath.Join(dir, "dangling-link")
+	danglingInfo, err := os.Lstat(dangling)
+	if err != nil {
+		t.Fatalf("dangling-link should still exist (as a symlink): %v", err)
+	}
+	if danglingInfo.Mode()&os.ModeSymlink == 0 {
+		t.Errorf("dangling-link should remain a symlink, not be touched")
 	}
 }
 
