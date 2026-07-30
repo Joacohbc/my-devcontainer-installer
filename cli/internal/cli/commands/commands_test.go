@@ -572,6 +572,19 @@ func TestConfigAliasCommand_Structure(t *testing.T) {
 	}
 }
 
+// Listing and completion share sortedAliasNames so they can never disagree
+// about the order Go's randomized map iteration would otherwise give them.
+func TestSortedAliasNames(t *testing.T) {
+	got := sortedAliasNames(map[string]string{"gs": "git status", "ll": "ls -la", "k": "kubectl", "_x": "echo"})
+	want := []string{"_x", "gs", "k", "ll"}
+	if !slices.Equal(got, want) {
+		t.Errorf("sortedAliasNames = %v, want %v", got, want)
+	}
+	if got := sortedAliasNames(nil); len(got) != 0 {
+		t.Errorf("sortedAliasNames(nil) = %v, want empty", got)
+	}
+}
+
 func TestConfigCommand_HasSSHConfigFileSubcommand(t *testing.T) {
 	root := NewRootCommand("test")
 	configCmd := findSubcommand(root, "config")

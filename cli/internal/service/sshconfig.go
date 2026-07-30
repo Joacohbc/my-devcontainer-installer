@@ -433,7 +433,7 @@ func ConfigHostAliases(content string) []string {
 // Read/write of managed blocks goes through the managed file alone. Queries
 // that must not miss hand-written config the user maintains themselves — alias
 // collision checks, "is this host still referenced", completion — read BOTH
-// (see bothConfigs).
+// (see managedAndUserConfigs).
 
 // managedConfigPath returns the path of the CLI-owned SSH config file.
 func managedConfigPath() (string, error) {
@@ -444,9 +444,9 @@ func managedConfigPath() (string, error) {
 	return path, nil
 }
 
-// readOptional reads a file, treating "does not exist" as empty content rather
+// readFileIfExists reads a file, treating "does not exist" as empty content rather
 // than an error. Every managed-block query is a no-op on a missing config.
-func readOptional(path string) (string, error) {
+func readFileIfExists(path string) (string, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -457,22 +457,22 @@ func readOptional(path string) (string, error) {
 	return string(data), nil
 }
 
-// bothConfigs returns the managed config and the user's ~/.ssh/config
+// managedAndUserConfigs returns the managed config and the user's ~/.ssh/config
 // concatenated. Use it for read-only queries that must see the user's own
 // hand-written blocks too: an alias collision check that only looked at the
 // managed file would happily shadow a Host the user already defined, and a
 // host-reference check that missed the user's file would unpin a key their own
 // block still dials.
-func (s SshService) bothConfigs() (string, error) {
+func (s SshService) managedAndUserConfigs() (string, error) {
 	managedPath, err := managedConfigPath()
 	if err != nil {
 		return "", err
 	}
-	managed, err := readOptional(managedPath)
+	managed, err := readFileIfExists(managedPath)
 	if err != nil {
 		return "", err
 	}
-	user, err := readOptional(domain.UserSSHConfigPath())
+	user, err := readFileIfExists(domain.UserSSHConfigPath())
 	if err != nil {
 		return "", err
 	}
@@ -569,7 +569,7 @@ func (s SshService) EnsureInclude() (added bool, err error) {
 	if err := os.MkdirAll(filepath.Dir(userPath), 0o700); err != nil {
 		return false, err
 	}
-	content, err := readOptional(userPath)
+	content, err := readFileIfExists(userPath)
 	if err != nil {
 		return false, err
 	}
@@ -578,33 +578,36 @@ func (s SshService) EnsureInclude() (added bool, err error) {
 	}
 
 	header := includeMarker + "\n" + includeDirective(managedPath) + "\n"
-	var updated string
 	if strings.TrimSpace(content) == "" {
-		updated = header
-	} else {
-		lines := strings.Split(content, "\n")
-		insertAt := len(lines)
-		for i, line := range lines {
-			if isStanzaStart(line) {
-				insertAt = i
-				break
-			}
-		}
-		head := strings.Join(lines[:insertAt], "\n")
-		tail := strings.Join(lines[insertAt:], "\n")
-		if head != "" && !strings.HasSuffix(head, "\n") {
-			head += "\n"
-		}
-		updated = head + header + "\n" + tail
-		// Back up only a config that actually had content to lose.
-		if err := os.WriteFile(userPath+".bak", []byte(content), 0o600); err != nil {
-			return false, err
-		}
+		return true, os.WriteFile(userPath, []byte(header), 0o600)
 	}
+	if err := os.WriteFile(userPath+".bak", []byte(content), 0o600); err != nil {
+		return false, err
+	}
+	updated := insertBeforeFirstStanza(content, header)
 	if err := os.WriteFile(userPath, []byte(updated), 0o600); err != nil {
 		return false, err
 	}
 	return true, nil
+}
+
+// insertBeforeFirstStanza splices block into content just above the first
+// Host/Match line, or at the end when there is none, and returns the result.
+func insertBeforeFirstStanza(content, block string) string {
+	lines := strings.Split(content, "\n")
+	insertAt := len(lines)
+	for i, line := range lines {
+		if isStanzaStart(line) {
+			insertAt = i
+			break
+		}
+	}
+	head := strings.Join(lines[:insertAt], "\n")
+	tail := strings.Join(lines[insertAt:], "\n")
+	if head != "" && !strings.HasSuffix(head, "\n") {
+		head += "\n"
+	}
+	return head + block + "\n" + tail
 }
 
 // MigrateManagedBlocks moves CLI-managed Host blocks that older versions wrote
@@ -615,7 +618,7 @@ func (s SshService) EnsureInclude() (added bool, err error) {
 // unconditionally.
 func (s SshService) MigrateManagedBlocks() (moved []ManagedMarker, err error) {
 	userPath := domain.UserSSHConfigPath()
-	userContent, err := readOptional(userPath)
+	userContent, err := readFileIfExists(userPath)
 	if err != nil {
 		return nil, err
 	}
@@ -629,9 +632,38 @@ func (s SshService) MigrateManagedBlocks() (moved []ManagedMarker, err error) {
 		return nil, err
 	}
 
+	plan := planBlockMigration(userContent, managedContent, stale)
+
+	// Write the destination first: a failure there must not leave the blocks
+	// deleted from the user's config with nowhere to go.
+	if err := os.WriteFile(managedPath, []byte(plan.managedContent), 0o600); err != nil {
+		return nil, err
+	}
+	if err := os.WriteFile(userPath+".bak", []byte(userContent), 0o600); err != nil {
+		return nil, err
+	}
+	if err := os.WriteFile(userPath, []byte(plan.userContent), 0o600); err != nil {
+		return nil, err
+	}
+	return plan.moved, nil
+}
+
+// blockMigration is the outcome of moving managed blocks between the two
+// configs: the new content of each file, and the markers that actually moved.
+type blockMigration struct {
+	managedContent string
+	userContent    string
+	moved          []ManagedMarker
+}
+
+// planBlockMigration computes both files' new content without touching the
+// filesystem, so the ordering guarantees MigrateManagedBlocks needs (destination
+// written before the source is truncated) stay visible in one place and the
+// rewriting rules can be tested on strings alone.
+func planBlockMigration(userContent, managedContent string, stale []ManagedMarker) blockMigration {
 	remaining := userContent
 	body := strings.TrimRight(managedContent, "\n")
-	var migrated []ManagedMarker
+	var moved []ManagedMarker
 	for _, m := range stale {
 		stanza := strings.TrimRight(ExtractHostBlock(remaining, m.Alias), "\n")
 		remaining = StripManagedBlockByRef(remaining, m.Kind, m.Ref)
@@ -648,25 +680,14 @@ func (s SshService) MigrateManagedBlocks() (moved []ManagedMarker, err error) {
 			body += "\n\n"
 		}
 		body += marker + "\n" + stanza
-		migrated = append(migrated, m)
+		moved = append(moved, m)
 	}
 
-	// Write the destination first: a failure there must not leave the blocks
-	// deleted from the user's config with nowhere to go.
-	if err := os.WriteFile(managedPath, []byte(body+"\n"), 0o600); err != nil {
-		return nil, err
-	}
-	if err := os.WriteFile(userPath+".bak", []byte(userContent), 0o600); err != nil {
-		return nil, err
-	}
 	remaining = strings.TrimRight(remaining, "\n")
 	if remaining != "" {
 		remaining += "\n"
 	}
-	if err := os.WriteFile(userPath, []byte(remaining), 0o600); err != nil {
-		return nil, err
-	}
-	return migrated, nil
+	return blockMigration{managedContent: body + "\n", userContent: remaining, moved: moved}
 }
 
 // ReplaceHostBlock backs up the config (to path+".bak"), removes the existing
@@ -735,7 +756,7 @@ func (s SshService) FindHostAliasConflict(alias string) (*HostAliasConflict, err
 	if err != nil {
 		return nil, err
 	}
-	managed, err := readOptional(managedPath)
+	managed, err := readFileIfExists(managedPath)
 	if err != nil {
 		return nil, err
 	}
@@ -743,7 +764,7 @@ func (s SshService) FindHostAliasConflict(alias string) (*HostAliasConflict, err
 		return &HostAliasConflict{Path: managedPath, Block: ExtractHostBlock(managed, alias), Managed: true}, nil
 	}
 	userPath := domain.UserSSHConfigPath()
-	user, err := readOptional(userPath)
+	user, err := readFileIfExists(userPath)
 	if err != nil {
 		return nil, err
 	}
@@ -758,7 +779,7 @@ func (s SshService) FindHostAliasConflict(alias string) (*HostAliasConflict, err
 // against: the exact address ssh will use. It reads BOTH configs, because 'ssh'
 // can be pointed at an alias the user wrote by hand.
 func (s SshService) AliasHostName(alias string) (string, error) {
-	content, err := s.bothConfigs()
+	content, err := s.managedAndUserConfigs()
 	if err != nil {
 		return "", err
 	}
@@ -798,7 +819,7 @@ func (s SshService) HostIsReferenced(host string) (bool, error) {
 	if host == "" {
 		return false, nil
 	}
-	content, err := s.bothConfigs()
+	content, err := s.managedAndUserConfigs()
 	if err != nil {
 		return false, err
 	}
@@ -985,7 +1006,7 @@ func (s SshService) RemoveManagedBlocks(blocks []ManagedMarker) (removed []Manag
 // neither can be read. It backs shell completion, where offering only the
 // CLI's own aliases would be a regression.
 func (s SshService) ConfigHostAliasesFromDisk() []string {
-	content, err := s.bothConfigs()
+	content, err := s.managedAndUserConfigs()
 	if err != nil {
 		return nil
 	}

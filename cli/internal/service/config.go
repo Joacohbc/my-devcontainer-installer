@@ -19,8 +19,8 @@ type ConfigService struct {
 }
 
 const (
-	fallbackDBUser     = "devuser"
-	fallbackDBPassword = "devpass"
+	fallbackDBUser     = types.FallbackDBUser
+	fallbackDBPassword = types.FallbackDBPassword
 )
 
 func defaulted(stored, fallback string) (value string, customized bool, err error) {

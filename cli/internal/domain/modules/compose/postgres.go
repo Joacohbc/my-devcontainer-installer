@@ -6,6 +6,12 @@ import (
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 )
 
+// defaultPostgresVersion is the image tag used when no version is selected. It
+// is shared by the option default, the rendered compose service and the
+// ~/CONTEXT.md section, so the document can never name a version the container
+// was not built with.
+const defaultPostgresVersion = "17-alpine"
+
 var PostgresService = &ServiceSpec{
 	ID:         types.ServicePostgres,
 	Label:      "PostgreSQL",
@@ -18,15 +24,15 @@ var PostgresService = &ServiceSpec{
 			Label: "PostgreSQL version",
 			Type:  types.ModuleOptionSelect,
 			Choices: []types.ModuleOptionChoice{
-				{Value: "17-alpine", Label: "PostgreSQL 17"},
+				{Value: defaultPostgresVersion, Label: "PostgreSQL 17"},
 				{Value: "18-alpine", Label: "PostgreSQL 18 (latest)"},
 				{Value: "16-alpine", Label: "PostgreSQL 16"},
 			},
-			Default: "17-alpine",
+			Default: defaultPostgresVersion,
 		},
 	},
 	Context: func(ctx RenderContext) *types.ContextSection {
-		version := types.StringOpt(ctx.Options, "version", "17-alpine")
+		version := types.StringOpt(ctx.Options, "version", defaultPostgresVersion)
 		user, password := dbCredentials(ctx)
 		return &types.ContextSection{
 			Title: "PostgreSQL (sibling container)",
@@ -47,21 +53,14 @@ var PostgresService = &ServiceSpec{
 		}
 	},
 	Render: func(ctx RenderContext) *ServiceDef {
-		version := types.StringOpt(ctx.Options, "version", "17-alpine")
-		user := ctx.DefaultDBUser
-		if user == "" {
-			user = "devuser"
-		}
-		pass := ctx.DefaultDBPassword
-		if pass == "" {
-			pass = "devpass"
-		}
+		version := types.StringOpt(ctx.Options, "version", defaultPostgresVersion)
+		user, password := dbCredentials(ctx)
 		return &ServiceDef{
 			Image:         fmt.Sprintf("postgres:%s", version),
 			ContainerName: "postgres",
 			Environment: map[string]string{
 				"POSTGRES_USER":     user,
-				"POSTGRES_PASSWORD": pass,
+				"POSTGRES_PASSWORD": password,
 				"POSTGRES_DB":       "devdb",
 			},
 			Volumes:  []string{"postgres_data:/var/lib/postgresql/data"},

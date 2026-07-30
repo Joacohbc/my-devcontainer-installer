@@ -100,6 +100,7 @@ first_line() {
 # first_line alone would report nothing usable. Fall back to the raw banner if a
 # future lsof drops that line.
 lsof_version() {
+    local banner revision
     banner=$(lsof -v 2>&1 </dev/null)
     revision=$(printf '%s\n' "$banner" | sed -n 's/^[[:space:]]*revision:[[:space:]]*//p' | first_line)
     if [ -n "$revision" ]; then
@@ -168,31 +169,31 @@ emit_json() {
     printf '}\n'
 }
 
-emit_text() {
-    if [ "$TOOLS_ONLY" -eq 0 ]; then
-        if [ -r "$HOME/CONTEXT.md" ]; then
-            cat "$HOME/CONTEXT.md"
-        else
-            echo "# Container context"
-            echo
-            echo "(~/CONTEXT.md is missing — this image predates it.)"
-        fi
+emit_static_context() {
+    if [ -r "$HOME/CONTEXT.md" ]; then
+        cat "$HOME/CONTEXT.md"
+    else
+        echo "# Container context"
         echo
-        echo "---"
-        echo
-        echo "# This container, right now"
-        echo
-        echo "- Hostname: $(hostname)"
-        echo "- Workspace: $WORKSPACE_DIR"
-        echo "- User: $(id -un) (uid $(id -u), gid $(id -g))"
-        echo "- Docker socket mounted: $DOCKER_SOCK"
-        echo "- Shared config volume mounted: $SHARED_CONFIG"
-        echo
+        echo "(~/CONTEXT.md is missing — this image predates it.)"
     fi
+    echo
+    echo "---"
+    echo
+    echo "# This container, right now"
+    echo
+    echo "- Hostname: $(hostname)"
+    echo "- Workspace: $WORKSPACE_DIR"
+    echo "- User: $(id -un) (uid $(id -u), gid $(id -g))"
+    echo "- Docker socket mounted: $DOCKER_SOCK"
+    echo "- Shared config volume mounted: $SHARED_CONFIG"
+    echo
+}
 
+emit_tools() {
+    local found=0
     echo "## Installed tools"
     echo
-    found=0
     while IFS='|' read -r cmd flag label; do
         [ -z "$cmd" ] && continue
         command -v "$cmd" >/dev/null 2>&1 || continue
@@ -201,20 +202,30 @@ emit_text() {
     done <<< "$TOOLS"
     [ "$found" -eq 0 ] && echo "(none detected)"
     echo
+}
 
-    if [ "$TOOLS_ONLY" -eq 0 ]; then
-        echo "## Reachable services"
-        echo
-        any=0
-        while IFS='|' read -r host port label; do
-            [ -z "$host" ] && continue
-            service_reachable "$host" || continue
-            printf -- '- %-10s %s:%s\n' "$label" "$host" "$port"
-            any=1
-        done <<< "$SERVICES"
-        [ "$any" -eq 0 ] && echo "(none — this project has no database services)"
-        echo
+emit_services() {
+    local any=0
+    echo "## Reachable services"
+    echo
+    while IFS='|' read -r host port label; do
+        [ -z "$host" ] && continue
+        service_reachable "$host" || continue
+        printf -- '- %-10s %s:%s\n' "$label" "$host" "$port"
+        any=1
+    done <<< "$SERVICES"
+    [ "$any" -eq 0 ] && echo "(none — this project has no database services)"
+    echo
+}
+
+emit_text() {
+    if [ "$TOOLS_ONLY" -eq 1 ]; then
+        emit_tools
+        return
     fi
+    emit_static_context
+    emit_tools
+    emit_services
 }
 
 if [ "$JSON" -eq 1 ]; then

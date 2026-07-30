@@ -3,6 +3,7 @@ package commands
 import (
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/service"
@@ -100,13 +101,8 @@ func runConfigAliasList(_ *cobra.Command, _ []string) error {
 		console.Warn("No aliases configured yet (add one with: config alias set <name> <command>).")
 		return nil
 	}
-	names := make([]string, 0, len(aliases))
-	for name := range aliases {
-		names = append(names, name)
-	}
-	sort.Strings(names)
 	console.NewLine()
-	for _, name := range names {
+	for _, name := range sortedAliasNames(aliases) {
 		console.Print(fmt.Sprintf("  %s = %s\n", name, aliases[name]))
 	}
 	console.NewLine()
@@ -114,10 +110,9 @@ func runConfigAliasList(_ *cobra.Command, _ []string) error {
 	return nil
 }
 
-func runConfigAliasSet(cmd *cobra.Command, args []string) error {
+func runConfigAliasSet(_ *cobra.Command, args []string) error {
 	svc := service.ConfigService{Report: console}
-	// Everything after the name is the command, joined so quoting is optional.
-	name, command := args[0], joinArgs(args[1:])
+	name, command := args[0], strings.Join(args[1:], " ")
 	if err := svc.SetAlias(name, command); err != nil {
 		return err
 	}
@@ -125,7 +120,7 @@ func runConfigAliasSet(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func runConfigAliasUnset(cmd *cobra.Command, args []string) error {
+func runConfigAliasUnset(_ *cobra.Command, args []string) error {
 	svc := service.ConfigService{Report: console}
 	existed, err := svc.UnsetAlias(args[0])
 	if err != nil {
@@ -139,7 +134,7 @@ func runConfigAliasUnset(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func runConfigAliasSync(cmd *cobra.Command, _ []string) error {
+func runConfigAliasSync(_ *cobra.Command, _ []string) error {
 	cfg := service.ConfigService{Report: console}
 	content := cfg.RenderedAliases()
 
@@ -153,29 +148,21 @@ func runConfigAliasSync(cmd *cobra.Command, _ []string) error {
 }
 
 // completeAliasNames tab-completes existing alias names for `unset`.
-func completeAliasNames(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+func completeAliasNames(_ *cobra.Command, args []string, _ string) ([]string, cobra.ShellCompDirective) {
 	if len(args) > 0 {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
 	svc := service.ConfigService{Report: console}
-	names := make([]string, 0)
-	for name := range svc.Aliases() {
+	return sortedAliasNames(svc.Aliases()), cobra.ShellCompDirectiveNoFileComp
+}
+
+// sortedAliasNames returns the alias names in a stable order, so listing and
+// completion never disagree about it (Go map iteration is randomized).
+func sortedAliasNames(aliases map[string]string) []string {
+	names := make([]string, 0, len(aliases))
+	for name := range aliases {
 		names = append(names, name)
 	}
 	sort.Strings(names)
-	return names, cobra.ShellCompDirectiveNoFileComp
-}
-
-// joinArgs re-joins the command tokens with single spaces, so both
-// `set k "kubectl get pods"` and `set k kubectl get pods` produce the same
-// stored command.
-func joinArgs(parts []string) string {
-	out := ""
-	for i, p := range parts {
-		if i > 0 {
-			out += " "
-		}
-		out += p
-	}
-	return out
+	return names
 }

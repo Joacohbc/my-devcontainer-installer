@@ -6,6 +6,12 @@ import (
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 )
 
+// defaultRedisVersion is the image tag used when no version is selected. It is
+// shared by the option default, the rendered compose service and the
+// ~/CONTEXT.md section, so the document can never name a version the container
+// was not built with.
+const defaultRedisVersion = "7.4-alpine"
+
 var RedisService = &ServiceSpec{
 	ID:         types.ServiceRedis,
 	Label:      "Redis",
@@ -18,15 +24,15 @@ var RedisService = &ServiceSpec{
 			Label: "Redis version",
 			Type:  types.ModuleOptionSelect,
 			Choices: []types.ModuleOptionChoice{
-				{Value: "7.4-alpine", Label: "Redis 7.4 (BSD-licensed last)"},
+				{Value: defaultRedisVersion, Label: "Redis 7.4 (BSD-licensed last)"},
 				{Value: "8.6-alpine", Label: "Redis 8.6 (latest, SSPL/RSALv2)"},
 				{Value: "8.0-alpine", Label: "Redis 8.0"},
 			},
-			Default: "7.4-alpine",
+			Default: defaultRedisVersion,
 		},
 	},
 	Context: func(ctx RenderContext) *types.ContextSection {
-		version := types.StringOpt(ctx.Options, "version", "7.4-alpine")
+		version := types.StringOpt(ctx.Options, "version", defaultRedisVersion)
 		return &types.ContextSection{
 			Title: "Redis (sibling container)",
 			Body: ctxBody(
@@ -43,7 +49,7 @@ var RedisService = &ServiceSpec{
 		}
 	},
 	Render: func(ctx RenderContext) *ServiceDef {
-		version := types.StringOpt(ctx.Options, "version", "7.4-alpine")
+		version := types.StringOpt(ctx.Options, "version", defaultRedisVersion)
 		return &ServiceDef{
 			Image:         fmt.Sprintf("redis:%s", version),
 			ContainerName: "redis",

@@ -94,8 +94,8 @@ func ResolveRegistry(flagOverride, perProject string) string {
 }
 
 const (
-	fallbackDBUser     = "devuser"
-	fallbackDBPassword = "devpass"
+	fallbackDBUser     = types.FallbackDBUser
+	fallbackDBPassword = types.FallbackDBPassword
 )
 
 func ResolveDBCredentials() (user, password string) {

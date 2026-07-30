@@ -197,7 +197,7 @@ func (s SshService) OrphanKnownHosts() ([]string, error) {
 		return nil, err
 	}
 	// Both configs: a host a hand-written block still dials is not an orphan.
-	config, err := s.bothConfigs()
+	config, err := s.managedAndUserConfigs()
 	if err != nil {
 		return nil, err
 	}

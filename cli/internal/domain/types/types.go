@@ -88,6 +88,17 @@ func WorkspaceDir(workspace string) string {
 	return WorkspaceRoot + "/" + workspace
 }
 
+// FallbackDBUser and FallbackDBPassword are the database credentials used when
+// the global config sets none. They live here because all three layers need the
+// same values and none of them can import the others: domain resolves them from
+// the config, service reports them, and the compose services render them into
+// the compose file and into ~/CONTEXT.md. A second copy anywhere would let the
+// document promise credentials the container was not given.
+const (
+	FallbackDBUser     = "devuser"
+	FallbackDBPassword = "devpass"
+)
+
 // SSHKeyName is the filename of the single shared SSH key reused by every
 // devcontainer (local and remote). The managed key lives under the CLI global
 // config dir; sshdefaults.KeyName aliases this value.

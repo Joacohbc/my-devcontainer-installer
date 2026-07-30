@@ -959,6 +959,114 @@ func TestEnsureIncludeUsesAbsolutePathOutsideSSHDir(t *testing.T) {
 	}
 }
 
+// insertBeforeFirstStanza carries EnsureInclude's whole placement rule, so it is
+// tested directly on strings rather than only through the filesystem.
+func TestInsertBeforeFirstStanza(t *testing.T) {
+	const block = "# marker\nInclude devcontainer-cli.config\n"
+	cases := []struct {
+		name    string
+		content string
+		want    string
+	}{
+		{
+			name:    "no stanza at all appends at the end",
+			content: "# just a comment\nServerAliveInterval 60\n",
+			want:    "# just a comment\nServerAliveInterval 60\n" + block + "\n",
+		},
+		{
+			name:    "stanza on the first line stays below the block",
+			content: "Host example\n    HostName example.com\n",
+			want:    block + "\nHost example\n    HostName example.com\n",
+		},
+		{
+			// The blank separator line becomes the newline terminating the option
+			// above it, so the block still lands between the two.
+			name:    "leading options are preserved above the block",
+			content: "AddKeysToAgent yes\n\nHost example\n    HostName example.com\n",
+			want:    "AddKeysToAgent yes\n" + block + "\nHost example\n    HostName example.com\n",
+		},
+		{
+			name:    "Match opens a stanza just like Host",
+			content: "Match host example\n    User dev\n",
+			want:    block + "\nMatch host example\n    User dev\n",
+		},
+		{
+			name:    "content without a trailing newline still gets separated",
+			content: "AddKeysToAgent yes",
+			want:    "AddKeysToAgent yes\n" + block + "\n",
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := insertBeforeFirstStanza(c.content, block); got != c.want {
+				t.Errorf("insertBeforeFirstStanza:\n got %q\nwant %q", got, c.want)
+			}
+		})
+	}
+}
+
+// planBlockMigration is the pure core of MigrateManagedBlocks: it decides both
+// files' new content, which is what lets the write ordering above it stay a
+// three-line concern.
+func TestPlanBlockMigration(t *testing.T) {
+	userContent := "Host handwritten\n    HostName example.com\n\n" + managedContainerConfig
+	stale := ListManagedBlocks(userContent)
+	if len(stale) == 0 {
+		t.Fatalf("fixture has no managed blocks to move")
+	}
+
+	plan := planBlockMigration(userContent, "", stale)
+
+	if len(plan.moved) != 1 || plan.moved[0].Ref != "dc-ssh" {
+		t.Fatalf("moved = %v, want the dc-ssh block", plan.moved)
+	}
+	if strings.Contains(plan.userContent, "dc-ssh") {
+		t.Errorf("managed block left in the user content:\n%s", plan.userContent)
+	}
+	if !strings.Contains(plan.userContent, "Host handwritten") {
+		t.Errorf("plan dropped a block it does not own:\n%s", plan.userContent)
+	}
+	if !strings.Contains(plan.managedContent, "Host dc-ssh") {
+		t.Errorf("block did not land in the managed content:\n%s", plan.managedContent)
+	}
+	// The marker is re-rendered in the current spelling rather than carried over.
+	if !strings.Contains(plan.managedContent, "kind=container") || !strings.Contains(plan.managedContent, "ref=dc-ssh") {
+		t.Errorf("managed content lacks a current-form marker:\n%s", plan.managedContent)
+	}
+	if !strings.HasSuffix(plan.managedContent, "\n") {
+		t.Errorf("managed content must end with a newline, got %q", plan.managedContent)
+	}
+}
+
+// An existing managed file is appended to, not overwritten.
+func TestPlanBlockMigrationKeepsExistingManagedBlocks(t *testing.T) {
+	existing := "# devcontainer-cli:managed v=1 kind=workspace ref=other alias=other\nHost other-ws\n    HostName 172.18.0.9\n"
+	userContent := managedContainerConfig
+	plan := planBlockMigration(userContent, existing, ListManagedBlocks(userContent))
+
+	if !strings.Contains(plan.managedContent, "Host other-ws") {
+		t.Errorf("migration dropped an already-managed block:\n%s", plan.managedContent)
+	}
+	if !strings.Contains(plan.managedContent, "Host dc-ssh") {
+		t.Errorf("migration did not append the moved block:\n%s", plan.managedContent)
+	}
+}
+
+// A marker whose stanza is gone is dropped rather than written back as an empty
+// block.
+func TestPlanBlockMigrationDropsOrphanedMarker(t *testing.T) {
+	orphan := "# devcontainer-cli:managed v=1 kind=workspace ref=gone alias=gone\n"
+	plan := planBlockMigration(orphan, "", []ManagedMarker{{Kind: "workspace", Ref: "gone", Alias: "gone"}})
+
+	if len(plan.moved) != 0 {
+		t.Errorf("moved = %v, want nothing for an orphaned marker", plan.moved)
+	}
+	if strings.Contains(plan.managedContent, "gone") {
+		t.Errorf("orphaned marker was written into the managed config:\n%s", plan.managedContent)
+	}
+}
+
 func TestMigrateManagedBlocks(t *testing.T) {
 	home := t.TempDir()
 	setHomeDir(t, home)

@@ -53,19 +53,16 @@ type shellSource struct {
 // does. All sources are appended in one RUN layer, in the given order — later
 // sources win, since a shell keeps the last definition of an alias/function.
 func emitShellSources(sources ...shellSource) string {
-	lines := make([]string, len(sources))
+	echos := make([]string, len(sources))
 	for i, s := range sources {
+		target := `\$HOME/` + s.File
+		sourceLine := ". " + target
 		if s.Guarded {
 			// `if …; then …; fi` rather than `[ … ] && …` so a missing file leaves
 			// the rc file's exit status at 0 instead of 1.
-			lines[i] = `if [ -r \$HOME/` + s.File + ` ]; then . \$HOME/` + s.File + `; fi`
-		} else {
-			lines[i] = `. \$HOME/` + s.File
+			sourceLine = "if [ -r " + target + " ]; then " + sourceLine + "; fi"
 		}
-	}
-	echos := make([]string, len(lines))
-	for i, l := range lines {
-		echos[i] = fmt.Sprintf(`echo '%s' >> %s/\$f`, l, devuserHome)
+		echos[i] = fmt.Sprintf(`echo '%s' >> %s/\$f`, sourceLine, devuserHome)
 	}
 	rcList := strings.Join(rcFiles, " ")
 	return fmt.Sprintf(

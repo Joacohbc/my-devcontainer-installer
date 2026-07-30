@@ -1,6 +1,10 @@
 package compose
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
+)
 
 // ctxBody joins the markdown lines of a ContextSection body.
 //
@@ -11,16 +15,17 @@ func ctxBody(lines ...string) string {
 	return strings.Join(lines, "\n")
 }
 
-// dbCredentials resolves the user/password a database service was rendered with,
-// applying the same fallbacks as its Render so ~/CONTEXT.md never prints
-// credentials that differ from the ones in the compose file.
+// dbCredentials resolves the user/password a database service runs with. Both
+// Render and Context go through it, which is what guarantees ~/CONTEXT.md prints
+// the very credentials written into the compose file rather than a second
+// implementation of the same fallbacks.
 func dbCredentials(ctx RenderContext) (user, password string) {
 	user, password = ctx.DefaultDBUser, ctx.DefaultDBPassword
 	if user == "" {
-		user = "devuser"
+		user = types.FallbackDBUser
 	}
 	if password == "" {
-		password = "devpass"
+		password = types.FallbackDBPassword
 	}
 	return user, password
 }

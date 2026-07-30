@@ -1,6 +1,7 @@
 package compose_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/catalog"
@@ -69,6 +70,75 @@ func TestRedisRender(t *testing.T) {
 	custom := compose.RedisService.Render(compose.RenderContext{Options: map[string]any{"version": "8.0-alpine"}})
 	if custom.Image != "redis:8.0-alpine" {
 		t.Errorf("custom image = %q, want redis:8.0-alpine", custom.Image)
+	}
+}
+
+// The version a service's option declares as its default must be the version
+// Render falls back to when nothing is selected. Each service now routes both
+// through one constant, and this is what keeps the wizard's preselected choice,
+// the generated compose file and the ~/CONTEXT.md section from drifting apart if
+// someone reintroduces a literal.
+func TestDatabaseVersionOptionDefaultMatchesRenderedImage(t *testing.T) {
+	cases := []struct {
+		svc  *compose.ServiceSpec
+		repo string
+	}{
+		{compose.PostgresService, "postgres"},
+		{compose.MongoService, "mongo"},
+		{compose.RedisService, "redis"},
+	}
+	for _, c := range cases {
+		t.Run(c.repo, func(t *testing.T) {
+			declared, ok := versionOptionDefault(c.svc)
+			if !ok {
+				t.Fatalf("%s declares no string default for its version option", c.repo)
+			}
+			def := c.svc.Render(compose.RenderContext{})
+			if want := c.repo + ":" + declared; def.Image != want {
+				t.Errorf("Render with no options = %q, want %q (the version option's declared default)", def.Image, want)
+			}
+			if !strings.Contains(c.svc.Context(compose.RenderContext{}).Body, declared) {
+				t.Errorf("context section does not mention the default version %q", declared)
+			}
+		})
+	}
+}
+
+// versionOptionDefault reads the declared default of a service's "version"
+// option, reporting whether it exists and is a string.
+func versionOptionDefault(svc *compose.ServiceSpec) (string, bool) {
+	for _, opt := range svc.Options {
+		if opt.ID != "version" {
+			continue
+		}
+		value, ok := opt.Default.(string)
+		return value, ok
+	}
+	return "", false
+}
+
+// Every choice a version option offers must be a usable image tag, so a value
+// picked in the wizard can never render an image the registry does not have.
+func TestDatabaseVersionChoicesIncludeTheDefault(t *testing.T) {
+	for _, svc := range []*compose.ServiceSpec{compose.PostgresService, compose.MongoService, compose.RedisService} {
+		declared, ok := versionOptionDefault(svc)
+		if !ok {
+			t.Fatalf("%s declares no string default for its version option", svc.ID)
+		}
+		found := false
+		for _, opt := range svc.Options {
+			if opt.ID != "version" {
+				continue
+			}
+			for _, choice := range opt.Choices {
+				if choice.Value == declared {
+					found = true
+				}
+			}
+		}
+		if !found {
+			t.Errorf("%s default %q is not among its version choices", svc.ID, declared)
+		}
 	}
 }
 
