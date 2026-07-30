@@ -84,6 +84,70 @@ func TestSshContainerRunning(t *testing.T) {
 	}
 }
 
+// cmdRoutingRunner answers "docker ps" and "docker inspect" with distinct
+// canned outputs so ContainerLiveness (which calls both) can be exercised.
+type cmdRoutingRunner struct {
+	psOut      string
+	inspectOut string
+	psStatus   int
+}
+
+func (r *cmdRoutingRunner) Run(_ context.Context, args []string, _ string, _ string, _ map[string]string) (int, string, string) {
+	if len(args) >= 2 && args[1] == "version" {
+		return 0, "27.0.0", ""
+	}
+	for _, a := range args {
+		switch a {
+		case "ps":
+			return r.psStatus, r.psOut, ""
+		case "inspect":
+			return 0, r.inspectOut, ""
+		}
+	}
+	return 0, "", ""
+}
+
+func TestSshContainerLiveness(t *testing.T) {
+	ps := `{"Names":"alpha","Image":"img1","Status":"Up","State":"running","Labels":"","Ports":""}
+{"Names":"stopped-one","Image":"img3","Status":"Exited (0)","State":"exited","Labels":"","Ports":""}`
+
+	t.Run("running returns its first IP", func(t *testing.T) {
+		runner := &cmdRoutingRunner{psOut: ps, inspectOut: "bridge 172.25.0.14\n"}
+		defer useFakeDocker(runner)()
+		state, ip, err := (SshService{Report: nopReporter{}}).ContainerLiveness("alpha")
+		if err != nil || state != TargetRunning || ip != "172.25.0.14" {
+			t.Errorf("ContainerLiveness(alpha) = %v,%q,%v, want running,172.25.0.14,nil", state, ip, err)
+		}
+	})
+
+	t.Run("stopped", func(t *testing.T) {
+		runner := &cmdRoutingRunner{psOut: ps}
+		defer useFakeDocker(runner)()
+		state, ip, err := (SshService{Report: nopReporter{}}).ContainerLiveness("stopped-one")
+		if err != nil || state != TargetStopped || ip != "" {
+			t.Errorf("ContainerLiveness(stopped-one) = %v,%q,%v, want stopped,\"\",nil", state, ip, err)
+		}
+	})
+
+	t.Run("absent", func(t *testing.T) {
+		runner := &cmdRoutingRunner{psOut: ps}
+		defer useFakeDocker(runner)()
+		state, _, err := (SshService{Report: nopReporter{}}).ContainerLiveness("gone")
+		if err != nil || state != TargetAbsent {
+			t.Errorf("ContainerLiveness(gone) = %v,%v, want absent,nil", state, err)
+		}
+	})
+
+	t.Run("unreachable daemon is an error, not absent", func(t *testing.T) {
+		runner := &cmdRoutingRunner{psStatus: 1}
+		defer useFakeDocker(runner)()
+		_, _, err := (SshService{Report: nopReporter{}}).ContainerLiveness("alpha")
+		if err == nil {
+			t.Error("ContainerLiveness with an unreachable daemon = nil error, want an error so the target is not treated as stale")
+		}
+	})
+}
+
 // hostAwareRunner answers "docker ps" differently depending on whether the
 // call carries a DOCKER_HOST override, so tests can exercise
 // LiveTargetPredicates' existsRemoteContainer path without a real remote

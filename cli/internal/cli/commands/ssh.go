@@ -44,10 +44,14 @@ connecting, it prints a self-contained snippet (containing the PRIVATE key) to
 paste on the machine you connect FROM, which sets up a ProxyCommand jump there.
 
 Before connecting it re-pins the container's current SSH host keys (read through
-docker) in the CLI-managed known_hosts, so a rebuilt image — new host keys, same
-container IP — never aborts the session with "REMOTE HOST IDENTIFICATION HAS
-CHANGED". It also rules out a stale target (a container that no longer runs)
-before dialing, and offers a real SSH probe to verify end-to-end reachability.
+docker) in the CLI-managed known_hosts, so a rebuilt image — new host keys —
+never aborts the session with "REMOTE HOST IDENTIFICATION HAS CHANGED". The
+target is anchored by container name, not IP: a container that came back on a
+different address has its Host block refreshed in place. It also rules out a
+stale target deterministically before dialing (a container that no longer
+exists is reported as a stale alias rather than a confusing SSH timeout), and at
+setup time offers a real SSH probe — shown and confirmed first — to verify
+end-to-end reachability.
 
 With --forward (or by answering yes to the interactive prompt) it also opens
 SSH tunnels for the given ports alongside the session, torn down automatically
@@ -159,8 +163,8 @@ func runSsh(cmd *cobra.Command, args []string) error {
 			return serr
 		}
 		alias = configuredAlias
-	} else {
-		refreshHostKey(ssh, alias, containerName)
+	} else if err := refreshExistingTarget(ssh, alias, containerName); err != nil {
+		return err
 	}
 
 	tunnels, err := resolveSshTunnels(cmd, alias, containerName, interactive)
@@ -181,49 +185,105 @@ func runSsh(cmd *cobra.Command, args []string) error {
 	return ssh.Connect(alias, args)
 }
 
-// refreshHostKey re-pins the container's current ssh host keys before reusing an
-// already configured alias. A container regenerates its host keys whenever its
-// image is rebuilt while keeping the same IP, which otherwise makes ssh abort
-// with "REMOTE HOST IDENTIFICATION HAS CHANGED"; asking docker for the keys the
-// container has right now turns that failure into a silent re-pin. Blocks
-// written before host-key pinning existed are upgraded first so their keys live
-// in the CLI-managed known_hosts instead of the user's global one.
+// refreshExistingTarget prepares an already configured alias for a reconnect: it
+// rules out a stale target deterministically (asking the owning docker daemon by
+// name — no SSH), keeps a local block's cached address in step with the
+// container's current IP, and re-pins the container's current host keys. A
+// container that no longer exists is reported as a stale alias (a hard error, so
+// a doomed connection is not attempted); one that is merely stopped is a warning.
 //
-// Every step is best-effort: on failure the session still opens, ssh just falls
-// back to whatever the block already said.
-func refreshHostKey(ssh service.SshService, alias, containerName string) {
+// The container is anchored by name, so this is where "by name, not by IP" is
+// enforced on every connect: a recreated container that came back on a different
+// address has its block rewritten (SetManagedHostName) and its old host key
+// forgotten before the new one is pinned. A --via/ProxyCommand block has no
+// HostName — it already resolves the IP live — so only its host keys are re-pinned,
+// under the alias, through the daemon named in its marker.
+//
+// The host-key steps are best-effort; only a definitively stale target aborts.
+func refreshExistingTarget(ssh service.SshService, alias, containerName string) error {
 	knownHosts := domain.ManagedKnownHostsPath()
-	updated, err := ssh.EnsureHostKeyPinning(alias, knownHosts)
-	if err != nil {
+	if updated, err := ssh.EnsureHostKeyPinning(alias, knownHosts); err != nil {
 		console.Debug("could not update host-key options for '%s': %v", alias, err)
-		return
-	}
-	if updated {
+	} else if updated {
 		console.Info("Host '%s' now verifies host keys against %s", alias, knownHosts)
 	}
 
+	via, _ := ssh.ManagedViaHost(alias)
+
+	var state service.TargetState
+	var ip string
+	var liveErr error
+	_ = service.WithHostOverride(via, func() error {
+		state, ip, liveErr = ssh.ContainerLiveness(containerName)
+		return nil
+	})
+	if liveErr != nil {
+		// The daemon could not be queried (typically a --via host that is down):
+		// we cannot rule the target stale, so re-pin best-effort and let ssh report
+		// the real failure rather than blocking on an unverifiable guess.
+		console.Debug("could not verify target '%s': %v", containerName, liveErr)
+		pinExistingHostKeys(ssh, alias, containerName, via)
+		return nil
+	}
+
+	switch state {
+	case service.TargetAbsent:
+		return fmt.Errorf("container '%s' no longer exists; alias '%s' is stale — run 'devcontainer-cli ssh --setup' to reconfigure it, or 'devcontainer-cli clean ssh' to remove it", containerName, alias)
+	case service.TargetStopped:
+		console.Warn("Container '%s' is not running; start it before connecting (e.g. 'devcontainer-cli start').", containerName)
+		return nil
+	}
+
+	refreshLocalHostName(ssh, alias, containerName, ip)
+	pinExistingHostKeys(ssh, alias, containerName, via)
+	return nil
+}
+
+// refreshLocalHostName rewrites a local block's HostName when the container has
+// come back on a new IP, so the alias tracks the container by name. It is a no-op
+// for a --via/ProxyCommand block (no HostName to update) and when the address is
+// already current. The stale address' host key is forgotten so it cannot linger.
+func refreshLocalHostName(ssh service.SshService, alias, containerName, ip string) {
+	if ip == "" {
+		return
+	}
+	current, err := ssh.AliasHostName(alias)
+	if err != nil || current == "" || current == ip {
+		return
+	}
+	changed, err := ssh.SetManagedHostName(alias, ip)
+	if err != nil {
+		console.Debug("could not refresh HostName for '%s': %v", alias, err)
+		return
+	}
+	if !changed {
+		return
+	}
+	console.Info("Container '%s' is now at %s; updated Host '%s'.", containerName, ip, alias)
+	if _, err := ssh.ForgetHostKeys([]string{current}); err != nil {
+		console.Debug("could not forget stale host key %s: %v", current, err)
+	}
+}
+
+// pinExistingHostKeys re-pins the container's current host keys under the identity
+// ssh verifies for the block: the HostName (a local block's current IP) read from
+// the local daemon, or — for a --via/ProxyCommand block, which has no HostName —
+// the alias itself, read through the --via daemon. Pinning a --via block under an
+// IP would never be consulted, which is what kept a rebuilt --via container
+// aborting with "REMOTE HOST IDENTIFICATION HAS CHANGED".
+func pinExistingHostKeys(ssh service.SshService, alias, containerName, via string) {
 	host, err := ssh.AliasHostName(alias)
 	if err != nil {
 		return
 	}
 	if host != "" {
-		// Local block: HostName is the container IP, so ssh verifies (and we pin)
-		// the host key under that address, read from the local daemon.
 		if err := ssh.PinContainerHostKeys(containerName, host); err != nil {
 			console.Debug("could not pin host key for %s: %v", host, err)
 		}
 		return
 	}
-
-	// No HostName means a --via ProxyCommand block. ssh then verifies host keys
-	// under the alias itself, so that is where they must be pinned — pinning under
-	// the IP (as a local block does) would never be consulted, which is exactly
-	// why a rebuilt --via container kept aborting with "REMOTE HOST IDENTIFICATION
-	// HAS CHANGED". The container lives on the --via daemon, so its keys are read
-	// through the host recorded in the block's marker.
-	via, err := ssh.ManagedViaHost(alias)
-	if err != nil || via == "" {
-		return // legacy/--remote block: no local daemon owns the container
+	if via == "" {
+		return
 	}
 	if err := service.WithHostOverride(via, func() error {
 		return ssh.PinContainerHostKeys(containerName, alias)

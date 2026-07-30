@@ -841,6 +841,58 @@ func (s SshService) ManagedHostName(kind sshdefaults.Kind, ref string) (string, 
 	return HostNameForAlias(content, alias), nil
 }
 
+// SetManagedHostName rewrites the HostName of the managed block for alias to
+// hostName, reporting whether anything changed. It only ever updates an existing
+// HostName line: a block that dials by name (a ProxyCommand block, which has
+// none) keeps its transport untouched. This is what keeps a local block anchored
+// to the container name — the block records the container's address, but that
+// cached address is refreshed from the name whenever a recreated container comes
+// back on a different IP.
+func (s SshService) SetManagedHostName(alias, hostName string) (changed bool, err error) {
+	path, err := managedConfigPath()
+	if err != nil {
+		return false, err
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	content, changed := setHostNameOption(string(data), alias, hostName)
+	if !changed {
+		return false, nil
+	}
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// setHostNameOption returns content with the HostName of alias' block set to
+// hostName, and whether it changed. A block with no HostName line is left as-is:
+// adding one to a ProxyCommand block would change how it connects.
+func setHostNameOption(content, alias, hostName string) (string, bool) {
+	lines := strings.Split(content, "\n")
+	start, end := hostBlockRange(lines, alias)
+	if start < 0 {
+		return content, false
+	}
+	for i := start + 1; i < end; i++ {
+		if !strings.EqualFold(optionKeyword(lines[i]), "HostName") {
+			continue
+		}
+		if fields := strings.Fields(lines[i]); len(fields) >= 2 && fields[1] == hostName {
+			return content, false
+		}
+		indent := lines[i][:len(lines[i])-len(strings.TrimLeft(lines[i], " \t"))]
+		lines[i] = indent + "HostName " + hostName
+		return strings.Join(lines, "\n"), true
+	}
+	return content, false
+}
+
 // HostIsReferenced reports whether any Host block still dials host. It guards
 // the removal of a pinned key: two aliases may point at the same container, so a
 // key is only dropped once nothing reaches it any more. It reads BOTH configs —
