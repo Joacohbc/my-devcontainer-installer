@@ -92,6 +92,14 @@ RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
     apt-transport-https \
     && %s
 
+# Keepalive so long-lived ssh sessions (e.g. a --via jump through a NAT/
+# firewall) aren't silently dropped as idle, and a session whose peer vanished
+# without closing it is reclaimed server-side: probe every 60s, drop after 3
+# unanswered probes (180s). Drop any existing directive (active or commented)
+# first so this is idempotent and always wins regardless of line order.
+RUN sed -i '/^#\?\s*ClientAliveInterval/d; /^#\?\s*ClientAliveCountMax/d' /etc/ssh/sshd_config && \
+    printf 'ClientAliveInterval 60\nClientAliveCountMax 3\n' >> /etc/ssh/sshd_config
+
 # Create devuser with sudo privileges. USER_UID/USER_GID are build args so a
 # local-cached image bakes the host owner of the bind-mounted workspace and the
 # container never has to renumber the user at runtime. Remote prebuilt images

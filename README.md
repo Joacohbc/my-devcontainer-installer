@@ -139,10 +139,12 @@ devcontainer-cli up                    # Levanta el stack de contenedores (o eje
 Los bloques `Host` se escriben en un archivo propio de la CLI, **`~/.ssh/devcontainer-cli.config`**, y no en tu `~/.ssh/config`: a ese último sólo se le agrega una línea `Include` al principio, la primera vez. Los bloques que versiones anteriores dejaron dentro de `~/.ssh/config` se mueven solos. Cambiá la ubicación con `devcontainer-cli config ssh-config-file <ruta>`.
 
 ```bash
-devcontainer-cli ssh                      # Conecta al devcontainer (ejecuta setup-ssh si es la primera vez)
-devcontainer-cli ssh --remote user@server # Conexión remota (ejecuta setup-ssh --remote si no existe el alias)
-ssh mi-proyecto                           # Conexión directa vía cliente SSH tradicional usando el alias generado
+devcontainer-cli ssh                                          # Conecta al devcontainer (ejecuta setup-ssh si es la primera vez)
+devcontainer-cli ssh --via user@docker-host --container dc-ssh # Contenedor en OTRO host, a través de una conexión SSH existente
+ssh mi-proyecto                                                # Conexión directa vía cliente SSH tradicional usando el alias generado
 ```
+
+`--via` (requiere `--container`) es para cuando el contenedor vive en un Docker host distinto: usa la conexión SSH que ya tenés a ese host para instalar la clave y fijar el `known_hosts`, sin instalar devcontainer-cli ahí — la clave privada nunca sale de esta máquina. Es distinto de `setup-ssh --remote`, que asume lo contrario (la CLI corriendo en el host remoto) y hace pegar la clave privada a mano en la máquina que se conecta.
 
 ### 3. Copiar archivos y assets (`copy`)
 Copia archivos entre el host y el contenedor o instala scripts embebidos de IA en caliente:

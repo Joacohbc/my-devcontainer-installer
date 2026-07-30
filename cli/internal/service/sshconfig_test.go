@@ -294,18 +294,19 @@ Host other
 
 func TestParseManagedMarker(t *testing.T) {
 	cases := []struct {
-		name         string
-		line         string
-		wantOK       bool
-		kind, ref, a string
+		name            string
+		line            string
+		wantOK          bool
+		kind, ref, a, h string
 	}{
-		{"new workspace", "# devcontainer-cli:managed v=1 kind=workspace ref=api-3f9a alias=api", true, "workspace", "api-3f9a", "api"},
-		{"new container", "# devcontainer-cli:managed v=1 kind=container ref=dc-ssh alias=dc-ssh", true, "container", "dc-ssh", "dc-ssh"},
-		{"legacy workspace", "# devcontainer-cli:managed workspace=proj", true, "workspace", "proj", ""},
-		{"indented", "   #  devcontainer-cli:managed kind=workspace ref=x alias=y", true, "workspace", "x", "y"},
-		{"not a comment", "Host devcontainer", false, "", "", ""},
-		{"other comment", "# just a note", false, "", "", ""},
-		{"missing ref", "# devcontainer-cli:managed kind=workspace alias=y", false, "", "", ""},
+		{"new workspace", "# devcontainer-cli:managed v=1 kind=workspace ref=api-3f9a alias=api", true, "workspace", "api-3f9a", "api", ""},
+		{"new container", "# devcontainer-cli:managed v=1 kind=container ref=dc-ssh alias=dc-ssh", true, "container", "dc-ssh", "dc-ssh", ""},
+		{"legacy workspace", "# devcontainer-cli:managed workspace=proj", true, "workspace", "proj", "", ""},
+		{"indented", "   #  devcontainer-cli:managed kind=workspace ref=x alias=y", true, "workspace", "x", "y", ""},
+		{"via host", "# devcontainer-cli:managed v=1 kind=container ref=dc-ssh alias=dc-ssh host=me@remote-host", true, "container", "dc-ssh", "dc-ssh", "me@remote-host"},
+		{"not a comment", "Host devcontainer", false, "", "", "", ""},
+		{"other comment", "# just a note", false, "", "", "", ""},
+		{"missing ref", "# devcontainer-cli:managed kind=workspace alias=y", false, "", "", "", ""},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -316,8 +317,8 @@ func TestParseManagedMarker(t *testing.T) {
 			if !ok {
 				return
 			}
-			if m.Kind != c.kind || m.Ref != c.ref || m.Alias != c.a {
-				t.Errorf("parseManagedMarker(%q) = %+v, want {Kind:%q Ref:%q Alias:%q}", c.line, m, c.kind, c.ref, c.a)
+			if m.Kind != c.kind || m.Ref != c.ref || m.Alias != c.a || m.Host != c.h {
+				t.Errorf("parseManagedMarker(%q) = %+v, want {Kind:%q Ref:%q Alias:%q Host:%q}", c.line, m, c.kind, c.ref, c.a, c.h)
 			}
 		})
 	}
@@ -735,6 +736,32 @@ func TestAliasHostName(t *testing.T) {
 	got, err := svc.AliasHostName("devcontainer")
 	if err != nil || got != "172.18.0.2" {
 		t.Errorf("AliasHostName = %q,%v, want 172.18.0.2,nil", got, err)
+	}
+}
+
+func TestManagedMarkerForAlias(t *testing.T) {
+	home := t.TempDir()
+	setHomeDir(t, home)
+	if err := os.MkdirAll(filepath.Join(home, ".ssh"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	content := "# devcontainer-cli:managed v=1 kind=container ref=dc-ssh alias=dc-ssh host=me@remote-host\n" +
+		"Host dc-ssh\n    HostName 172.18.0.9\n    ProxyJump me@remote-host\n"
+	if err := os.WriteFile(managedSSHConfig(home), []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	svc := SshService{Report: nopReporter{}}
+
+	m, ok, err := svc.ManagedMarkerForAlias("dc-ssh")
+	if err != nil || !ok {
+		t.Fatalf("ManagedMarkerForAlias = %+v,%v,%v, want a match", m, ok, err)
+	}
+	if m.Host != "me@remote-host" {
+		t.Errorf("ManagedMarkerForAlias Host = %q, want %q", m.Host, "me@remote-host")
+	}
+
+	if _, ok, err := svc.ManagedMarkerForAlias("no-such-alias"); err != nil || ok {
+		t.Errorf("ManagedMarkerForAlias(no-such-alias) = ok=%v,%v, want ok=false,nil", ok, err)
 	}
 }
 

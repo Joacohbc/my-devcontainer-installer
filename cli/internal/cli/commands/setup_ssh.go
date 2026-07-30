@@ -17,6 +17,7 @@ func init() { register(newSetupSshCommand()) }
 
 type setupSshFlags struct {
 	remote            string
+	via               string
 	alias             string
 	key               string
 	knownHosts        string
@@ -52,11 +53,19 @@ Host keys are pinned in a known_hosts file owned by the CLI, not in your global
 trusted on first sight. A rebuilt image therefore never greets you with "REMOTE
 HOST IDENTIFICATION HAS CHANGED" for what is really a fresh container.
 
-Two modes:
+Three modes:
   local (default)  Configure direct SSH from this machine into a local container.
   remote (--remote USER@HOST)  This CLI runs on the Docker host; it prints a
                    self-contained snippet (containing the PRIVATE key) to paste
-                   on the machine you connect FROM, setting up a ProxyCommand jump.`,
+                   on the machine you connect FROM, setting up a ProxyCommand jump.
+  via (--via USER@HOST|alias)  The opposite of remote: this CLI runs on the
+                   connecting machine, using an existing SSH connection to the
+                   Docker host as a jump. Only the shared key's PUBLIC half
+                   ever leaves this machine — the private key stays local, and
+                   the alias it writes is a normal managed block that 'clean
+                   ssh'/'destroy' already know how to find and remove.
+                   Requires --container: there is no local compose project for
+                   a container that lives on someone else's host.`,
 		Example: `  # Set up SSH for the project's devcontainer, then connect
   devcontainer-cli setup-ssh
   ssh <workspace>
@@ -65,12 +74,16 @@ Two modes:
   devcontainer-cli setup-ssh --container dc-ssh --yes
 
   # Remote/jump-host setup (run on the Docker host)
-  devcontainer-cli setup-ssh --remote me@docker-host`,
+  devcontainer-cli setup-ssh --remote me@docker-host
+
+  # Client-driven setup through an existing SSH connection to the Docker host
+  devcontainer-cli setup-ssh --via me@docker-host --container dc-ssh`,
 		SilenceUsage: true,
 		RunE:         runSetupSsh,
 	}
 	f := cmd.Flags()
-	f.String("remote", "", "Configure remote-server access (ProxyCommand mode): USER@HOST")
+	f.String("remote", "", "Configure remote-server access (ProxyCommand mode, run on the Docker host): USER@HOST")
+	f.String("via", "", "Configure access through an existing SSH connection to the Docker host (run on the connecting machine, requires --container): USER@HOST or an ssh-config alias")
 	f.String("key", "", "Private key path (default: the shared managed key under the CLI config dir)")
 	f.StringP("container", "c", sshdefaults.ServiceName, "Container name (auto-detected from compose if omitted)")
 	f.String("user", sshdefaults.User, "SSH user inside container")
@@ -80,6 +93,9 @@ Two modes:
 		return listContainers(), cobra.ShellCompDirectiveNoFileComp
 	})
 	_ = cmd.RegisterFlagCompletionFunc("remote", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		return listSshHosts(), cobra.ShellCompDirectiveNoFileComp
+	})
+	_ = cmd.RegisterFlagCompletionFunc("via", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return listSshHosts(), cobra.ShellCompDirectiveNoFileComp
 	})
 	_ = cmd.MarkFlagFilename("key")
@@ -95,6 +111,7 @@ func collectSetupSshFlags(cmd *cobra.Command) (*setupSshFlags, error) {
 	}
 	g := &setupSshFlags{}
 	g.remote, _ = f.GetString("remote")
+	g.via, _ = f.GetString("via")
 	g.alias = sshdefaults.Alias
 	g.key, _ = f.GetString("key")
 	g.key = domain.ResolveSSHKeyPath(g.key)
@@ -293,7 +310,11 @@ func installKey(ssh service.SshService, f *setupSshFlags, mode sshdefaults.Mode)
 	}
 	script := sshdefaults.AuthorizedKeysInstallScript()
 
-	if mode == sshdefaults.ModeLocal {
+	// --via keeps mode == ModeLocal (see detectMode) but its docker calls are
+	// redirected at the remote daemon (see performSetupSsh), so it can resolve
+	// the container's IP and pin its host keys just like a genuinely local
+	// setup — unlike legacy --remote, which has no docker access from here.
+	if mode == sshdefaults.ModeLocal || f.via != "" {
 		ip, ierr := containerIP(ssh, f.container, f)
 		if ierr != nil {
 			return installResult{}, ierr
@@ -334,6 +355,7 @@ func buildConfigBlock(mode sshdefaults.Mode, f *setupSshFlags, inst installResul
 		Hostname:       inst.hostname,
 		Remote:         f.remote,
 		Container:      f.container,
+		ProxyJump:      f.via,
 		KnownHostsFile: f.knownHosts,
 		Kind:           kind,
 		Ref:            ref,
@@ -540,6 +562,12 @@ func runSetupSsh(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
+	if f.remote != "" && f.via != "" {
+		return fmt.Errorf("--remote and --via are mutually exclusive: use one or the other")
+	}
+	if f.via != "" && !f.containerExplicit {
+		return fmt.Errorf("--via requires --container <name>: there is no local compose project describing a container on a remote host")
+	}
 
 	ssh := service.SshService{Report: console}
 	mode := detectMode(f)
@@ -593,42 +621,49 @@ func performSetupSsh(ssh service.SshService, f *setupSshFlags, mode sshdefaults.
 	console.Log(fmt.Sprintf("Mode: %s   Workspace: %s   Alias: %s   Key: %s", mode, workspace, f.alias, f.key))
 	console.Log(fmt.Sprintf("Service: %s   Container: %s   Compose: %s", f.service, f.container, f.composeFile))
 
-	if err := ensureStack(ssh, f); err != nil {
-		return err
-	}
+	// WithHostOverride redirects every docker call the rest of this function
+	// makes (ensureStack's running check, key install, host-key read) at the
+	// daemon behind --via, so the flow below works exactly like a genuinely
+	// local setup even though the container lives on another host. It is a
+	// no-op when f.via is empty.
+	return service.WithHostOverride(f.via, func() error {
+		if err := ensureStack(ssh, f); err != nil {
+			return err
+		}
 
-	if err := genKey(ssh, f.key); err != nil {
-		return err
-	}
+		if err := genKey(ssh, f.key); err != nil {
+			return err
+		}
 
-	inst, err := installKey(ssh, f, mode)
-	if err != nil {
-		return err
-	}
+		inst, err := installKey(ssh, f, mode)
+		if err != nil {
+			return err
+		}
 
-	// The marker tags the generated block so destroy/clean-ssh can remove it. Loose
-	// container mode keys the block by container name; workspace mode by the (unique)
-	// workspace name.
-	markerKind := sshdefaults.KindWorkspace
-	markerRef := workspace
-	if f.containerExplicit {
-		markerKind = sshdefaults.KindContainer
-		markerRef = f.container
-	}
+		// The marker tags the generated block so destroy/clean-ssh can remove it. Loose
+		// container mode keys the block by container name; workspace mode by the (unique)
+		// workspace name.
+		markerKind := sshdefaults.KindWorkspace
+		markerRef := workspace
+		if f.containerExplicit {
+			markerKind = sshdefaults.KindContainer
+			markerRef = f.container
+		}
 
-	if mode == sshdefaults.ModeRemote {
-		return emitRemoteConfig(ssh, f, markerKind, markerRef)
-	}
+		if mode == sshdefaults.ModeRemote {
+			return emitRemoteConfig(ssh, f, markerKind, markerRef)
+		}
 
-	pinHostKeys(ssh, f, inst)
+		pinHostKeys(ssh, f, inst)
 
-	if err := updateSshConfig(ssh, f, mode, inst, markerKind, markerRef); err != nil {
-		return err
-	}
+		if err := updateSshConfig(ssh, f, mode, inst, markerKind, markerRef); err != nil {
+			return err
+		}
 
-	testConnection(ssh, f.alias)
-	console.Ok(fmt.Sprintf("Done. Connect with:  ssh %s", f.alias))
-	return nil
+		testConnection(ssh, f.alias)
+		console.Ok(fmt.Sprintf("Done. Connect with:  ssh %s", f.alias))
+		return nil
+	})
 }
 
 // emitRemoteConfig hands over the shared managed key to the machine the user

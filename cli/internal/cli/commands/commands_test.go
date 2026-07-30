@@ -765,10 +765,24 @@ func TestSshCommandRegistered(t *testing.T) {
 	if sshCmd == nil {
 		t.Fatal("expected 'ssh' command to be registered")
 	}
-	for _, name := range []string{"yes", "no-interactive", "forward", "ports", "container"} {
+	for _, name := range []string{"yes", "no-interactive", "forward", "ports", "container", "via"} {
 		if sshCmd.Flags().Lookup(name) == nil {
 			t.Errorf("expected 'ssh' to register --%s", name)
 		}
+	}
+}
+
+// Like 'setup-ssh --via', 'ssh --via' has no local compose project to target a
+// remote-only container with, so it must be paired with --container.
+func TestRunSsh_ViaRequiresContainer(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	cmd := newSshCommand()
+	if err := cmd.Flags().Parse([]string{"--via", "me@docker-host"}); err != nil {
+		t.Fatalf("parse flags: %v", err)
+	}
+	err := runSsh(cmd, nil)
+	if err == nil || !strings.Contains(err.Error(), "--container") {
+		t.Errorf("runSsh error = %v, want an error requiring --container", err)
 	}
 }
 
@@ -1003,6 +1017,56 @@ func TestSetupSshCommand_ContainerShorthand(t *testing.T) {
 	}
 }
 
+// --via is a separate flag from --remote, both string-valued and unset by
+// default; collectSetupSshFlags must read it into f.via without touching
+// f.remote.
+func TestCollectSetupSshFlags_Via(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	cmd := newSetupSshCommand()
+	if err := cmd.Flags().Parse([]string{"--via", "me@docker-host", "-c", "dc-ssh"}); err != nil {
+		t.Fatalf("parse flags: %v", err)
+	}
+	f, err := collectSetupSshFlags(cmd)
+	if err != nil {
+		t.Fatalf("collectSetupSshFlags: %v", err)
+	}
+	if f.via != "me@docker-host" {
+		t.Errorf("via = %q, want %q", f.via, "me@docker-host")
+	}
+	if f.remote != "" {
+		t.Errorf("remote = %q, want empty", f.remote)
+	}
+}
+
+// --remote and --via are two different ways of routing setup-ssh through a
+// second host (paste-a-private-key vs. client-driven); combining them is
+// ambiguous and must be rejected before any docker/ssh work starts.
+func TestRunSetupSsh_RemoteAndViaMutuallyExclusive(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	cmd := newSetupSshCommand()
+	if err := cmd.Flags().Parse([]string{"--remote", "me@host", "--via", "me@host", "-c", "dc-ssh"}); err != nil {
+		t.Fatalf("parse flags: %v", err)
+	}
+	err := runSetupSsh(cmd, nil)
+	if err == nil || !strings.Contains(err.Error(), "mutually exclusive") {
+		t.Errorf("runSetupSsh error = %v, want a mutually-exclusive error", err)
+	}
+}
+
+// --via has no local compose project to fall back on (the container lives on
+// a different host), so it must be paired with an explicit --container.
+func TestRunSetupSsh_ViaRequiresContainer(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	cmd := newSetupSshCommand()
+	if err := cmd.Flags().Parse([]string{"--via", "me@docker-host"}); err != nil {
+		t.Fatalf("parse flags: %v", err)
+	}
+	err := runSetupSsh(cmd, nil)
+	if err == nil || !strings.Contains(err.Error(), "--container") {
+		t.Errorf("runSetupSsh error = %v, want an error requiring --container", err)
+	}
+}
+
 // With no --key, setup-ssh defaults to the shared managed key under the CLI
 // config dir, not a per-host ~/.ssh path.
 func TestCollectSetupSshFlags_DefaultsToManagedKey(t *testing.T) {
@@ -1078,13 +1142,27 @@ func TestShellCommand_HasFlags(t *testing.T) {
 	if shell == nil {
 		t.Fatal("shell command not found")
 	}
-	for _, name := range []string{"user", "no-tty"} {
+	for _, name := range []string{"user", "no-tty", "via"} {
 		if shell.Flags().Lookup(name) == nil {
 			t.Errorf("expected shell flag --%s", name)
 		}
 	}
 	if shell.Flags().ShorthandLookup("T") == nil {
 		t.Error("expected shell flag shorthand -T for --no-tty")
+	}
+}
+
+// shell rides entirely on 'docker exec', so --via has no local compose project
+// to target a remote-only container with and must be paired with --container,
+// same rule as ssh/setup-ssh.
+func TestRunShell_ViaRequiresContainer(t *testing.T) {
+	cmd := newShellCommand()
+	if err := cmd.Flags().Parse([]string{"--via", "me@docker-host"}); err != nil {
+		t.Fatalf("parse flags: %v", err)
+	}
+	err := runShell(cmd, nil)
+	if err == nil || !strings.Contains(err.Error(), "--container") {
+		t.Errorf("runShell error = %v, want an error requiring --container", err)
 	}
 }
 

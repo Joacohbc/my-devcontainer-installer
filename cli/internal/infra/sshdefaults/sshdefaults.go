@@ -48,8 +48,15 @@ const (
 // ManagedComment renders the structured marker comment that precedes a managed
 // Host block, recording its kind, stable ref, and alias so destroy/clean-ssh can
 // match it: e.g. "# devcontainer-cli:managed v=1 kind=workspace ref=myproj alias=myproj".
-func ManagedComment(kind Kind, ref, alias string) string {
-	return fmt.Sprintf("# %s v=%s kind=%s ref=%s alias=%s", ManagedMarker, MarkerVersion, kind, ref, alias)
+// host, when non-empty, records the --via jump target the block's docker calls
+// (host-key re-pin on reconnect) must be routed through; omitted for ordinary
+// local blocks so their marker output is unchanged.
+func ManagedComment(kind Kind, ref, alias, host string) string {
+	comment := fmt.Sprintf("# %s v=%s kind=%s ref=%s alias=%s", ManagedMarker, MarkerVersion, kind, ref, alias)
+	if host != "" {
+		comment += " host=" + host
+	}
+	return comment
 }
 
 // AuthorizedKeysInstallScript returns the sh script that installs a public key
@@ -142,6 +149,14 @@ type ConfigBlockOptions struct {
 	// Container is the container name inspected for its IP inside the ProxyCommand;
 	// required in ModeRemote, unused otherwise.
 	Container string
+	// ProxyJump, when set, adds a "ProxyJump <value>" line to a ModeLocal stanza:
+	// Hostname is dialed *from* that jump host rather than directly, which is what
+	// lets it be an address (e.g. a container's docker-bridge IP) only reachable
+	// from there — no ports need publishing. Also recorded in the marker's
+	// "host=" field (see ManagedComment) so a later reconnect knows to route its
+	// host-key re-pin through the same jump. Unused in ModeRemote, which already
+	// carries its own hop in ProxyCommand.
+	ProxyJump string
 	// KnownHostsFile, when set, scopes host-key verification for this Host to that
 	// file instead of ~/.ssh/known_hosts. A devcontainer regenerates its host keys
 	// on every image rebuild while keeping the same container IP, so recording
@@ -167,7 +182,7 @@ func BuildConfigBlock(opts ConfigBlockOptions) (string, error) {
 		return "", err
 	}
 	if opts.Kind != "" && opts.Ref != "" {
-		return ManagedComment(opts.Kind, opts.Ref, opts.Alias) + "\n" + stanza, nil
+		return ManagedComment(opts.Kind, opts.Ref, opts.Alias, opts.ProxyJump) + "\n" + stanza, nil
 	}
 	return stanza, nil
 }
@@ -223,6 +238,9 @@ func buildStanza(opts ConfigBlockOptions) (string, error) {
     User %s
     IdentityFile %s
     IdentitiesOnly yes`, opts.Alias, opts.Hostname, opts.User, opts.KeyPath)
+		if opts.ProxyJump != "" {
+			stanza += "\n    ProxyJump " + opts.ProxyJump
+		}
 		return withHostKeyOptions(stanza, opts.KnownHostsFile), nil
 
 	case ModeRemote:

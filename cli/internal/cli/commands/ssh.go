@@ -33,6 +33,12 @@ By default it targets the project's own devcontainer service, the same one
 managed container instead (loose mode, like 'setup-ssh --container'); the
 managed alias is then keyed by that container's name rather than the workspace.
 
+Pass --via USER@HOST (with --container) to reach a container on a different
+Docker host through an existing SSH connection to it, the same as 'setup-ssh
+--via' — see there for what that requires and what it does differently from
+'setup-ssh --remote'. --via only needs to be given once: the alias remembers
+the jump target for future reconnects.
+
 Before connecting it re-pins the container's current SSH host keys (read through
 docker) in the CLI-managed known_hosts, so a rebuilt image — new host keys, same
 container IP — never aborts the session with "REMOTE HOST IDENTIFICATION HAS
@@ -48,6 +54,9 @@ when the session ends.`,
   # Connect to a specific container instead of the project's own devcontainer
   devcontainer-cli ssh --container dc-ssh
 
+  # Connect through an existing SSH connection to a remote Docker host
+  devcontainer-cli ssh --via me@docker-host --container dc-ssh
+
   # Also forward ports 3000 and 8080 for the session
   devcontainer-cli ssh --forward --ports 3000,8080:80
 
@@ -58,8 +67,14 @@ when the session ends.`,
 	addYesFlag(cmd)
 	addInteractiveFlag(cmd)
 	addContainerFlag(cmd)
+	cmd.Flags().String("via", "", "Reach the container through an existing SSH connection to its Docker host (requires --container): USER@HOST or an ssh-config alias")
 	cmd.Flags().Bool("forward", false, "Also open SSH port-forwarding tunnels for the session (prompted when interactive and omitted)")
 	cmd.Flags().String("ports", "", "Ports to forward, e.g. '3000,8080:80' (implies --forward; skips the prompt)")
+
+	_ = cmd.RegisterFlagCompletionFunc("via", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		return listSshHosts(), cobra.ShellCompDirectiveNoFileComp
+	})
+
 	return cmd
 }
 
@@ -73,6 +88,11 @@ func runSsh(cmd *cobra.Command, args []string) error {
 	}
 
 	containerExplicit := cmd.Flags().Changed("container")
+	via, _ := cmd.Flags().GetString("via")
+	if via != "" && !containerExplicit {
+		return fmt.Errorf("--via requires --container <name>: there is no local compose project describing a container on a remote host")
+	}
+
 	var workspace, containerName string
 	kind := sshdefaults.KindWorkspace
 	ref := ""
@@ -110,6 +130,7 @@ func runSsh(cmd *cobra.Command, args []string) error {
 		}
 		f := &setupSshFlags{
 			alias:             ref,
+			via:               via,
 			key:               domain.ResolveSSHKeyPath(""),
 			knownHosts:        domain.ManagedKnownHostsPath(),
 			container:         containerName,
@@ -175,7 +196,19 @@ func refreshHostKey(ssh service.SshService, alias, containerName string) {
 	if err != nil || host == "" {
 		return // no HostName (e.g. a ProxyCommand block): nothing local to pin
 	}
-	if err := ssh.PinContainerHostKeys(containerName, host); err != nil {
+
+	// A --via alias's docker calls (this re-pin included) must be routed
+	// through the same jump the block was originally set up against — its
+	// container only exists on that remote daemon, not this one. The marker
+	// remembers that target so --via never needs repeating on reconnect.
+	via := ""
+	if marker, ok, merr := ssh.ManagedMarkerForAlias(alias); merr == nil && ok {
+		via = marker.Host
+	}
+
+	if err := service.WithHostOverride(via, func() error {
+		return ssh.PinContainerHostKeys(containerName, host)
+	}); err != nil {
 		console.Debug("could not pin host key for %s: %v", host, err)
 	}
 }

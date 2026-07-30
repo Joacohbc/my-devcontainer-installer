@@ -21,19 +21,21 @@ func (nopReporter) Debug(string, ...any)   {}
 // and replies with a canned status/stdout so services can be exercised without
 // a Docker daemon.
 type fakeRunner struct {
-	mu     sync.Mutex
-	calls  [][]string
-	status int
-	stdout string
+	mu      sync.Mutex
+	calls   [][]string
+	lastEnv map[string]string
+	status  int
+	stdout  string
 }
 
-func (r *fakeRunner) Run(_ context.Context, args []string, _ string, _ string, _ map[string]string) (int, string, string) {
+func (r *fakeRunner) Run(_ context.Context, args []string, _ string, _ string, env map[string]string) (int, string, string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if len(args) >= 2 && args[1] == "version" {
 		return 0, "27.0.0", ""
 	}
 	r.calls = append(r.calls, args)
+	r.lastEnv = env
 	return r.status, r.stdout, ""
 }
 

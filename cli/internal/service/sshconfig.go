@@ -21,6 +21,7 @@ type ManagedMarker struct {
 	Kind  string // "workspace" or "container"
 	Ref   string // unique workspace name, or container name
 	Alias string // the Host alias configured by the block (may be empty for legacy markers)
+	Host  string // --via jump target the block's docker calls must route through (empty for ordinary local/legacy blocks)
 }
 
 // parseManagedMarker parses a managed-block marker comment. It reads the modern
@@ -51,6 +52,8 @@ func parseManagedMarker(line string) (ManagedMarker, bool) {
 			m.Ref = v
 		case "alias":
 			m.Alias = v
+		case "host":
+			m.Host = v
 		case "workspace": // legacy form implies a workspace-kind block keyed by <ws>
 			if m.Kind == "" {
 				m.Kind = string(sshdefaults.KindWorkspace)
@@ -675,7 +678,7 @@ func planBlockMigration(userContent, managedContent string, stale []ManagedMarke
 		// ExtractHostBlock returns the stanza only, so the marker is re-rendered
 		// rather than carried over. That also normalizes the legacy
 		// "workspace=<ws>" form to the current v=1 spelling on the way across.
-		marker := sshdefaults.ManagedComment(sshdefaults.Kind(m.Kind), m.Ref, m.Alias)
+		marker := sshdefaults.ManagedComment(sshdefaults.Kind(m.Kind), m.Ref, m.Alias, m.Host)
 		if body != "" {
 			body += "\n\n"
 		}
@@ -784,6 +787,24 @@ func (s SshService) AliasHostName(alias string) (string, error) {
 		return "", err
 	}
 	return HostNameForAlias(content, alias), nil
+}
+
+// ManagedMarkerForAlias returns the managed marker for the Host block
+// configured under alias, if any. It is what lets a plain reconnect (no --via
+// repeated) find the jump target a --via block's docker calls must route
+// through: refreshHostKey uses Host to re-pin host keys via the same remote
+// daemon the block was set up against. Reads both configs, like AliasHostName.
+func (s SshService) ManagedMarkerForAlias(alias string) (ManagedMarker, bool, error) {
+	content, err := s.managedAndUserConfigs()
+	if err != nil {
+		return ManagedMarker{}, false, err
+	}
+	for _, m := range ListManagedBlocks(content) {
+		if m.Alias == alias {
+			return m, true, nil
+		}
+	}
+	return ManagedMarker{}, false, nil
 }
 
 // ManagedHostName returns the address the managed block for kind + ref dials:
