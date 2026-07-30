@@ -142,10 +142,14 @@ func TestAliasesContextDocumentsAgentAliases(t *testing.T) {
 	if !strings.Contains(body, "skip") || !strings.Contains(body, "permission prompts") {
 		t.Errorf("the section must explain the agents skip permission prompts:\n%s", body)
 	}
-	// Every aliased agent must be named, agy included.
+	// Every aliased agent must be named with its _yolo alias, agy included, and
+	// the plain command must be documented as untouched.
 	for _, agent := range []string{"claude", "codex", "copilot", "agy"} {
+		if !strings.Contains(body, "`"+agent+"_yolo`") {
+			t.Errorf("the section must name the %q_yolo alias:\n%s", agent, body)
+		}
 		if !strings.Contains(body, "`"+agent+"`") {
-			t.Errorf("the section must name the %q alias:\n%s", agent, body)
+			t.Errorf("the section must name the plain %q command:\n%s", agent, body)
 		}
 	}
 	// The section no longer depends on any option.

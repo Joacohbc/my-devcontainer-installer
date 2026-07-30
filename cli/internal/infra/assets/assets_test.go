@@ -2,6 +2,7 @@ package assets_test
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -152,7 +153,8 @@ func TestEntrypointBridgesAntigravitySkills(t *testing.T) {
 
 // The baked defaults must ship kill_port and the pip/npm redirects, and the
 // agent aliases must be present unconditionally (each guarded only by command -v,
-// with no build-time flag-file gate) — agy included.
+// with no build-time flag-file gate) — agy included. They are named <tool>_yolo
+// and must never shadow the tool itself: `claude` stays the plain CLI.
 func TestAliasScriptShipsDefaults(t *testing.T) {
 	body, err := os.ReadFile("alias.sh")
 	if err != nil {
@@ -183,8 +185,13 @@ func TestAliasScriptShipsDefaults(t *testing.T) {
 		if !strings.Contains(script, "command -v "+name+" >/dev/null 2>&1") {
 			t.Errorf("alias.sh must guard the %q alias on `command -v %s`", name, name)
 		}
-		if !strings.Contains(script, "alias "+name+"='"+aliasBody+"'") {
-			t.Errorf("alias.sh must define alias %s='%s'", name, aliasBody)
+		if !strings.Contains(script, "alias "+name+"_yolo='"+aliasBody+"'") {
+			t.Errorf("alias.sh must define alias %s_yolo='%s'", name, aliasBody)
+		}
+		// The plain command must stay the unmodified CLI: only <tool>_yolo skips
+		// the permission prompts.
+		if strings.Contains(script, "alias "+name+"=") {
+			t.Errorf("alias.sh must not shadow %q itself; only %s_yolo may add the skip flag", name, name)
 		}
 	}
 
@@ -380,5 +387,83 @@ func TestIsGeneratedFile(t *testing.T) {
 
 	if !assets.IsGeneratedFile(filepath.Join(dir, "does-not-exist")) {
 		t.Error("expected absent file to be treated as generated (safe to overwrite)")
+	}
+}
+
+// `lsof -v` prints a multi-line banner on stderr whose FIRST line is only a
+// header ("lsof version information:") — the number is on the "revision:" line.
+// Reporting the first line made the tool inventory say nothing useful, so the
+// script must dig the revision out. Runs the real script against a fake lsof.
+func TestContextScriptReportsLsofRevision(t *testing.T) {
+	bash, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skip("bash not available")
+	}
+
+	bin := t.TempDir()
+	fake := "#!/bin/sh\n" +
+		"cat >&2 <<'BANNER'\n" +
+		"lsof version information:\n" +
+		"    revision: 4.95.0\n" +
+		"    latest revision: https://github.com/lsof-org/lsof\n" +
+		"BANNER\n"
+	if err := os.WriteFile(filepath.Join(bin, "lsof"), []byte(fake), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	script, err := filepath.Abs("get-devcontainer-context.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The fake shadows any real lsof; the rest of PATH stays so the script still
+	// finds grep/sed/head.
+	got := toolLine(t, bash, script, bin, "lsof")
+	if !strings.Contains(got, "4.95.0") {
+		t.Errorf("lsof must be reported with its revision, got %q", got)
+	}
+	if strings.Contains(got, "version information") {
+		t.Errorf("lsof must not be reported with its banner header, got %q", got)
+	}
+}
+
+// toolLine runs the context script with dir prepended to PATH and returns the
+// inventory line for the given tool.
+func toolLine(t *testing.T, bash, script, dir, tool string) string {
+	t.Helper()
+	cmd := exec.Command(bash, script, "--tools")
+	cmd.Env = append(os.Environ(), "PATH="+dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("running the context script failed: %v", err)
+	}
+	for _, line := range strings.Split(string(out), "\n") {
+		if strings.HasPrefix(line, "- "+tool+" ") {
+			return strings.TrimSpace(strings.TrimPrefix(line, "- "+tool))
+		}
+	}
+	t.Fatalf("no inventory line for %q:\n%s", tool, out)
+	return ""
+}
+
+// A future lsof that drops the "revision:" line must still report something
+// rather than an empty version.
+func TestContextScriptFallsBackToLsofBanner(t *testing.T) {
+	bash, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skip("bash not available")
+	}
+
+	bin := t.TempDir()
+	fake := "#!/bin/sh\necho 'lsof 5.0.0' >&2\n"
+	if err := os.WriteFile(filepath.Join(bin, "lsof"), []byte(fake), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	script, err := filepath.Abs("get-devcontainer-context.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := toolLine(t, bash, script, bin, "lsof"); !strings.Contains(got, "5.0.0") {
+		t.Errorf("lsof must fall back to the banner's first line, got %q", got)
 	}
 }

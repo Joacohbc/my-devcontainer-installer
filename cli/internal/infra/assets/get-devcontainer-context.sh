@@ -95,11 +95,28 @@ first_line() {
     grep -v '^Picked up ' | head -n 1 | tr -d '\r' | cut -c1-120
 }
 
+# lsof -v prints a multi-line banner on stderr whose first line is only a header
+# ("lsof version information:") — the number lives on the "revision:" line, so
+# first_line alone would report nothing usable. Fall back to the raw banner if a
+# future lsof drops that line.
+lsof_version() {
+    banner=$(lsof -v 2>&1 </dev/null)
+    revision=$(printf '%s\n' "$banner" | sed -n 's/^[[:space:]]*revision:[[:space:]]*//p' | first_line)
+    if [ -n "$revision" ]; then
+        printf '%s\n' "$revision"
+    else
+        printf '%s\n' "$banner" | first_line
+    fi
+}
+
+# Every probe reads stdin from /dev/null: a wrapper that asks something ("Install
+# the CLI? [y/N]") would otherwise hang the whole inventory waiting for an answer.
 tool_version() { # $1 = command, $2 = version flag
     case "$1" in
-        # These print their banner on stderr, not stdout.
-        java | lsof) "$1" "$2" 2>&1 | first_line ;;
-        *) "$1" "$2" 2>/dev/null | first_line ;;
+        lsof) lsof_version ;;
+        # java prints its banner on stderr, not stdout.
+        java) "$1" "$2" 2>&1 </dev/null | first_line ;;
+        *) "$1" "$2" 2>/dev/null </dev/null | first_line ;;
     esac
 }
 

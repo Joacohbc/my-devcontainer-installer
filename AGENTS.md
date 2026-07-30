@@ -285,11 +285,14 @@ without a volume.
 
 Defaults in `alias.sh`: `kill_port <port>` (needs `lsof`, installed by
 `BaseModule`), `npm`→`pnpm` / `npx`→`pnpm dlx`, `pip`/`pip3`→`uv pip` with
-`UV_SYSTEM_PYTHON=1`, and the agent aliases (`claude`/`codex`/`copilot`/`agy`,
-each with its skip-permission flag). Every block is `command -v`-guarded so one
-file is valid in every image variant. The agent aliases are **unconditional**
-(no build-time gate, no module option): a tool that is not installed simply
-never gets its alias, so the shipped script is identical in every image.
+`UV_SYSTEM_PYTHON=1`, and the agent launchers
+(`claude_yolo`/`codex_yolo`/`copilot_yolo`/`agy_yolo`, each running its CLI with
+that CLI's skip-permission flag). Every block is `command -v`-guarded so one
+file is valid in every image variant. The agent aliases **never shadow the tool
+itself** — plain `claude` stays the unmodified CLI, the `_yolo` name is the
+opt-in — and they are **unconditional** (no build-time gate, no module option):
+a tool that is not installed simply never gets its alias, so the shipped script
+is identical in every image.
 
 ### `~/CONTEXT.md` is generated per project
 

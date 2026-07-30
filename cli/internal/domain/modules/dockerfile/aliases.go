@@ -21,7 +21,7 @@ const UserAliasFile = ".alias.sh"
 const ContextScriptName = "get-devcontainer-context"
 
 // AliasesModule installs the CLI's default shell aliases/functions (kill_port,
-// npm→pnpm, pip→uv, the permission-prompt-free agent aliases), the ~/CONTEXT.md
+// npm→pnpm, pip→uv, the `<tool>_yolo` agent launchers), the ~/CONTEXT.md
 // orientation document and the get-devcontainer-context introspection command.
 //
 // It is Always-on and sits in CategoryBase directly after BaseModule: the zsh
@@ -46,9 +46,10 @@ var AliasesModule = &ModuleSpec{
 				"`kill_port <port>` frees a port that is already taken",
 				"(`kill -9` on whatever `lsof` reports listening on it).",
 				"",
-				"The AI agent CLIs (`claude`, `codex`, `copilot`, `agy`) are aliased to skip",
-				"their interactive permission prompts — the container is the sandbox. Use",
-				"`command claude …` or `\\claude …` to get the unaliased binary back.",
+				"Each AI agent CLI also gets a `<tool>_yolo` alias — `claude_yolo`, `codex_yolo`,",
+				"`copilot_yolo`, `agy_yolo` — that runs it with its interactive permission prompts",
+				"skipped, since the container is the sandbox. The plain `claude`, `codex`,",
+				"`copilot` and `agy` commands are left untouched: opting out is the default.",
 				"",
 				"Two alias files are sourced by every shell, in this order:",
 				"",
@@ -65,7 +66,7 @@ var AliasesModule = &ModuleSpec{
 		return fmt.Sprintf(`##
 ## SHELL ALIASES & CONTAINER CONTEXT
 ##
-# Default aliases/functions (kill_port, npm->pnpm, pip->uv, prompt-free agents),
+# Default aliases/functions (kill_port, npm->pnpm, pip->uv, <tool>_yolo agents),
 # the generated ~/%[4]s orientation document for AI agents and the
 # get-devcontainer-context introspection command, in a single layer.
 #
