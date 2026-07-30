@@ -40,14 +40,19 @@ func TestCopyableAssetsAreScripts(t *testing.T) {
 
 func TestBuildOnlyAssetsAreNotCopyable(t *testing.T) {
 	// Build-time-only scripts must never be offered for runtime copying.
-	buildOnly := []string{"entrypoint", "golang-utils", "setup-help", "update-golang", "zsh-installer"}
+	// alias.sh is baked into the image by the aliases module and is meaningless
+	// to drop into a running container.
+	buildOnly := []string{"alias", "entrypoint", "golang-utils", "setup-help", "update-golang", "zsh-installer"}
 	for _, name := range buildOnly {
 		if _, ok := LookupCopyable(name); ok {
 			t.Errorf("build-only asset %q must not be copyable", name)
 		}
 	}
-	// The copyable set is exactly the runtime installers + the gh login helper.
+	// The copyable set is exactly the runtime installers, the gh login helper and
+	// the context report (copyable so it also works on images built before the
+	// aliases module shipped it on PATH).
 	want := []string{
+		"get-devcontainer-context",
 		"install-antigravity", "install-caveman", "install-claude-code",
 		"install-codex-cli", "install-copilot", "install-graphify",
 		"install-opencode", "login-github-cli",

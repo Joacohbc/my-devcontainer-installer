@@ -134,12 +134,17 @@ devcontainer-cli up                    # Levanta el stack de contenedores (o eje
 ```
 
 ### 2. Conexión y configuración SSH (`devcontainer-cli ssh`)
-`devcontainer-cli ssh` abre una sesión SSH en el contenedor. Si aún no está configurado el acceso SSH para el proyecto, ejecuta automáticamente el asistente de `setup-ssh` (creación de claves, alias en `~/.ssh/config` y fijado de `known_hosts`):
+`devcontainer-cli ssh` abre una sesión SSH en el contenedor. Si aún no está configurado el acceso SSH para el proyecto, ejecuta automáticamente el asistente de `setup-ssh` (creación de claves, alias SSH y fijado de `known_hosts`).
+
+Los bloques `Host` se escriben en un archivo propio de la CLI, **`~/.ssh/devcontainer-cli.config`**, y no en tu `~/.ssh/config`: a ese último sólo se le agrega una línea `Include` al principio, la primera vez. Los bloques que versiones anteriores dejaron dentro de `~/.ssh/config` se mueven solos. Cambiá la ubicación con `devcontainer-cli config ssh-config-file <ruta>`.
+
 ```bash
-devcontainer-cli ssh                      # Conecta al devcontainer (ejecuta setup-ssh si es la primera vez)
-devcontainer-cli ssh --remote user@server # Conexión remota (ejecuta setup-ssh --remote si no existe el alias)
-ssh mi-proyecto                           # Conexión directa vía cliente SSH tradicional usando el alias generado
+devcontainer-cli ssh                                          # Conecta al devcontainer (ejecuta setup-ssh si es la primera vez)
+devcontainer-cli ssh --via user@docker-host --container dc-ssh # Contenedor en OTRO host, a través de una conexión SSH existente
+ssh mi-proyecto                                                # Conexión directa vía cliente SSH tradicional usando el alias generado
 ```
+
+`--via` (requiere `--container`) es para cuando el contenedor vive en un Docker host distinto: usa la conexión SSH que ya tenés a ese host para instalar la clave y fijar el `known_hosts`, sin instalar devcontainer-cli ahí — la clave privada nunca sale de esta máquina. Es distinto de `setup-ssh --remote`, que asume lo contrario (la CLI corriendo en el host remoto) y hace pegar la clave privada a mano en la máquina que se conecta.
 
 ### 3. Copiar archivos y assets (`copy`)
 Copia archivos entre el host y el contenedor o instala scripts embebidos de IA en caliente:
@@ -156,13 +161,35 @@ devcontainer-cli config shared backup -o backup.zip            # Respaldar volum
 devcontainer-cli config shared restore backup.zip              # Restaurar volumen desde un file .zip
 ```
 
-### 5. Conectar otros servicios a la red (`network`)
+### 5. Contexto del contenedor para agentes de IA (`context`)
+Cada contenedor trae `~/CONTEXT.md`, el documento que un agente de IA debería leer primero. **Se genera para cada proyecto** a partir de los módulos y servicios que elegiste, así que describe lo que realmente hay en esa imagen: que estás dentro de Docker, `uv` para Python, `pnpm` para JS, qué versión de Node quedó fija, y a qué host, puerto y credenciales responde cada base de datos (contenedores hermanos, nunca `localhost`). Elegir otros módulos cambia el documento.
+
+Para lo que sólo se sabe en tiempo de ejecución está `get-devcontainer-context`, que lista las herramientas realmente instaladas con sus versiones, los servicios alcanzables y el workspace resuelto.
+```bash
+devcontainer-cli context                 # Reporte legible del contenedor del proyecto
+devcontainer-cli context --json          # Salida estructurada, pensada para agentes
+get-devcontainer-context                 # Lo mismo, desde adentro del contenedor
+```
+
+### 6. Aliases en todos los contenedores (`config alias`)
+La imagen trae aliases por defecto: `kill_port <puerto>`, `npm`→`pnpm`, `npx`→`pnpm dlx`, `pip`/`pip3`→`uv pip`, y un lanzador `<tool>_yolo` por agente (`claude_yolo`, `codex_yolo`, `copilot_yolo`, `agy_yolo`) que corre el CLI sin prompts de permisos —el contenedor ya es el sandbox—. Los comandos `claude`, `codex`, `copilot` y `agy` quedan intactos: saltear los permisos es opt-in.
+
+Tus propios aliases los definís **por comandos** y se guardan en la configuración de la CLI (`config.json`), no en un archivo suelto de tu home. `config alias sync` los renderiza dentro del volumen compartido, así que se aplican a **todos** los contenedores sin reconstruir ninguna imagen y sin reiniciar nada (toman efecto en la próxima shell):
+```bash
+devcontainer-cli config alias                    # Listar los aliases configurados
+devcontainer-cli config alias set ll "ls -la"    # Agregar o actualizar uno
+devcontainer-cli config alias unset ll           # Quitar uno
+devcontainer-cli config alias sync               # Aplicarlos a todos los contenedores
+```
+Como se sourcean después de los defaults de la imagen, lo que definas ahí siempre gana.
+
+### 7. Conectar otros servicios a la red (`network`)
 Conecta cualquier otro contenedor Docker a la red privada del workspace actual:
 ```bash
 devcontainer-cli network connect mi-servicio-extra --alias db-extra
 ```
 
-### 6. Limpieza del sistema (`clean`)
+### 8. Limpieza del sistema (`clean`)
 ```bash
 devcontainer-cli clean ssh              # Elimina bloques SSH y known_hosts obsoletos
 devcontainer-cli clean all              # Menú interactivo de limpieza de imágenes/volúmenes/redes

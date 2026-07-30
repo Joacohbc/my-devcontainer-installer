@@ -10,6 +10,7 @@ type ModuleID string
 
 const (
 	ModuleBase           ModuleID = "base"
+	ModuleAliases        ModuleID = "aliases"
 	ModuleGithubCli      ModuleID = "github-cli"
 	ModuleJavaTemurin    ModuleID = "java-temurin"
 	ModuleJavaOpenjdk    ModuleID = "java-openjdk"
@@ -87,6 +88,17 @@ func WorkspaceDir(workspace string) string {
 	return WorkspaceRoot + "/" + workspace
 }
 
+// FallbackDBUser and FallbackDBPassword are the database credentials used when
+// the global config sets none. They live here because all three layers need the
+// same values and none of them can import the others: domain resolves them from
+// the config, service reports them, and the compose services render them into
+// the compose file and into ~/CONTEXT.md. A second copy anywhere would let the
+// document promise credentials the container was not given.
+const (
+	FallbackDBUser     = "devuser"
+	FallbackDBPassword = "devpass"
+)
+
 // SSHKeyName is the filename of the single shared SSH key reused by every
 // devcontainer (local and remote). The managed key lives under the CLI global
 // config dir; sshdefaults.KeyName aliases this value.
@@ -98,6 +110,12 @@ const SSHKeyName = "id_devcontainer"
 // change on every image rebuild, while the container IP stays the same — never
 // collide with the real hosts recorded in ~/.ssh/known_hosts.
 const SSHKnownHostsName = "known_hosts"
+
+// SSHConfigName is the filename of the SSH config file the CLI owns, kept next
+// to the user's own ~/.ssh/config rather than inside it. Every managed Host
+// block is written there and pulled in by a single `Include` directive at the
+// top of ~/.ssh/config, so the CLI never rewrites config it did not author.
+const SSHConfigName = "devcontainer-cli.config"
 
 type ModuleOptionChoice struct {
 	Value string `json:"value"`

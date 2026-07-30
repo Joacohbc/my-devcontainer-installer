@@ -123,14 +123,22 @@ func (s SshService) InstallKeyLocal(spec InstallKeySpec) error {
 // managed container reports it OR the image registry still records it, so a merely
 // stopped ("down") stack whose project is still on disk is not treated as gone; a
 // container counts as alive when a container of that name exists in any state.
-func (s SshService) LiveTargetPredicates() (existsWorkspace, existsContainer func(string) bool, err error) {
+//
+// The third predicate, existsRemoteContainer, is what a --via block's container
+// (marker.Host != "") must be checked with instead — it lives on a different
+// Docker daemon, invisible to the local existsContainer above. It dials each
+// distinct host at most once per call (cached) and returns (alive, verified):
+// when host can't be reached, alive is true (fail open) but verified is
+// false, so PruneManagedBlocks can report it separately rather than either
+// deleting or silently hiding it.
+func (s SshService) LiveTargetPredicates() (existsWorkspace, existsContainer func(string) bool, existsRemoteContainer func(host, name string) (alive, verified bool), err error) {
 	if err := docker.EnsureDocker(); err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	inspect := InspectService{Report: s.Report}
 	all, err := inspect.ListContainers(false)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	containerNames := make(map[string]bool, len(all))
 	workspaces := make(map[string]bool)
@@ -145,8 +153,40 @@ func (s SshService) LiveTargetPredicates() (existsWorkspace, existsContainer fun
 			workspaces[e.Workspace] = true
 		}
 	}
+
+	remoteCache := make(map[string]map[string]bool)
+	existsRemoteContainer = func(host, name string) (alive, verified bool) {
+		names, cached := remoteCache[host]
+		if !cached {
+			names = map[string]bool{}
+			reachable := true
+			werr := WithHostOverride(host, func() error {
+				remote, lerr := (InspectService{Report: s.Report}).ListContainers(false)
+				if lerr != nil {
+					reachable = false
+					return nil
+				}
+				for _, c := range remote {
+					names[c.Name] = true
+				}
+				return nil
+			})
+			if werr != nil || !reachable {
+				s.Report.Warn("Could not reach '%s' to check its containers.", host)
+				remoteCache[host] = nil
+				return true, false
+			}
+			remoteCache[host] = names
+		}
+		if names == nil {
+			return true, false
+		}
+		return names[name], true
+	}
+
 	return func(ws string) bool { return workspaces[ws] },
 		func(name string) bool { return containerNames[name] },
+		existsRemoteContainer,
 		nil
 }
 

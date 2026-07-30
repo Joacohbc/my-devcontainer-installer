@@ -133,6 +133,7 @@ gemini dir .gemini
 agents dir .agents
 codex dir .codex
 gh dir .config/gh
+alias.sh file .alias.sh
 SHARED_CONFIG_ENTRIES
 
     # Antigravity CLI 2.0 reads skills from ~/.gemini/antigravity-cli/skills but
@@ -149,6 +150,29 @@ SHARED_CONFIG_ENTRIES
         chown -h "$DEV_UID:$DEV_GID" "$ag_skills_link" 2>/dev/null || true
         chown "$DEV_UID:$DEV_GID" "$ag_skills_parent" "/home/devuser/.agents/skills" 2>/dev/null || true
     fi
+fi
+
+# ── The user's own alias file ───────────────────────────────────────────────
+# ~/.alias.sh is sourced by every shell after the image's baked defaults, so the
+# user can redefine anything at any time. Normally it is a symlink into the
+# shared-config volume (created above), which is what makes an edit apply to
+# every container and survive a rebuild. When that volume is opted out of there
+# is nothing to link, so create a plain local file instead — the file must always
+# exist and be writable by devuser, or "edit your aliases" has no answer.
+if [ ! -e /home/devuser/.alias.sh ]; then
+    su - devuser -c 'cat > "$HOME/.alias.sh"' <<'USER_ALIASES'
+# Your own shell aliases and functions.
+#
+# Sourced by every shell AFTER the CLI's baked defaults
+# (~/.devcontainer_aliases.sh), so anything defined here wins. Changes take
+# effect in the next shell — no rebuild, no restart.
+#
+# NOTE: the shared-config volume is not mounted in this container, so this file
+# is local to it and is lost when the container is recreated. Configure aliases
+# on the host with `devcontainer-cli config alias set` (and `config alias sync`)
+# to have them persist across every container.
+USER_ALIASES
+    chown "$DEV_UID:$DEV_GID" /home/devuser/.alias.sh 2>/dev/null || true
 fi
 
 # ── Auto-run non-interactive installer post-scripts ─────────────────────────

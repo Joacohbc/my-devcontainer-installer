@@ -8,7 +8,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// listSshHosts returns all non-wildcard Host aliases defined in ~/.ssh/config.
+// listSshHosts returns all non-wildcard Host aliases defined across the CLI's
+// managed SSH config and the user's own ~/.ssh/config.
 func listSshHosts() []string {
 	return service.SshService{Report: ui.Console{}}.ConfigHostAliasesFromDisk()
 }

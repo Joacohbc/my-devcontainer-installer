@@ -21,19 +21,21 @@ func (nopReporter) Debug(string, ...any)   {}
 // and replies with a canned status/stdout so services can be exercised without
 // a Docker daemon.
 type fakeRunner struct {
-	mu     sync.Mutex
-	calls  [][]string
-	status int
-	stdout string
+	mu      sync.Mutex
+	calls   [][]string
+	lastEnv map[string]string
+	status  int
+	stdout  string
 }
 
-func (r *fakeRunner) Run(_ context.Context, args []string, _ string, _ string, _ map[string]string) (int, string, string) {
+func (r *fakeRunner) Run(_ context.Context, args []string, _ string, _ string, env map[string]string) (int, string, string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if len(args) >= 2 && args[1] == "version" {
 		return 0, "27.0.0", ""
 	}
 	r.calls = append(r.calls, args)
+	r.lastEnv = env
 	return r.status, r.stdout, ""
 }
 
@@ -45,6 +47,20 @@ func (r *fakeRunner) callContaining(token string) []string {
 	for _, call := range r.calls {
 		if slices.Contains(call, token) {
 			return call
+		}
+	}
+	return nil
+}
+
+// lastCallContaining returns the LAST recorded invocation that includes token.
+// Use it when an earlier call legitimately mentions the same token (e.g. a
+// `test -x <path>` probe preceding the real `exec <path>`).
+func (r *fakeRunner) lastCallContaining(token string) []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for i := len(r.calls) - 1; i >= 0; i-- {
+		if slices.Contains(r.calls[i], token) {
+			return r.calls[i]
 		}
 	}
 	return nil
@@ -99,8 +115,10 @@ func defaultForField(f Field) any {
 }
 
 // useFakeDocker installs r as the docker Runner and returns a restore func that
-// resets the runner and availability cache.
-func useFakeDocker(r *fakeRunner) func() {
+// resets the runner and availability cache. It takes a docker.Runner rather
+// than a concrete *fakeRunner so tests can wrap it (see missingScriptRunner in
+// inspect_test.go).
+func useFakeDocker(r docker.Runner) func() {
 	docker.SetRunner(r)
 	docker.ResetDockerCache()
 	return func() {

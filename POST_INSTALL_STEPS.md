@@ -33,8 +33,10 @@ Proporciona acceso mediante OpenSSH, ideal para **VS Code Remote - SSH** o sesio
   ```bash
   devcontainer-cli ssh                         # Abre sesión SSH (ejecuta setup-ssh automáticamente si es la 1ª vez)
   devcontainer-cli ssh --remote user@server    # Conecta por SSH a un devcontainer en un servidor remoto
-  ssh <workspace>                              # Conexión directa mediante el alias registrado en ~/.ssh/config
+  ssh <workspace>                              # Conexión directa mediante el alias registrado por la CLI
   ```
+  El alias vive en `~/.ssh/devcontainer-cli.config` (archivo propio de la CLI, incluido desde `~/.ssh/config` con una línea `Include`; se cambia con `devcontainer-cli config ssh-config-file`).
+
 * **Modo No Interactivo:**
   ```bash
   ssh <workspace> "ls -la /workspace"          # Ejecuta un comando remoto por SSH de forma no interactiva

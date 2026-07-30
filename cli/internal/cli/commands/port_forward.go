@@ -26,7 +26,7 @@ inside a running container, so you can reach a service in the container on
 foreground; press Ctrl+C to close the tunnels.
 
 It tunnels through a devcontainer's SSH alias (set up with 'setup-ssh'), so that
-alias must exist in ~/.ssh/config. Non-devcontainer containers are reached via a
+alias must already be configured. Non-devcontainer containers are reached via a
 devcontainer used as an SSH jump host.
 
 The optional port_mapping argument accepts three forms:
@@ -451,7 +451,7 @@ func runPortForward(cmd *cobra.Command, args []string) error {
 			console.Info("Using SSH alias '%s'.", alias)
 		default:
 			if !interactive {
-				return fmt.Errorf("SSH alias '%s' not found in ~/.ssh/config. Specify --alias or run interactively", candidate)
+				return fmt.Errorf("SSH alias '%s' not found in any SSH config. Specify --alias or run interactively", candidate)
 			}
 			choices := make([]service.Option, len(aliases))
 			for i, a := range aliases {

@@ -78,6 +78,52 @@ func TestGenerateDockerfile_MinimalIncludesZellij(t *testing.T) {
 	assertContainsStr(t, df, "/home/devuser/.config/zellij/config.kdl", "minimal dockerfile")
 }
 
+// The aliases module is always-on too: every container gets lsof, the default
+// aliases/functions, ~/CONTEXT.md and the get-devcontainer-context command.
+func TestGenerateDockerfile_MinimalIncludesAliasesAndContext(t *testing.T) {
+	df := mustGenerateDockerfile(t, makeConfig())
+	assertContainsStr(t, df, "\n    lsof \\", "minimal dockerfile")
+	assertContainsStr(t, df, "COPY alias.sh /home/devuser/.devcontainer_aliases.sh", "minimal dockerfile")
+	assertContainsStr(t, df, "COPY get-devcontainer-context.sh /home/devuser/.local/bin/get-devcontainer-context", "minimal dockerfile")
+	assertContainsStr(t, df, "COPY CONTEXT.md /home/devuser/CONTEXT.md", "minimal dockerfile")
+	// The agent aliases live unconditionally in the shipped script now, so the
+	// old build-time yolo flag file must be gone.
+	assertNotContainsStr(t, df, `devcontainer_agents_yolo`, "minimal dockerfile")
+	// The user's own alias file is sourced last so it overrides the defaults.
+	assertContainsStr(t, df, `if [ -r \$HOME/.alias.sh ]; then . \$HOME/.alias.sh; fi`, "minimal dockerfile")
+}
+
+// The aliases module must render after base: base's zsh installer rewrites
+// ~/.zshrc from scratch, so an earlier append would be silently dropped.
+func TestGenerateDockerfile_AliasesRenderAfterBase(t *testing.T) {
+	df := mustGenerateDockerfile(t, makeConfig())
+	zsh := strings.Index(df, "/tmp/zsh-installer.sh")
+	aliases := strings.Index(df, "COPY alias.sh")
+	if zsh == -1 || aliases == -1 {
+		t.Fatalf("expected both the zsh installer (%d) and the alias COPY (%d) in the Dockerfile", zsh, aliases)
+	}
+	if aliases < zsh {
+		t.Errorf("alias COPY (%d) must come after the zsh installer (%d), which rewrites ~/.zshrc", aliases, zsh)
+	}
+}
+
+// The aliases module ignores options, so passing one must not change the
+// Dockerfile it produces.
+func TestGenerateDockerfile_AliasesIgnoresOptions(t *testing.T) {
+	withOpt := mustGenerateDockerfile(t, makeConfig(func(c *types.DevcontainerConfig) {
+		c.Dockerfile.Modules = []types.SelectedModule{
+			{ID: "aliases", Options: map[string]any{"yoloAgents": false}},
+		}
+	}))
+	plain := mustGenerateDockerfile(t, makeConfig(func(c *types.DevcontainerConfig) {
+		c.Dockerfile.Modules = []types.SelectedModule{{ID: "aliases"}}
+	}))
+	if withOpt != plain {
+		t.Error("the aliases module must render identically regardless of options")
+	}
+	assertContainsStr(t, plain, "COPY alias.sh /home/devuser/.devcontainer_aliases.sh", "aliases")
+}
+
 func TestGenerateDockerfile_AllSelectedModules(t *testing.T) {
 	cfg := makeConfig(func(c *types.DevcontainerConfig) {
 		c.Dockerfile.Modules = []types.SelectedModule{

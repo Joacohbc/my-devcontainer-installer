@@ -2,6 +2,7 @@ package docker_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
@@ -116,10 +117,12 @@ type argMockRunner struct {
 	otherStatus   int
 	otherStdout   string
 	lastArgs      []string
+	lastEnv       map[string]string
 }
 
 func (m *argMockRunner) Run(ctx context.Context, args []string, stdio string, cwd string, env map[string]string) (int, string, string) {
 	m.lastArgs = args
+	m.lastEnv = env
 	if len(args) >= 2 && args[1] == "version" {
 		return m.versionStatus, "27.0.0", ""
 	}
@@ -194,6 +197,78 @@ func TestDockerComposeOrThrow_errorOnNonZeroExit(t *testing.T) {
 
 	if err := docker.DockerComposeOrThrow("/tmp/dc.yml", []string{"down"}, nil); err == nil {
 		t.Error("expected error when compose exits non-zero")
+	}
+}
+
+func TestDockerCapture_hostOverrideUnset_passesNilEnv(t *testing.T) {
+	mock := &argMockRunner{versionStatus: 0, otherStatus: 0}
+	useRunner(t, mock)
+
+	if _, _, _, err := docker.DockerCapture([]string{"ps"}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if mock.lastEnv != nil {
+		t.Errorf("expected nil env with no host override, got %v", mock.lastEnv)
+	}
+}
+
+func TestDockerCapture_hostOverrideSet_setsDockerHost(t *testing.T) {
+	mock := &argMockRunner{versionStatus: 0, otherStatus: 0}
+	useRunner(t, mock)
+	docker.SetHostOverride("me@remote-host")
+	t.Cleanup(docker.ResetHostOverride)
+
+	if _, _, _, err := docker.DockerCapture([]string{"ps"}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got, want := mock.lastEnv["DOCKER_HOST"], "ssh://me@remote-host"; got != want {
+		t.Errorf("DOCKER_HOST = %q, want %q", got, want)
+	}
+}
+
+func TestDockerInherit_hostOverrideSet_setsDockerHost(t *testing.T) {
+	mock := &argMockRunner{versionStatus: 0, otherStatus: 0}
+	useRunner(t, mock)
+	docker.SetHostOverride("me@remote-host")
+	t.Cleanup(docker.ResetHostOverride)
+
+	if _, err := docker.DockerInherit([]string{"exec", "c", "true"}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got, want := mock.lastEnv["DOCKER_HOST"], "ssh://me@remote-host"; got != want {
+		t.Errorf("DOCKER_HOST = %q, want %q", got, want)
+	}
+}
+
+func TestResetHostOverride_clearsIt(t *testing.T) {
+	mock := &argMockRunner{versionStatus: 0, otherStatus: 0}
+	useRunner(t, mock)
+	docker.SetHostOverride("me@remote-host")
+	docker.ResetHostOverride()
+
+	if _, _, _, err := docker.DockerCapture([]string{"ps"}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if mock.lastEnv != nil {
+		t.Errorf("expected nil env after ResetHostOverride, got %v", mock.lastEnv)
+	}
+}
+
+func TestRun_hostOverrideReplacesInheritedDockerHost(t *testing.T) {
+	t.Setenv("DOCKER_HOST", "unix:///wrong.sock")
+	docker.SetHostOverride("me@remote-host")
+	t.Cleanup(docker.ResetHostOverride)
+
+	runner := &docker.DefaultRunner{}
+	// "env" (a shell builtin-less binary) prints the child's environment; used
+	// here purely to observe what Run actually put in cmd.Env.
+	_, stdout, _ := runner.Run(context.Background(), []string{"env"}, "pipe", "", map[string]string{"DOCKER_HOST": "ssh://me@remote-host"})
+	count := strings.Count(stdout, "DOCKER_HOST=")
+	if count != 1 {
+		t.Fatalf("expected exactly one DOCKER_HOST in child env, got %d in:\n%s", count, stdout)
+	}
+	if !strings.Contains(stdout, "DOCKER_HOST=ssh://me@remote-host") {
+		t.Errorf("expected DOCKER_HOST=ssh://me@remote-host, got:\n%s", stdout)
 	}
 }
 

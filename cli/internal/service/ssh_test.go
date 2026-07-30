@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"slices"
@@ -80,6 +81,79 @@ func TestSshContainerRunning(t *testing.T) {
 	// be reported as running.
 	if svc.ContainerRunning("stopped-one") {
 		t.Error("did not expect a stopped container to be reported running")
+	}
+}
+
+// hostAwareRunner answers "docker ps" differently depending on whether the
+// call carries a DOCKER_HOST override, so tests can exercise
+// LiveTargetPredicates' existsRemoteContainer path without a real remote
+// daemon: remoteFail simulates the jump host being unreachable right now.
+type hostAwareRunner struct {
+	localStdout  string
+	remoteStdout string
+	remoteFail   bool
+}
+
+func (r *hostAwareRunner) Run(_ context.Context, args []string, _ string, _ string, env map[string]string) (int, string, string) {
+	if len(args) >= 2 && args[1] == "version" {
+		return 0, "27.0.0", ""
+	}
+	if env["DOCKER_HOST"] != "" {
+		if r.remoteFail {
+			return 1, "", "connection refused"
+		}
+		return 0, r.remoteStdout, ""
+	}
+	return 0, r.localStdout, ""
+}
+
+func TestLiveTargetPredicates_ExistsRemoteContainer(t *testing.T) {
+	runner := &hostAwareRunner{
+		localStdout:  `{"Names":"local-ctr","Image":"img","Status":"Up","State":"running","Labels":"","Ports":""}`,
+		remoteStdout: `{"Names":"remote-ctr","Image":"img","Status":"Up","State":"running","Labels":"","Ports":""}`,
+	}
+	defer useFakeDocker(runner)()
+
+	svc := SshService{Report: nopReporter{}}
+	_, existsContainer, existsRemoteContainer, err := svc.LiveTargetPredicates()
+	if err != nil {
+		t.Fatalf("LiveTargetPredicates: %v", err)
+	}
+
+	if !existsContainer("local-ctr") {
+		t.Error("expected local-ctr to be found by the local predicate")
+	}
+	if existsContainer("remote-ctr") {
+		t.Error("did not expect the local predicate to see a container that only exists remotely")
+	}
+	if alive, verified := existsRemoteContainer("rbpi", "remote-ctr"); !alive || !verified {
+		t.Errorf("expected remote-ctr to be found on rbpi (alive=%v verified=%v)", alive, verified)
+	}
+	if alive, verified := existsRemoteContainer("rbpi", "nope"); alive || !verified {
+		t.Errorf("expected a container absent from rbpi to be reported dead but verified (alive=%v verified=%v)", alive, verified)
+	}
+}
+
+// An unreachable --via jump host must not cause its blocks to be treated as
+// stale (alive=true) — clean-ssh could otherwise delete valid SSH access just
+// because the remote happened to be down during this run — but it must also
+// be reported unverified (verified=false) so the caller can still surface it
+// and let the user remove it explicitly if they know it really is gone.
+func TestLiveTargetPredicates_ExistsRemoteContainer_UnreachableIsUnverified(t *testing.T) {
+	runner := &hostAwareRunner{remoteFail: true}
+	defer useFakeDocker(runner)()
+
+	svc := SshService{Report: nopReporter{}}
+	_, _, existsRemoteContainer, err := svc.LiveTargetPredicates()
+	if err != nil {
+		t.Fatalf("LiveTargetPredicates: %v", err)
+	}
+	alive, verified := existsRemoteContainer("unreachable-host", "whatever")
+	if !alive {
+		t.Error("expected fail-open (reported alive) when the remote host cannot be reached")
+	}
+	if verified {
+		t.Error("expected verified=false when the remote host cannot be reached")
 	}
 }
 

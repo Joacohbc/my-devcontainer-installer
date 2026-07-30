@@ -21,6 +21,11 @@ var CavemanModule = &ModuleSpec{
 	// agent installers (claude/antigravity/copilot/opencode).
 	PostScriptAutoStart:  true,
 	PostScriptStartOrder: 90,
+	Context: func(opts map[string]any) *types.ContextSection {
+		return agentCtx("Caveman", "Compresses AI agent output; installs hooks into the agents present here.", true,
+			"Its skills and rules live under `~/.agents`, a symlink into the shared",
+			"volume, so they persist across containers.")
+	},
 	Render: func(opts map[string]any) string {
 		return fmt.Sprintf("##\n## Caveman — install script shipped under %s\n##\n", types.PostScriptDir)
 	},

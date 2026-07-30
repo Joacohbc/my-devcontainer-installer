@@ -428,6 +428,26 @@ func prepareBuildDir(cwd string, config *types.DevcontainerConfig, paths project
 			copyContents[f] = string(data)
 		}
 	}
+
+	// CONTEXT.md is generated rather than materialized from the embedded assets,
+	// so it is written here (after the build dir exists, before the fingerprint
+	// is computed) instead of going through Preflight. Folding it into
+	// copyContents is what makes the fingerprint react to a change that touches
+	// only the compose side — adding a database service alters CONTEXT.md but not
+	// the Dockerfile, and two projects must not then share one image.
+	if !skipBuildArtifacts {
+		contextDoc, cerr := domain.GenerateContext(config)
+		if cerr != nil {
+			return nil, nil, cerr
+		}
+		if contextDoc != "" {
+			if werr := os.WriteFile(filepath.Join(buildDir, types.ContextFileName), []byte(contextDoc), 0o644); werr != nil {
+				return nil, nil, werr
+			}
+			copyContents[types.ContextFileName] = contextDoc
+		}
+	}
+
 	return copyContents, postScriptFiles, nil
 }
 

@@ -33,6 +33,28 @@ var JavaTemurinModule = &ModuleSpec{
 			Default: true,
 		},
 	},
+	Context: func(opts map[string]any) *types.ContextSection {
+		versions := types.StringsOpt(opts, "versions", []string{"17", "21"})
+		installed := make([]string, 0, len(versions))
+		for _, v := range versions {
+			if v != "none" {
+				installed = append(installed, "JDK "+v)
+			}
+		}
+		if len(installed) == 0 {
+			return nil
+		}
+		lines := []string{
+			"Eclipse Temurin, with " + strings.Join(installed, " and ") + " installed.",
+			"Switch between them with `sudo update-alternatives --config java`.",
+		}
+		if types.BoolOpt(opts, "maven", true) {
+			lines = append(lines, "", "Maven (`mvn`) is installed. Gradle is not — use the project's `./gradlew`.")
+		} else {
+			lines = append(lines, "", "Neither Maven nor Gradle is installed; use the project's own wrapper.")
+		}
+		return &types.ContextSection{Title: "Java", Body: ctxBody(lines...)}
+	},
 	Render: func(opts map[string]any) string {
 		versions := types.StringsOpt(opts, "versions", []string{"17", "21"})
 		maven := types.BoolOpt(opts, "maven", true)

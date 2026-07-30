@@ -11,6 +11,15 @@ var BunModule = &ModuleSpec{
 	Label:      "Bun",
 	Category:   types.CategoryRuntime,
 	UICategory: types.UICategoryLanguages,
+	Context: func(opts map[string]any) *types.ContextSection {
+		return &types.ContextSection{
+			Title: "Bun",
+			Body: ctxBody(
+				"Installed at `~/.bun` and on PATH. Use it for projects that already have a",
+				"`bun.lockb`; for everything else the JS package manager here is pnpm.",
+			),
+		}
+	},
 	Render: func(opts map[string]any) string {
 		return fmt.Sprintf(`##
 ## BUN

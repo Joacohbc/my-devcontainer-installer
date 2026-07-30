@@ -35,6 +35,25 @@ var NodejsModule = &ModuleSpec{
 			Default: "lts",
 		},
 	},
+	Context: func(opts map[string]any) *types.ContextSection {
+		manager := types.StringOpt(opts, "manager", "fnm")
+		version := types.StringOpt(opts, "version", "lts")
+		versionLabel := "Node " + version
+		if version == "lts" {
+			versionLabel = "the latest LTS"
+		}
+		return &types.ContextSection{
+			Title: "Node.js",
+			Body: ctxBody(
+				"Installed for `devuser` through **"+manager+"**, pinned to "+versionLabel+".",
+				"Run `node --version` to see the exact build.",
+				"",
+				"Switch versions with `"+manager+" use <version>` — never with `sudo apt`. The",
+				"version manager is initialised from `~/.nodejs_init.sh`, which every shell",
+				"sources, so `node` is on PATH in login and non-login shells alike.",
+			),
+		}
+	},
 	Render: func(opts map[string]any) string {
 		manager := types.StringOpt(opts, "manager", "fnm")
 		version := types.StringOpt(opts, "version", "lts")

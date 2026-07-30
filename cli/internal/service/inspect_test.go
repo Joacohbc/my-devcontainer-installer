@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"slices"
@@ -181,6 +182,80 @@ func TestInspectCopyAssetCustomDest(t *testing.T) {
 	if cp := runner.callContaining("cp"); cp == nil || !slices.Contains(cp, "c1:/tmp/oc.sh") {
 		t.Errorf("expected cp to custom dest, got %v", cp)
 	}
+}
+
+// Context runs the container's own get-devcontainer-context when the image
+// already ships it on PATH — no copy required.
+func TestInspectContextUsesInstalledScript(t *testing.T) {
+	runner := &fakeRunner{status: 0, stdout: "running"}
+	defer useFakeDocker(runner)()
+
+	svc := InspectService{Report: nopReporter{}}
+	if err := svc.Context("c1", false); err != nil {
+		t.Fatalf("Context: %v", err)
+	}
+
+	// The first mention is the `test -x` probe; the run itself is the last one.
+	call := runner.lastCallContaining("/home/devuser/.local/bin/get-devcontainer-context")
+	if call == nil {
+		t.Fatalf("expected the installed script to be executed, got calls %v", runner.calls)
+	}
+	if !slices.Contains(call, "-u") || !slices.Contains(call, "devuser") {
+		t.Errorf("context must run as devuser, got %v", call)
+	}
+	if slices.Contains(call, "--json") {
+		t.Errorf("--json must not be passed unless asked for, got %v", call)
+	}
+	// Nothing was copied in: the script was already there.
+	if cp := runner.callContaining("cp"); cp != nil {
+		t.Errorf("expected no docker cp when the script is installed, got %v", cp)
+	}
+}
+
+func TestInspectContextJSON(t *testing.T) {
+	runner := &fakeRunner{status: 0, stdout: "running"}
+	defer useFakeDocker(runner)()
+
+	svc := InspectService{Report: nopReporter{}}
+	if err := svc.Context("c1", true); err != nil {
+		t.Fatalf("Context: %v", err)
+	}
+	call := runner.callContaining("--json")
+	if call == nil || !slices.Contains(call, "/home/devuser/.local/bin/get-devcontainer-context") {
+		t.Errorf("expected --json to be forwarded to the script, got calls %v", runner.calls)
+	}
+}
+
+// Images built before the aliases module do not ship the script, so Context
+// copies it in and runs it from there instead of failing.
+func TestInspectContextFallsBackToCopy(t *testing.T) {
+	runner := &missingScriptRunner{fakeRunner: fakeRunner{status: 0, stdout: "running"}}
+	defer useFakeDocker(runner)()
+
+	svc := InspectService{Report: nopReporter{}}
+	if err := svc.Context("c1", false); err != nil {
+		t.Fatalf("Context: %v", err)
+	}
+
+	dest := "/home/devuser/get-devcontainer-context.sh"
+	if cp := runner.callContaining("cp"); cp == nil || !slices.Contains(cp, "c1:"+dest) {
+		t.Errorf("expected the script to be copied in, got calls %v", runner.calls)
+	}
+	run := runner.lastCallContaining(dest)
+	if run == nil || !slices.Contains(run, "exec") || !slices.Contains(run, "devuser") {
+		t.Errorf("expected the copied script to be executed as devuser, got calls %v", runner.calls)
+	}
+}
+
+// missingScriptRunner behaves like fakeRunner except that the `test -x` probe
+// for the installed context script fails, standing in for an older image.
+type missingScriptRunner struct{ fakeRunner }
+
+func (r *missingScriptRunner) Run(ctx context.Context, args []string, dir, stdin string, env map[string]string) (int, string, string) {
+	if slices.Contains(args, "test") && slices.Contains(args, contextBinPath) {
+		return 1, "", ""
+	}
+	return r.fakeRunner.Run(ctx, args, dir, stdin, env)
 }
 
 func TestInspectComposeLogsArgs(t *testing.T) {

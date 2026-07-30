@@ -11,6 +11,20 @@ var DodModule = &ModuleSpec{
 	Label:      "Docker CLI + Socket (DoD)",
 	Category:   types.CategoryInfra,
 	UICategory: types.UICategoryDevTools,
+	Context: func(opts map[string]any) *types.ContextSection {
+		return &types.ContextSection{
+			Title: "Docker (docker-outside-of-docker)",
+			Body: ctxBody(
+				"The `docker` CLI is installed and `/var/run/docker.sock` is bind-mounted from",
+				"the host, so `docker` commands here drive the **host's** daemon — not a nested",
+				"one. Containers you start are siblings of this one, not children.",
+				"",
+				"Consequences worth remembering: a bind mount path you pass to `docker run` is",
+				"resolved on the *host* filesystem, not this container's, and anything you",
+				"create outlives this container. Clean up after yourself.",
+			),
+		}
+	},
 	Render: func(opts map[string]any) string {
 		return fmt.Sprintf(`##
 ## DOCKER CLI (DoD)

@@ -33,6 +33,28 @@ var JavaOpenjdkModule = &ModuleSpec{
 			Default: true,
 		},
 	},
+	Context: func(opts map[string]any) *types.ContextSection {
+		versions := types.StringsOpt(opts, "versions", []string{"17"})
+		installed := make([]string, 0, len(versions))
+		for _, v := range versions {
+			if v != "none" {
+				installed = append(installed, "JDK "+v)
+			}
+		}
+		if len(installed) == 0 {
+			return nil
+		}
+		lines := []string{
+			"OpenJDK from the Ubuntu repositories, with " + strings.Join(installed, " and ") + " installed.",
+			"Switch between them with `sudo update-alternatives --config java`.",
+		}
+		if types.BoolOpt(opts, "maven", true) {
+			lines = append(lines, "", "Maven (`mvn`) is installed. Gradle is not — use the project's `./gradlew`.")
+		} else {
+			lines = append(lines, "", "Neither Maven nor Gradle is installed; use the project's own wrapper.")
+		}
+		return &types.ContextSection{Title: "Java", Body: ctxBody(lines...)}
+	},
 	Render: func(opts map[string]any) string {
 		versions := types.StringsOpt(opts, "versions", []string{"17"})
 		maven := types.BoolOpt(opts, "maven", true)

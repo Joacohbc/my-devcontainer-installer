@@ -54,23 +54,41 @@ type SyncResult struct {
 // already present in the daemon.
 const syncHelperImage = "ubuntu:24.04"
 
+// derefSymlinksFunc defines a `deref_symlinks <dir>` shell function that
+// replaces every symlink under <dir> whose target exists with a real copy of
+// that target — the same dereferencing `cp -aL` does. This matters for
+// entries like "claude"/"codex"/"agents": tools such as the skills.sh CLI
+// (`npx skills add -g`) install global skills/agents into a canonical
+// ~/.agents/skills store and symlink them into each agent's own config dir
+// (e.g. ~/.claude/skills/<name> -> ~/.agents/skills/<name>). Copying that
+// symlink verbatim would point at a host path that does not exist inside the
+// volume/container, leaving a dangling link.
+//
+// Unlike `cp -aL`, a symlink whose target does NOT exist is left as-is
+// instead of aborting: `cp -aL` errors "cannot stat" on a dangling symlink,
+// which previously failed the whole sync for entries like ~/.claude, where
+// Claude Code itself leaves a dangling `debug/latest` pointer. Leaving it
+// dangling here is no worse than it already was on the host.
+const derefSymlinksFunc = `deref_symlinks() {
+  find "$1" -type l | while IFS= read -r link; do
+    if [ -e "$link" ]; then
+      resolved=$(readlink -f "$link")
+      rm -f "$link"
+      cp -a "$resolved" "$link"
+    fi
+  done
+}
+`
+
 // syncEntryScript runs inside the helper. It reads the entry from the
 // environment, mounts the volume at /vol and the host home (read-only) at
 // /host, skips when the volume already has data (unless ENTRY_FORCE), otherwise
 // replaces the entry with the host copy and re-owns it. It prints COPIED or
-// SKIPPED so the caller can classify the result.
-//
-// cp -aL (not plain -a) dereferences symlinks instead of copying them as-is.
-// This matters for entries like "claude"/"codex"/"agents": tools such as the
-// skills.sh CLI (`npx skills add -g`) install global skills/agents into a
-// canonical ~/.agents/skills store and symlink them into each agent's own
-// config dir (e.g. ~/.claude/skills/<name> -> ~/.agents/skills/<name>). A
-// plain `cp -a` would copy that symlink verbatim, pointing at a host path
-// that does not exist inside the volume/container, leaving a dangling link.
-// Dereferencing copies the real skill/agent content instead, so it persists
-// regardless of the host's symlink layout.
+// SKIPPED so the caller can classify the result. See derefSymlinksFunc for why
+// the copy is plain `cp -a` followed by a selective dereference pass rather
+// than a single `cp -aL`.
 const syncEntryScript = `set -e
-dst="/vol/$ENTRY_ID"
+` + derefSymlinksFunc + `dst="/vol/$ENTRY_ID"
 src="/host/$ENTRY_TARGET"
 if [ -z "$ENTRY_FORCE" ]; then
   if [ "$ENTRY_KIND" = dir ]; then
@@ -80,9 +98,15 @@ if [ -z "$ENTRY_FORCE" ]; then
   fi
 fi
 if [ "$ENTRY_KIND" = dir ]; then
-  rm -rf "$dst"; mkdir -p "$dst"; cp -aL "$src/." "$dst/"
+  rm -rf "$dst"; mkdir -p "$dst"; cp -a "$src/." "$dst/"
+  deref_symlinks "$dst"
 else
-  rm -f "$dst"; cp -aL "$src" "$dst"
+  rm -f "$dst"
+  if [ -L "$src" ] && [ ! -e "$src" ]; then
+    cp -a "$src" "$dst"
+  else
+    cp -aL "$src" "$dst"
+  fi
 fi
 [ -n "$ENTRY_OWNER" ] && chown -R "$ENTRY_OWNER" "$dst"
 echo COPIED`
@@ -151,6 +175,49 @@ func (s SharedConfigService) syncEntry(e types.SharedConfigEntry, hostHome, owne
 		return false, fmt.Errorf("helper failed (status %d): %s", status, strings.TrimSpace(stderr))
 	}
 	return strings.Contains(stdout, "COPIED"), nil
+}
+
+// writeFileEntryScript writes $ENTRY_CONTENT into /vol/$ENTRY_ID and re-owns it.
+// Unlike syncEntryScript it always overwrites: the caller (config alias) holds
+// the single source of truth, so there is nothing in the volume to protect.
+const writeFileEntryScript = `set -e
+dst="/vol/$ENTRY_ID"
+printf '%s' "$ENTRY_CONTENT" > "$dst"
+[ -n "$ENTRY_OWNER" ] && chown "$ENTRY_OWNER" "$dst"
+echo COPIED`
+
+// SyncAliases writes the rendered alias script into the shared volume's
+// alias.sh entry, so every container that mounts the volume picks it up as
+// ~/.alias.sh on its next start (or immediately in already-running containers,
+// since the file is symlinked). The content is authored by the CLI, not read
+// from a host file, which is why it always overwrites. Ownership matches the
+// host uid/gid, i.e. what devuser is remapped to on boot.
+func (s SharedConfigService) SyncAliases(content string) error {
+	if err := docker.EnsureDocker(); err != nil {
+		return err
+	}
+	if err := EnsureSharedConfigVolume(s.Report); err != nil {
+		return err
+	}
+	entry, ok := types.SharedConfigEntryByID(types.SharedConfigAliasID)
+	if !ok {
+		return fmt.Errorf("no shared-config entry for %q", types.SharedConfigAliasID)
+	}
+	status, _, stderr, err := docker.DockerCapture([]string{
+		"run", "--rm",
+		"-v", types.SharedConfigVolumeName + ":/vol",
+		"-e", "ENTRY_ID=" + entry.ID,
+		"-e", "ENTRY_CONTENT=" + content,
+		"-e", "ENTRY_OWNER=" + hostOwnerString(),
+		syncHelperImage, "sh", "-c", writeFileEntryScript,
+	})
+	if err != nil {
+		return err
+	}
+	if status != 0 {
+		return fmt.Errorf("writing aliases into the volume failed (status %d): %s", status, strings.TrimSpace(stderr))
+	}
+	return nil
 }
 
 // hostOwnerString returns "uid:gid" for the current host user, used to

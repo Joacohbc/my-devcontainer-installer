@@ -96,6 +96,56 @@ func TestBuildConfigBlock_WorkspaceMarker(t *testing.T) {
 	}
 }
 
+// --via reuses ModeRemote's exact ProxyCommand stanza (Remote: the --via
+// target): the container's IP is resolved fresh via `docker inspect` on every
+// connection, never baked in as a static HostName, so a container recreated
+// with a different address never breaks the alias.
+func TestBuildConfigBlock_Via(t *testing.T) {
+	got, err := sshdefaults.BuildConfigBlock(sshdefaults.ConfigBlockOptions{
+		Mode:      sshdefaults.ModeRemote,
+		Alias:     "myalias",
+		User:      "devuser",
+		KeyPath:   "k",
+		Remote:    "me@remote-host",
+		Container: "myctr",
+		Kind:      sshdefaults.KindContainer,
+		Ref:       "myctr",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if strings.Contains(got, "HostName") {
+		t.Errorf("--via block must not bake in a static HostName:\n%s", got)
+	}
+	for _, frag := range []string{"ProxyCommand ssh me@remote-host", `\$(docker inspect`} {
+		if !strings.Contains(got, frag) {
+			t.Errorf("--via block missing %q:\n%s", frag, got)
+		}
+	}
+	wantMarker := "# devcontainer-cli:managed v=1 kind=container ref=myctr alias=myalias host=me@remote-host"
+	if !strings.HasPrefix(got, wantMarker+"\n") {
+		t.Errorf("expected marker to record the via host %q:\n%s", wantMarker, got)
+	}
+}
+
+func TestBuildConfigBlock_LocalHasNoMarkerHost(t *testing.T) {
+	got, err := sshdefaults.BuildConfigBlock(sshdefaults.ConfigBlockOptions{
+		Mode:     sshdefaults.ModeLocal,
+		Alias:    "myalias",
+		User:     "devuser",
+		KeyPath:  "k",
+		Hostname: "172.20.0.2",
+		Kind:     sshdefaults.KindContainer,
+		Ref:      "myctr",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if strings.Contains(got, "host=") {
+		t.Errorf("plain local block must not record a marker host:\n%s", got)
+	}
+}
+
 func TestBuildConfigBlock_ContainerMarker(t *testing.T) {
 	got, err := sshdefaults.BuildConfigBlock(sshdefaults.ConfigBlockOptions{
 		Mode:     sshdefaults.ModeLocal,

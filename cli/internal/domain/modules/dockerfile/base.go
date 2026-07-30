@@ -43,6 +43,20 @@ var BaseModule = &ModuleSpec{
 			Default: "none",
 		},
 	},
+	Context: func(opts map[string]any) *types.ContextSection {
+		return &types.ContextSection{
+			Title: "Base image",
+			Body: ctxBody(
+				"Ubuntu "+UbuntuLTS+" LTS. The login shell is zsh (oh-my-zsh + powerlevel10k),",
+				"but every init file the CLI writes is sourced from `.zshrc`, `.bashrc` and",
+				"`.profile` alike, so a non-interactive `bash -lc` sees the same PATH.",
+				"",
+				"Preinstalled: `git`, `curl`, `wget`, `jq`, `unzip`, `lsof`, plus the `micro` and",
+				"`nano` terminal editors. `cat ~/help` prints a micro/zellij keyboard",
+				"cheat-sheet.",
+			),
+		}
+	},
 	Render: func(opts map[string]any) string {
 		p10kStyle := types.StringOpt(opts, "p10kStyle", "")
 		if !p10kStyles[p10kStyle] {
@@ -70,12 +84,21 @@ RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
     gnupg \
     lsb-release \
     acl \
-	jq \
+    jq \
+    lsof \
     git \
     wget \
     unzip \
     apt-transport-https \
     && %s
+
+# Keepalive so long-lived ssh sessions (e.g. a --via jump through a NAT/
+# firewall) aren't silently dropped as idle, and a session whose peer vanished
+# without closing it is reclaimed server-side: probe every 60s, drop after 3
+# unanswered probes (180s). Drop any existing directive (active or commented)
+# first so this is idempotent and always wins regardless of line order.
+RUN sed -i '/^#\?\s*ClientAliveInterval/d; /^#\?\s*ClientAliveCountMax/d' /etc/ssh/sshd_config && \
+    printf 'ClientAliveInterval 60\nClientAliveCountMax 3\n' >> /etc/ssh/sshd_config
 
 # Create devuser with sudo privileges. USER_UID/USER_GID are build args so a
 # local-cached image bakes the host owner of the bind-mounted workspace and the

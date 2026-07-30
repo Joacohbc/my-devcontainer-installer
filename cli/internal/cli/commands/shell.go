@@ -1,6 +1,8 @@
 package commands
 
 import (
+	"fmt"
+
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/ui"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/service"
 	"github.com/spf13/cobra"
@@ -22,7 +24,12 @@ handy for scripting against the container.
 Interactive defaults (only when no command is given): the shell runs as devuser
 with zsh. With an explicit command those defaults are left alone, so commands
 work against containers that have no devuser/zsh (e.g. a database container).
-Pass -T when piping a command's output to a file so the stream isn't mangled.`,
+Pass -T when piping a command's output to a file so the stream isn't mangled.
+
+Pass --via USER@HOST (with --container) to reach a container on a different
+Docker host through an existing SSH connection to it — unlike 'ssh --via' this
+needs nothing installed or configured in the container itself, since it rides
+entirely on the 'docker exec' channel (no ssh-into-container step).`,
 		Example: `  # Interactive shell as devuser
   devcontainer-cli shell
 
@@ -30,12 +37,16 @@ Pass -T when piping a command's output to a file so the stream isn't mangled.`,
   devcontainer-cli shell -- go version
 
   # Pipe a DB dump out without a TTY
-  devcontainer-cli shell -c <ws>-postgres -T -- pg_dump -U devuser devdb > dump.sql`,
+  devcontainer-cli shell -c <ws>-postgres -T -- pg_dump -U devuser devdb > dump.sql
+
+  # Shell into a container on a different Docker host
+  devcontainer-cli shell --via me@docker-host -c dc-ssh`,
 		RunE: runShell,
 	}
 	cmd.Flags().String("user", "", "User to run the command as (interactive shell defaults to devuser; ignored when an explicit command is passed)")
 	cmd.Flags().String("type", "", "Shell to open: bash, zsh or sh (interactive shell defaults to zsh)")
 	cmd.Flags().BoolP("no-tty", "T", false, "Disable pseudo-TTY allocation (use when piping output to a file, e.g. a DB dump)")
+	cmd.Flags().String("via", "", "Reach the container through an existing SSH connection to its Docker host (requires --container): USER@HOST or an ssh-config alias")
 	addContainerFlag(cmd)
 
 	_ = cmd.RegisterFlagCompletionFunc("type", staticCompletion("bash", "zsh", "sh"))
@@ -46,6 +57,9 @@ Pass -T when piping a command's output to a file so the stream isn't mangled.`,
 			return nil, cobra.ShellCompDirectiveNoFileComp
 		}
 		return service.InspectService{Report: ui.Console{}}.ListUsers(containerName), cobra.ShellCompDirectiveNoFileComp
+	})
+	_ = cmd.RegisterFlagCompletionFunc("via", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		return listSshHosts(), cobra.ShellCompDirectiveNoFileComp
 	})
 
 	return cmd
@@ -74,6 +88,10 @@ func runShell(cmd *cobra.Command, args []string) error {
 	userFlag, _ := cmd.Flags().GetString("user")
 	shellType, _ := cmd.Flags().GetString("type")
 	noTTY, _ := cmd.Flags().GetBool("no-tty")
+	via, _ := cmd.Flags().GetString("via")
+	if via != "" && !cmd.Flags().Changed("container") {
+		return fmt.Errorf("--via requires --container <name>: there is no local compose project describing a container on a remote host")
+	}
 
 	containerName, err := resolveContainer(cmd)
 	if err != nil {
@@ -94,5 +112,7 @@ func runShell(cmd *cobra.Command, args []string) error {
 	}
 
 	svc := service.InspectService{Report: ui.Console{}}
-	return svc.Shell(containerName, userFlag, shellType, command, noTTY)
+	return service.WithHostOverride(via, func() error {
+		return svc.Shell(containerName, userFlag, shellType, command, noTTY)
+	})
 }

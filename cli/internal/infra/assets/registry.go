@@ -25,7 +25,9 @@ type Asset struct {
 // KindScript are runtime-copyable via `copy --asset`; KindBuild scripts are
 // build-time only and never offered for copying.
 var Registry = []Asset{
+	{Name: "alias", File: "alias.sh", Kind: KindBuild, Label: "Default shell aliases and helpers"},
 	{Name: "entrypoint", File: "entrypoint.sh", Kind: KindBuild, Label: "Container entrypoint"},
+	{Name: "get-devcontainer-context", File: "get-devcontainer-context.sh", Kind: KindScript, Label: "Container context / installed-tool report"},
 	{Name: "golang-utils", File: "golang_utils.sh", Kind: KindBuild, Label: "Go install/update utilities"},
 	{Name: "install-antigravity", File: "install-antigravity.sh", Kind: KindScript, Label: "Antigravity CLI installer"},
 	{Name: "install-caveman", File: "install-caveman.sh", Kind: KindScript, Label: "Caveman installer"},

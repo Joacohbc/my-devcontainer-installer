@@ -11,6 +11,16 @@ var RustModule = &ModuleSpec{
 	Label:      "Rust (rustup, latest version)",
 	Category:   types.CategoryLang,
 	UICategory: types.UICategoryLanguages,
+	Context: func(opts map[string]any) *types.ContextSection {
+		return &types.ContextSection{
+			Title: "Rust",
+			Body: ctxBody(
+				"Installed with rustup for `devuser`; `cargo` and `rustc` come from",
+				"`~/.cargo/bin`. Manage toolchains with `rustup`, never with `apt`.",
+				"`build-essential` is present, so crates with C dependencies compile.",
+			),
+		}
+	},
 	Render: func(opts map[string]any) string {
 		return fmt.Sprintf(`##
 ## RUST

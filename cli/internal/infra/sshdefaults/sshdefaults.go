@@ -48,8 +48,16 @@ const (
 // ManagedComment renders the structured marker comment that precedes a managed
 // Host block, recording its kind, stable ref, and alias so destroy/clean-ssh can
 // match it: e.g. "# devcontainer-cli:managed v=1 kind=workspace ref=myproj alias=myproj".
-func ManagedComment(kind Kind, ref, alias string) string {
-	return fmt.Sprintf("# %s v=%s kind=%s ref=%s alias=%s", ManagedMarker, MarkerVersion, kind, ref, alias)
+// host, when non-empty, records the jump target (--via, or --remote's printed
+// snippet) the block's docker calls must be routed through — clean-ssh checks a
+// --via block's liveness against this host instead of the local daemon; omitted
+// for ordinary local blocks so their marker output is unchanged.
+func ManagedComment(kind Kind, ref, alias, host string) string {
+	comment := fmt.Sprintf("# %s v=%s kind=%s ref=%s alias=%s", ManagedMarker, MarkerVersion, kind, ref, alias)
+	if host != "" {
+		comment += " host=" + host
+	}
+	return comment
 }
 
 // AuthorizedKeysInstallScript returns the sh script that installs a public key
@@ -117,7 +125,9 @@ const (
 	// the CLI (HostName = container IP).
 	ModeLocal Mode = "local"
 	// ModeRemote: the container lives on a remote docker host, reached via an ssh
-	// hop to that host (ProxyCommand).
+	// hop to that host (ProxyCommand). Used by both setup-ssh --remote and --via;
+	// either way the IP is resolved fresh via `docker inspect` on every
+	// connection, not baked in at setup time.
 	ModeRemote Mode = "remote"
 )
 
@@ -136,8 +146,9 @@ type ConfigBlockOptions struct {
 	// Hostname is the target for "HostName": required in ModeLocal (the container
 	// IP); unused in ModeRemote.
 	Hostname string
-	// Remote is the "USER@HOST" of the docker host used in the ProxyCommand ssh
-	// hop; required in ModeRemote, unused otherwise.
+	// Remote is the "USER@HOST" (or ssh-config alias) of the docker host used in
+	// the ProxyCommand ssh hop, and also — when Kind/Ref are set — the marker's
+	// "host=" field; required in ModeRemote, unused otherwise.
 	Remote string
 	// Container is the container name inspected for its IP inside the ProxyCommand;
 	// required in ModeRemote, unused otherwise.
@@ -167,7 +178,7 @@ func BuildConfigBlock(opts ConfigBlockOptions) (string, error) {
 		return "", err
 	}
 	if opts.Kind != "" && opts.Ref != "" {
-		return ManagedComment(opts.Kind, opts.Ref, opts.Alias) + "\n" + stanza, nil
+		return ManagedComment(opts.Kind, opts.Ref, opts.Alias, opts.Remote) + "\n" + stanza, nil
 	}
 	return stanza, nil
 }

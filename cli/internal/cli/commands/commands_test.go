@@ -27,7 +27,7 @@ func TestNewRootCommand_RegistersAllSubcommands(t *testing.T) {
 		"ssh", "setup-ssh", "clean", "port-forward", "run", "down", "destroy",
 		"start", "stop", "restart", "update",
 		"upgrade-cli", "config", "cleanup-tips", "shell", "logs", "copy",
-		"up", "status", "ls", "info", "network",
+		"up", "status", "ls", "info", "network", "context",
 	}
 	have := map[string]bool{}
 	for _, c := range root.Commands() {
@@ -540,6 +540,82 @@ func TestConfigSharedCommand_Exists(t *testing.T) {
 	}
 }
 
+func TestConfigAliasCommand_Structure(t *testing.T) {
+	root := NewRootCommand("test")
+	configCmd := findSubcommand(root, "config")
+	if configCmd == nil {
+		t.Fatal("expected 'config' command to be registered")
+	}
+	aliasCmd := findSubcommand(configCmd, "alias")
+	if aliasCmd == nil {
+		t.Fatal("expected 'config alias' command to be registered")
+	}
+	// Bare `config alias` lists the aliases; it takes no positional args.
+	if err := aliasCmd.Args(aliasCmd, []string{"extra"}); err == nil {
+		t.Error("expected 'config alias' to reject positional arguments")
+	}
+	for _, name := range []string{"set", "unset", "sync"} {
+		if findSubcommand(aliasCmd, name) == nil {
+			t.Errorf("expected 'config alias %s' subcommand", name)
+		}
+	}
+	// set takes a name plus a command; unset takes exactly the name.
+	if err := findSubcommand(aliasCmd, "set").Args(nil, []string{"only-name"}); err == nil {
+		t.Error("expected 'config alias set' to require a name and a command")
+	}
+	if err := findSubcommand(aliasCmd, "unset").Args(nil, []string{"a", "b"}); err == nil {
+		t.Error("expected 'config alias unset' to accept exactly one argument")
+	}
+	// It is not a top-level command.
+	if findSubcommand(root, "alias") != nil {
+		t.Error("expected no top-level 'alias' command; it lives under 'config'")
+	}
+}
+
+// Listing and completion share sortedAliasNames so they can never disagree
+// about the order Go's randomized map iteration would otherwise give them.
+func TestSortedAliasNames(t *testing.T) {
+	got := sortedAliasNames(map[string]string{"gs": "git status", "ll": "ls -la", "k": "kubectl", "_x": "echo"})
+	want := []string{"_x", "gs", "k", "ll"}
+	if !slices.Equal(got, want) {
+		t.Errorf("sortedAliasNames = %v, want %v", got, want)
+	}
+	if got := sortedAliasNames(nil); len(got) != 0 {
+		t.Errorf("sortedAliasNames(nil) = %v, want empty", got)
+	}
+}
+
+func TestConfigCommand_HasSSHConfigFileSubcommand(t *testing.T) {
+	root := NewRootCommand("test")
+	configCmd := findSubcommand(root, "config")
+	if configCmd == nil {
+		t.Fatal("expected 'config' command to be registered")
+	}
+	sub := findSubcommand(configCmd, "ssh-config-file")
+	if sub == nil {
+		t.Fatal("expected 'config ssh-config-file' command to be registered")
+	}
+	if sub.Flags().Lookup("unset") == nil {
+		t.Error("expected config ssh-config-file flag --unset")
+	}
+}
+
+func TestContextCommand_Flags(t *testing.T) {
+	root := NewRootCommand("test")
+	ctx := findSubcommand(root, "context")
+	if ctx == nil {
+		t.Fatal("expected 'context' command to be registered")
+	}
+	for _, name := range []string{"container", "json"} {
+		if ctx.Flags().Lookup(name) == nil {
+			t.Errorf("expected context flag --%s", name)
+		}
+	}
+	if err := ctx.Args(ctx, []string{"extra"}); err == nil {
+		t.Error("expected 'context' to reject positional arguments")
+	}
+}
+
 func TestSharedConfigCommands_NotTopLevel(t *testing.T) {
 	root := NewRootCommand("test")
 	for _, name := range []string{"sync-config", "backup-config", "restore-config"} {
@@ -689,10 +765,24 @@ func TestSshCommandRegistered(t *testing.T) {
 	if sshCmd == nil {
 		t.Fatal("expected 'ssh' command to be registered")
 	}
-	for _, name := range []string{"yes", "no-interactive", "forward", "ports", "container"} {
+	for _, name := range []string{"yes", "no-interactive", "forward", "ports", "container", "via"} {
 		if sshCmd.Flags().Lookup(name) == nil {
 			t.Errorf("expected 'ssh' to register --%s", name)
 		}
+	}
+}
+
+// Like 'setup-ssh --via', 'ssh --via' has no local compose project to target a
+// remote-only container with, so it must be paired with --container.
+func TestRunSsh_ViaRequiresContainer(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	cmd := newSshCommand()
+	if err := cmd.Flags().Parse([]string{"--via", "me@docker-host"}); err != nil {
+		t.Fatalf("parse flags: %v", err)
+	}
+	err := runSsh(cmd, nil)
+	if err == nil || !strings.Contains(err.Error(), "--container") {
+		t.Errorf("runSsh error = %v, want an error requiring --container", err)
 	}
 }
 
@@ -927,6 +1017,56 @@ func TestSetupSshCommand_ContainerShorthand(t *testing.T) {
 	}
 }
 
+// --via is a separate flag from --remote, both string-valued and unset by
+// default; collectSetupSshFlags must read it into f.via without touching
+// f.remote.
+func TestCollectSetupSshFlags_Via(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	cmd := newSetupSshCommand()
+	if err := cmd.Flags().Parse([]string{"--via", "me@docker-host", "-c", "dc-ssh"}); err != nil {
+		t.Fatalf("parse flags: %v", err)
+	}
+	f, err := collectSetupSshFlags(cmd)
+	if err != nil {
+		t.Fatalf("collectSetupSshFlags: %v", err)
+	}
+	if f.via != "me@docker-host" {
+		t.Errorf("via = %q, want %q", f.via, "me@docker-host")
+	}
+	if f.remote != "" {
+		t.Errorf("remote = %q, want empty", f.remote)
+	}
+}
+
+// --remote and --via are two different ways of routing setup-ssh through a
+// second host (paste-a-private-key vs. client-driven); combining them is
+// ambiguous and must be rejected before any docker/ssh work starts.
+func TestRunSetupSsh_RemoteAndViaMutuallyExclusive(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	cmd := newSetupSshCommand()
+	if err := cmd.Flags().Parse([]string{"--remote", "me@host", "--via", "me@host", "-c", "dc-ssh"}); err != nil {
+		t.Fatalf("parse flags: %v", err)
+	}
+	err := runSetupSsh(cmd, nil)
+	if err == nil || !strings.Contains(err.Error(), "mutually exclusive") {
+		t.Errorf("runSetupSsh error = %v, want a mutually-exclusive error", err)
+	}
+}
+
+// --via has no local compose project to fall back on (the container lives on
+// a different host), so it must be paired with an explicit --container.
+func TestRunSetupSsh_ViaRequiresContainer(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	cmd := newSetupSshCommand()
+	if err := cmd.Flags().Parse([]string{"--via", "me@docker-host"}); err != nil {
+		t.Fatalf("parse flags: %v", err)
+	}
+	err := runSetupSsh(cmd, nil)
+	if err == nil || !strings.Contains(err.Error(), "--container") {
+		t.Errorf("runSetupSsh error = %v, want an error requiring --container", err)
+	}
+}
+
 // With no --key, setup-ssh defaults to the shared managed key under the CLI
 // config dir, not a per-host ~/.ssh path.
 func TestCollectSetupSshFlags_DefaultsToManagedKey(t *testing.T) {
@@ -1002,13 +1142,27 @@ func TestShellCommand_HasFlags(t *testing.T) {
 	if shell == nil {
 		t.Fatal("shell command not found")
 	}
-	for _, name := range []string{"user", "no-tty"} {
+	for _, name := range []string{"user", "no-tty", "via"} {
 		if shell.Flags().Lookup(name) == nil {
 			t.Errorf("expected shell flag --%s", name)
 		}
 	}
 	if shell.Flags().ShorthandLookup("T") == nil {
 		t.Error("expected shell flag shorthand -T for --no-tty")
+	}
+}
+
+// shell rides entirely on 'docker exec', so --via has no local compose project
+// to target a remote-only container with and must be paired with --container,
+// same rule as ssh/setup-ssh.
+func TestRunShell_ViaRequiresContainer(t *testing.T) {
+	cmd := newShellCommand()
+	if err := cmd.Flags().Parse([]string{"--via", "me@docker-host"}); err != nil {
+		t.Fatalf("parse flags: %v", err)
+	}
+	err := runShell(cmd, nil)
+	if err == nil || !strings.Contains(err.Error(), "--container") {
+		t.Errorf("runShell error = %v, want an error requiring --container", err)
 	}
 }
 

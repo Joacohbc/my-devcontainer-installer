@@ -11,6 +11,18 @@ var ZellijModule = &ModuleSpec{
 	// Zellij ships in the base image by default, so it is auto-applied like
 	// base/cleanup and never offered as a selectable option (no UICategory).
 	Always: true,
+	Context: func(opts map[string]any) *types.ContextSection {
+		return &types.ContextSection{
+			Title: "Zellij (terminal multiplexer)",
+			Body: ctxBody(
+				"Run `zellij` to keep long-running processes alive across SSH sessions, and",
+				"`zellij attach` to come back to one. `cat ~/help` lists the keybindings.",
+				"",
+				"If you are an agent running one-shot commands, prefer a background process",
+				"over a zellij session — you cannot interact with its modal keybindings.",
+			),
+		}
+	},
 	Render: func(opts map[string]any) string {
 		return `##
 ## ZELLIJ

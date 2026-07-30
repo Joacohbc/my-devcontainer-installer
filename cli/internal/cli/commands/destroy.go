@@ -26,7 +26,7 @@ would have to be regenerated from scratch. Use 'down' instead if you only want
 to stop containers but keep your files and data.
 
 It also prunes the SSH state setup-ssh wrote for the target: its managed
-~/.ssh/config Host block and the container host keys pinned for the address that
+managed Host block and the container host keys pinned for the address that
 block dialed, unless another Host block still dials it. Your own
 ~/.ssh/known_hosts is never touched.
 

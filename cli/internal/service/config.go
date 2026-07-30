@@ -3,6 +3,7 @@ package service
 import (
 	"fmt"
 	"path/filepath"
+	"strings"
 
 	"github.com/goccy/go-yaml"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
@@ -18,8 +19,8 @@ type ConfigService struct {
 }
 
 const (
-	fallbackDBUser     = "devuser"
-	fallbackDBPassword = "devpass"
+	fallbackDBUser     = types.FallbackDBUser
+	fallbackDBPassword = types.FallbackDBPassword
 )
 
 func defaulted(stored, fallback string) (value string, customized bool, err error) {
@@ -49,6 +50,8 @@ func (s ConfigService) GetGlobalDefault(key string) (value string, customized bo
 		return defaulted(globalDefaults(cfg).DBPassword, fallbackDBPassword)
 	case "ssh-key":
 		return defaulted(globalDefaults(cfg).SSHKeyPath, domain.DefaultManagedSSHKeyPath())
+	case "ssh-config-file":
+		return defaulted(globalDefaults(cfg).SSHConfigFile, domain.DefaultManagedSSHConfigPath())
 	}
 	return "", false, fmt.Errorf("unknown config key: %s", key)
 }
@@ -68,6 +71,9 @@ func (s ConfigService) SetGlobalDefault(key, value string) error {
 	case "ssh-key":
 		ensureDefaults(&cfg)
 		cfg.Defaults.SSHKeyPath = value
+	case "ssh-config-file":
+		ensureDefaults(&cfg)
+		cfg.Defaults.SSHConfigFile = value
 	default:
 		return fmt.Errorf("unknown config key: %s", key)
 	}
@@ -98,6 +104,10 @@ func (s ConfigService) UnsetGlobalDefault(key string) error {
 		ensureDefaults(&cfg)
 		cfg.Defaults.SSHKeyPath = ""
 		fallback = domain.DefaultManagedSSHKeyPath()
+	case "ssh-config-file":
+		ensureDefaults(&cfg)
+		cfg.Defaults.SSHConfigFile = ""
+		fallback = domain.DefaultManagedSSHConfigPath()
 	default:
 		return fmt.Errorf("unknown config key: %s", key)
 	}
@@ -112,6 +122,59 @@ func ensureDefaults(cfg *domain.GlobalConfig) {
 	if cfg.Defaults == nil {
 		cfg.Defaults = &domain.Defaults{}
 	}
+}
+
+// Aliases returns the user's configured shell aliases (name → command) from the
+// global CLI config. The map is never nil.
+func (s ConfigService) Aliases() map[string]string {
+	cfg := domain.LoadGlobalConfig()
+	if cfg.Aliases == nil {
+		return map[string]string{}
+	}
+	return cfg.Aliases
+}
+
+// SetAlias validates and persists a single alias in the global config. An
+// existing name is overwritten. It does not touch any container — call
+// SyncAliasesToVolume (or `config alias sync`) to apply it.
+func (s ConfigService) SetAlias(name, command string) error {
+	if !domain.IsValidAliasName(name) {
+		return fmt.Errorf("invalid alias name %q: use letters, digits, '_', '-' or '.', starting with a letter or '_'", name)
+	}
+	if strings.TrimSpace(command) == "" {
+		return fmt.Errorf("alias %q needs a non-empty command", name)
+	}
+	cfg := domain.LoadGlobalConfig()
+	if cfg.Aliases == nil {
+		cfg.Aliases = map[string]string{}
+	}
+	cfg.Aliases[name] = command
+	if err := domain.SaveGlobalConfig(cfg); err != nil {
+		return err
+	}
+	s.Report.Success("✓ Set alias %s='%s' (in %s)", name, command, domain.GlobalConfigPath())
+	return nil
+}
+
+// UnsetAlias removes an alias from the global config, reporting whether it was
+// present. Removing an absent alias is a no-op, not an error.
+func (s ConfigService) UnsetAlias(name string) (existed bool, err error) {
+	cfg := domain.LoadGlobalConfig()
+	if _, ok := cfg.Aliases[name]; !ok {
+		return false, nil
+	}
+	delete(cfg.Aliases, name)
+	if err := domain.SaveGlobalConfig(cfg); err != nil {
+		return true, err
+	}
+	s.Report.Success("✓ Removed alias %s", name)
+	return true, nil
+}
+
+// RenderedAliases returns the shell script that ~/.alias.sh is populated with,
+// derived from the configured aliases.
+func (s ConfigService) RenderedAliases() string {
+	return domain.RenderUserAliases(s.Aliases())
 }
 
 // ExportConfigYAML renders the project's devcontainer config as YAML.

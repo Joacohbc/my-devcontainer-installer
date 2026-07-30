@@ -38,6 +38,13 @@ func TestProjectPaths_buildsCorrectStructure(t *testing.T) {
 	if paths.EnvPath != expectedEnvPath {
 		t.Errorf("expected EnvPath %q, got %q", expectedEnvPath, paths.EnvPath)
 	}
+
+	// CONTEXT.md is a build input the Dockerfile COPYs, so it belongs next to
+	// the Dockerfile rather than in the project dir.
+	expectedContextPath := filepath.Join(expectedBuildDir, "CONTEXT.md")
+	if paths.ContextPath != expectedContextPath {
+		t.Errorf("expected ContextPath %q, got %q", expectedContextPath, paths.ContextPath)
+	}
 }
 
 func TestProjectPaths_projectDirUsesDcPrefix(t *testing.T) {

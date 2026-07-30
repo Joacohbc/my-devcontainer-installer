@@ -9,6 +9,10 @@ import (
 // DockerfileModules is the ordered catalogue of all Dockerfile layer modules.
 var DockerfileModules = []*dockerfile.ModuleSpec{
 	dockerfile.BaseModule,
+	// Always-on, and must stay directly after BaseModule: the zsh installer in
+	// BaseModule rewrites ~/.zshrc from scratch, so anything appending to the rc
+	// files has to run after it.
+	dockerfile.AliasesModule,
 	dockerfile.GithubCliModule,
 	dockerfile.JavaTemurinModule,
 	dockerfile.JavaOpenjdkModule,

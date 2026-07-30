@@ -17,6 +17,7 @@ func init() { register(newSetupSshCommand()) }
 
 type setupSshFlags struct {
 	remote            string
+	via               string
 	alias             string
 	key               string
 	knownHosts        string
@@ -37,20 +38,34 @@ func newSetupSshCommand() *cobra.Command {
 It generates (once) a single shared ed25519 key managed by the CLI, makes sure
 the target container is running (offering to start the stack if not), installs
 the public key into the container's authorized_keys, resolves the container's IP,
-and appends a ready-to-use Host block to your ~/.ssh/config — then tests the
-connection. Afterwards you connect with a plain 'ssh <alias>'. If the alias
+and appends a ready-to-use Host block to the CLI's own SSH config — then tests
+the connection. Afterwards you connect with a plain 'ssh <alias>'. If the alias
 already exists you're asked to overwrite it, pick a new name, or skip.
+
+Host blocks go into a file the CLI owns (~/.ssh/devcontainer-cli.config, see
+'config ssh-config-file'), not into your ~/.ssh/config — that file only ever
+gains a single 'Include' line at the top, added on first run. Blocks written by
+older versions are moved across automatically. Alias collisions are still
+checked against both files, so this never shadows a Host you wrote yourself.
 
 Host keys are pinned in a known_hosts file owned by the CLI, not in your global
 ~/.ssh/known_hosts, and are read from the container through docker rather than
 trusted on first sight. A rebuilt image therefore never greets you with "REMOTE
 HOST IDENTIFICATION HAS CHANGED" for what is really a fresh container.
 
-Two modes:
+Three modes:
   local (default)  Configure direct SSH from this machine into a local container.
   remote (--remote USER@HOST)  This CLI runs on the Docker host; it prints a
                    self-contained snippet (containing the PRIVATE key) to paste
-                   on the machine you connect FROM, setting up a ProxyCommand jump.`,
+                   on the machine you connect FROM, setting up a ProxyCommand jump.
+  via (--via USER@HOST|alias)  The opposite of remote: this CLI runs on the
+                   connecting machine, using an existing SSH connection to the
+                   Docker host as a jump. Only the shared key's PUBLIC half
+                   ever leaves this machine — the private key stays local, and
+                   the alias it writes is a normal managed block that 'clean
+                   ssh'/'destroy' already know how to find and remove.
+                   Requires --container: there is no local compose project for
+                   a container that lives on someone else's host.`,
 		Example: `  # Set up SSH for the project's devcontainer, then connect
   devcontainer-cli setup-ssh
   ssh <workspace>
@@ -59,12 +74,16 @@ Two modes:
   devcontainer-cli setup-ssh --container dc-ssh --yes
 
   # Remote/jump-host setup (run on the Docker host)
-  devcontainer-cli setup-ssh --remote me@docker-host`,
+  devcontainer-cli setup-ssh --remote me@docker-host
+
+  # Client-driven setup through an existing SSH connection to the Docker host
+  devcontainer-cli setup-ssh --via me@docker-host --container dc-ssh`,
 		SilenceUsage: true,
 		RunE:         runSetupSsh,
 	}
 	f := cmd.Flags()
-	f.String("remote", "", "Configure remote-server access (ProxyCommand mode): USER@HOST")
+	f.String("remote", "", "Configure remote-server access (ProxyCommand mode, run on the Docker host): USER@HOST")
+	f.String("via", "", "Configure access through an existing SSH connection to the Docker host (run on the connecting machine, requires --container): USER@HOST or an ssh-config alias")
 	f.String("key", "", "Private key path (default: the shared managed key under the CLI config dir)")
 	f.StringP("container", "c", sshdefaults.ServiceName, "Container name (auto-detected from compose if omitted)")
 	f.String("user", sshdefaults.User, "SSH user inside container")
@@ -74,6 +93,9 @@ Two modes:
 		return listContainers(), cobra.ShellCompDirectiveNoFileComp
 	})
 	_ = cmd.RegisterFlagCompletionFunc("remote", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		return listSshHosts(), cobra.ShellCompDirectiveNoFileComp
+	})
+	_ = cmd.RegisterFlagCompletionFunc("via", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return listSshHosts(), cobra.ShellCompDirectiveNoFileComp
 	})
 	_ = cmd.MarkFlagFilename("key")
@@ -89,6 +111,7 @@ func collectSetupSshFlags(cmd *cobra.Command) (*setupSshFlags, error) {
 	}
 	g := &setupSshFlags{}
 	g.remote, _ = f.GetString("remote")
+	g.via, _ = f.GetString("via")
 	g.alias = sshdefaults.Alias
 	g.key, _ = f.GetString("key")
 	g.key = domain.ResolveSSHKeyPath(g.key)
@@ -287,7 +310,12 @@ func installKey(ssh service.SshService, f *setupSshFlags, mode sshdefaults.Mode)
 	}
 	script := sshdefaults.AuthorizedKeysInstallScript()
 
-	if mode == sshdefaults.ModeLocal {
+	// --via keeps mode == ModeLocal (see detectMode) but its docker calls are
+	// redirected at the remote daemon (see performSetupSsh), so — unlike
+	// legacy --remote — it can resolve the container's IP to pin a host key
+	// for this connection. buildConfigBlock re-resolves the IP live on every
+	// connect rather than using this one.
+	if mode == sshdefaults.ModeLocal || f.via != "" {
 		ip, ierr := containerIP(ssh, f.container, f)
 		if ierr != nil {
 			return installResult{}, ierr
@@ -319,14 +347,24 @@ func installKey(ssh service.SshService, f *setupSshFlags, mode sshdefaults.Mode)
 	return installResult{}, nil
 }
 
+// buildConfigBlock renders the Host stanza for f. --via renders as
+// sshdefaults.ModeRemote (Remote: f.via) even though the caller's mode stays
+// ModeLocal for orchestration purposes (see performSetupSsh/installKey) — only
+// the rendering shape changes.
 func buildConfigBlock(mode sshdefaults.Mode, f *setupSshFlags, inst installResult, kind sshdefaults.Kind, ref string) (string, error) {
+	renderMode := mode
+	remote := f.remote
+	if f.via != "" {
+		renderMode = sshdefaults.ModeRemote
+		remote = f.via
+	}
 	return sshdefaults.BuildConfigBlock(sshdefaults.ConfigBlockOptions{
-		Mode:           mode,
+		Mode:           renderMode,
 		Alias:          f.alias,
 		User:           f.user,
 		KeyPath:        f.key,
 		Hostname:       inst.hostname,
-		Remote:         f.remote,
+		Remote:         remote,
 		Container:      f.container,
 		KnownHostsFile: f.knownHosts,
 		Kind:           kind,
@@ -351,7 +389,7 @@ func pinHostKeys(ssh service.SshService, f *setupSshFlags, inst installResult) {
 }
 
 // aliasAction is the user's decision when the target Host alias already exists
-// in ~/.ssh/config.
+// in either SSH config.
 type aliasAction int
 
 const (
@@ -403,14 +441,37 @@ func resolveAliasConflict(p aliasPrompter, f *setupSshFlags) (aliasAction, error
 	}
 }
 
-// updateSshConfig writes the freshly built Host block into ~/.ssh/config,
-// appending it when the alias is free or, when it collides, letting the user
-// overwrite the existing block or pick a new alias (re-checking the new name for
-// a fresh conflict). All file parsing/IO lives in the service layer.
+// updateSshConfig writes the freshly built Host block into the CLI-managed SSH
+// config file, appending it when the alias is free or, when it collides, letting
+// the user overwrite the existing block or pick a new alias (re-checking the new
+// name for a fresh conflict).
+//
+// The user's own ~/.ssh/config is never rewritten here: it only gains the
+// Include directive (EnsureInclude) that pulls the managed file in, and any
+// managed block older versions left inside it is lifted out first
+// (MigrateManagedBlocks). Conflicts are still checked against BOTH files, so
+// the CLI cannot silently shadow a Host the user wrote by hand. All file
+// parsing/IO lives in the service layer.
 func updateSshConfig(ssh service.SshService, f *setupSshFlags, mode sshdefaults.Mode, inst installResult, kind sshdefaults.Kind, ref string) error {
-	configPath, current, err := ssh.ReadSSHConfig()
+	moved, err := ssh.MigrateManagedBlocks()
 	if err != nil {
 		return err
+	}
+	for _, m := range moved {
+		console.Ok(fmt.Sprintf("Moved managed Host '%s' out of %s", m.Alias, domain.UserSSHConfigPath()))
+	}
+
+	added, err := ssh.EnsureInclude()
+	if err != nil {
+		return err
+	}
+
+	configPath, current, err := ssh.ReadManagedConfig()
+	if err != nil {
+		return err
+	}
+	if added {
+		console.Ok(fmt.Sprintf("Added 'Include' for %s to %s", configPath, domain.UserSSHConfigPath()))
 	}
 
 	for {
@@ -419,7 +480,11 @@ func updateSshConfig(ssh service.SshService, f *setupSshFlags, mode sshdefaults.
 			return berr
 		}
 
-		if !service.HasHostAlias(current, f.alias) {
+		conflict, cerr := ssh.FindHostAliasConflict(f.alias)
+		if cerr != nil {
+			return cerr
+		}
+		if conflict == nil {
 			if err := ssh.AppendHostBlock(configPath, current, newBlock); err != nil {
 				return err
 			}
@@ -427,9 +492,13 @@ func updateSshConfig(ssh service.SshService, f *setupSshFlags, mode sshdefaults.
 			return nil
 		}
 
-		console.Warn("Host '%s' already defined in %s", f.alias, configPath)
+		console.Warn("Host '%s' already defined in %s", f.alias, conflict.Path)
+		if !conflict.Managed {
+			console.Warn("That is your own config, which this CLI never rewrites. Overwriting writes the")
+			console.Warn("block to %s instead, which wins because the Include sits above your blocks.", configPath)
+		}
 		console.Info("---- existing ----")
-		console.Print(service.ExtractHostBlock(current, f.alias) + "\n")
+		console.Print(conflict.Block + "\n")
 		console.Info("---- proposed ----")
 		console.Print(newBlock + "\n")
 
@@ -440,7 +509,7 @@ func updateSshConfig(ssh service.SshService, f *setupSshFlags, mode sshdefaults.
 		switch action {
 		case aliasRename:
 			// Re-loop: rebuild the block for the new alias and re-check for a
-			// collision against the (still unmodified) config.
+			// collision against the (still unmodified) configs.
 			continue
 		case aliasSkip:
 			console.Warn("Skipping ssh config update.")
@@ -503,6 +572,12 @@ func runSetupSsh(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
+	if f.remote != "" && f.via != "" {
+		return fmt.Errorf("--remote and --via are mutually exclusive: use one or the other")
+	}
+	if f.via != "" && !f.containerExplicit {
+		return fmt.Errorf("--via requires --container <name>: there is no local compose project describing a container on a remote host")
+	}
 
 	ssh := service.SshService{Report: console}
 	mode := detectMode(f)
@@ -556,42 +631,46 @@ func performSetupSsh(ssh service.SshService, f *setupSshFlags, mode sshdefaults.
 	console.Log(fmt.Sprintf("Mode: %s   Workspace: %s   Alias: %s   Key: %s", mode, workspace, f.alias, f.key))
 	console.Log(fmt.Sprintf("Service: %s   Container: %s   Compose: %s", f.service, f.container, f.composeFile))
 
-	if err := ensureStack(ssh, f); err != nil {
-		return err
-	}
+	// Redirects ensureStack's running check, key install, and host-key read at
+	// the daemon behind --via; a no-op when f.via is empty.
+	return service.WithHostOverride(f.via, func() error {
+		if err := ensureStack(ssh, f); err != nil {
+			return err
+		}
 
-	if err := genKey(ssh, f.key); err != nil {
-		return err
-	}
+		if err := genKey(ssh, f.key); err != nil {
+			return err
+		}
 
-	inst, err := installKey(ssh, f, mode)
-	if err != nil {
-		return err
-	}
+		inst, err := installKey(ssh, f, mode)
+		if err != nil {
+			return err
+		}
 
-	// The marker tags the generated block so destroy/clean-ssh can remove it. Loose
-	// container mode keys the block by container name; workspace mode by the (unique)
-	// workspace name.
-	markerKind := sshdefaults.KindWorkspace
-	markerRef := workspace
-	if f.containerExplicit {
-		markerKind = sshdefaults.KindContainer
-		markerRef = f.container
-	}
+		// The marker tags the generated block so destroy/clean-ssh can remove it. Loose
+		// container mode keys the block by container name; workspace mode by the (unique)
+		// workspace name.
+		markerKind := sshdefaults.KindWorkspace
+		markerRef := workspace
+		if f.containerExplicit {
+			markerKind = sshdefaults.KindContainer
+			markerRef = f.container
+		}
 
-	if mode == sshdefaults.ModeRemote {
-		return emitRemoteConfig(ssh, f, markerKind, markerRef)
-	}
+		if mode == sshdefaults.ModeRemote {
+			return emitRemoteConfig(ssh, f, markerKind, markerRef)
+		}
 
-	pinHostKeys(ssh, f, inst)
+		pinHostKeys(ssh, f, inst)
 
-	if err := updateSshConfig(ssh, f, mode, inst, markerKind, markerRef); err != nil {
-		return err
-	}
+		if err := updateSshConfig(ssh, f, mode, inst, markerKind, markerRef); err != nil {
+			return err
+		}
 
-	testConnection(ssh, f.alias)
-	console.Ok(fmt.Sprintf("Done. Connect with:  ssh %s", f.alias))
-	return nil
+		testConnection(ssh, f.alias)
+		console.Ok(fmt.Sprintf("Done. Connect with:  ssh %s", f.alias))
+		return nil
+	})
 }
 
 // emitRemoteConfig hands over the shared managed key to the machine the user

@@ -19,6 +19,35 @@ var PythonModule = &ModuleSpec{
 			Default: true,
 		},
 	},
+	Context: func(opts map[string]any) *types.ContextSection {
+		if !types.BoolOpt(opts, "uv", true) {
+			return &types.ContextSection{
+				Title: "Python",
+				Body: ctxBody(
+					"`python3` and `pip` are installed. `uv` was **not** selected for this image,",
+					"so use `pip install --user X`; `pip` is the real pip here, not a wrapper.",
+				),
+			}
+		}
+		return &types.ContextSection{
+			Title: "Python — use `uv`, not `pip`",
+			Body: ctxBody(
+				"`uv` is the package manager in this container.",
+				"",
+				"| Instead of | Use |",
+				"|---|---|",
+				"| `pip install X` | `uv pip install X` |",
+				"| `python script.py` | `uv run script.py` |",
+				"| `pipx install X` | `uv tool install X` |",
+				"| creating a venv | nothing — see below |",
+				"",
+				"`pip` and `pip3` are shell functions forwarding to `uv pip`, so the old",
+				"commands keep working. **Do not create a virtualenv**: the container is the",
+				"isolation boundary, and `UV_SYSTEM_PYTHON=1` is exported so `uv pip` targets",
+				"the system interpreter directly.",
+			),
+		}
+	},
 	Render: func(opts map[string]any) string {
 		uv := types.BoolOpt(opts, "uv", true)
 		if !uv {

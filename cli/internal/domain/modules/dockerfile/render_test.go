@@ -28,6 +28,14 @@ func TestBaseModuleRender(t *testing.T) {
 	if !strings.Contains(out, "RUN chmod +x /tmp/zsh-installer.sh && \\\n    su - devuser -c \"/tmp/zsh-installer.sh\" && \\\n    rm /tmp/zsh-installer.sh") {
 		t.Errorf("zsh installer chmod/run/rm should be a single RUN:\n%s", out)
 	}
+	// sshd must keep long-lived sessions (e.g. a --via jump) alive and reclaim
+	// dead ones, via /etc/ssh/sshd_config rather than a runtime -o flag.
+	if !strings.Contains(out, "ClientAliveInterval 60") || !strings.Contains(out, "ClientAliveCountMax 3") {
+		t.Errorf("base must set sshd ClientAliveInterval/ClientAliveCountMax:\n%s", out)
+	}
+	if !strings.Contains(out, "/etc/ssh/sshd_config") {
+		t.Errorf("base must edit /etc/ssh/sshd_config for the keepalive settings:\n%s", out)
+	}
 	// An explicit "none" style must also run the script with no arguments.
 	outNone := dockerfile.BaseModule.Render(map[string]any{"p10kStyle": "none"})
 	if !strings.Contains(outNone, `su - devuser -c "/tmp/zsh-installer.sh"`) {
@@ -56,6 +64,11 @@ func TestBaseModuleRender(t *testing.T) {
 	// always available in every container.
 	if !strings.Contains(out, "\n    micro \\") {
 		t.Errorf("base must install the micro editor by default:\n%s", out)
+	}
+	// lsof ships in the base image so the kill_port helper from the aliases
+	// module (kill -9 $(lsof -t -i:<port>)) works in every container.
+	if !strings.Contains(out, "\n    lsof \\") {
+		t.Errorf("base must install lsof by default:\n%s", out)
 	}
 	// The ~/help quick reference (micro + zellij shortcuts) is materialized into
 	// devuser's home at build time, then its installer script is removed.

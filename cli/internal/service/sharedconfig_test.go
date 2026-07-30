@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -48,6 +49,61 @@ func TestEnsureSharedConfigVolume_SkipsWhenPresent(t *testing.T) {
 	}
 	if create := r.callContaining("create"); create != nil {
 		t.Errorf("did not expect a create call when the volume exists, got %v", create)
+	}
+}
+
+// SyncAliases writes the rendered script into the volume's alias.sh entry via a
+// throwaway helper, always overwriting and re-owning to the host uid/gid. It
+// never reads a host file.
+func TestSyncAliases_WritesRenderedContentIntoVolume(t *testing.T) {
+	// status 0: `volume inspect` succeeds (no create), and the writer `run`
+	// exits cleanly.
+	r := &fakeRunner{status: 0}
+	restore := useFakeDocker(r)
+	defer restore()
+
+	content := "#!/bin/sh\nalias ll='ls -la'\n"
+	if err := (SharedConfigService{Report: nopReporter{}}).SyncAliases(content); err != nil {
+		t.Fatalf("SyncAliases: %v", err)
+	}
+
+	run := r.callContaining("--rm")
+	if run == nil {
+		t.Fatalf("expected a helper `run` call, got %v", r.calls)
+	}
+	for _, want := range []string{
+		types.SharedConfigVolumeName + ":/vol",
+		"ENTRY_ID=" + types.SharedConfigAliasID,
+		"ENTRY_CONTENT=" + content,
+		"ENTRY_OWNER=" + hostOwnerString(),
+	} {
+		if !sliceHas(run, want) {
+			t.Errorf("helper run missing %q: %v", want, run)
+		}
+	}
+	// It must never mount a host home read-only — the content comes from config.
+	for _, arg := range run {
+		if strings.HasSuffix(arg, ":/host:ro") {
+			t.Errorf("SyncAliases must not read a host file, saw %q", arg)
+		}
+	}
+}
+
+// A non-zero helper exit must surface as an error rather than silently claiming
+// success.
+func TestSyncAliases_ReportsHelperFailure(t *testing.T) {
+	r := &fakeRunner{status: 0}
+	restore := useFakeDocker(r)
+	defer restore()
+	// Volume inspect (status 0) succeeds; make the writer run fail by flipping
+	// status after the volume check is not possible with this fake, so instead
+	// use a runner that fails everything except version and inspect. Simpler:
+	// status 1 makes inspect fail (triggering create, which also "fails" but is
+	// only warned) and then the writer run fails too.
+	r.status = 1
+	err := (SharedConfigService{Report: nopReporter{}}).SyncAliases("x")
+	if err == nil {
+		t.Error("SyncAliases must return an error when the helper exits non-zero")
 	}
 }
 
@@ -175,17 +231,69 @@ func TestSyncFromHostForcePassesFlagToHelper(t *testing.T) {
 	}
 }
 
-// TestSyncEntryScriptDereferencesSymlinks guards against a regression to plain
-// `cp -a`: global skills/agents installed via the skills.sh CLI are symlinked
-// into each tool's config dir (e.g. ~/.claude/skills/<name> ->
-// ~/.agents/skills/<name>), so the copy into the volume must follow (-L)
-// those links and persist real content, not a dangling host-path symlink.
-func TestSyncEntryScriptDereferencesSymlinks(t *testing.T) {
-	if strings.Contains(syncEntryScript, "cp -a \"") {
-		t.Errorf("syncEntryScript must use `cp -aL` (dereference symlinks), found plain `cp -a`: %s", syncEntryScript)
+// TestSyncEntryScriptUsesDerefSymlinksForDirs guards against a regression to
+// plain `cp -a` for directory entries: global skills/agents installed via the
+// skills.sh CLI are symlinked into each tool's config dir (e.g.
+// ~/.claude/skills/<name> -> ~/.agents/skills/<name>), so the copy into the
+// volume must dereference those links and persist real content, not a
+// dangling host-path symlink. The actual dereferencing behavior (including
+// tolerance for already-dangling symlinks) is exercised directly against the
+// shell in TestDerefSymlinksFunc.
+func TestSyncEntryScriptUsesDerefSymlinksForDirs(t *testing.T) {
+	if !strings.Contains(syncEntryScript, `deref_symlinks "$dst"`) {
+		t.Errorf("syncEntryScript must call deref_symlinks on directory entries, got: %s", syncEntryScript)
 	}
-	if !strings.Contains(syncEntryScript, "cp -aL") {
-		t.Errorf("syncEntryScript must use `cp -aL` to dereference symlinked skills/agents, got: %s", syncEntryScript)
+}
+
+// TestDerefSymlinksFunc runs the actual `deref_symlinks` shell function (used
+// by syncEntryScript) against a real directory to verify: a symlink whose
+// target exists is replaced with a real copy of that content, and a dangling
+// symlink (e.g. the ~/.claude/debug/latest pointer Claude Code itself leaves
+// behind) is left alone instead of aborting the script. Before this test,
+// syncEntryScript used a bare `cp -aL`, which errors "cannot stat" on a
+// dangling symlink and failed the whole sync for any entry containing one.
+func TestDerefSymlinksFunc(t *testing.T) {
+	if _, err := exec.LookPath("sh"); err != nil {
+		t.Skip("sh not available")
+	}
+
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "real.txt"), []byte("hello"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(dir, "real.txt"), filepath.Join(dir, "resolvable-link")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(dir, "does-not-exist"), filepath.Join(dir, "dangling-link")); err != nil {
+		t.Fatal(err)
+	}
+
+	script := derefSymlinksFunc + `deref_symlinks "$1"`
+	cmd := exec.Command("sh", "-c", script, "sh", dir)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("deref_symlinks failed: %v, output: %s", err, out)
+	}
+
+	resolvable := filepath.Join(dir, "resolvable-link")
+	info, err := os.Lstat(resolvable)
+	if err != nil {
+		t.Fatalf("resolvable-link: %v", err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		t.Errorf("resolvable-link should have been replaced with a real copy, still a symlink")
+	}
+	content, err := os.ReadFile(resolvable)
+	if err != nil || string(content) != "hello" {
+		t.Errorf("resolvable-link content = %q, %v; want %q", content, err, "hello")
+	}
+
+	dangling := filepath.Join(dir, "dangling-link")
+	danglingInfo, err := os.Lstat(dangling)
+	if err != nil {
+		t.Fatalf("dangling-link should still exist (as a symlink): %v", err)
+	}
+	if danglingInfo.Mode()&os.ModeSymlink == 0 {
+		t.Errorf("dangling-link should remain a symlink, not be touched")
 	}
 }
 
