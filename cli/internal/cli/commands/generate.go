@@ -550,7 +550,7 @@ func saveAndPostProcess(cwd string, config *types.DevcontainerConfig, plan *serv
 		console.Done()
 	}
 	console.NewLine()
-	console.Info("SSH access: run 'devcontainer-cli setup-ssh' to generate a key and register the host automatically.")
+	console.Info("SSH access: run 'devcontainer-cli ssh --setup' to generate a key and register the host automatically.")
 	return nil
 }
 

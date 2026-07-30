@@ -19,43 +19,53 @@ func newSshCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "ssh [flags] [-- command args...]",
 		Short: "Open a real SSH session into the devcontainer, configuring access first if needed",
-		Long: `devcontainer-cli ssh — connect to the project's devcontainer over SSH.
+		Long: `devcontainer-cli ssh — connect to the project's devcontainer over SSH, and
+own the whole SSH lifecycle (this is where 'setup-ssh' used to live).
 
 Unlike 'shell' (a 'docker exec' wrapper), this opens a genuine SSH session, so
 it exercises the same path a human or tool connecting via 'ssh <alias>' would.
-If no managed SSH alias exists yet for the target it runs the same setup
-'setup-ssh' does (generate/install the shared key, append a Host block to the
-CLI's own SSH config) automatically before connecting — no separate 'setup-ssh'
-call needed.
+The first time, it configures access automatically (generate/install the shared
+key, append a Host block to the CLI's own SSH config) before connecting — no
+separate command needed. Pass --setup to force that configuration to run again
+(rotate the key, repair the Host block) before connecting.
 
 By default it targets the project's own devcontainer service, the same one
-'shell'/'setup-ssh' resolve by default. Pass --container to connect to any other
-managed container instead (loose mode, like 'setup-ssh --container'); the
-managed alias is then keyed by that container's name rather than the workspace.
+'shell' resolves. Pass --container to connect to any other managed container
+instead (loose mode); the managed alias is then keyed by that container's name
+rather than the workspace.
 
 Pass --via USER@HOST (with --container) to reach a container on a different
-Docker host through an existing SSH connection to it, the same as 'setup-ssh
---via' — see there for what that requires and what it does differently from
-'setup-ssh --remote'. --via only needs to be given once: the alias remembers
-the jump target for future reconnects.
+Docker host through an existing SSH connection to it. Only the shared key's
+PUBLIC half ever leaves this machine. --via only needs to be given once: the
+alias remembers the jump target for future reconnects.
+
+Pass --setup-external USER@HOST when this CLI runs ON the Docker host: instead of
+connecting, it prints a self-contained snippet (containing the PRIVATE key) to
+paste on the machine you connect FROM, which sets up a ProxyCommand jump there.
 
 Before connecting it re-pins the container's current SSH host keys (read through
 docker) in the CLI-managed known_hosts, so a rebuilt image — new host keys, same
 container IP — never aborts the session with "REMOTE HOST IDENTIFICATION HAS
-CHANGED". Host blocks written by older versions are upgraded to that scheme on
-first use, leaving your global ~/.ssh/known_hosts alone.
+CHANGED". It also rules out a stale target (a container that no longer runs)
+before dialing, and offers a real SSH probe to verify end-to-end reachability.
 
 With --forward (or by answering yes to the interactive prompt) it also opens
 SSH tunnels for the given ports alongside the session, torn down automatically
 when the session ends.`,
-		Example: `  # Connect (runs setup-ssh automatically the first time)
+		Example: `  # Connect (configures access automatically the first time)
   devcontainer-cli ssh
+
+  # Re-run the access setup, then connect
+  devcontainer-cli ssh --setup
 
   # Connect to a specific container instead of the project's own devcontainer
   devcontainer-cli ssh --container dc-ssh
 
   # Connect through an existing SSH connection to a remote Docker host
   devcontainer-cli ssh --via me@docker-host --container dc-ssh
+
+  # Run ON the Docker host: print the snippet to paste on the connecting machine
+  devcontainer-cli ssh --setup-external me@docker-host
 
   # Also forward ports 3000 and 8080 for the session
   devcontainer-cli ssh --forward --ports 3000,8080:80
@@ -67,20 +77,36 @@ when the session ends.`,
 	addYesFlag(cmd)
 	addInteractiveFlag(cmd)
 	addContainerFlag(cmd)
+	cmd.Flags().Bool("setup", false, "Re-run the SSH access setup (key + Host block) before connecting, even if an alias already exists")
+	cmd.Flags().String("setup-external", "", "Run on the Docker host: print a paste-on-the-client snippet (ProxyCommand jump) instead of connecting: USER@HOST")
 	cmd.Flags().String("via", "", "Reach the container through an existing SSH connection to its Docker host (requires --container): USER@HOST or an ssh-config alias")
+	cmd.Flags().String("key", "", "Private key path (default: the shared managed key under the CLI config dir)")
+	cmd.Flags().String("user", sshdefaults.User, "SSH user inside the container")
 	cmd.Flags().Bool("forward", false, "Also open SSH port-forwarding tunnels for the session (prompted when interactive and omitted)")
 	cmd.Flags().String("ports", "", "Ports to forward, e.g. '3000,8080:80' (implies --forward; skips the prompt)")
 
 	_ = cmd.RegisterFlagCompletionFunc("via", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return listSshHosts(), cobra.ShellCompDirectiveNoFileComp
 	})
+	_ = cmd.RegisterFlagCompletionFunc("setup-external", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		return listSshHosts(), cobra.ShellCompDirectiveNoFileComp
+	})
+	_ = cmd.MarkFlagFilename("key")
 
 	return cmd
 }
 
 func runSsh(cmd *cobra.Command, args []string) error {
+	// --setup-external configures the machine you connect FROM (it prints a
+	// snippet); it never dials the target from here, so it short-circuits before
+	// any target resolution or connection.
+	if external, _ := cmd.Flags().GetString("setup-external"); external != "" {
+		_, err := runSshSetup(cmd)
+		return err
+	}
+
 	interactive := interactiveFlag(cmd)
-	assumeYes := yesFlag(cmd) || !interactive
+	forceSetup, _ := cmd.Flags().GetBool("setup")
 
 	cwd, err := currentDir()
 	if err != nil {
@@ -123,32 +149,16 @@ func runSsh(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	if !ok {
-		console.Info("No SSH access configured yet for '%s'; setting it up...", ref)
-		if err := checkPrereqs(sshdefaults.ModeLocal); err != nil {
-			return err
+
+	if forceSetup || !ok {
+		if !ok && !forceSetup {
+			console.Info("No SSH access configured yet for '%s'; setting it up...", ref)
 		}
-		f := &setupSshFlags{
-			alias:             ref,
-			via:               via,
-			key:               domain.ResolveSSHKeyPath(""),
-			knownHosts:        domain.ManagedKnownHostsPath(),
-			container:         containerName,
-			containerExplicit: containerExplicit,
-			service:           sshdefaults.ServiceName,
-			user:              sshdefaults.User,
-			assumeYes:         assumeYes,
+		configuredAlias, serr := runSshSetup(cmd)
+		if serr != nil {
+			return serr
 		}
-		logWorkspace := workspace
-		if !containerExplicit {
-			f.composeFile = relativeComposeFile(workspace)
-		} else {
-			logWorkspace = sshNoWorkspace
-		}
-		if err := performSetupSsh(ssh, f, sshdefaults.ModeLocal, logWorkspace); err != nil {
-			return err
-		}
-		alias = f.alias
+		alias = configuredAlias
 	} else {
 		refreshHostKey(ssh, alias, containerName)
 	}

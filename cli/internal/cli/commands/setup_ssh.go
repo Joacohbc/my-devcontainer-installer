@@ -13,8 +13,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func init() { register(newSetupSshCommand()) }
-
+// setupSshFlags is the resolved input to the SSH setup flow, shared by the
+// 'ssh --setup' and 'ssh --setup-external' entry points and by the automatic
+// bootstrap 'ssh' runs when no managed alias exists yet. It is populated from the
+// 'ssh' command's flags by collectSetupSshFlags.
 type setupSshFlags struct {
 	remote            string
 	via               string
@@ -22,85 +24,12 @@ type setupSshFlags struct {
 	key               string
 	knownHosts        string
 	assumeYes         bool
+	interactive       bool
 	container         string
 	containerExplicit bool
 	service           string
 	composeFile       string
 	user              string
-}
-
-func newSetupSshCommand() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "setup-ssh",
-		Short: "Set up SSH key + config so you can 'ssh' into the devcontainer",
-		Long: `devcontainer-cli setup-ssh — automate end-to-end SSH access to a devcontainer.
-
-It generates (once) a single shared ed25519 key managed by the CLI, makes sure
-the target container is running (offering to start the stack if not), installs
-the public key into the container's authorized_keys, resolves the container's IP,
-and appends a ready-to-use Host block to the CLI's own SSH config — then tests
-the connection. Afterwards you connect with a plain 'ssh <alias>'. If the alias
-already exists you're asked to overwrite it, pick a new name, or skip.
-
-Host blocks go into a file the CLI owns (~/.ssh/devcontainer-cli.config, see
-'config ssh-config-file'), not into your ~/.ssh/config — that file only ever
-gains a single 'Include' line at the top, added on first run. Blocks written by
-older versions are moved across automatically. Alias collisions are still
-checked against both files, so this never shadows a Host you wrote yourself.
-
-Host keys are pinned in a known_hosts file owned by the CLI, not in your global
-~/.ssh/known_hosts, and are read from the container through docker rather than
-trusted on first sight. A rebuilt image therefore never greets you with "REMOTE
-HOST IDENTIFICATION HAS CHANGED" for what is really a fresh container.
-
-Three modes:
-  local (default)  Configure direct SSH from this machine into a local container.
-  remote (--remote USER@HOST)  This CLI runs on the Docker host; it prints a
-                   self-contained snippet (containing the PRIVATE key) to paste
-                   on the machine you connect FROM, setting up a ProxyCommand jump.
-  via (--via USER@HOST|alias)  The opposite of remote: this CLI runs on the
-                   connecting machine, using an existing SSH connection to the
-                   Docker host as a jump. Only the shared key's PUBLIC half
-                   ever leaves this machine — the private key stays local, and
-                   the alias it writes is a normal managed block that 'clean
-                   ssh'/'destroy' already know how to find and remove.
-                   Requires --container: there is no local compose project for
-                   a container that lives on someone else's host.`,
-		Example: `  # Set up SSH for the project's devcontainer, then connect
-  devcontainer-cli setup-ssh
-  ssh <workspace>
-
-  # Target a specific container unattended
-  devcontainer-cli setup-ssh --container dc-ssh --yes
-
-  # Remote/jump-host setup (run on the Docker host)
-  devcontainer-cli setup-ssh --remote me@docker-host
-
-  # Client-driven setup through an existing SSH connection to the Docker host
-  devcontainer-cli setup-ssh --via me@docker-host --container dc-ssh`,
-		SilenceUsage: true,
-		RunE:         runSetupSsh,
-	}
-	f := cmd.Flags()
-	f.String("remote", "", "Configure remote-server access (ProxyCommand mode, run on the Docker host): USER@HOST")
-	f.String("via", "", "Configure access through an existing SSH connection to the Docker host (run on the connecting machine, requires --container): USER@HOST or an ssh-config alias")
-	f.String("key", "", "Private key path (default: the shared managed key under the CLI config dir)")
-	f.StringP("container", "c", sshdefaults.ServiceName, "Container name (auto-detected from compose if omitted)")
-	f.String("user", sshdefaults.User, "SSH user inside container")
-	f.BoolP("yes", "y", false, `Assume "yes" to all prompts (overwrite a conflicting alias, auto-start the stack)`)
-
-	_ = cmd.RegisterFlagCompletionFunc("container", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		return listContainers(), cobra.ShellCompDirectiveNoFileComp
-	})
-	_ = cmd.RegisterFlagCompletionFunc("remote", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		return listSshHosts(), cobra.ShellCompDirectiveNoFileComp
-	})
-	_ = cmd.RegisterFlagCompletionFunc("via", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		return listSshHosts(), cobra.ShellCompDirectiveNoFileComp
-	})
-	_ = cmd.MarkFlagFilename("key")
-
-	return cmd
 }
 
 func collectSetupSshFlags(cmd *cobra.Command) (*setupSshFlags, error) {
@@ -109,8 +38,9 @@ func collectSetupSshFlags(cmd *cobra.Command) (*setupSshFlags, error) {
 	if err != nil {
 		return nil, err
 	}
+	interactive := interactiveFlag(cmd)
 	g := &setupSshFlags{}
-	g.remote, _ = f.GetString("remote")
+	g.remote, _ = f.GetString("setup-external")
 	g.via, _ = f.GetString("via")
 	g.alias = sshdefaults.Alias
 	g.key, _ = f.GetString("key")
@@ -121,7 +51,8 @@ func collectSetupSshFlags(cmd *cobra.Command) (*setupSshFlags, error) {
 	g.service = sshdefaults.ServiceName
 	g.composeFile = defaultComposeFile(cwd)
 	g.user, _ = f.GetString("user")
-	g.assumeYes, _ = f.GetBool("yes")
+	g.interactive = interactive
+	g.assumeYes = yesFlag(cmd) || !interactive
 
 	return g, nil
 }
@@ -536,6 +467,39 @@ func updateSshConfig(ssh service.SshService, f *setupSshFlags, mode sshdefaults.
 	}
 }
 
+// verifyTarget checks a freshly configured target in two tiers. First it rules
+// out a stale target deterministically: it asks the owning docker daemon (local,
+// or the --via daemon when this runs under WithHostOverride) whether the
+// container is up, by name — no SSH, no side effects, so it always runs. Only if
+// that passes does it offer the intrusive tier: a real SSH probe that opens an
+// actual connection, which is shown and confirmed first so it is never run
+// silently.
+func verifyTarget(ssh service.SshService, f *setupSshFlags) {
+	if !ssh.ContainerRunning(f.container) {
+		console.Warn("Container '%s' is not running; 'ssh %s' will fail until it is started.", f.container, f.alias)
+		return
+	}
+	if !confirmLiveProbe(f, f.alias) {
+		return
+	}
+	testConnection(ssh, f.alias)
+}
+
+// confirmLiveProbe decides whether to open the real SSH probe. It never opens one
+// non-interactively (nothing asked for it), auto-confirms under -y, and otherwise
+// asks — so a simulated connection is always either explicitly requested or
+// explicitly confirmed.
+func confirmLiveProbe(f *setupSshFlags, alias string) bool {
+	if !f.interactive {
+		return false
+	}
+	if f.assumeYes {
+		return true
+	}
+	proceed, err := console.ConfirmDefault(fmt.Sprintf("Verify now by opening a real SSH connection to '%s'?", alias), true)
+	return err == nil && proceed
+}
+
 func testConnection(ssh service.SshService, alias string) {
 	console.Log(fmt.Sprintf("Testing ssh %s ...", alias))
 	switch ssh.TestConnection(alias) {
@@ -577,22 +541,29 @@ func applyWorkspaceDefaults(f *setupSshFlags, workspace string) {
 	f.composeFile = relativeComposeFile(workspace)
 }
 
-func runSetupSsh(cmd *cobra.Command, _ []string) error {
+// runSshSetup drives the SSH setup flow for the 'ssh' command: it resolves the
+// target (a loose --container or the project's workspace devcontainer), writes
+// the managed Host block (or, in --setup-external mode, prints the self-contained
+// snippet for the machine you connect FROM), and returns the configured alias so
+// the caller can connect through it. In --setup-external mode the returned alias
+// is not connectable from here (it targets another machine); the caller must not
+// dial it.
+func runSshSetup(cmd *cobra.Command) (alias string, err error) {
 	f, err := collectSetupSshFlags(cmd)
 	if err != nil {
-		return err
+		return "", err
 	}
 	if f.remote != "" && f.via != "" {
-		return fmt.Errorf("--remote and --via are mutually exclusive: use one or the other")
+		return "", fmt.Errorf("--setup-external and --via are mutually exclusive: use one or the other")
 	}
 	if f.via != "" && !f.containerExplicit {
-		return fmt.Errorf("--via requires --container <name>: there is no local compose project describing a container on a remote host")
+		return "", fmt.Errorf("--via requires --container <name>: there is no local compose project describing a container on a remote host")
 	}
 
 	ssh := service.SshService{Report: console}
 	mode := detectMode(f)
 	if err := checkPrereqs(mode); err != nil {
-		return err
+		return "", err
 	}
 
 	var workspace string
@@ -603,32 +574,35 @@ func runSetupSsh(cmd *cobra.Command, _ []string) error {
 		if f.alias == sshdefaults.Alias {
 			f.alias = f.container
 		}
-		workspace = "(none)"
+		workspace = sshNoWorkspace
 	} else {
 		// Workspace mode: discover target container and workspace context.
 		target, err := resolveTargetService(f)
 		if err != nil {
-			return err
+			return "", err
 		}
 		f.service = target.Service
 		f.container = target.Container
 
 		workspace, err = deriveWorkspace(f)
 		if err != nil {
-			return err
+			return "", err
 		}
 		applyWorkspaceDefaults(f, workspace)
 	}
 
 	if f.remote == "" && !f.assumeYes {
-		alias, err := console.AskDefault("SSH connection name (alias):", f.alias, validateAliasName)
+		chosen, err := console.AskDefault("SSH connection name (alias):", f.alias, validateAliasName)
 		if err != nil {
-			return err
+			return "", err
 		}
-		f.alias = alias
+		f.alias = chosen
 	}
 
-	return performSetupSsh(ssh, f, mode, workspace)
+	if err := performSetupSsh(ssh, f, mode, workspace); err != nil {
+		return "", err
+	}
+	return f.alias, nil
 }
 
 // performSetupSsh runs the core of the setup-ssh flow once mode, workspace and
@@ -680,7 +654,7 @@ func performSetupSsh(ssh service.SshService, f *setupSshFlags, mode sshdefaults.
 		// changed it.
 		pinHostKeys(ssh, f, inst)
 
-		testConnection(ssh, f.alias)
+		verifyTarget(ssh, f)
 		console.Ok(fmt.Sprintf("Done. Connect with:  ssh %s", f.alias))
 		return nil
 	})

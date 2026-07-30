@@ -134,17 +134,18 @@ devcontainer-cli up                    # Levanta el stack de contenedores (o eje
 ```
 
 ### 2. Conexión y configuración SSH (`devcontainer-cli ssh`)
-`devcontainer-cli ssh` abre una sesión SSH en el contenedor. Si aún no está configurado el acceso SSH para el proyecto, ejecuta automáticamente el asistente de `setup-ssh` (creación de claves, alias SSH y fijado de `known_hosts`).
+`devcontainer-cli ssh` abre una sesión SSH en el contenedor y es dueño de todo el ciclo de vida SSH (acá vivía el viejo `setup-ssh`). Si aún no está configurado el acceso SSH para el proyecto, ejecuta automáticamente la configuración (creación de claves, alias SSH y fijado de `known_hosts`). Con `--setup` fuerza esa configuración de nuevo antes de conectar.
 
 Los bloques `Host` se escriben en un archivo propio de la CLI, **`~/.ssh/devcontainer-cli.config`**, y no en tu `~/.ssh/config`: a ese último sólo se le agrega una línea `Include` al principio, la primera vez. Los bloques que versiones anteriores dejaron dentro de `~/.ssh/config` se mueven solos. Cambiá la ubicación con `devcontainer-cli config ssh-config-file <ruta>`.
 
 ```bash
-devcontainer-cli ssh                                          # Conecta al devcontainer (ejecuta setup-ssh si es la primera vez)
+devcontainer-cli ssh                                          # Conecta al devcontainer (lo configura si es la primera vez)
+devcontainer-cli ssh --setup                                  # Rehace la configuración de acceso y luego conecta
 devcontainer-cli ssh --via user@docker-host --container dc-ssh # Contenedor en OTRO host, a través de una conexión SSH existente
 ssh mi-proyecto                                                # Conexión directa vía cliente SSH tradicional usando el alias generado
 ```
 
-`--via` (requiere `--container`) es para cuando el contenedor vive en un Docker host distinto: usa la conexión SSH que ya tenés a ese host para instalar la clave y fijar el `known_hosts`, sin instalar devcontainer-cli ahí — la clave privada nunca sale de esta máquina. Es distinto de `setup-ssh --remote`, que asume lo contrario (la CLI corriendo en el host remoto) y hace pegar la clave privada a mano en la máquina que se conecta.
+`--via` (requiere `--container`) es para cuando el contenedor vive en un Docker host distinto: usa la conexión SSH que ya tenés a ese host para instalar la clave y fijar el `known_hosts`, sin instalar devcontainer-cli ahí — la clave privada nunca sale de esta máquina. Es lo opuesto de `--setup-external USER@HOST`, que asume que la CLI corre en el host remoto: en vez de conectar, imprime un snippet autocontenido (con la clave privada) para pegar en la máquina desde la que te conectás.
 
 ### 3. Copiar archivos y assets (`copy`)
 Copia archivos entre el host y el contenedor o instala scripts embebidos de IA en caliente:

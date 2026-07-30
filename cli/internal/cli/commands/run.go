@@ -293,7 +293,7 @@ func printRunNextSteps(containerName string) {
 	console.Info("   $ devcontainer-cli shell -c %s", containerName)
 	console.NewLine()
 	console.Header("Or set up SSH access")
-	console.Info("   $ devcontainer-cli setup-ssh --container %s", containerName)
+	console.Info("   $ devcontainer-cli ssh --setup --container %s", containerName)
 	console.NewLine()
 	console.Header("Post-install scripts (baked into the image, run on demand):")
 	console.Info("   $ devcontainer-cli shell -c %s -- ls ~/post-script", containerName)
