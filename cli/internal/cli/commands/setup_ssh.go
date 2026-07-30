@@ -311,9 +311,10 @@ func installKey(ssh service.SshService, f *setupSshFlags, mode sshdefaults.Mode)
 	script := sshdefaults.AuthorizedKeysInstallScript()
 
 	// --via keeps mode == ModeLocal (see detectMode) but its docker calls are
-	// redirected at the remote daemon (see performSetupSsh), so it can resolve
-	// the container's IP and pin its host keys just like a genuinely local
-	// setup — unlike legacy --remote, which has no docker access from here.
+	// redirected at the remote daemon (see performSetupSsh), so — unlike
+	// legacy --remote — it can resolve the container's IP to pin a host key
+	// for this connection. buildConfigBlock re-resolves the IP live on every
+	// connect rather than using this one.
 	if mode == sshdefaults.ModeLocal || f.via != "" {
 		ip, ierr := containerIP(ssh, f.container, f)
 		if ierr != nil {
@@ -346,16 +347,25 @@ func installKey(ssh service.SshService, f *setupSshFlags, mode sshdefaults.Mode)
 	return installResult{}, nil
 }
 
+// buildConfigBlock renders the Host stanza for f. --via renders as
+// sshdefaults.ModeRemote (Remote: f.via) even though the caller's mode stays
+// ModeLocal for orchestration purposes (see performSetupSsh/installKey) — only
+// the rendering shape changes.
 func buildConfigBlock(mode sshdefaults.Mode, f *setupSshFlags, inst installResult, kind sshdefaults.Kind, ref string) (string, error) {
+	renderMode := mode
+	remote := f.remote
+	if f.via != "" {
+		renderMode = sshdefaults.ModeRemote
+		remote = f.via
+	}
 	return sshdefaults.BuildConfigBlock(sshdefaults.ConfigBlockOptions{
-		Mode:           mode,
+		Mode:           renderMode,
 		Alias:          f.alias,
 		User:           f.user,
 		KeyPath:        f.key,
 		Hostname:       inst.hostname,
-		Remote:         f.remote,
+		Remote:         remote,
 		Container:      f.container,
-		ProxyJump:      f.via,
 		KnownHostsFile: f.knownHosts,
 		Kind:           kind,
 		Ref:            ref,
@@ -621,11 +631,8 @@ func performSetupSsh(ssh service.SshService, f *setupSshFlags, mode sshdefaults.
 	console.Log(fmt.Sprintf("Mode: %s   Workspace: %s   Alias: %s   Key: %s", mode, workspace, f.alias, f.key))
 	console.Log(fmt.Sprintf("Service: %s   Container: %s   Compose: %s", f.service, f.container, f.composeFile))
 
-	// WithHostOverride redirects every docker call the rest of this function
-	// makes (ensureStack's running check, key install, host-key read) at the
-	// daemon behind --via, so the flow below works exactly like a genuinely
-	// local setup even though the container lives on another host. It is a
-	// no-op when f.via is empty.
+	// Redirects ensureStack's running check, key install, and host-key read at
+	// the daemon behind --via; a no-op when f.via is empty.
 	return service.WithHostOverride(f.via, func() error {
 		if err := ensureStack(ssh, f); err != nil {
 			return err

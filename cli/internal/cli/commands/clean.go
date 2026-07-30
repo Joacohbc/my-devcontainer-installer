@@ -172,7 +172,15 @@ func newCleanSshCommand() *cobra.Command {
 		Long: `devcontainer-cli clean ssh — prune stale SSH entries this CLI wrote.
 
 setup-ssh tags every Host block it adds to the CLI's managed SSH config with a marker recording what it targets
-(a workspace or a specific container). This command scans those markers and removes blocks whose target is gone.
+(a workspace or a specific container). This command scans those markers and removes blocks whose target is gone,
+plus any duplicated or orphaned marker left behind by an interrupted write — those are always removed regardless
+of whether the target they name happens to still be alive, since no command can resolve a block like that anyway.
+A --via block's container is checked against the remote Docker host it was set up through, not this machine's;
+listings mark those with "[via <host> — remote container, not managed on this machine's Docker]" so they're never
+mistaken for an ordinary local one. If that remote host can't be reached right now (its jump SSH connection was
+removed or renamed, the machine is off, ...) its blocks are never auto-removed, but they are listed separately as
+unverified — in interactive mode you can still select them for removal if you know they're really gone;
+non-interactive (--yes) runs skip them and report how many were skipped.
 
 It then sweeps the CLI-managed known_hosts, dropping the host keys no remaining Host block dials — the ones
 left behind by the blocks just removed, by an earlier 'destroy', or by a container that came back on a

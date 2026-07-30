@@ -56,10 +56,8 @@ func getContext() context.Context {
 
 // SetHostOverride points every subsequent docker invocation at a remote
 // daemon reached over ssh: host is "user@host" or an existing ssh-config
-// alias, rendered as DOCKER_HOST=ssh://<host>. Docker's own ssh transport
-// does the tunneling; nothing here opens a connection itself. Callers must
-// pair this with ResetHostOverride (typically via defer) once the operation
-// that needs the remote daemon is done.
+// alias, rendered as DOCKER_HOST=ssh://<host> — Docker's own ssh transport
+// does the tunneling. Pair with ResetHostOverride (typically via defer).
 func SetHostOverride(host string) {
 	hostMu.Lock()
 	defer hostMu.Unlock()

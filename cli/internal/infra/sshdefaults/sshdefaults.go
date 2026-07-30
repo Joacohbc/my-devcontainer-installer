@@ -48,9 +48,10 @@ const (
 // ManagedComment renders the structured marker comment that precedes a managed
 // Host block, recording its kind, stable ref, and alias so destroy/clean-ssh can
 // match it: e.g. "# devcontainer-cli:managed v=1 kind=workspace ref=myproj alias=myproj".
-// host, when non-empty, records the --via jump target the block's docker calls
-// (host-key re-pin on reconnect) must be routed through; omitted for ordinary
-// local blocks so their marker output is unchanged.
+// host, when non-empty, records the jump target (--via, or --remote's printed
+// snippet) the block's docker calls must be routed through — clean-ssh checks a
+// --via block's liveness against this host instead of the local daemon; omitted
+// for ordinary local blocks so their marker output is unchanged.
 func ManagedComment(kind Kind, ref, alias, host string) string {
 	comment := fmt.Sprintf("# %s v=%s kind=%s ref=%s alias=%s", ManagedMarker, MarkerVersion, kind, ref, alias)
 	if host != "" {
@@ -124,7 +125,9 @@ const (
 	// the CLI (HostName = container IP).
 	ModeLocal Mode = "local"
 	// ModeRemote: the container lives on a remote docker host, reached via an ssh
-	// hop to that host (ProxyCommand).
+	// hop to that host (ProxyCommand). Used by both setup-ssh --remote and --via;
+	// either way the IP is resolved fresh via `docker inspect` on every
+	// connection, not baked in at setup time.
 	ModeRemote Mode = "remote"
 )
 
@@ -143,20 +146,13 @@ type ConfigBlockOptions struct {
 	// Hostname is the target for "HostName": required in ModeLocal (the container
 	// IP); unused in ModeRemote.
 	Hostname string
-	// Remote is the "USER@HOST" of the docker host used in the ProxyCommand ssh
-	// hop; required in ModeRemote, unused otherwise.
+	// Remote is the "USER@HOST" (or ssh-config alias) of the docker host used in
+	// the ProxyCommand ssh hop, and also — when Kind/Ref are set — the marker's
+	// "host=" field; required in ModeRemote, unused otherwise.
 	Remote string
 	// Container is the container name inspected for its IP inside the ProxyCommand;
 	// required in ModeRemote, unused otherwise.
 	Container string
-	// ProxyJump, when set, adds a "ProxyJump <value>" line to a ModeLocal stanza:
-	// Hostname is dialed *from* that jump host rather than directly, which is what
-	// lets it be an address (e.g. a container's docker-bridge IP) only reachable
-	// from there — no ports need publishing. Also recorded in the marker's
-	// "host=" field (see ManagedComment) so a later reconnect knows to route its
-	// host-key re-pin through the same jump. Unused in ModeRemote, which already
-	// carries its own hop in ProxyCommand.
-	ProxyJump string
 	// KnownHostsFile, when set, scopes host-key verification for this Host to that
 	// file instead of ~/.ssh/known_hosts. A devcontainer regenerates its host keys
 	// on every image rebuild while keeping the same container IP, so recording
@@ -182,7 +178,7 @@ func BuildConfigBlock(opts ConfigBlockOptions) (string, error) {
 		return "", err
 	}
 	if opts.Kind != "" && opts.Ref != "" {
-		return ManagedComment(opts.Kind, opts.Ref, opts.Alias, opts.ProxyJump) + "\n" + stanza, nil
+		return ManagedComment(opts.Kind, opts.Ref, opts.Alias, opts.Remote) + "\n" + stanza, nil
 	}
 	return stanza, nil
 }
@@ -238,9 +234,6 @@ func buildStanza(opts ConfigBlockOptions) (string, error) {
     User %s
     IdentityFile %s
     IdentitiesOnly yes`, opts.Alias, opts.Hostname, opts.User, opts.KeyPath)
-		if opts.ProxyJump != "" {
-			stanza += "\n    ProxyJump " + opts.ProxyJump
-		}
 		return withHostKeyOptions(stanza, opts.KnownHostsFile), nil
 
 	case ModeRemote:

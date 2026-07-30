@@ -194,21 +194,9 @@ func refreshHostKey(ssh service.SshService, alias, containerName string) {
 
 	host, err := ssh.AliasHostName(alias)
 	if err != nil || host == "" {
-		return // no HostName (e.g. a ProxyCommand block): nothing local to pin
+		return // no HostName (e.g. a ProxyCommand block, --via included): nothing local to pin
 	}
-
-	// A --via alias's docker calls (this re-pin included) must be routed
-	// through the same jump the block was originally set up against — its
-	// container only exists on that remote daemon, not this one. The marker
-	// remembers that target so --via never needs repeating on reconnect.
-	via := ""
-	if marker, ok, merr := ssh.ManagedMarkerForAlias(alias); merr == nil && ok {
-		via = marker.Host
-	}
-
-	if err := service.WithHostOverride(via, func() error {
-		return ssh.PinContainerHostKeys(containerName, host)
-	}); err != nil {
+	if err := ssh.PinContainerHostKeys(containerName, host); err != nil {
 		console.Debug("could not pin host key for %s: %v", host, err)
 	}
 }

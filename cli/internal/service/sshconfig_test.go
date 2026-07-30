@@ -423,9 +423,10 @@ func TestPruneManagedBlocks(t *testing.T) {
 	// Workspace api-3f9a still exists; container dc-ssh is gone → only dc-ssh is stale.
 	existsWorkspace := func(ref string) bool { return ref == "api-3f9a" }
 	existsContainer := func(string) bool { return false }
+	existsRemoteContainer := func(string, string) (bool, bool) { return true, true }
 
 	// Dry-run reports the stale block but leaves the file untouched.
-	stale, backup, err := svc.PruneManagedBlocks(existsWorkspace, existsContainer, true)
+	stale, _, backup, err := svc.PruneManagedBlocks(existsWorkspace, existsContainer, existsRemoteContainer, true)
 	if err != nil {
 		t.Fatalf("PruneManagedBlocks(dryRun): %v", err)
 	}
@@ -440,7 +441,7 @@ func TestPruneManagedBlocks(t *testing.T) {
 	}
 
 	// Real run strips the stale container block, keeps the live workspace block.
-	stale, backup, err = svc.PruneManagedBlocks(existsWorkspace, existsContainer, false)
+	stale, _, backup, err = svc.PruneManagedBlocks(existsWorkspace, existsContainer, existsRemoteContainer, false)
 	if err != nil {
 		t.Fatalf("PruneManagedBlocks: %v", err)
 	}
@@ -460,6 +461,160 @@ func TestPruneManagedBlocks(t *testing.T) {
 	}
 }
 
+func TestFindOrphanedMarkers(t *testing.T) {
+	// Reproduces the exact shape reported in production: a marker with no
+	// Host stanza directly beneath it (left behind by an incomplete
+	// append/replace), immediately followed by a second, well-formed copy of
+	// the same block.
+	content := "# devcontainer-cli:managed v=1 kind=workspace ref=myproj alias=myproj\n" +
+		"\n" +
+		"# devcontainer-cli:managed v=1 kind=workspace ref=myproj alias=myproj\n" +
+		"Host myproj\n" +
+		"    HostName 172.20.0.2\n"
+	orphans := FindOrphanedMarkers(content)
+	if len(orphans) != 1 {
+		t.Fatalf("FindOrphanedMarkers = %+v, want exactly 1 orphan", orphans)
+	}
+	if orphans[0].Kind != "workspace" || orphans[0].Ref != "myproj" {
+		t.Errorf("orphan = %+v, want kind=workspace ref=myproj", orphans[0])
+	}
+}
+
+func TestFindOrphanedMarkers_WellFormedBlockIsNotOrphaned(t *testing.T) {
+	if orphans := FindOrphanedMarkers(newFormatConfig); len(orphans) != 0 {
+		t.Errorf("expected no orphans in a well-formed config, got %+v", orphans)
+	}
+}
+
+// A duplicated/orphaned marker must be reported and removable by clean-ssh
+// even when the workspace/container it names is still perfectly alive — the
+// bug this guards against is exactly that: an orphan for a live target was
+// silently ignored because staleness was judged purely by target liveness.
+func TestPruneManagedBlocks_OrphanedDuplicateRemovedEvenWhenTargetAlive(t *testing.T) {
+	home := t.TempDir()
+	setHomeDir(t, home)
+	if err := os.MkdirAll(filepath.Join(home, ".ssh"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	path := managedSSHConfig(home)
+	content := "# devcontainer-cli:managed v=1 kind=workspace ref=myproj alias=myproj\n" +
+		"\n" +
+		"# devcontainer-cli:managed v=1 kind=workspace ref=myproj alias=myproj\n" +
+		"Host myproj\n" +
+		"    HostName 172.20.0.2\n" +
+		"    User devuser\n"
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	svc := SshService{Report: nopReporter{}}
+	alwaysAlive := func(string) bool { return true }
+	alwaysAliveRemote := func(string, string) (bool, bool) { return true, true }
+
+	stale, _, backup, err := svc.PruneManagedBlocks(alwaysAlive, alwaysAlive, alwaysAliveRemote, false)
+	if err != nil {
+		t.Fatalf("PruneManagedBlocks: %v", err)
+	}
+	if len(stale) != 1 || stale[0].Ref != "myproj" {
+		t.Fatalf("stale = %+v, want exactly one entry for myproj", stale)
+	}
+	if _, err := os.Stat(backup); err != nil {
+		t.Errorf("expected backup at %s: %v", backup, err)
+	}
+	data, _ := os.ReadFile(path)
+	if strings.Contains(string(data), "myproj") {
+		t.Errorf("expected the whole duplicated/orphaned entry gone, got:\n%s", data)
+	}
+}
+
+// A --via block's container lives on a different Docker daemon: it must be
+// checked with existsRemoteContainer (keyed by marker.Host), not the local
+// existsContainer, or clean-ssh treats every --via entry as stale on sight.
+func TestPruneManagedBlocks_ViaBlockCheckedAgainstRemoteHost(t *testing.T) {
+	home := t.TempDir()
+	setHomeDir(t, home)
+	if err := os.MkdirAll(filepath.Join(home, ".ssh"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	path := managedSSHConfig(home)
+	content := "# devcontainer-cli:managed v=1 kind=container ref=remote-ctr alias=remote-ctr host=rbpi\n" +
+		"Host remote-ctr\n" +
+		"    HostName 172.20.0.5\n" +
+		"    ProxyJump rbpi\n"
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	svc := SshService{Report: nopReporter{}}
+	localNeverHasIt := func(string) bool { return false }
+	remoteHasIt := func(host, name string) (bool, bool) { return host == "rbpi" && name == "remote-ctr", true }
+
+	// The container is invisible locally but alive on rbpi: must not be stale.
+	stale, unverified, _, err := svc.PruneManagedBlocks(localNeverHasIt, localNeverHasIt, remoteHasIt, true)
+	if err != nil {
+		t.Fatalf("PruneManagedBlocks: %v", err)
+	}
+	if len(stale) != 0 {
+		t.Errorf("--via block wrongly flagged stale despite existing on its remote host: %+v", stale)
+	}
+	if len(unverified) != 0 {
+		t.Errorf("expected no unverified blocks when the remote host is reachable: %+v", unverified)
+	}
+
+	// Once it's gone from rbpi too, it must be reported stale.
+	remoteGone := func(string, string) (bool, bool) { return false, true }
+	stale, _, _, err = svc.PruneManagedBlocks(localNeverHasIt, localNeverHasIt, remoteGone, true)
+	if err != nil {
+		t.Fatalf("PruneManagedBlocks: %v", err)
+	}
+	if len(stale) != 1 || stale[0].Ref != "remote-ctr" {
+		t.Fatalf("stale = %+v, want [remote-ctr] once gone from its remote host too", stale)
+	}
+}
+
+// A --via block whose remote host can't be reached at all must not be reported
+// stale (it might still be perfectly valid) nor silently disappear from
+// clean-ssh's output: it comes back as unverified so the user can still choose
+// to remove it, e.g. after they've renamed or deleted the underlying ssh
+// connection to that host.
+func TestPruneManagedBlocks_UnreachableViaHostIsUnverifiedNotStale(t *testing.T) {
+	home := t.TempDir()
+	setHomeDir(t, home)
+	if err := os.MkdirAll(filepath.Join(home, ".ssh"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	path := managedSSHConfig(home)
+	content := "# devcontainer-cli:managed v=1 kind=container ref=remote-ctr alias=remote-ctr host=rbpi\n" +
+		"Host remote-ctr\n" +
+		"    User devuser\n" +
+		"    ProxyCommand ssh rbpi \"nc -q0 172.20.0.5 22\"\n"
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	svc := SshService{Report: nopReporter{}}
+	localNeverHasIt := func(string) bool { return false }
+	unreachable := func(string, string) (bool, bool) { return true, false }
+
+	stale, unverified, backup, err := svc.PruneManagedBlocks(localNeverHasIt, localNeverHasIt, unreachable, false)
+	if err != nil {
+		t.Fatalf("PruneManagedBlocks: %v", err)
+	}
+	if len(stale) != 0 {
+		t.Errorf("expected nothing auto-removed for an unreachable --via host, got %+v", stale)
+	}
+	if backup != "" {
+		t.Errorf("expected no write/backup when nothing was removed, got %q", backup)
+	}
+	if len(unverified) != 1 || unverified[0].Ref != "remote-ctr" || unverified[0].Host != "rbpi" {
+		t.Fatalf("unverified = %+v, want [remote-ctr host=rbpi]", unverified)
+	}
+	data, _ := os.ReadFile(path)
+	if !strings.Contains(string(data), "Host remote-ctr") {
+		t.Error("the unverified block must not have been removed from the file")
+	}
+}
+
 func TestPruneManagedBlocksNoStale(t *testing.T) {
 	home := t.TempDir()
 	setHomeDir(t, home)
@@ -472,7 +627,8 @@ func TestPruneManagedBlocksNoStale(t *testing.T) {
 	}
 	svc := SshService{Report: nopReporter{}}
 	alive := func(string) bool { return true }
-	stale, backup, err := svc.PruneManagedBlocks(alive, alive, false)
+	aliveRemote := func(string, string) (bool, bool) { return true, true }
+	stale, _, backup, err := svc.PruneManagedBlocks(alive, alive, aliveRemote, false)
 	if err != nil {
 		t.Fatalf("PruneManagedBlocks: %v", err)
 	}
@@ -486,7 +642,8 @@ func TestPruneManagedBlocksMissingConfig(t *testing.T) {
 	setHomeDir(t, home)
 	svc := SshService{Report: nopReporter{}}
 	alive := func(string) bool { return true }
-	stale, _, err := svc.PruneManagedBlocks(alive, alive, false)
+	aliveRemote := func(string, string) (bool, bool) { return true, true }
+	stale, _, _, err := svc.PruneManagedBlocks(alive, alive, aliveRemote, false)
 	if err != nil {
 		t.Fatalf("PruneManagedBlocks (missing file): %v", err)
 	}
@@ -736,32 +893,6 @@ func TestAliasHostName(t *testing.T) {
 	got, err := svc.AliasHostName("devcontainer")
 	if err != nil || got != "172.18.0.2" {
 		t.Errorf("AliasHostName = %q,%v, want 172.18.0.2,nil", got, err)
-	}
-}
-
-func TestManagedMarkerForAlias(t *testing.T) {
-	home := t.TempDir()
-	setHomeDir(t, home)
-	if err := os.MkdirAll(filepath.Join(home, ".ssh"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	content := "# devcontainer-cli:managed v=1 kind=container ref=dc-ssh alias=dc-ssh host=me@remote-host\n" +
-		"Host dc-ssh\n    HostName 172.18.0.9\n    ProxyJump me@remote-host\n"
-	if err := os.WriteFile(managedSSHConfig(home), []byte(content), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	svc := SshService{Report: nopReporter{}}
-
-	m, ok, err := svc.ManagedMarkerForAlias("dc-ssh")
-	if err != nil || !ok {
-		t.Fatalf("ManagedMarkerForAlias = %+v,%v,%v, want a match", m, ok, err)
-	}
-	if m.Host != "me@remote-host" {
-		t.Errorf("ManagedMarkerForAlias Host = %q, want %q", m.Host, "me@remote-host")
-	}
-
-	if _, ok, err := svc.ManagedMarkerForAlias("no-such-alias"); err != nil || ok {
-		t.Errorf("ManagedMarkerForAlias(no-such-alias) = ok=%v,%v, want ok=false,nil", ok, err)
 	}
 }
 

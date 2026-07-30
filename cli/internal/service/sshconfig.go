@@ -789,24 +789,6 @@ func (s SshService) AliasHostName(alias string) (string, error) {
 	return HostNameForAlias(content, alias), nil
 }
 
-// ManagedMarkerForAlias returns the managed marker for the Host block
-// configured under alias, if any. It is what lets a plain reconnect (no --via
-// repeated) find the jump target a --via block's docker calls must route
-// through: refreshHostKey uses Host to re-pin host keys via the same remote
-// daemon the block was set up against. Reads both configs, like AliasHostName.
-func (s SshService) ManagedMarkerForAlias(alias string) (ManagedMarker, bool, error) {
-	content, err := s.managedAndUserConfigs()
-	if err != nil {
-		return ManagedMarker{}, false, err
-	}
-	for _, m := range ListManagedBlocks(content) {
-		if m.Alias == alias {
-			return m, true, nil
-		}
-	}
-	return ManagedMarker{}, false, nil
-}
-
 // ManagedHostName returns the address the managed block for kind + ref dials:
 // its alias' HostName. It reads the config once, and yields "" when the config,
 // the block, or its HostName is absent (a ProxyCommand block sets none). Callers
@@ -914,57 +896,122 @@ func (s SshService) RemoveManagedBlockByRef(kind sshdefaults.Kind, ref string) (
 	return true, backupPath, nil
 }
 
-// targetAlive reports whether a managed block's target still exists, using the
-// caller-supplied existence predicates. An unrecognized kind is treated as alive so
-// clean-ssh never removes a block it does not understand.
-func targetAlive(b ManagedMarker, existsWorkspace, existsContainer func(string) bool) bool {
+// targetAlive reports whether a managed block's target still exists and
+// whether that verdict could actually be verified. An unrecognized kind is
+// treated as alive+verified so clean-ssh never removes a block it does not
+// understand.
+func targetAlive(b ManagedMarker, existsWorkspace, existsContainer func(string) bool, existsRemoteContainer func(host, name string) (alive, verified bool)) (alive, verified bool) {
 	switch b.Kind {
 	case string(sshdefaults.KindContainer):
-		return existsContainer(b.Ref)
+		if b.Host != "" {
+			return existsRemoteContainer(b.Host, b.Ref)
+		}
+		return existsContainer(b.Ref), true
 	case string(sshdefaults.KindWorkspace):
-		return existsWorkspace(b.Ref)
+		return existsWorkspace(b.Ref), true
 	default:
-		return true
+		return true, true
 	}
 }
 
-// PruneManagedBlocks removes CLI managed Host blocks from the managed config whose target
-// no longer exists, as judged by the two existence predicates (keyed by workspace
-// name and container name respectively). It returns the blocks it removed (or, in
-// dryRun mode, would remove). A missing config, or nothing stale, is a no-op
-// returning an empty slice. When it rewrites the file it first backs the original up
-// to path+".bak" and returns that path. The predicates are injected so this stays
-// free of infra/registry dependencies and is table-testable.
-func (s SshService) PruneManagedBlocks(existsWorkspace, existsContainer func(string) bool, dryRun bool) (removed []ManagedMarker, backupPath string, err error) {
+// FindOrphanedMarkers returns every managed marker in content that has no
+// "Host <alias>" stanza directly beneath it — the shape BuildConfigBlock
+// always produces. Leftover garbage from an incomplete append/replace, it is
+// reported regardless of whether its workspace/container is otherwise alive:
+// no command can resolve or connect through it either way. Legacy markers
+// with no explicit alias= are skipped here; ListManagedBlocks recovers those
+// separately.
+func FindOrphanedMarkers(content string) []ManagedMarker {
+	lines := strings.Split(content, "\n")
+	var out []ManagedMarker
+	for i, line := range lines {
+		m, ok := parseManagedMarker(line)
+		if !ok || m.Alias == "" {
+			continue
+		}
+		if i+1 < len(lines) && slices.Contains(HostAliasesInLine(lines[i+1]), m.Alias) {
+			continue
+		}
+		out = append(out, m)
+	}
+	return out
+}
+
+// PruneManagedBlocks removes CLI managed Host blocks whose target no longer
+// exists, plus any orphaned/duplicate marker from FindOrphanedMarkers
+// regardless of target liveness. Results are deduplicated by kind+ref:
+// StripManagedBlockByRef already drops every occurrence for a ref in one
+// pass, so a live target's orphaned+valid copies collapse into a single
+// removal (the alias resets via the normal setup-ssh bootstrap on next
+// connect).
+//
+// A --via block whose remote host could not be reached is never removed —
+// deleting it could throw away still-valid access — but it is not silently
+// dropped either: it comes back in unverified so the caller (clean-ssh) can
+// show it separately and let the user remove it explicitly.
+//
+// A missing config, or nothing stale/unverified, is a no-op returning empty
+// slices. Rewrites back the original up to path+".bak" first. The predicates
+// are injected so this stays free of infra/registry dependencies and is
+// table-testable.
+func (s SshService) PruneManagedBlocks(existsWorkspace, existsContainer func(string) bool, existsRemoteContainer func(host, name string) (alive, verified bool), dryRun bool) (removed, unverified []ManagedMarker, backupPath string, err error) {
 	path, err := managedConfigPath()
 	if err != nil {
-		return nil, "", err
+		return nil, nil, "", err
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, "", nil
+			return nil, nil, "", nil
 		}
-		return nil, "", err
+		return nil, nil, "", err
 	}
 	content := string(data)
 
-	var stale []ManagedMarker
+	orphanRefs := make(map[string]bool)
+	for _, m := range FindOrphanedMarkers(content) {
+		orphanRefs[m.Kind+"|"+m.Ref] = true
+	}
+
+	var stale, unverifiedBlocks []ManagedMarker
+	seen := make(map[string]bool)
+	seenUnverified := make(map[string]bool)
 	for _, b := range ListManagedBlocks(content) {
-		if !targetAlive(b, existsWorkspace, existsContainer) {
-			stale = append(stale, b)
+		key := b.Kind + "|" + b.Ref
+		if orphanRefs[key] {
+			if !seen[key] {
+				seen[key] = true
+				stale = append(stale, b)
+			}
+			continue
 		}
+		if seen[key] || seenUnverified[key] {
+			continue
+		}
+		// verified must be checked before alive: on failure alive is just its
+		// fail-open default (true), not a real finding.
+		alive, verified := targetAlive(b, existsWorkspace, existsContainer, existsRemoteContainer)
+		if !verified {
+			seenUnverified[key] = true
+			unverifiedBlocks = append(unverifiedBlocks, b)
+			continue
+		}
+		if alive {
+			continue
+		}
+		seen[key] = true
+		stale = append(stale, b)
 	}
 	if len(stale) == 0 {
-		return nil, "", nil
+		return nil, unverifiedBlocks, "", nil
 	}
 	if dryRun {
-		return stale, "", nil
+		return stale, unverifiedBlocks, "", nil
 	}
 
 	backupPath = path + ".bak"
 	if err := os.WriteFile(backupPath, data, 0o600); err != nil {
-		return nil, "", err
+		return nil, nil, "", err
 	}
 	stripped := content
 	for _, b := range stale {
@@ -975,9 +1022,9 @@ func (s SshService) PruneManagedBlocks(existsWorkspace, existsContainer func(str
 		stripped += "\n"
 	}
 	if err := os.WriteFile(path, []byte(stripped), 0o600); err != nil {
-		return nil, "", err
+		return nil, nil, "", err
 	}
-	return stale, backupPath, nil
+	return stale, unverifiedBlocks, backupPath, nil
 }
 
 // RemoveManagedBlocks removes exactly the given managed blocks from the
