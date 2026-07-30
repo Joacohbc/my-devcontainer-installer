@@ -1,5 +1,5 @@
 // Package sshdefaults holds the shared SSH constants and the ssh config block
-// builder used by setup-ssh and the printed SSH instructions.
+// builder used by the 'ssh' command's setup flow and the printed SSH instructions.
 package sshdefaults
 
 import (
@@ -125,7 +125,7 @@ const (
 	// the CLI (HostName = container IP).
 	ModeLocal Mode = "local"
 	// ModeRemote: the container lives on a remote docker host, reached via an ssh
-	// hop to that host (ProxyCommand). Used by both setup-ssh --remote and --via;
+	// hop to that host (ProxyCommand). Used by both ssh --setup-external and --via;
 	// either way the IP is resolved fresh via `docker inspect` on every
 	// connection, not baked in at setup time.
 	ModeRemote Mode = "remote"

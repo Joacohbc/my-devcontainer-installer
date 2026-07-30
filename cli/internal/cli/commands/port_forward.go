@@ -25,7 +25,7 @@ inside a running container, so you can reach a service in the container on
 127.0.0.1 (never exposed on other interfaces). The session stays in the
 foreground; press Ctrl+C to close the tunnels.
 
-It tunnels through a devcontainer's SSH alias (set up with 'setup-ssh'), so that
+It tunnels through a devcontainer's SSH alias (set up with 'ssh'), so that
 alias must already be configured. Non-devcontainer containers are reached via a
 devcontainer used as an SSH jump host.
 
@@ -291,7 +291,7 @@ func resolveTarget(container pick.Container, aliases []string, containers []pick
 			*jumpHost = sel.Value
 		default:
 			if !interactive {
-				return "", "", fmt.Errorf("no devcontainer SSH alias found to tunnel through '%s'. Run 'setup-ssh' first or specify --alias", container.Name)
+				return "", "", fmt.Errorf("no devcontainer SSH alias found to tunnel through '%s'. Run 'ssh --setup' first or specify --alias", container.Name)
 			}
 			in, ierr := console.AskDefault(fmt.Sprintf("No devcontainer SSH alias found to reach '%s'. Enter SSH alias to tunnel through:", container.Name), "", func(v string) error {
 				if strings.TrimSpace(v) == "" {
@@ -435,7 +435,7 @@ func runPortForward(cmd *cobra.Command, args []string) error {
 			alias = candidate
 		case len(aliases) == 0:
 			if !interactive {
-				return fmt.Errorf("no SSH aliases found in config. Run 'setup-ssh' first or specify --alias")
+				return fmt.Errorf("no SSH aliases found in config. Run 'ssh --setup' first or specify --alias")
 			}
 			alias, err = console.AskDefault(fmt.Sprintf("No SSH alias found for '%s'. Enter alias manually:", container.Name), candidate, func(v string) error {
 				if strings.TrimSpace(v) == "" {

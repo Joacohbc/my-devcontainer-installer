@@ -14,11 +14,6 @@ func listSshHosts() []string {
 	return service.SshService{Report: ui.Console{}}.ConfigHostAliasesFromDisk()
 }
 
-// listContainers queries all container names from the running Docker daemon.
-func listContainers() []string {
-	return service.InspectService{Report: ui.Console{}}.ContainerNames()
-}
-
 // completeContainerPath suggests paths inside the container for shell completion,
 // splitting toComplete into a directory to list and a prefix to filter by.
 func completeContainerPath(containerName, toComplete string) ([]string, cobra.ShellCompDirective) {

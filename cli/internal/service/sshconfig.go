@@ -742,6 +742,34 @@ func (s SshService) ManagedAlias(kind sshdefaults.Kind, ref string) (alias strin
 	return alias, ok, nil
 }
 
+// ManagedViaHost returns the --via jump target recorded in the managed marker of
+// the block configuring alias (the marker's host= field), or "" when the block
+// is absent or is an ordinary local block (which records no host). It reads the
+// managed config only: --via blocks are always CLI-written there.
+//
+// It is what lets refreshHostKey re-pin a ProxyCommand block's host keys: such a
+// block has no HostName, so its container lives on a *remote* daemon and its keys
+// must be read through the daemon named here, not the local one.
+func (s SshService) ManagedViaHost(alias string) (string, error) {
+	path, err := managedConfigPath()
+	if err != nil {
+		return "", err
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", nil
+		}
+		return "", err
+	}
+	for _, m := range ListManagedBlocks(string(data)) {
+		if m.Alias == alias {
+			return m.Host, nil
+		}
+	}
+	return "", nil
+}
+
 // HostAliasConflict describes an existing Host block that already claims an
 // alias the CLI is about to write.
 type HostAliasConflict struct {
@@ -811,6 +839,58 @@ func (s SshService) ManagedHostName(kind sshdefaults.Kind, ref string) (string, 
 		return "", nil
 	}
 	return HostNameForAlias(content, alias), nil
+}
+
+// SetManagedHostName rewrites the HostName of the managed block for alias to
+// hostName, reporting whether anything changed. It only ever updates an existing
+// HostName line: a block that dials by name (a ProxyCommand block, which has
+// none) keeps its transport untouched. This is what keeps a local block anchored
+// to the container name — the block records the container's address, but that
+// cached address is refreshed from the name whenever a recreated container comes
+// back on a different IP.
+func (s SshService) SetManagedHostName(alias, hostName string) (changed bool, err error) {
+	path, err := managedConfigPath()
+	if err != nil {
+		return false, err
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	content, changed := setHostNameOption(string(data), alias, hostName)
+	if !changed {
+		return false, nil
+	}
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// setHostNameOption returns content with the HostName of alias' block set to
+// hostName, and whether it changed. A block with no HostName line is left as-is:
+// adding one to a ProxyCommand block would change how it connects.
+func setHostNameOption(content, alias, hostName string) (string, bool) {
+	lines := strings.Split(content, "\n")
+	start, end := hostBlockRange(lines, alias)
+	if start < 0 {
+		return content, false
+	}
+	for i := start + 1; i < end; i++ {
+		if !strings.EqualFold(optionKeyword(lines[i]), "HostName") {
+			continue
+		}
+		if fields := strings.Fields(lines[i]); len(fields) >= 2 && fields[1] == hostName {
+			return content, false
+		}
+		indent := lines[i][:len(lines[i])-len(strings.TrimLeft(lines[i], " \t"))]
+		lines[i] = indent + "HostName " + hostName
+		return strings.Join(lines, "\n"), true
+	}
+	return content, false
 }
 
 // HostIsReferenced reports whether any Host block still dials host. It guards

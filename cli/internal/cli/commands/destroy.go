@@ -25,14 +25,14 @@ directory and the devcontainer.config.json. After this the project is gone and
 would have to be regenerated from scratch. Use 'down' instead if you only want
 to stop containers but keep your files and data.
 
-It also prunes the SSH state setup-ssh wrote for the target: its managed
+It also prunes the SSH state 'ssh' wrote for the target: its managed
 managed Host block and the container host keys pinned for the address that
 block dialed, unless another Host block still dials it. Your own
 ~/.ssh/known_hosts is never touched.
 
 Pass --container to instead tear down a single loose container that isn't part
-of a workspace project (e.g. one set up via 'setup-ssh --container' or
-'ssh --container'): it stops and removes just that container and prunes the same
+of a workspace project (e.g. one set up via 'ssh --container'): it stops and
+removes just that container and prunes the same
 SSH state — there is no compose stack, project directory, or config file to
 remove in this mode.
 

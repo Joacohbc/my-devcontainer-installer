@@ -24,7 +24,7 @@ import (
 func TestNewRootCommand_RegistersAllSubcommands(t *testing.T) {
 	root := NewRootCommand("test")
 	want := []string{
-		"ssh", "setup-ssh", "clean", "port-forward", "run", "down", "destroy",
+		"ssh", "clean", "port-forward", "run", "down", "destroy",
 		"start", "stop", "restart", "update",
 		"upgrade-cli", "config", "cleanup-tips", "shell", "logs", "copy",
 		"up", "status", "ls", "info", "network", "context",
@@ -765,15 +765,15 @@ func TestSshCommandRegistered(t *testing.T) {
 	if sshCmd == nil {
 		t.Fatal("expected 'ssh' command to be registered")
 	}
-	for _, name := range []string{"yes", "no-interactive", "forward", "ports", "container", "via"} {
+	for _, name := range []string{"yes", "no-interactive", "forward", "ports", "container", "via", "setup", "setup-external", "key", "user"} {
 		if sshCmd.Flags().Lookup(name) == nil {
 			t.Errorf("expected 'ssh' to register --%s", name)
 		}
 	}
 }
 
-// Like 'setup-ssh --via', 'ssh --via' has no local compose project to target a
-// remote-only container with, so it must be paired with --container.
+// 'ssh --via' has no local compose project to target a remote-only container
+// with, so it must be paired with --container.
 func TestRunSsh_ViaRequiresContainer(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	cmd := newSshCommand()
@@ -997,11 +997,11 @@ func TestEmitRemoteConfig_ExportsSharedKey(t *testing.T) {
 	}
 }
 
-// -c is the shorthand for --container, matching every other command that
-// targets a container.
-func TestSetupSshCommand_ContainerShorthand(t *testing.T) {
+// -c is the shorthand for --container on 'ssh', matching every other command
+// that targets a container.
+func TestSshCommand_ContainerShorthand(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	cmd := newSetupSshCommand()
+	cmd := newSshCommand()
 	if err := cmd.Flags().Parse([]string{"-c", "my-container"}); err != nil {
 		t.Fatalf("parse flags: %v", err)
 	}
@@ -1017,12 +1017,12 @@ func TestSetupSshCommand_ContainerShorthand(t *testing.T) {
 	}
 }
 
-// --via is a separate flag from --remote, both string-valued and unset by
-// default; collectSetupSshFlags must read it into f.via without touching
-// f.remote.
+// --via is a separate flag from --setup-external, both string-valued and unset
+// by default; collectSetupSshFlags must read it into f.via without touching
+// f.remote (which only --setup-external fills).
 func TestCollectSetupSshFlags_Via(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	cmd := newSetupSshCommand()
+	cmd := newSshCommand()
 	if err := cmd.Flags().Parse([]string{"--via", "me@docker-host", "-c", "dc-ssh"}); err != nil {
 		t.Fatalf("parse flags: %v", err)
 	}
@@ -1038,40 +1038,56 @@ func TestCollectSetupSshFlags_Via(t *testing.T) {
 	}
 }
 
-// --remote and --via are two different ways of routing setup-ssh through a
-// second host (paste-a-private-key vs. client-driven); combining them is
-// ambiguous and must be rejected before any docker/ssh work starts.
-func TestRunSetupSsh_RemoteAndViaMutuallyExclusive(t *testing.T) {
+// --setup-external maps onto f.remote (the paste-a-private-key jump mode).
+func TestCollectSetupSshFlags_SetupExternal(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	cmd := newSetupSshCommand()
-	if err := cmd.Flags().Parse([]string{"--remote", "me@host", "--via", "me@host", "-c", "dc-ssh"}); err != nil {
+	cmd := newSshCommand()
+	if err := cmd.Flags().Parse([]string{"--setup-external", "me@docker-host"}); err != nil {
 		t.Fatalf("parse flags: %v", err)
 	}
-	err := runSetupSsh(cmd, nil)
+	f, err := collectSetupSshFlags(cmd)
+	if err != nil {
+		t.Fatalf("collectSetupSshFlags: %v", err)
+	}
+	if f.remote != "me@docker-host" {
+		t.Errorf("remote = %q, want %q", f.remote, "me@docker-host")
+	}
+}
+
+// --setup-external and --via are two different ways of routing setup through a
+// second host (paste-a-private-key vs. client-driven); combining them is
+// ambiguous and must be rejected before any docker/ssh work starts.
+func TestRunSshSetup_ExternalAndViaMutuallyExclusive(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	cmd := newSshCommand()
+	if err := cmd.Flags().Parse([]string{"--setup-external", "me@host", "--via", "me@host", "-c", "dc-ssh"}); err != nil {
+		t.Fatalf("parse flags: %v", err)
+	}
+	_, err := runSshSetup(cmd)
 	if err == nil || !strings.Contains(err.Error(), "mutually exclusive") {
-		t.Errorf("runSetupSsh error = %v, want a mutually-exclusive error", err)
+		t.Errorf("runSshSetup error = %v, want a mutually-exclusive error", err)
 	}
 }
 
 // --via has no local compose project to fall back on (the container lives on
 // a different host), so it must be paired with an explicit --container.
-func TestRunSetupSsh_ViaRequiresContainer(t *testing.T) {
+func TestRunSshSetup_ViaRequiresContainer(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	cmd := newSetupSshCommand()
+	cmd := newSshCommand()
 	if err := cmd.Flags().Parse([]string{"--via", "me@docker-host"}); err != nil {
 		t.Fatalf("parse flags: %v", err)
 	}
-	err := runSetupSsh(cmd, nil)
+	_, err := runSshSetup(cmd)
 	if err == nil || !strings.Contains(err.Error(), "--container") {
-		t.Errorf("runSetupSsh error = %v, want an error requiring --container", err)
+		t.Errorf("runSshSetup error = %v, want an error requiring --container", err)
 	}
 }
 
-// With no --key, setup-ssh defaults to the shared managed key under the CLI
+// With no --key, setup defaults to the shared managed key under the CLI
 // config dir, not a per-host ~/.ssh path.
 func TestCollectSetupSshFlags_DefaultsToManagedKey(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	cmd := newSetupSshCommand()
+	cmd := newSshCommand()
 	if err := cmd.Flags().Parse(nil); err != nil {
 		t.Fatalf("parse flags: %v", err)
 	}
@@ -1922,7 +1938,7 @@ func TestValidateAliasName(t *testing.T) {
 // IDENTIFICATION HAS CHANGED" against the user's global known_hosts.
 func TestBuildConfigBlock_LocalPinsManagedKnownHosts(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	cmd := newSetupSshCommand()
+	cmd := newSshCommand()
 	f, err := collectSetupSshFlags(cmd)
 	if err != nil {
 		t.Fatalf("collectSetupSshFlags: %v", err)

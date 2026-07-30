@@ -42,6 +42,48 @@ func (s SshService) ContainerRunning(name string) bool {
 	return false
 }
 
+// TargetState is a managed SSH target's liveness, resolved deterministically
+// from the owning docker daemon by container name — no SSH round-trip.
+type TargetState int
+
+const (
+	// TargetRunning: the container exists and is running.
+	TargetRunning TargetState = iota
+	// TargetStopped: the container exists but is not running.
+	TargetStopped
+	// TargetAbsent: no container of that name exists on the daemon.
+	TargetAbsent
+)
+
+// ContainerLiveness reports a container's state by name, read from whatever
+// docker daemon is currently in scope — the local one, or a --via daemon when
+// called under WithHostOverride. When running it also returns the container's
+// first network address, so a caller can refresh a block that dials by IP. A
+// non-nil error means the daemon itself could not be queried (an unreachable
+// --via host), which is distinct from a reachable daemon that has no such
+// container (TargetAbsent, nil): the first must not be treated as stale.
+func (s SshService) ContainerLiveness(name string) (state TargetState, ip string, err error) {
+	inspectSvc := InspectService{Report: s.Report}
+	containers, err := inspectSvc.ListContainers(false)
+	if err != nil {
+		return TargetAbsent, "", err
+	}
+	for _, c := range containers {
+		if c.Name != name {
+			continue
+		}
+		if c.State != string(StateRunning) {
+			return TargetStopped, "", nil
+		}
+		ips, ipErr := inspectSvc.ContainerNetworkIPs(name)
+		if ipErr != nil || len(ips) == 0 {
+			return TargetRunning, "", nil
+		}
+		return TargetRunning, ips[0].IP, nil
+	}
+	return TargetAbsent, "", nil
+}
+
 // ComposeUp brings the stack up detached.
 func (s SshService) ComposeUp(composeFile string) error {
 	status, err := docker.DockerCompose(composeFile, []string{"up", "-d"}, nil)

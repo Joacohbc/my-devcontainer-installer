@@ -84,7 +84,7 @@ func newConfigSSHKeyCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "ssh-key [path]",
 		Short: "Manage the single shared SSH key reused by every devcontainer",
-		Long: `devcontainer-cli config ssh-key — manage the one shared SSH key that 'setup-ssh'
+		Long: `devcontainer-cli config ssh-key — manage the one shared SSH key that 'ssh'
 installs into every devcontainer.
 
 With no argument it prints the configured key path and whether the key exists.
