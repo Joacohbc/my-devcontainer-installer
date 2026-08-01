@@ -62,6 +62,29 @@ func TestComposeCommand_AliasAndPassthrough(t *testing.T) {
 	}
 }
 
+func TestProjectRoot(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"plain project dir", "/home/joaco/apps/mcp", "/home/joaco/apps/mcp"},
+		{"inside build dir", "/home/joaco/apps/mcp/.dc_mcp/build", "/home/joaco/apps/mcp"},
+		{"inside project dir root", "/home/joaco/apps/mcp/.dc_mcp", "/home/joaco/apps/mcp"},
+		{"deeper under build", "/home/joaco/apps/mcp/.dc_mcp/build/scripts", "/home/joaco/apps/mcp"},
+		{"workspace with dashes", "/x/y/.dc_my-ws/build", "/x/y"},
+		{"bare .dc_ prefix is not a build segment", "/x/y/.dc_", "/x/y/.dc_"},
+		{"unrelated dotdir untouched", "/x/y/.docker/build", "/x/y/.docker/build"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := projectRoot(c.in); got != c.want {
+				t.Errorf("projectRoot(%q) = %q, want %q", c.in, got, c.want)
+			}
+		})
+	}
+}
+
 func TestCompleteComposeArgs(t *testing.T) {
 	// First positional token → compose verbs, prefix-filtered.
 	verbs, dir := completeComposeArgs(nil, nil, "ex")
