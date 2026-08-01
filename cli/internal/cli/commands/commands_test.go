@@ -68,13 +68,13 @@ func TestProjectRoot(t *testing.T) {
 		in   string
 		want string
 	}{
-		{"plain project dir", "/home/joaco/apps/mcp", "/home/joaco/apps/mcp"},
-		{"inside build dir", "/home/joaco/apps/mcp/.dc_mcp/build", "/home/joaco/apps/mcp"},
-		{"inside project dir root", "/home/joaco/apps/mcp/.dc_mcp", "/home/joaco/apps/mcp"},
-		{"deeper under build", "/home/joaco/apps/mcp/.dc_mcp/build/scripts", "/home/joaco/apps/mcp"},
-		{"workspace with dashes", "/x/y/.dc_my-ws/build", "/x/y"},
-		{"bare .dc_ prefix is not a build segment", "/x/y/.dc_", "/x/y/.dc_"},
-		{"unrelated dotdir untouched", "/x/y/.docker/build", "/x/y/.docker/build"},
+		{"plain project dir", "/projects/app", "/projects/app"},
+		{"inside build dir", "/projects/app/.dc_app/build", "/projects/app"},
+		{"inside project dir root", "/projects/app/.dc_app", "/projects/app"},
+		{"deeper under build", "/projects/app/.dc_app/build/scripts", "/projects/app"},
+		{"workspace with dashes", "/projects/app/.dc_my-ws/build", "/projects/app"},
+		{"bare .dc_ prefix is not a build segment", "/projects/app/.dc_", "/projects/app/.dc_"},
+		{"unrelated dotdir untouched", "/projects/app/.docker/build", "/projects/app/.docker/build"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
