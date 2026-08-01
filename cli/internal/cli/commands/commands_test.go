@@ -62,6 +62,44 @@ func TestComposeCommand_AliasAndPassthrough(t *testing.T) {
 	}
 }
 
+func TestCompleteComposeArgs(t *testing.T) {
+	// First positional token → compose verbs, prefix-filtered.
+	verbs, dir := completeComposeArgs(nil, nil, "ex")
+	if dir != cobra.ShellCompDirectiveNoFileComp {
+		t.Errorf("directive = %v, want NoFileComp", dir)
+	}
+	if len(verbs) != 1 || !strings.HasPrefix(verbs[0], "exec\t") {
+		t.Errorf("prefix 'ex' should complete to exec; got %v", verbs)
+	}
+
+	// Later tokens → the project's compose service keys (not container names).
+	tempDir := t.TempDir()
+	t.Chdir(tempDir)
+	workspace := resolveWorkspace(tempDir)
+	wsDir := filepath.Join(tempDir, ".dc_"+workspace, "build")
+	if err := os.MkdirAll(wsDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	doc := "services:\n  postgres:\n    image: postgres\n  redis:\n    image: redis\n"
+	if err := os.WriteFile(filepath.Join(wsDir, "docker-compose.yml"), []byte(doc), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	svcs, dir := completeComposeArgs(nil, []string{"exec"}, "")
+	if dir != cobra.ShellCompDirectiveNoFileComp {
+		t.Errorf("directive = %v, want NoFileComp", dir)
+	}
+	if !slices.Equal(svcs, []string{"postgres", "redis"}) {
+		t.Errorf("service completion = %v, want [postgres redis]", svcs)
+	}
+
+	// Service names are prefix-filtered too.
+	filtered, _ := completeComposeArgs(nil, []string{"logs"}, "re")
+	if !slices.Equal(filtered, []string{"redis"}) {
+		t.Errorf("prefix 're' = %v, want [redis]", filtered)
+	}
+}
+
 func TestCleanSubcommands_HaveAliases(t *testing.T) {
 	root := NewRootCommand("test")
 	var clean *cobra.Command

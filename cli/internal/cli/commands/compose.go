@@ -3,6 +3,8 @@ package commands
 import (
 	"fmt"
 	"os"
+	"sort"
+	"strings"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/ui"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/project"
@@ -38,8 +40,70 @@ straight through, use flags exactly as docker compose expects them (e.g.
 		SilenceUsage:       true,
 		DisableFlagParsing: true,
 		RunE:               runCompose,
+		ValidArgsFunction:  completeComposeArgs,
 	}
 	return cmd
+}
+
+// composeVerbs are the docker compose subcommands offered for the first
+// positional token. It is a useful curated subset, not the exhaustive list —
+// the passthrough still forwards anything the user types by hand.
+var composeVerbs = []string{
+	"exec\tRun a command in a running service",
+	"ps\tList the project's containers",
+	"logs\tView service output",
+	"top\tShow running processes",
+	"run\tRun a one-off command",
+	"restart\tRestart services",
+	"start\tStart services",
+	"stop\tStop services",
+	"up\tCreate and start services",
+	"down\tStop and remove the stack",
+	"build\tBuild service images",
+	"pull\tPull service images",
+	"config\tParse and render the compose file",
+	"port\tPrint a service's public port",
+	"kill\tForce-stop services",
+	"pause\tPause services",
+	"unpause\tUnpause services",
+	"cp\tCopy files to/from a service",
+	"events\tStream container events",
+}
+
+// completeComposeArgs completes the first token with compose verbs and every
+// later token with the project's compose service names — which is what
+// `docker compose <verb> <service>` expects, not container names. Filtering by
+// toComplete is done here (cobra passes candidates through verbatim).
+func completeComposeArgs(_ *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	if len(args) == 0 {
+		var out []string
+		for _, v := range composeVerbs {
+			if strings.HasPrefix(v, toComplete) {
+				out = append(out, v)
+			}
+		}
+		return out, cobra.ShellCompDirectiveNoFileComp
+	}
+	return composeServiceNames(toComplete), cobra.ShellCompDirectiveNoFileComp
+}
+
+// composeServiceNames returns the project's compose service keys matching
+// toComplete, or nil when the project has not been generated yet.
+func composeServiceNames(toComplete string) []string {
+	cwd, err := currentDir()
+	if err != nil {
+		return nil
+	}
+	paths := project.ProjectPaths(cwd, resolveWorkspace(cwd))
+	services := service.ReadComposeServices(paths.ComposeFile)
+	var out []string
+	for name := range services {
+		if strings.HasPrefix(name, toComplete) {
+			out = append(out, name)
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 func runCompose(cmd *cobra.Command, args []string) error {
