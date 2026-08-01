@@ -27,7 +27,7 @@ func TestNewRootCommand_RegistersAllSubcommands(t *testing.T) {
 		"ssh", "clean", "port-forward", "run", "down", "destroy",
 		"start", "stop", "restart", "update",
 		"upgrade-cli", "config", "cleanup-tips", "shell", "logs", "copy",
-		"up", "status", "ls", "info", "network", "context",
+		"up", "status", "ls", "info", "network", "context", "compose",
 	}
 	have := map[string]bool{}
 	for _, c := range root.Commands() {
@@ -37,6 +37,28 @@ func TestNewRootCommand_RegistersAllSubcommands(t *testing.T) {
 		if !have[name] {
 			t.Errorf("expected subcommand %q to be registered", name)
 		}
+	}
+}
+
+func TestComposeCommand_AliasAndPassthrough(t *testing.T) {
+	root := NewRootCommand("test")
+	var compose *cobra.Command
+	for _, c := range root.Commands() {
+		if c.Name() == "compose" {
+			compose = c
+			break
+		}
+	}
+	if compose == nil {
+		t.Fatal("compose command not registered")
+	}
+	if !slices.Contains(compose.Aliases, "dc") {
+		t.Errorf("expected compose to have alias %q, got %v", "dc", compose.Aliases)
+	}
+	// Flag parsing must be disabled so tokens like "-it" reach docker compose
+	// instead of being consumed (and rejected) by cobra.
+	if !compose.DisableFlagParsing {
+		t.Error("expected compose to disable flag parsing for passthrough")
 	}
 }
 

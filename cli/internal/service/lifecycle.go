@@ -19,6 +19,29 @@ func (s LifecycleService) Compose(composeFile, verb string) error {
 	return docker.DockerComposeOrThrow(composeFile, []string{verb}, nil)
 }
 
+// Passthrough runs an arbitrary "docker compose" subcommand for the project,
+// forwarding args verbatim after "-f <composeFile> [--env-file <envFile>]". It
+// backs the "compose"/"dc" escape hatch: any compose verb the CLI does not wrap
+// (exec, ps, top, config, kill, run, …) reaches every service in the generated
+// stack — including database services like postgres/redis/mongo — scoped to this
+// project. envFile is prepended as a top-level --env-file flag (before the
+// subcommand) when non-empty; pass "" to let compose fall back to its own .env
+// autoload. args is forwarded exactly as the user typed it.
+func (s LifecycleService) Passthrough(composeFile, envFile string, args []string) error {
+	composeArgs := args
+	if envFile != "" {
+		composeArgs = append([]string{"--env-file", envFile}, args...)
+	}
+	status, err := docker.DockerCompose(composeFile, composeArgs, nil)
+	if err != nil {
+		return err
+	}
+	if status != 0 {
+		return fmt.Errorf("docker compose exited with code %d", status)
+	}
+	return nil
+}
+
 // Up brings the stack up detached, optionally building images first.
 func (s LifecycleService) Up(composeFile, workspace string, build bool) error {
 	args := []string{"up", "-d"}
