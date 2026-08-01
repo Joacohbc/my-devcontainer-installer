@@ -1,8 +1,6 @@
 package commands
 
 import (
-	"fmt"
-	"os"
 	"sort"
 	"strings"
 
@@ -45,9 +43,8 @@ straight through, use flags exactly as docker compose expects them (e.g.
 	return cmd
 }
 
-// composeVerbs are the docker compose subcommands offered for the first
-// positional token. It is a useful curated subset, not the exhaustive list —
-// the passthrough still forwards anything the user types by hand.
+// composeVerbs are the compose subcommands offered for the first token; the
+// passthrough still forwards anything the user types by hand.
 var composeVerbs = []string{
 	"exec\tRun a command in a running service",
 	"ps\tList the project's containers",
@@ -70,10 +67,9 @@ var composeVerbs = []string{
 	"events\tStream container events",
 }
 
-// completeComposeArgs completes the first token with compose verbs and every
-// later token with the project's compose service names — which is what
-// `docker compose <verb> <service>` expects, not container names. Filtering by
-// toComplete is done here (cobra passes candidates through verbatim).
+// completeComposeArgs completes the first token with compose verbs and later
+// tokens with the project's compose service keys — what `docker compose <verb>
+// <service>` expects, not container names.
 func completeComposeArgs(_ *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 	if len(args) == 0 {
 		var out []string
@@ -107,9 +103,8 @@ func composeServiceNames(toComplete string) []string {
 }
 
 func runCompose(cmd *cobra.Command, args []string) error {
-	// Flag parsing is disabled so every token reaches docker compose. Surface our
-	// own help for a bare invocation or a lone -h/--help; a "<verb> --help" still
-	// forwards to docker compose.
+	// With flag parsing disabled, cobra won't intercept help, so handle it here;
+	// "<verb> --help" still forwards to docker compose.
 	if len(args) == 0 || (len(args) == 1 && (args[0] == "-h" || args[0] == "--help")) {
 		return cmd.Help()
 	}
@@ -118,19 +113,11 @@ func runCompose(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-
-	paths := project.ProjectPaths(cwd, resolveWorkspace(cwd))
-	if _, statErr := os.Stat(paths.ComposeFile); os.IsNotExist(statErr) {
-		return fmt.Errorf("no compose file found at %s. Run 'devcontainer-cli' to generate one first", paths.ComposeFile)
-	}
-
-	// Only pass --env-file when the generated .env is present; otherwise let
-	// compose fall back to its own autoload so a missing file isn't a hard error.
-	envFile := paths.EnvPath
-	if _, statErr := os.Stat(envFile); statErr != nil {
-		envFile = ""
+	composeFile, err := resolveProjectComposeFile(cwd)
+	if err != nil {
+		return err
 	}
 
 	svc := service.LifecycleService{Report: ui.Console{}}
-	return svc.Passthrough(paths.ComposeFile, envFile, args)
+	return svc.Passthrough(composeFile, resolveProjectEnvFile(cwd), args)
 }
