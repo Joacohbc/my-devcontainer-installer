@@ -42,6 +42,16 @@ func resolveProjectComposeFile(cwd string) (string, error) {
 	return paths.ComposeFile, nil
 }
 
+// resolveProjectEnvFile returns the project's generated .env path when it
+// exists, or "" so docker compose falls back to its own autoload.
+func resolveProjectEnvFile(cwd string) string {
+	envPath := project.ProjectPaths(cwd, resolveWorkspace(cwd)).EnvPath
+	if _, err := os.Stat(envPath); err != nil {
+		return ""
+	}
+	return envPath
+}
+
 func resolveDevcontainerContainer(cwd string) (string, error) {
 	workspace := resolveWorkspace(cwd)
 	paths := project.ProjectPaths(cwd, workspace)
