@@ -66,6 +66,74 @@ func TestLifecycleComposeVerb(t *testing.T) {
 	}
 }
 
+func TestLifecyclePassthrough(t *testing.T) {
+	cases := []struct {
+		name    string
+		envFile string
+		args    []string
+		// wantSeq is the ordered tail the recorded call must contain, starting at
+		// "compose": docker compose -f <file> [--env-file <env>] <args...>.
+		wantSeq []string
+	}{
+		{
+			name:    "with env file",
+			envFile: "/p/.dc_ws/build/.env",
+			args:    []string{"exec", "-it", "postgres", "psql"},
+			wantSeq: []string{"compose", "-f", "compose.yml", "--env-file", "/p/.dc_ws/build/.env", "exec", "-it", "postgres", "psql"},
+		},
+		{
+			name:    "no env file falls back to autoload",
+			envFile: "",
+			args:    []string{"ps"},
+			wantSeq: []string{"compose", "-f", "compose.yml", "ps"},
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			runner := &fakeRunner{status: 0}
+			defer useFakeDocker(runner)()
+
+			svc := LifecycleService{Report: nopReporter{}}
+			if err := svc.Passthrough("compose.yml", c.envFile, c.args); err != nil {
+				t.Fatalf("Passthrough: %v", err)
+			}
+			call := runner.callContaining(c.args[0])
+			if call == nil {
+				t.Fatalf("expected a compose call containing %q; calls=%v", c.args[0], runner.calls)
+			}
+			if !containsSubseq(call, c.wantSeq) {
+				t.Errorf("call %v does not contain ordered %v", call, c.wantSeq)
+			}
+			if c.envFile == "" && slices.Contains(call, "--env-file") {
+				t.Errorf("did not expect --env-file when envFile is empty; call=%v", call)
+			}
+		})
+	}
+}
+
+func TestLifecyclePassthroughNonZero(t *testing.T) {
+	runner := &fakeRunner{status: 2}
+	defer useFakeDocker(runner)()
+
+	svc := LifecycleService{Report: nopReporter{}}
+	if err := svc.Passthrough("compose.yml", "", []string{"config"}); err == nil {
+		t.Error("expected error on non-zero compose exit")
+	}
+}
+
+// containsSubseq reports whether want appears as a contiguous run inside call.
+func containsSubseq(call, want []string) bool {
+	if len(want) == 0 {
+		return true
+	}
+	for i := 0; i+len(want) <= len(call); i++ {
+		if slices.Equal(call[i:i+len(want)], want) {
+			return true
+		}
+	}
+	return false
+}
+
 func TestLifecycleContainerOps(t *testing.T) {
 	runner := &fakeRunner{status: 0}
 	defer useFakeDocker(runner)()
