@@ -175,6 +175,35 @@ USER_ALIASES
     chown "$DEV_UID:$DEV_GID" /home/devuser/.alias.sh 2>/dev/null || true
 fi
 
+# ── The image's own global agent skill ──────────────────────────────────────
+# Every image bakes ~/.devcontainer-skills/devcontainer-context/SKILL.md (see the
+# aliases Dockerfile module): a small always-installed skill telling an agent it
+# is inside a devcontainer and to read ~/CONTEXT.md / run
+# get-devcontainer-context before assuming anything about the environment.
+#
+# Agents look for global skills inside their own config dir, so link it into the
+# canonical ~/.agents/skills store (which the Antigravity bridge above already
+# follows) and into ~/.claude/skills. A SYMLINK is deliberate: those directories
+# usually live in the shared volume, so the link always resolves to THIS image's
+# copy instead of persisting a stale one for every other container. Runs after
+# the shared-config block so the volume symlinks already exist.
+BAKED_SKILLS_DIR=/home/devuser/.devcontainer-skills
+if [ -d "$BAKED_SKILLS_DIR/devcontainer-context" ]; then
+    for skills_dir in /home/devuser/.agents/skills /home/devuser/.claude/skills; do
+        skill_link="$skills_dir/devcontainer-context"
+        # Never clobber a real directory: the user may have installed their own
+        # skill under that name.
+        if [ -e "$skill_link" ] && [ ! -L "$skill_link" ]; then
+            echo "skills: keeping existing $skill_link (not a symlink)" >&2
+            continue
+        fi
+        mkdir -p "$skills_dir"
+        ln -sfn "$BAKED_SKILLS_DIR/devcontainer-context" "$skill_link"
+        chown -h "$DEV_UID:$DEV_GID" "$skill_link" 2>/dev/null || true
+        chown "$DEV_UID:$DEV_GID" "$skills_dir" 2>/dev/null || true
+    done
+fi
+
 # ── Auto-run non-interactive installer post-scripts ─────────────────────────
 # Scripts under post-script/start.d/ are the non-interactive installers
 # (Claude Code, Antigravity, Copilot, OpenCode, then the agent-wiring tools

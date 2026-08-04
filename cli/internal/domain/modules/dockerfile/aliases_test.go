@@ -7,7 +7,7 @@ import (
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 )
 
-// The aliases module must ship all three of its files — the two embedded
+// The aliases module must ship all four of its files — the three embedded
 // assets plus the generated CONTEXT.md — and wire both alias layers into every
 // rc file.
 func TestAliasesModuleRender(t *testing.T) {
@@ -17,16 +17,20 @@ func TestAliasesModuleRender(t *testing.T) {
 		"COPY alias.sh /home/devuser/.devcontainer_aliases.sh",
 		"COPY get-devcontainer-context.sh /home/devuser/.local/bin/get-devcontainer-context",
 		"COPY CONTEXT.md /home/devuser/CONTEXT.md",
+		"COPY skill-devcontainer-context.md /home/devuser/.devcontainer-skills/devcontainer-context/SKILL.md",
 	} {
 		if !strings.Contains(out, frag) {
 			t.Errorf("aliases module must contain %q:\n%s", frag, out)
 		}
 	}
 
-	// The context script must land executable, and the alias file world-readable.
+	// The context script must land executable, and the alias file, CONTEXT.md
+	// and the skill world-readable, all owned by devuser.
 	for _, frag := range []string{
 		"chmod 0755 /home/devuser/.local/bin/get-devcontainer-context",
 		"chmod 0644 /home/devuser/.devcontainer_aliases.sh",
+		"/home/devuser/.devcontainer-skills/devcontainer-context/SKILL.md && \\",
+		"chown -R devuser:devuser",
 	} {
 		if !strings.Contains(out, frag) {
 			t.Errorf("aliases module must set permissions (%q):\n%s", frag, out)
@@ -68,6 +72,25 @@ func TestAliasesModuleRenderIsOptionIndependent(t *testing.T) {
 	}
 }
 
+// The global agent skill is baked into the image under a CLI-owned directory,
+// never straight into an agent's own config dir: those are symlinks into the
+// shared volume, so an image-time write there would either be shadowed at
+// runtime or leak a stale skill into every other container. The entrypoint does
+// the linking.
+func TestAliasesModuleBakesSkillOutsideAgentConfigDirs(t *testing.T) {
+	out := AliasesModule.Render(nil)
+
+	skillPath := "/home/devuser/" + SkillsDir + "/" + ContextSkillName + "/SKILL.md"
+	if !strings.Contains(out, "COPY "+ContextSkillAsset+" "+skillPath) {
+		t.Errorf("the skill must be baked at %s:\n%s", skillPath, out)
+	}
+	for _, agentDir := range []string{"/home/devuser/.claude", "/home/devuser/.agents", "/home/devuser/.gemini"} {
+		if strings.Contains(out, agentDir) {
+			t.Errorf("the module must not write into %s (shared volume, wired at runtime):\n%s", agentDir, out)
+		}
+	}
+}
+
 func TestAliasesModuleSpec(t *testing.T) {
 	if AliasesModule.ID != types.ModuleAliases {
 		t.Errorf("unexpected module id %q", AliasesModule.ID)
@@ -80,7 +103,7 @@ func TestAliasesModuleSpec(t *testing.T) {
 	}
 	// CONTEXT.md is generated, not embedded, so it must NOT be in CopyFiles —
 	// preflight would look for it in the embedded FS and report it missing.
-	want := []string{"alias.sh", "get-devcontainer-context.sh"}
+	want := []string{"alias.sh", "get-devcontainer-context.sh", "skill-devcontainer-context.md"}
 	if len(AliasesModule.CopyFiles) != len(want) {
 		t.Fatalf("expected CopyFiles %v, got %v", want, AliasesModule.CopyFiles)
 	}

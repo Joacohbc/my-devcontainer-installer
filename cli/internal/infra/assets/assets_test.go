@@ -246,6 +246,82 @@ func TestEntrypointDoesNotTouchAgentMemoryFiles(t *testing.T) {
 	}
 }
 
+// The global skill baked into every image must declare the frontmatter an agent
+// needs to discover it (name + description) and must point at both halves of the
+// context: the static ~/CONTEXT.md and the live get-devcontainer-context.
+func TestContextSkillDocument(t *testing.T) {
+	body, err := os.ReadFile("skill-devcontainer-context.md")
+	if err != nil {
+		t.Fatalf("reading skill-devcontainer-context.md: %v", err)
+	}
+	doc := string(body)
+
+	if !strings.HasPrefix(doc, "---\n") {
+		t.Fatalf("the skill must open with YAML frontmatter:\n%s", doc)
+	}
+	end := strings.Index(doc[4:], "\n---\n")
+	if end == -1 {
+		t.Fatalf("the skill's frontmatter is not terminated:\n%s", doc)
+	}
+	frontmatter := doc[4 : end+4]
+	if !strings.Contains(frontmatter, "name: devcontainer-context") {
+		t.Errorf("frontmatter must declare `name: devcontainer-context`:\n%s", frontmatter)
+	}
+	// The description is what an agent matches on, so it must survive as a
+	// single line and say when to use the skill.
+	descIdx := strings.Index(frontmatter, "description: ")
+	if descIdx == -1 {
+		t.Fatalf("frontmatter must declare a description:\n%s", frontmatter)
+	}
+	desc := strings.SplitN(frontmatter[descIdx:], "\n", 2)[0]
+	if len(desc) < 80 {
+		t.Errorf("the description must explain when to use the skill, got %q", desc)
+	}
+
+	for _, frag := range []string{
+		"~/CONTEXT.md",
+		"get-devcontainer-context",
+		"Docker container",
+		"devcontainer-cli",
+	} {
+		if !strings.Contains(doc, frag) {
+			t.Errorf("the skill must mention %q:\n%s", frag, doc)
+		}
+	}
+}
+
+// The baked skill is linked into the agents' skills directories at runtime: a
+// symlink (never a copy) so the shared volume can never pin a stale skill, and
+// never on top of a real directory the user owns.
+func TestEntrypointInstallsContextSkill(t *testing.T) {
+	body, err := os.ReadFile(embeddedScript)
+	if err != nil {
+		t.Fatalf("reading %s: %v", embeddedScript, err)
+	}
+	script := string(body)
+
+	if !strings.Contains(script, "/home/devuser/.devcontainer-skills") {
+		t.Error("entrypoint must link the skill baked at ~/.devcontainer-skills")
+	}
+	for _, dir := range []string{"/home/devuser/.agents/skills", "/home/devuser/.claude/skills"} {
+		if !strings.Contains(script, dir) {
+			t.Errorf("entrypoint must install the skill into %s", dir)
+		}
+	}
+	if !strings.Contains(script, `ln -sfn "$BAKED_SKILLS_DIR/devcontainer-context" "$skill_link"`) {
+		t.Error("the skill must be symlinked, not copied, so a rebuilt image always wins")
+	}
+	if !strings.Contains(script, `if [ -e "$skill_link" ] && [ ! -L "$skill_link" ]; then`) {
+		t.Error("entrypoint must not clobber a real (non-symlink) skill of the same name")
+	}
+	// The .claude/.agents dirs become symlinks into the shared volume in the
+	// block above; linking earlier would create them as real dirs and the volume
+	// entries would never be wired up.
+	if shared, skill := strings.Index(script, "SHARED_CONFIG_ENTRIES"), strings.Index(script, "BAKED_SKILLS_DIR"); shared == -1 || skill == -1 || shared > skill {
+		t.Errorf("the skill links must be created after the shared-config block (shared=%d skill=%d)", shared, skill)
+	}
+}
+
 // The auto-start post-scripts must run as devuser (never root): the whole loop
 // is wrapped in a single 'su - devuser' login shell and backgrounded so SSH is
 // not blocked, with a per-script .done sentinel guarding re-runs.
