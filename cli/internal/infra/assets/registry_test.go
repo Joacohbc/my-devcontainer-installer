@@ -67,6 +67,28 @@ func TestBuildOnlyAssetsAreNotCopyable(t *testing.T) {
 	}
 }
 
+// The global agent skill is a build-time document: it is baked into the image by
+// the aliases module and linked into the agents' skills dirs by the entrypoint,
+// so copying it into a running container would only leave a stale duplicate.
+func TestContextSkillIsRegisteredAsADoc(t *testing.T) {
+	var found bool
+	for _, a := range Registry {
+		if a.File != "skill-devcontainer-context.md" {
+			continue
+		}
+		found = true
+		if a.Kind != KindDoc {
+			t.Errorf("the context skill must be KindDoc, got %q", a.Kind)
+		}
+		if _, ok := LookupCopyable(a.Name); ok {
+			t.Errorf("the context skill %q must not be copyable", a.Name)
+		}
+	}
+	if !found {
+		t.Error("the context skill must be listed in the registry")
+	}
+}
+
 func TestLookupCopyable(t *testing.T) {
 	a, ok := LookupCopyable("install-claude-code")
 	if !ok {

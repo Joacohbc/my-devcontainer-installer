@@ -166,6 +166,8 @@ devcontainer-cli config shared restore backup.zip              # Restaurar volum
 Cada contenedor trae `~/CONTEXT.md`, el documento que un agente de IA debería leer primero. **Se genera para cada proyecto** a partir de los módulos y servicios que elegiste, así que describe lo que realmente hay en esa imagen: que estás dentro de Docker, `uv` para Python, `pnpm` para JS, qué versión de Node quedó fija, y a qué host, puerto y credenciales responde cada base de datos (contenedores hermanos, nunca `localhost`). Elegir otros módulos cambia el documento.
 
 Para lo que sólo se sabe en tiempo de ejecución está `get-devcontainer-context`, que lista las herramientas realmente instaladas con sus versiones, los servicios alcanzables y el workspace resuelto.
+
+Además, cada imagen trae **preinstalada una skill global** llamada `devcontainer-context` (queda enlazada en `~/.agents/skills` y `~/.claude/skills`, así que los agentes la ven sin instalar nada). Es corta a propósito: le avisa al agente que está adentro de un contenedor Docker, le dice que lea `~/CONTEXT.md` y corra `get-devcontainer-context` antes de asumir nada, y le recuerda lo que vale en todos los contenedores (editar sólo en el workspace, que todo lo de afuera del workspace y `/home/devuser` se pierde al recrear, que hay `sudo` sin password, que no hay systemd, que sólo los puertos publicados se ven desde el host, y que las bases se alcanzan por el nombre del servicio de compose y no por `localhost`).
 ```bash
 devcontainer-cli context                 # Reporte legible del contenedor del proyecto
 devcontainer-cli context --json          # Salida estructurada, pensada para agentes

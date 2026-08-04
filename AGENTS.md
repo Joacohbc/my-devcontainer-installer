@@ -232,9 +232,10 @@ folded into `cli/ui`.)
 
 ### `internal/infra/assets` — Embedded shell scripts
 
-The `.sh` scripts are embedded with `//go:embed *.sh` (`embed.FS`) and live
-**next to** `assets.go` in `internal/infra/assets/` — `go:embed` cannot
-reference parent directories, so the scripts must be co-located. `Preflight`,
+The `.sh` scripts (plus the `.md` documents baked into the image — currently the
+global agent skill) are embedded with `//go:embed *.sh *.md` (`embed.FS`) and
+live **next to** `assets.go` in `internal/infra/assets/` — `go:embed` cannot
+reference parent directories, so the files must be co-located. `Preflight`,
 `AssetExists`, `ValidateRequiredFiles` and `IsGeneratedFile` materialize and
 guard them. There is no disk fallback and no separate bundling step — the embed
 is always present in the binary.
@@ -250,6 +251,9 @@ via `CopyableAssets()`/`CopyableNames()`/`LookupCopyable(name)`. The
 selected script and `docker cp`s it into `types.DevUserHome` (`/home/devuser`),
 left owned by devuser and executable. Add a new `.sh` → add a `Registry` entry
 (name, file, label) so it's selectable/completable; cover it in `registry_test.go`.
+The other two kinds are never copyable: `KindBuild` (build-time scripts) and
+`KindDoc` (markdown baked into the image, e.g. `skill-devcontainer-context.md`) —
+`docker cp`ing either would only leave a stale copy the next rebuild ignores.
 
 ### The two alias layers and `~/CONTEXT.md`
 
@@ -344,11 +348,47 @@ and prints that document plus a *live* inventory (tools + versions, workspace,
 reachable services), with `--json` for agents. Anything that can only be known at
 runtime belongs there, not in `CONTEXT.md`.
 
-`~/CONTEXT.md` is the **only** channel the CLI uses to brief agents. The
-entrypoint must never write into `~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md` or
-any other agent memory file: those live in the shared volume, they are the
-user's, and they are shared across containers with different toolsets.
+`~/CONTEXT.md` (plus the skill below, which does nothing but point at it) is the
+**only** channel the CLI uses to brief agents. The entrypoint must never write
+into `~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md` or any other agent memory file:
+those live in the shared volume, they are the user's, and they are shared across
+containers with different toolsets.
 `TestEntrypointDoesNotTouchAgentMemoryFiles` enforces this.
+
+### The always-installed `devcontainer-context` skill
+
+Every image ships one global agent skill. It is deliberately thin: it says the
+session is inside a `devcontainer-cli` Docker container, tells the agent to read
+`~/CONTEXT.md` and run `get-devcontainer-context` first, and lists the handful of
+rules that hold in every container (edit only in the workspace mount, anything
+outside it and `/home/devuser` is discarded on recreate, passwordless sudo,
+no systemd, only published ports are reachable, sibling services by compose
+service name, image changes belong on the host). It carries no per-project
+detail — that is `CONTEXT.md`'s job, and duplicating it here would go stale.
+
+| Piece | Where |
+|---|---|
+| Content | `internal/infra/assets/skill-devcontainer-context.md` (embedded, `KindDoc`) |
+| Baked into the image | `dockerfile.AliasesModule` → `~/.devcontainer-skills/devcontainer-context/SKILL.md` (constants `SkillsDir`/`ContextSkillName`/`ContextSkillAsset`) |
+| Installed for the agents | `entrypoint.sh` symlinks it into `~/.agents/skills/` and `~/.claude/skills/` |
+
+Two rules make this work and must not be "simplified":
+
+- **The image bakes it outside the agents' config dirs.** `~/.claude`, `~/.agents`
+  and friends are symlinks into the shared-config volume, so a build-time write
+  there is either shadowed at runtime or leaks a stale skill into every other
+  container. The Dockerfile only ever writes `~/.devcontainer-skills/`.
+- **The entrypoint links, never copies** — and only when nothing real is in the
+  way (a user-installed skill of the same name is kept, with a warning). The link
+  lives in the volume, its target is the running image, so a rebuild always wins.
+  The block runs *after* the shared-config block, or `mkdir -p ~/.claude/skills`
+  would create the home dir as a real directory and the volume symlinks would
+  never be wired up.
+
+It is in the aliases module's `CopyFiles`, so editing the markdown changes the
+fingerprint and rebuilds the image. Covered by `TestContextSkillDocument`,
+`TestEntrypointInstallsContextSkill`, `TestContextSkillIsRegisteredAsADoc` and
+`TestAliasesModuleBakesSkillOutsideAgentConfigDirs`.
 
 ### `internal/domain/types/labels.go` — Docker label constants
 
