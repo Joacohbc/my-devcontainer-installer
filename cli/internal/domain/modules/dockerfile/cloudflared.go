@@ -8,8 +8,10 @@ import (
 
 // TunnelTokenEnv is the env var a Cloudflare connector token is passed through.
 // Declared as RequiresEnv below so the generate wizard offers it; leaving it
-// empty is a supported answer — the user then logs in from inside the container
-// with `cloudflared tunnel login` instead of pre-seeding a token.
+// empty is a supported answer, and not a degraded one — cloudflared's quick
+// tunnels (`cloudflared tunnel --url …`) are free and need no account at all,
+// and a named tunnel can still be set up with `cloudflared tunnel login` from
+// inside the container.
 const TunnelTokenEnv = "TUNNEL_TOKEN"
 
 var CloudflaredModule = &ModuleSpec{
@@ -18,7 +20,7 @@ var CloudflaredModule = &ModuleSpec{
 	Category:   types.CategoryInfra,
 	UICategory: types.UICategoryDevTools,
 	RequiresEnv: []types.RequiredEnvVar{
-		{Name: TunnelTokenEnv, Prompt: "Cloudflare Tunnel token (leave empty to run 'cloudflared tunnel login' inside the container)"},
+		{Name: TunnelTokenEnv, Prompt: "Cloudflare Tunnel token (optional; empty = log in or use a free quick tunnel in the container)"},
 	},
 	Context: func(opts map[string]any) *types.ContextSection {
 		return &types.ContextSection{
@@ -27,13 +29,24 @@ var CloudflaredModule = &ModuleSpec{
 				"`cloudflared` is installed in this container, so a tunnel terminates here and",
 				"reaches `localhost` directly — no sibling container and no network hop.",
 				"",
-				"If `$"+TunnelTokenEnv+"` is set, the connector is already authorized and",
-				"`cloudflared tunnel run` picks it up (routing is configured in the Cloudflare",
-				"dashboard, not here). If it is empty, the tunnel needs a login first:",
-				"`cloudflared tunnel login`, whose certificate lands in `~/.cloudflared`.",
+				"There are three ways to run one, in order of how much setup they need:",
 				"",
-				"**It publishes to the public internet.** Do not start a tunnel unless you were",
-				"explicitly asked to.",
+				"- **Quick tunnel — free, no account, no login.**",
+				"  `cloudflared tunnel --url http://localhost:<port>` prints a random",
+				"  `https://<something>.trycloudflare.com` URL and starts serving that port",
+				"  immediately. Nothing to configure and no `$"+TunnelTokenEnv+"` needed. The",
+				"  URL is ephemeral: it dies with the process and is different every run, so it",
+				"  is the right choice for a one-off demo or webhook test, not for a stable",
+				"  address.",
+				"- **Named tunnel with a token.** If `$"+TunnelTokenEnv+"` is set the connector",
+				"  is already authorized and `cloudflared tunnel run` picks it up. Routing is",
+				"  configured in the Cloudflare dashboard, not here.",
+				"- **Named tunnel without a token.** Run `cloudflared tunnel login` first (the",
+				"  certificate lands in `~/.cloudflared`), then create and run the tunnel.",
+				"",
+				"**Every one of these publishes to the public internet with no authentication",
+				"in front of it**, quick tunnels included — anyone with the URL reaches the",
+				"port. Do not start a tunnel unless you were explicitly asked to.",
 			),
 		}
 	},

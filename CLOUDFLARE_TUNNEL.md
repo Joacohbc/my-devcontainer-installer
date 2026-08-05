@@ -12,15 +12,30 @@ en el wizard (categoría *Dev Tools*) o con:
 devcontainer-cli --with cloudflared
 ```
 
-Hay dos formas de autenticarlo:
+Hay **tres** formas de levantar un túnel, de menos a más configuración:
 
-*   **Con token**: el wizard pregunta por el `TUNNEL_TOKEN` al seleccionar el
-    módulo. Lo que respondas se guarda en el `.env` del proyecto y llega al
-    contenedor como variable de entorno, así que `cloudflared tunnel run` ya
-    queda autorizado.
-*   **Sin token**: deja la respuesta vacía y haz el login desde dentro del
-    contenedor con `cloudflared tunnel login` (el certificado queda en
-    `~/.cloudflared`).
+*   **Quick tunnel: gratis, sin cuenta y sin login.** No necesitas token ni
+    hacer login: desde dentro del contenedor,
+
+    ```bash
+    cloudflared tunnel --url http://localhost:8080
+    ```
+
+    imprime una URL `https://<algo>.trycloudflare.com` y empieza a servir ese
+    puerto al instante. La URL es **efímera**: se muere con el proceso y cambia
+    en cada ejecución, así que sirve para una demo puntual o probar un webhook,
+    no como dirección estable.
+*   **Túnel con nombre, con token**: el wizard pregunta por el `TUNNEL_TOKEN` al
+    seleccionar el módulo. Lo que respondas se guarda en el `.env` del proyecto y
+    llega al contenedor como variable de entorno, así que `cloudflared tunnel
+    run` ya queda autorizado. Es el único que da una URL fija y es el que usa el
+    resto de esta guía (Red Privada + WARP).
+*   **Túnel con nombre, sin token**: deja la respuesta del wizard vacía y haz el
+    login desde dentro del contenedor con `cloudflared tunnel login` (el
+    certificado queda en `~/.cloudflared`).
+
+> **⚠️ Los tres exponen el puerto a internet sin ninguna autenticación por
+> delante**, quick tunnels incluidos: cualquiera con la URL llega a tu servicio.
 
 > **Nota:** El túnel ahora termina **dentro** del devcontainer, así que alcanza
 > los puertos en `localhost` directamente, sin saltos de red. Como contrapartida,

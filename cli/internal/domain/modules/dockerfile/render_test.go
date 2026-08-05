@@ -296,16 +296,29 @@ func TestCloudflaredModuleRender(t *testing.T) {
 	if env.Default != "" {
 		t.Errorf("TUNNEL_TOKEN must have no default, got %q", env.Default)
 	}
-	// The context has to name both paths, since which one applies depends on
-	// whether the user supplied a token.
+	// The context has to name all three ways to run a tunnel, since which one
+	// applies depends on whether the user supplied a token — and an agent that
+	// only knows the token path would report "no token" as a dead end when a free
+	// quick tunnel needs no account at all.
 	sec := dockerfile.CloudflaredModule.Context(nil)
 	if sec == nil {
 		t.Fatal("cloudflared must document itself for agents")
 	}
-	for _, frag := range []string{"TUNNEL_TOKEN", "cloudflared tunnel login", "cloudflared tunnel run"} {
+	for _, frag := range []string{
+		"TUNNEL_TOKEN",
+		"cloudflared tunnel run",
+		"cloudflared tunnel login",
+		"cloudflared tunnel --url",
+		"trycloudflare.com",
+	} {
 		if !strings.Contains(sec.Body, frag) {
 			t.Errorf("cloudflared context must mention %q:\n%s", frag, sec.Body)
 		}
+	}
+	// A quick tunnel is still a public URL; the warning must not read as if it
+	// only applied to the token path.
+	if !strings.Contains(sec.Body, "public internet") {
+		t.Errorf("cloudflared context must warn that a tunnel is public:\n%s", sec.Body)
 	}
 }
 

@@ -74,8 +74,10 @@ Two properties are load-bearing:
 - **An empty answer is valid.** The wizard drops empty values, so the var never
   reaches the `.env` and arrives empty in the container (the `${NAME:-}` default
   keeps compose from warning about it). A module must therefore treat "unset" as
-  a supported state — for `cloudflared` that is "run `cloudflared tunnel login`
-  inside the container" rather than an error.
+  a supported state, and the module's `Context` has to say what that state *is*
+  rather than treating it as an error — for `cloudflared`, an empty token still
+  leaves the free no-account quick tunnel (`cloudflared tunnel --url …`) and
+  `cloudflared tunnel login`.
 - **The var is passed, never baked.** It is a compose `environment:` entry, not a
   Dockerfile `ENV`/`ARG`, so the token stays out of the image and out of the
   fingerprint — two projects with different tokens still share one image.
