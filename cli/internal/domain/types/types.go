@@ -39,6 +39,7 @@ const (
 	ModuleFfmpeg         ModuleID = "ffmpeg"
 	ModuleDod            ModuleID = "dod"
 	ModuleNgrok          ModuleID = "ngrok"
+	ModuleCloudflared    ModuleID = "cloudflared"
 	ModuleCleanup        ModuleID = "cleanup"
 )
 
@@ -49,7 +50,6 @@ const (
 	ServiceMongo        ServiceID = "mongo"
 	ServiceRedis        ServiceID = "redis"
 	ServicePostgres     ServiceID = "postgres"
-	ServiceTunnel       ServiceID = "tunnel"
 )
 
 type ModuleOptionType string

@@ -322,12 +322,23 @@ func GenerateCompose(config *types.DevcontainerConfig) (string, error) {
 	return types.GeneratedHeader + "\n" + string(out), nil
 }
 
+// unknownServiceError reports a service id with no catalog entry. The removed
+// "tunnel" service gets a pointer at its replacement: LoadConfig migrates stored
+// configs, but "--service tunnel" typed from an old script or README reaches
+// here untouched.
+func unknownServiceError(id string) error {
+	if id == legacyTunnelService {
+		return fmt.Errorf("compose service %q was replaced by the %q dockerfile module, which installs cloudflared inside the container: use --with %s", id, types.ModuleCloudflared, types.ModuleCloudflared)
+	}
+	return fmt.Errorf("unknown compose service: %s", id)
+}
+
 func collectDeclaredVolumes(enabledIDs []string) (map[string]bool, error) {
 	declared := make(map[string]bool)
 	for _, id := range enabledIDs {
 		svc := catalog.GetComposeService(types.ServiceID(id))
 		if svc == nil {
-			return nil, fmt.Errorf("unknown compose service: %s", id)
+			return nil, unknownServiceError(id)
 		}
 		for _, v := range svc.Volumes {
 			declared[v] = true
@@ -341,7 +352,7 @@ func (c composeContext) renderServices() (map[string]*compose.ServiceDef, error)
 	for _, id := range c.enabledIDs {
 		svc := catalog.GetComposeService(types.ServiceID(id))
 		if svc == nil {
-			return nil, fmt.Errorf("unknown compose service: %s", id)
+			return nil, unknownServiceError(id)
 		}
 		key, rendered := c.renderService(svc)
 		if rendered == nil {
@@ -409,6 +420,14 @@ func (c composeContext) configureDevcontainer(rendered *compose.ServiceDef) {
 
 	if c.dockerOutsideDockerEnabled() {
 		rendered.Volumes = append(rendered.Volumes, "/var/run/docker.sock:/var/run/docker.sock")
+	}
+	// Env vars declared by the selected Dockerfile modules are passed through to
+	// the container so a tool baked into the image can read its token from the
+	// project's .env. The devcontainer service renders no Environment of its own,
+	// so anything already there came from an earlier entry in this list.
+	if moduleEnv := devcontainerModuleEnv(c.config); len(moduleEnv) > 0 {
+		existing, _ := rendered.Environment.([]string)
+		rendered.Environment = append(existing, moduleEnv...)
 	}
 	// User-defined extra mounts are appended verbatim; named-volume sources are
 	// declared in the top-level volumes section (see volumes()).
@@ -599,16 +618,57 @@ func CollectRequiredPostScriptFiles(config *types.DevcontainerConfig) ([]string,
 	return files, nil
 }
 
+// CollectRequiredEnvVars returns the env vars the selected compose services and
+// Dockerfile modules need, in that order and without duplicates. Module-declared
+// vars are passed into the devcontainer itself (see devcontainerModuleEnv), so a
+// tool installed in the image can be pre-authorized from the project's .env.
 func CollectRequiredEnvVars(config *types.DevcontainerConfig) []types.RequiredEnvVar {
 	var out []types.RequiredEnvVar
-	for _, s := range config.Compose.Services {
-		svc := catalog.GetComposeService(s.ID)
-		if svc == nil {
-			continue
+	seen := make(map[string]bool)
+	add := func(vars []types.RequiredEnvVar) {
+		for _, v := range vars {
+			if seen[v.Name] {
+				continue
+			}
+			seen[v.Name] = true
+			out = append(out, v)
 		}
-		out = append(out, svc.RequiresEnv...)
+	}
+	for _, s := range config.Compose.Services {
+		if svc := catalog.GetComposeService(s.ID); svc != nil {
+			add(svc.RequiresEnv)
+		}
+	}
+	for _, m := range config.Dockerfile.Modules {
+		if mod := catalog.GetDockerfileModule(m.ID); mod != nil {
+			add(mod.RequiresEnv)
+		}
 	}
 	return out
+}
+
+// devcontainerModuleEnv renders the "NAME=${NAME:-}" entries the devcontainer
+// service needs so the selected modules' env vars reach the container. The
+// ":-" default keeps compose quiet (and the container's var empty) when the
+// value was left out of the .env, which is the "log in interactively instead"
+// path.
+func devcontainerModuleEnv(config *types.DevcontainerConfig) []string {
+	var env []string
+	seen := make(map[string]bool)
+	for _, m := range config.Dockerfile.Modules {
+		mod := catalog.GetDockerfileModule(m.ID)
+		if mod == nil {
+			continue
+		}
+		for _, v := range mod.RequiresEnv {
+			if seen[v.Name] {
+				continue
+			}
+			seen[v.Name] = true
+			env = append(env, fmt.Sprintf("%s=${%s:-}", v.Name, v.Name))
+		}
+	}
+	return env
 }
 
 func PlannedComposeNames(config *types.DevcontainerConfig) (containers []string, network string, volumes []string, err error) {
@@ -620,7 +680,7 @@ func PlannedComposeNames(config *types.DevcontainerConfig) (containers []string,
 	for _, id := range enabledIDs {
 		svc := catalog.GetComposeService(types.ServiceID(id))
 		if svc == nil {
-			return nil, "", nil, fmt.Errorf("unknown compose service: %s", id)
+			return nil, "", nil, unknownServiceError(id)
 		}
 		for _, v := range svc.Volumes {
 			declaredVolumes[v] = true

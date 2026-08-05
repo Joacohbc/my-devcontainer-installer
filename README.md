@@ -82,7 +82,7 @@ graph LR
 <details>
 <summary><b>3. Acceso Remoto Seguro (Cloudflare Tunnel)</b></summary>
 
-Acceso desde cualquier lugar mediante Cloudflare Zero Trust y cliente WARP sin abrir puertos en el router. (Ver [CLOUDFLARE_TUNNEL.md](CLOUDFLARE_TUNNEL.md)).
+Acceso desde cualquier lugar mediante Cloudflare Zero Trust y cliente WARP sin abrir puertos en el router. `cloudflared` se instala **dentro** del devcontainer (módulo `cloudflared`), así que el túnel alcanza `localhost` sin saltos de red. (Ver [CLOUDFLARE_TUNNEL.md](CLOUDFLARE_TUNNEL.md)).
 
 ```mermaid
 graph LR
@@ -97,15 +97,17 @@ graph LR
     subgraph LocalNetwork["Tu Red Local"]
         
         subgraph DockerEnv["Entorno Docker"]
-            Cloudflared["Cloudflared (Túnel)"]
-            DevContainer["🖥️ Devcontainer-SSH"]
+            subgraph DevContainer["🖥️ Devcontainer-SSH"]
+                Cloudflared["Cloudflared (Túnel)"]
+            end
             DBs[("🗄️ Bases de Datos")]
         end
     end
     
     Laptop -- "Túnel Seguro" --> ZeroTrust
     ZeroTrust -- "Túnel Encriptado" --> Cloudflared
-    Cloudflared -- "Ruteo IP Privada" --> DevContainer
+    Cloudflared -- "localhost" --> DevContainer
+    Cloudflared -- "Ruteo IP Privada" --> DBs
 ```
 </details>
 

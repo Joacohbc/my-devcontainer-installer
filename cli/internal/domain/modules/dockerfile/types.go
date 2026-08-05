@@ -3,14 +3,21 @@ package dockerfile
 import "github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 
 type ModuleSpec struct {
-	ID              types.ModuleID
-	Label           string
-	Category        types.DockerfileCategory
-	UICategory      types.UICategory
-	Always          bool
-	Requires        []types.ModuleID
-	Conflicts       []types.ModuleID
-	Options         []types.ModuleOption
+	ID         types.ModuleID
+	Label      string
+	Category   types.DockerfileCategory
+	UICategory types.UICategory
+	Always     bool
+	Requires   []types.ModuleID
+	Conflicts  []types.ModuleID
+	Options    []types.ModuleOption
+	// RequiresEnv are env vars this module's tool reads at runtime. The generate
+	// wizard prompts for each one and stores the answer in the project's .env;
+	// the devcontainer compose service then passes them through to the container
+	// (see configureDevcontainer). An empty answer is valid — the var is simply
+	// left out of the .env and reaches the container empty, so a module can
+	// treat "not configured" as "the user will authenticate interactively".
+	RequiresEnv     []types.RequiredEnvVar
 	CopyFiles       []string
 	PostScriptFiles func(opts map[string]any) []string
 	// PostScriptAutoStart marks this module's PostScriptFiles as non-interactive
