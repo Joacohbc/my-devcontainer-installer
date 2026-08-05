@@ -51,12 +51,18 @@ var DevcontainerService = &ServiceSpec{
 			volumes = append(volumes, ctx.SharedConfigMount)
 		}
 
+		var environment any
+		if len(ctx.ModuleEnv) > 0 {
+			environment = ctx.ModuleEnv
+		}
+
 		return &ServiceDef{
 			Image:         ctx.ImageName,
 			Build:         &BuildDef{Context: "."},
 			ContainerName: SSHServiceName,
 			Command:       "sleep infinity",
 			Restart:       "unless-stopped",
+			Environment:   environment,
 			Volumes:       volumes,
 			Ports:         ctx.Ports,
 			Networks:      []string{"local-network"},

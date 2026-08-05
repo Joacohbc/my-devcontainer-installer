@@ -407,6 +407,7 @@ func (c composeContext) renderContext(svc *compose.ServiceSpec, isDevcontainer b
 	}
 	if isDevcontainer {
 		rc.Ports = devcontainerPorts(c.config)
+		rc.ModuleEnv = devcontainerModuleEnv(c.config)
 		rc.WorkspaceDir = types.WorkspaceDir(c.workspace)
 		if types.SharedConfigEnabled(c.config) {
 			rc.SharedConfigMount = types.SharedConfigMount()
@@ -420,14 +421,6 @@ func (c composeContext) configureDevcontainer(rendered *compose.ServiceDef) {
 
 	if c.dockerOutsideDockerEnabled() {
 		rendered.Volumes = append(rendered.Volumes, "/var/run/docker.sock:/var/run/docker.sock")
-	}
-	// Env vars declared by the selected Dockerfile modules are passed through to
-	// the container so a tool baked into the image can read its token from the
-	// project's .env. The devcontainer service renders no Environment of its own,
-	// so anything already there came from an earlier entry in this list.
-	if moduleEnv := devcontainerModuleEnv(c.config); len(moduleEnv) > 0 {
-		existing, _ := rendered.Environment.([]string)
-		rendered.Environment = append(existing, moduleEnv...)
 	}
 	// User-defined extra mounts are appended verbatim; named-volume sources are
 	// declared in the top-level volumes section (see volumes()).
@@ -455,12 +448,7 @@ func (c composeContext) databaseDependencies() []string {
 }
 
 func (c composeContext) dockerOutsideDockerEnabled() bool {
-	for _, m := range c.config.Dockerfile.Modules {
-		if m.ID == types.ModuleDod {
-			return true
-		}
-	}
-	return false
+	return hasModule(c.config.Dockerfile.Modules, types.ModuleDod)
 }
 
 func (c composeContext) remapVolumes(mounts []string) []string {
@@ -619,54 +607,54 @@ func CollectRequiredPostScriptFiles(config *types.DevcontainerConfig) ([]string,
 }
 
 // CollectRequiredEnvVars returns the env vars the selected compose services and
-// Dockerfile modules need, in that order and without duplicates. Module-declared
-// vars are passed into the devcontainer itself (see devcontainerModuleEnv), so a
-// tool installed in the image can be pre-authorized from the project's .env.
+// Dockerfile modules need, services first and without duplicates. It drives the
+// generate wizard's prompt steps.
 func CollectRequiredEnvVars(config *types.DevcontainerConfig) []types.RequiredEnvVar {
-	var out []types.RequiredEnvVar
-	seen := make(map[string]bool)
-	add := func(vars []types.RequiredEnvVar) {
-		for _, v := range vars {
-			if seen[v.Name] {
-				continue
-			}
-			seen[v.Name] = true
-			out = append(out, v)
-		}
-	}
-	for _, s := range config.Compose.Services {
-		if svc := catalog.GetComposeService(s.ID); svc != nil {
-			add(svc.RequiresEnv)
-		}
-	}
-	for _, m := range config.Dockerfile.Modules {
-		if mod := catalog.GetDockerfileModule(m.ID); mod != nil {
-			add(mod.RequiresEnv)
-		}
-	}
-	return out
+	return dedupeEnvVars(append(serviceEnvVars(config), moduleEnvVars(config)...))
 }
 
-// devcontainerModuleEnv renders the "NAME=${NAME:-}" entries the devcontainer
-// service needs so the selected modules' env vars reach the container. The
-// ":-" default keeps compose quiet (and the container's var empty) when the
-// value was left out of the .env, which is the "log in interactively instead"
-// path.
-func devcontainerModuleEnv(config *types.DevcontainerConfig) []string {
-	var env []string
-	seen := make(map[string]bool)
+func serviceEnvVars(config *types.DevcontainerConfig) []types.RequiredEnvVar {
+	var vars []types.RequiredEnvVar
+	for _, s := range config.Compose.Services {
+		if svc := catalog.GetComposeService(s.ID); svc != nil {
+			vars = append(vars, svc.RequiresEnv...)
+		}
+	}
+	return vars
+}
+
+func moduleEnvVars(config *types.DevcontainerConfig) []types.RequiredEnvVar {
+	var vars []types.RequiredEnvVar
 	for _, m := range config.Dockerfile.Modules {
-		mod := catalog.GetDockerfileModule(m.ID)
-		if mod == nil {
+		if mod := catalog.GetDockerfileModule(m.ID); mod != nil {
+			vars = append(vars, mod.RequiresEnv...)
+		}
+	}
+	return vars
+}
+
+func dedupeEnvVars(vars []types.RequiredEnvVar) []types.RequiredEnvVar {
+	seen := make(map[string]bool, len(vars))
+	deduped := make([]types.RequiredEnvVar, 0, len(vars))
+	for _, v := range vars {
+		if seen[v.Name] {
 			continue
 		}
-		for _, v := range mod.RequiresEnv {
-			if seen[v.Name] {
-				continue
-			}
-			seen[v.Name] = true
-			env = append(env, fmt.Sprintf("%s=${%s:-}", v.Name, v.Name))
-		}
+		seen[v.Name] = true
+		deduped = append(deduped, v)
+	}
+	return deduped
+}
+
+// devcontainerModuleEnv renders the compose `environment:` entries that carry
+// the selected modules' env vars into the container. The "${NAME:-}" default is
+// what makes an unanswered var a supported state instead of a compose warning:
+// the value is simply absent from the .env and arrives empty.
+func devcontainerModuleEnv(config *types.DevcontainerConfig) []string {
+	vars := dedupeEnvVars(moduleEnvVars(config))
+	env := make([]string, len(vars))
+	for i, v := range vars {
+		env[i] = fmt.Sprintf("%s=${%s:-}", v.Name, v.Name)
 	}
 	return env
 }

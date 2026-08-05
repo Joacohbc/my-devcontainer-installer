@@ -7,11 +7,8 @@ import (
 )
 
 // TunnelTokenEnv is the env var a Cloudflare connector token is passed through.
-// Declared as RequiresEnv below so the generate wizard offers it; leaving it
-// empty is a supported answer, and not a degraded one — cloudflared's quick
-// tunnels (`cloudflared tunnel --url …`) are free and need no account at all,
-// and a named tunnel can still be set up with `cloudflared tunnel login` from
-// inside the container.
+// It keeps the name the removed "tunnel" compose service used, so a migrated
+// project's existing .env keeps working untouched.
 const TunnelTokenEnv = "TUNNEL_TOKEN"
 
 var CloudflaredModule = &ModuleSpec{

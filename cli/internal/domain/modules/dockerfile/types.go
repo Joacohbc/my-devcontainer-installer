@@ -12,11 +12,10 @@ type ModuleSpec struct {
 	Conflicts  []types.ModuleID
 	Options    []types.ModuleOption
 	// RequiresEnv are env vars this module's tool reads at runtime. The generate
-	// wizard prompts for each one and stores the answer in the project's .env;
-	// the devcontainer compose service then passes them through to the container
-	// (see configureDevcontainer). An empty answer is valid — the var is simply
-	// left out of the .env and reaches the container empty, so a module can
-	// treat "not configured" as "the user will authenticate interactively".
+	// wizard prompts for each one, the answer lands in the project's .env, and
+	// the devcontainer service passes it into the container. An empty answer is a
+	// supported state, not a missing one: the var stays out of the .env and
+	// arrives empty, so the module must work without it.
 	RequiresEnv     []types.RequiredEnvVar
 	CopyFiles       []string
 	PostScriptFiles func(opts map[string]any) []string

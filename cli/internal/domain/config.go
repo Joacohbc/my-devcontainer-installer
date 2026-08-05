@@ -53,34 +53,45 @@ const legacyTunnelService = "tunnel"
 // generate ("unknown compose service: tunnel"). The project's TUNNEL_TOKEN is
 // left untouched in cfg.Env — the module reads the same variable.
 func migrateTunnel(cfg *types.DevcontainerConfig) {
-	services := make([]types.SelectedService, 0, len(cfg.Compose.Services))
-	found := false
-	for _, s := range cfg.Compose.Services {
-		if s.ID == legacyTunnelService {
-			found = true
-			continue
-		}
-		services = append(services, s)
-	}
-	if !found {
+	remainingServices, hadTunnelService := removeService(cfg.Compose.Services, legacyTunnelService)
+	if !hadTunnelService {
 		return
 	}
-	cfg.Compose.Services = services
+	cfg.Compose.Services = remainingServices
 
 	// Remote-mode configs carry no modules (the prebuilt image decides what is
 	// installed), so there is nothing to migrate the service into.
 	if cfg.Mode == types.BuildModeRemote {
 		return
 	}
-	for _, m := range cfg.Dockerfile.Modules {
-		if m.ID == types.ModuleCloudflared {
-			return
-		}
+	if hasModule(cfg.Dockerfile.Modules, types.ModuleCloudflared) {
+		return
 	}
 	cfg.Dockerfile.Modules = append(cfg.Dockerfile.Modules, types.SelectedModule{
 		ID:      types.ModuleCloudflared,
 		Options: map[string]any{},
 	})
+}
+
+func removeService(services []types.SelectedService, id types.ServiceID) (remaining []types.SelectedService, removed bool) {
+	remaining = make([]types.SelectedService, 0, len(services))
+	for _, s := range services {
+		if s.ID == id {
+			removed = true
+			continue
+		}
+		remaining = append(remaining, s)
+	}
+	return remaining, removed
+}
+
+func hasModule(modules []types.SelectedModule, id types.ModuleID) bool {
+	for _, m := range modules {
+		if m.ID == id {
+			return true
+		}
+	}
+	return false
 }
 
 // dbclientLegacyIDs maps the legacy "dbclients" module's per-client option
