@@ -24,9 +24,10 @@ func TestBaseModuleRender(t *testing.T) {
 	}
 	// chmod + run + rm of the zsh installer must be a single consolidated RUN so
 	// the script is removed in the same layer it is used. Without a p10kStyle
-	// option, the script must run with no arguments (pre-existing behavior).
-	if !strings.Contains(out, "RUN chmod +x /tmp/zsh-installer.sh && \\\n    su - devuser -c \"/tmp/zsh-installer.sh\" && \\\n    rm /tmp/zsh-installer.sh") {
-		t.Errorf("zsh installer chmod/run/rm should be a single RUN:\n%s", out)
+	// option, the default style must still be installed — remote images are
+	// generated with --no-interactive, which never fills option defaults in.
+	if !strings.Contains(out, "RUN chmod +x /tmp/zsh-installer.sh && \\\n    su - devuser -c \"/tmp/zsh-installer.sh "+dockerfile.DefaultP10kStyle+"\" && \\\n    rm /tmp/zsh-installer.sh") {
+		t.Errorf("zsh installer chmod/run/rm should be a single RUN installing the default style:\n%s", out)
 	}
 	// sshd must keep long-lived sessions (e.g. a --via jump) alive and reclaim
 	// dead ones, via /etc/ssh/sshd_config rather than a runtime -o flag.
@@ -36,21 +37,39 @@ func TestBaseModuleRender(t *testing.T) {
 	if !strings.Contains(out, "/etc/ssh/sshd_config") {
 		t.Errorf("base must edit /etc/ssh/sshd_config for the keepalive settings:\n%s", out)
 	}
-	// An explicit "none" style must also run the script with no arguments.
+	// The default is a real preset, so the shell is themed on first login instead
+	// of dropping into `p10k configure`.
+	if dockerfile.DefaultP10kStyle == "none" {
+		t.Fatalf("default p10k style must be a real preset, got %q", dockerfile.DefaultP10kStyle)
+	}
+	offered := false
+	for _, c := range dockerfile.BaseModule.Options[0].Choices {
+		if c.Value == dockerfile.DefaultP10kStyle {
+			offered = true
+		}
+	}
+	if !offered {
+		t.Errorf("default p10k style %q is not one of the offered choices %v", dockerfile.DefaultP10kStyle, dockerfile.BaseModule.Options[0].Choices)
+	}
+	if dockerfile.BaseModule.Options[0].Default != dockerfile.DefaultP10kStyle {
+		t.Errorf("p10kStyle option default = %v, want %q", dockerfile.BaseModule.Options[0].Default, dockerfile.DefaultP10kStyle)
+	}
+	// "none" is the explicit opt-out: it must still run the script with no
+	// arguments so p10k stays unconfigured.
 	outNone := dockerfile.BaseModule.Render(map[string]any{"p10kStyle": "none"})
 	if !strings.Contains(outNone, `su - devuser -c "/tmp/zsh-installer.sh"`) {
 		t.Errorf("p10kStyle=none must run the zsh installer without arguments:\n%s", outNone)
 	}
 	// A recognized style must be forwarded as the script's argument.
-	outLean := dockerfile.BaseModule.Render(map[string]any{"p10kStyle": "lean"})
-	if !strings.Contains(outLean, `su - devuser -c "/tmp/zsh-installer.sh lean"`) {
-		t.Errorf("p10kStyle=lean must be forwarded to the zsh installer:\n%s", outLean)
+	outRainbow := dockerfile.BaseModule.Render(map[string]any{"p10kStyle": "rainbow"})
+	if !strings.Contains(outRainbow, `su - devuser -c "/tmp/zsh-installer.sh rainbow"`) {
+		t.Errorf("p10kStyle=rainbow must be forwarded to the zsh installer:\n%s", outRainbow)
 	}
-	// An unrecognized style must fall back to no arguments rather than injecting
+	// An unrecognized style must fall back to the default rather than injecting
 	// an arbitrary value into the shell command.
 	outBogus := dockerfile.BaseModule.Render(map[string]any{"p10kStyle": "not-a-real-style"})
-	if !strings.Contains(outBogus, `su - devuser -c "/tmp/zsh-installer.sh"`) {
-		t.Errorf("unrecognized p10kStyle must fall back to no arguments:\n%s", outBogus)
+	if !strings.Contains(outBogus, `su - devuser -c "/tmp/zsh-installer.sh `+dockerfile.DefaultP10kStyle+`"`) {
+		t.Errorf("unrecognized p10kStyle must fall back to the default style:\n%s", outBogus)
 	}
 	// devuser's UID/GID come from build args so a local-cached image can match
 	// the host owner of the workspace without a runtime remap; the stock Ubuntu
