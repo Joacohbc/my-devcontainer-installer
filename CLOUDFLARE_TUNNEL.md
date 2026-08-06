@@ -2,6 +2,50 @@
 
 Esta guía explica cómo configurar una **Red Privada** utilizando Cloudflare Tunnel y Docker. Esto permite acceder a tu entorno de desarrollo (`devcontainer-ssh`) y otros servicios de forma segura desde cualquier lugar utilizando el cliente WARP, sin exponer puertos a internet.
 
+## 0. Instalar cloudflared en el contenedor
+
+`cloudflared` es un **módulo del Dockerfile** (`cloudflared`), igual que `ngrok`:
+se instala **dentro** del devcontainer, no como contenedor hermano. Selecciónalo
+en el wizard (categoría *Dev Tools*) o con:
+
+```bash
+devcontainer-cli --with cloudflared
+```
+
+Hay **tres** formas de levantar un túnel, de menos a más configuración:
+
+*   **Quick tunnel: gratis, sin cuenta y sin login.** No necesitas token ni
+    hacer login: desde dentro del contenedor,
+
+    ```bash
+    cloudflared tunnel --url http://localhost:8080
+    ```
+
+    imprime una URL `https://<algo>.trycloudflare.com` y empieza a servir ese
+    puerto al instante. La URL es **efímera**: se muere con el proceso y cambia
+    en cada ejecución, así que sirve para una demo puntual o probar un webhook,
+    no como dirección estable.
+*   **Túnel con nombre, con token**: el wizard pregunta por el `TUNNEL_TOKEN` al
+    seleccionar el módulo. Lo que respondas se guarda en el `.env` del proyecto y
+    llega al contenedor como variable de entorno, así que `cloudflared tunnel
+    run` ya queda autorizado. Es el único que da una URL fija y es el que usa el
+    resto de esta guía (Red Privada + WARP).
+*   **Túnel con nombre, sin token**: deja la respuesta del wizard vacía y haz el
+    login desde dentro del contenedor con `cloudflared tunnel login` (el
+    certificado queda en `~/.cloudflared`).
+
+> **⚠️ Los tres exponen el puerto a internet sin ninguna autenticación por
+> delante**, quick tunnels incluidos: cualquiera con la URL llega a tu servicio.
+
+> **Nota:** El túnel ahora termina **dentro** del devcontainer, así que alcanza
+> los puertos en `localhost` directamente, sin saltos de red. Como contrapartida,
+> el túnel solo corre mientras el contenedor esté levantado.
+>
+> Versiones anteriores lo ofrecían como servicio de compose (`--service tunnel`),
+> que levantaba un contenedor `cloudflared` aparte. Ese servicio ya no existe: al
+> abrir un proyecto viejo la CLI lo convierte sola al módulo y conserva el
+> `TUNNEL_TOKEN` del `.env`.
+
 ## 1. Configuración de Red (Opcional)
 
 La CLI elige automáticamente una subred libre (preferentemente `172.25.0.0/28`) y la persiste en el `.env` generado. Si necesitas cambiar el rango después, edita el `.env` antes de iniciar los contenedores.
@@ -13,10 +57,10 @@ La CLI escribe algo como:
 ```bash
 DOCKER_SUBNET=172.25.0.0/28
 DEVCONTAINER_IP=172.25.0.14   # último host válido de la subred
-TUNNEL_TOKEN=tu_token_aqui    # solo si seleccionaste el servicio 'tunnel'
+TUNNEL_TOKEN=tu_token_aqui    # solo si diste un token al módulo 'cloudflared'
 ```
 
-*   **TUNNEL_TOKEN**: Tu token de Cloudflare Tunnel (la CLI lo pregunta si seleccionas `--service tunnel`).
+*   **TUNNEL_TOKEN**: Tu token de Cloudflare Tunnel (la CLI lo pregunta al seleccionar el módulo `cloudflared`; si lo dejas vacío no se escribe y usas `cloudflared tunnel login`).
 *   **DOCKER_SUBNET**: Rango que usará Docker. Default `172.25.0.0/28` (16 IPs). La CLI detecta colisiones y sugiere otra subred libre si hace falta.
 *   **DEVCONTAINER_IP**: IP fija reservada para el contenedor SSH, derivada de la subred. Útil porque queda estable entre reinicios.
 

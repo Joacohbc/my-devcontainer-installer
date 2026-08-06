@@ -24,9 +24,10 @@ func TestBaseModuleRender(t *testing.T) {
 	}
 	// chmod + run + rm of the zsh installer must be a single consolidated RUN so
 	// the script is removed in the same layer it is used. Without a p10kStyle
-	// option, the script must run with no arguments (pre-existing behavior).
-	if !strings.Contains(out, "RUN chmod +x /tmp/zsh-installer.sh && \\\n    su - devuser -c \"/tmp/zsh-installer.sh\" && \\\n    rm /tmp/zsh-installer.sh") {
-		t.Errorf("zsh installer chmod/run/rm should be a single RUN:\n%s", out)
+	// option, the default style must still be installed — remote images are
+	// generated with --no-interactive, which never fills option defaults in.
+	if !strings.Contains(out, "RUN chmod +x /tmp/zsh-installer.sh && \\\n    su - devuser -c \"/tmp/zsh-installer.sh "+dockerfile.DefaultP10kStyle+"\" && \\\n    rm /tmp/zsh-installer.sh") {
+		t.Errorf("zsh installer chmod/run/rm should be a single RUN installing the default style:\n%s", out)
 	}
 	// sshd must keep long-lived sessions (e.g. a --via jump) alive and reclaim
 	// dead ones, via /etc/ssh/sshd_config rather than a runtime -o flag.
@@ -36,21 +37,39 @@ func TestBaseModuleRender(t *testing.T) {
 	if !strings.Contains(out, "/etc/ssh/sshd_config") {
 		t.Errorf("base must edit /etc/ssh/sshd_config for the keepalive settings:\n%s", out)
 	}
-	// An explicit "none" style must also run the script with no arguments.
+	// The default is a real preset, so the shell is themed on first login instead
+	// of dropping into `p10k configure`.
+	if dockerfile.DefaultP10kStyle == "none" {
+		t.Fatalf("default p10k style must be a real preset, got %q", dockerfile.DefaultP10kStyle)
+	}
+	offered := false
+	for _, c := range dockerfile.BaseModule.Options[0].Choices {
+		if c.Value == dockerfile.DefaultP10kStyle {
+			offered = true
+		}
+	}
+	if !offered {
+		t.Errorf("default p10k style %q is not one of the offered choices %v", dockerfile.DefaultP10kStyle, dockerfile.BaseModule.Options[0].Choices)
+	}
+	if dockerfile.BaseModule.Options[0].Default != dockerfile.DefaultP10kStyle {
+		t.Errorf("p10kStyle option default = %v, want %q", dockerfile.BaseModule.Options[0].Default, dockerfile.DefaultP10kStyle)
+	}
+	// "none" is the explicit opt-out: it must still run the script with no
+	// arguments so p10k stays unconfigured.
 	outNone := dockerfile.BaseModule.Render(map[string]any{"p10kStyle": "none"})
 	if !strings.Contains(outNone, `su - devuser -c "/tmp/zsh-installer.sh"`) {
 		t.Errorf("p10kStyle=none must run the zsh installer without arguments:\n%s", outNone)
 	}
 	// A recognized style must be forwarded as the script's argument.
-	outLean := dockerfile.BaseModule.Render(map[string]any{"p10kStyle": "lean"})
-	if !strings.Contains(outLean, `su - devuser -c "/tmp/zsh-installer.sh lean"`) {
-		t.Errorf("p10kStyle=lean must be forwarded to the zsh installer:\n%s", outLean)
+	outRainbow := dockerfile.BaseModule.Render(map[string]any{"p10kStyle": "rainbow"})
+	if !strings.Contains(outRainbow, `su - devuser -c "/tmp/zsh-installer.sh rainbow"`) {
+		t.Errorf("p10kStyle=rainbow must be forwarded to the zsh installer:\n%s", outRainbow)
 	}
-	// An unrecognized style must fall back to no arguments rather than injecting
+	// An unrecognized style must fall back to the default rather than injecting
 	// an arbitrary value into the shell command.
 	outBogus := dockerfile.BaseModule.Render(map[string]any{"p10kStyle": "not-a-real-style"})
-	if !strings.Contains(outBogus, `su - devuser -c "/tmp/zsh-installer.sh"`) {
-		t.Errorf("unrecognized p10kStyle must fall back to no arguments:\n%s", outBogus)
+	if !strings.Contains(outBogus, `su - devuser -c "/tmp/zsh-installer.sh `+dockerfile.DefaultP10kStyle+`"`) {
+		t.Errorf("unrecognized p10kStyle must fall back to the default style:\n%s", outBogus)
 	}
 	// devuser's UID/GID come from build args so a local-cached image can match
 	// the host owner of the workspace without a runtime remap; the stock Ubuntu
@@ -248,6 +267,61 @@ func TestFfmpegModuleRender(t *testing.T) {
 	}
 }
 
+// cloudflared replaced the sibling "tunnel" compose service, so it installs the
+// binary into the image and declares the token it reads at runtime.
+func TestCloudflaredModuleRender(t *testing.T) {
+	out := dockerfile.CloudflaredModule.Render(nil)
+	if !strings.Contains(out, "apt-get install -y cloudflared") {
+		t.Errorf("cloudflared module must install the cloudflared package:\n%s", out)
+	}
+	if !strings.Contains(out, "signed-by=/etc/apt/keyrings/cloudflare-main.gpg") {
+		t.Errorf("cloudflared apt list must be signed by the installed keyring:\n%s", out)
+	}
+	// The declared env var is what the generator passes through to the container
+	// and what the wizard prompts for; without it the token can never arrive.
+	if len(dockerfile.CloudflaredModule.RequiresEnv) != 1 {
+		t.Fatalf("cloudflared must declare exactly its token env var, got %v", dockerfile.CloudflaredModule.RequiresEnv)
+	}
+	env := dockerfile.CloudflaredModule.RequiresEnv[0]
+	// The name must stay TUNNEL_TOKEN: it is what the removed tunnel service used,
+	// so a migrated project's existing .env keeps working.
+	if dockerfile.TunnelTokenEnv != "TUNNEL_TOKEN" {
+		t.Errorf("TunnelTokenEnv = %q, want TUNNEL_TOKEN", dockerfile.TunnelTokenEnv)
+	}
+	if env.Name != dockerfile.TunnelTokenEnv {
+		t.Errorf("cloudflared env var = %q, want %q", env.Name, dockerfile.TunnelTokenEnv)
+	}
+	// An empty token is a supported answer, so it must carry no Default that
+	// would silently pre-fill the prompt.
+	if env.Default != "" {
+		t.Errorf("TUNNEL_TOKEN must have no default, got %q", env.Default)
+	}
+	// The context has to name all three ways to run a tunnel, since which one
+	// applies depends on whether the user supplied a token — and an agent that
+	// only knows the token path would report "no token" as a dead end when a free
+	// quick tunnel needs no account at all.
+	sec := dockerfile.CloudflaredModule.Context(nil)
+	if sec == nil {
+		t.Fatal("cloudflared must document itself for agents")
+	}
+	for _, frag := range []string{
+		"TUNNEL_TOKEN",
+		"cloudflared tunnel run",
+		"cloudflared tunnel login",
+		"cloudflared tunnel --url",
+		"trycloudflare.com",
+	} {
+		if !strings.Contains(sec.Body, frag) {
+			t.Errorf("cloudflared context must mention %q:\n%s", frag, sec.Body)
+		}
+	}
+	// A quick tunnel is still a public URL; the warning must not read as if it
+	// only applied to the token path.
+	if !strings.Contains(sec.Body, "public internet") {
+		t.Errorf("cloudflared context must warn that a tunnel is public:\n%s", sec.Body)
+	}
+}
+
 func TestDatabaseClientModulesRender(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -314,6 +388,7 @@ func TestAptModulesIncludeStandardCleanup(t *testing.T) {
 		{"pnpm", dockerfile.PnpmModule, nil},
 		{"github-cli", dockerfile.GithubCliModule, nil},
 		{"ngrok", dockerfile.NgrokModule, nil},
+		{"cloudflared", dockerfile.CloudflaredModule, nil},
 		{"dod", dockerfile.DodModule, nil},
 		{"chrome", dockerfile.ChromeModule, nil},
 		{"java-temurin", dockerfile.JavaTemurinModule, nil},
@@ -371,6 +446,7 @@ func TestModuleRunLayerCounts(t *testing.T) {
 		{"zellij", dockerfile.ZellijModule, nil, 1},
 		{"github-cli", dockerfile.GithubCliModule, nil, 1},
 		{"ngrok", dockerfile.NgrokModule, nil, 1},
+		{"cloudflared", dockerfile.CloudflaredModule, nil, 1},
 		{"dod", dockerfile.DodModule, nil, 1},
 		{"chrome", dockerfile.ChromeModule, nil, 1},
 		{"java-temurin", dockerfile.JavaTemurinModule, nil, 1},

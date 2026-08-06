@@ -35,6 +35,10 @@ type RenderContext struct {
 	// "devcontainer-shared-config:/mnt/shared-config"). Empty means disabled.
 	// Only the devcontainer service reads it.
 	SharedConfigMount string
+	// ModuleEnv are the "NAME=${NAME:-}" entries the selected Dockerfile modules
+	// need passed into the container (see domain.devcontainerModuleEnv). Only the
+	// devcontainer service reads it — that is where the modules' binaries live.
+	ModuleEnv []string
 	// WorkspaceDir is the in-container path the project is mounted at (e.g.
 	// "/workspaces/myproj"). Empty defaults to "/workspace". Making it unique
 	// per project keeps the path-keyed history of Claude Code/Antigravity from

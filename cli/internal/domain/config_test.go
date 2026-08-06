@@ -123,6 +123,85 @@ func TestLoadConfig_MigratesLegacyDbclients(t *testing.T) {
 	}
 }
 
+// The "tunnel" compose service was replaced by the "cloudflared" Dockerfile
+// module. Configs written before the swap must keep generating: the service is
+// dropped (it no longer exists in the catalog, so it would be a hard error) and
+// the module takes its place, with TUNNEL_TOKEN carried over untouched.
+func TestLoadConfig_MigratesLegacyTunnelService(t *testing.T) {
+	cases := []struct {
+		name        string
+		body        string
+		wantModules []string
+	}{
+		{
+			name:        "local-cached gains the module",
+			body:        `{"mode":"local-cached","image":"x:local","workspace":"ws","compose":{"services":[{"id":"mongo"},{"id":"tunnel"}]},"env":{"TUNNEL_TOKEN":"tok"}}`,
+			wantModules: []string{"cloudflared"},
+		},
+		{
+			name:        "module already present is not duplicated",
+			body:        `{"mode":"local-cached","image":"x:local","workspace":"ws","dockerfile":{"modules":[{"id":"cloudflared"}]},"compose":{"services":[{"id":"tunnel"}]}}`,
+			wantModules: []string{"cloudflared"},
+		},
+		{
+			name:        "remote mode only drops the service",
+			body:        `{"mode":"remote","image":"x:latest","workspace":"ws","compose":{"services":[{"id":"tunnel"}]}}`,
+			wantModules: nil,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			if err := os.WriteFile(filepath.Join(dir, types.ConfigFile), []byte(tc.body), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			cfg, err := domain.LoadConfig(dir)
+			if err != nil {
+				t.Fatalf("LoadConfig: %v", err)
+			}
+			for _, s := range cfg.Compose.Services {
+				if s.ID == "tunnel" {
+					t.Error("legacy tunnel service survived migration")
+				}
+			}
+			var got []string
+			for _, m := range cfg.Dockerfile.Modules {
+				got = append(got, string(m.ID))
+			}
+			if len(got) != len(tc.wantModules) {
+				t.Fatalf("modules = %v, want %v", got, tc.wantModules)
+			}
+			for i, id := range tc.wantModules {
+				if got[i] != id {
+					t.Errorf("module[%d] = %q, want %q", i, got[i], id)
+				}
+			}
+			// The migrated config must still generate rather than fail on the
+			// service that no longer exists.
+			if _, err := domain.GenerateCompose(cfg); err != nil {
+				t.Errorf("GenerateCompose after migration: %v", err)
+			}
+		})
+	}
+
+	// A config that never used the tunnel keeps its services untouched.
+	dir := t.TempDir()
+	body := `{"mode":"local-cached","image":"x:local","workspace":"ws","compose":{"services":[{"id":"mongo"}]}}`
+	if err := os.WriteFile(filepath.Join(dir, types.ConfigFile), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := domain.LoadConfig(dir)
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if len(cfg.Compose.Services) != 1 || cfg.Compose.Services[0].ID != "mongo" {
+		t.Errorf("services = %v, want [mongo]", cfg.Compose.Services)
+	}
+	if len(cfg.Dockerfile.Modules) != 0 {
+		t.Errorf("modules = %v, want none", cfg.Dockerfile.Modules)
+	}
+}
+
 func TestLoadConfig_KeepsRemoteMode(t *testing.T) {
 	dir := t.TempDir()
 	body := `{"mode":"remote","image":"x:local","workspace":"ws"}`

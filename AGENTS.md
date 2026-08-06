@@ -37,7 +37,7 @@ Applies to:
   java_temurin, java_openjdk, golang, bun, pnpm, yarn, sqlite, dbclients, github_cli,
   ai_clis, zellij, cleanup, shell_init).
 - `internal/domain/modules/compose/*.go` — compose services (devcontainer, dind_engine,
-  mongo, redis, postgres, tunnel).
+  mongo, redis, postgres).
 - `internal/domain/catalog/catalog.go` — the module/service catalog.
 - `internal/domain/{generator,resolver,validators,config,project,images}.go` — generator core.
 - `internal/service/*.go` — every service method that adds/changes logic needs a matching
@@ -55,6 +55,32 @@ Applies to:
 4. **Validation**: new options get valid/invalid cases in `domain/validators_test.go`.
 5. **CLI flags / prompts**: new flags or prompts are exercised in
    `internal/cli/commands/commands_test.go`.
+6. **Runtime env vars**: a tool that reads a token/secret at runtime declares it
+   in the module's `RequiresEnv` (see below) — never hardcodes it in the
+   Dockerfile, which would bake it into a shared image layer.
+
+### Module-declared runtime env vars (`RequiresEnv`)
+
+`dockerfile.ModuleSpec.RequiresEnv` is how a tool installed in the image gets a
+value the user supplies per project. `domain.CollectRequiredEnvVars` folds
+service- and module-declared vars into one deduplicated list, which drives the
+generate wizard's prompt steps; answers land in `config.Env` → the generated
+`.env`. `domain.devcontainerModuleEnv` then emits one `NAME=${NAME:-}` entry on
+the **devcontainer** compose service, so the value reaches the container that
+actually has the binary.
+
+Two properties are load-bearing:
+
+- **An empty answer is valid.** The wizard drops empty values, so the var never
+  reaches the `.env` and arrives empty in the container (the `${NAME:-}` default
+  keeps compose from warning about it). A module must therefore treat "unset" as
+  a supported state, and the module's `Context` has to say what that state *is*
+  rather than treating it as an error — for `cloudflared`, an empty token still
+  leaves the free no-account quick tunnel (`cloudflared tunnel --url …`) and
+  `cloudflared tunnel login`.
+- **The var is passed, never baked.** It is a compose `environment:` entry, not a
+  Dockerfile `ENV`/`ARG`, so the token stays out of the image and out of the
+  fingerprint — two projects with different tokens still share one image.
 
 ---
 
@@ -556,8 +582,8 @@ three plus `BuildModes` and tests.
 2. **Full-image `--with` list** — `docker-image.yml` job `build-base` passes one
    id per Dockerfile module **except** `base`/`aliases`/`cleanup` (auto-applied) and
    `java-openjdk` (mutually exclusive with `java-temurin`; the full image uses
-   `java-temurin`). Compose-only modules (`postgres`, `redis`, `mongo`, `tunnel`)
-   never go in `--with`. Add a module → append its id here.
+   `java-temurin`). Compose-only services (`postgres`, `redis`, `mongo`) never go
+   in `--with`. Add a module → append its id here.
 2b. **Base cache image** — `docker-image.yml` job `build-base-cache` builds a
    minimal base (no `--preset`/`--with` → always-on `base`+`cleanup` only) and
    publishes `devcontainer-base:latest` with `cache-to: type=inline`. The

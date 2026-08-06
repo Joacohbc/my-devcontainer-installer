@@ -190,6 +190,22 @@ func TestGenerateDockerfile_NgrokModule(t *testing.T) {
 	assertContainsStr(t, df, "apt-get install -y ngrok", "ngrok")
 }
 
+// cloudflared is installed into the image (like ngrok) rather than run as a
+// sibling container, so a tunnel started here reaches localhost directly.
+func TestGenerateDockerfile_CloudflaredModule(t *testing.T) {
+	cfg := makeConfig(func(c *types.DevcontainerConfig) {
+		c.Dockerfile.Modules = []types.SelectedModule{{ID: types.ModuleCloudflared}}
+	})
+	df := mustGenerateDockerfile(t, cfg)
+	assertContainsStr(t, df, "pkg.cloudflare.com/cloudflare-main.gpg", "cloudflared")
+	assertContainsStr(t, df, "https://pkg.cloudflare.com/cloudflared any main", "cloudflared")
+	assertContainsStr(t, df, "apt-get install -y cloudflared", "cloudflared")
+	// The apt list must be signed by the keyring it just installed, and scoped to
+	// the build's architecture (images are built for amd64 and arm64).
+	assertContainsStr(t, df, "signed-by=/etc/apt/keyrings/cloudflare-main.gpg", "cloudflared")
+	assertContainsStr(t, df, "arch=$(dpkg --print-architecture)", "cloudflared")
+}
+
 func TestGenerateDockerfile_DodModule(t *testing.T) {
 	cfg := makeConfig(func(c *types.DevcontainerConfig) {
 		c.Dockerfile.Modules = []types.SelectedModule{{ID: "dod"}}
@@ -300,7 +316,7 @@ func TestGenerateDockerfile_RemoteModeReturnsEmpty(t *testing.T) {
 
 func TestGenerateCompose_ValidYAMLWithExpectedServices(t *testing.T) {
 	cfg := makeConfig(func(c *types.DevcontainerConfig) {
-		c.Compose.Services = []types.SelectedService{{ID: "mongo"}, {ID: "tunnel"}}
+		c.Compose.Services = []types.SelectedService{{ID: "mongo"}}
 		c.Compose.Subnet = "10.0.0.0/24"
 	})
 	yml := mustGenerateCompose(t, cfg)
@@ -317,9 +333,6 @@ func TestGenerateCompose_ValidYAMLWithExpectedServices(t *testing.T) {
 	}
 	if services["mongo"] == nil {
 		t.Error("expected mongo service")
-	}
-	if services["tunnel"] == nil {
-		t.Error("expected tunnel service")
 	}
 	if services["redis"] != nil {
 		t.Error("expected redis to be absent")
@@ -1019,7 +1032,10 @@ func TestGenerateCompose_DependsOnSortedRegardlessOfInputOrder(t *testing.T) {
 
 func TestGenerateCompose_DependsOnExcludesNonDatabaseServices(t *testing.T) {
 	cfg := makeConfig(func(c *types.DevcontainerConfig) {
-		c.Compose.Services = []types.SelectedService{{ID: "mongo"}, {ID: "tunnel"}}
+		c.Compose.Services = []types.SelectedService{{ID: "mongo"}}
+		// cloudflared is a Dockerfile module, not a sibling service: it must not
+		// add a compose service and so cannot show up in depends_on either.
+		c.Dockerfile.Modules = []types.SelectedModule{{ID: types.ModuleCloudflared}}
 		c.Compose.Subnet = "172.25.0.0/24"
 	})
 	yml := mustGenerateCompose(t, cfg)
@@ -1027,16 +1043,97 @@ func TestGenerateCompose_DependsOnExcludesNonDatabaseServices(t *testing.T) {
 	if err := yaml.Unmarshal([]byte(yml), &parsed); err != nil {
 		t.Fatalf("invalid YAML: %v", err)
 	}
-	devSvc := parsed["services"].(map[string]any)["devcontainer-ssh"].(map[string]any)
+	services := parsed["services"].(map[string]any)
+	if services["cloudflared"] != nil || services["tunnel"] != nil {
+		t.Errorf("cloudflared must not render a compose service, got %v", services)
+	}
+	devSvc := services["devcontainer-ssh"].(map[string]any)
 	deps, _ := devSvc["depends_on"].([]any)
 	if len(deps) != 1 || deps[0] != "mongo" {
-		t.Errorf("depends_on = %v, want [mongo] (tunnel is not a database)", deps)
+		t.Errorf("depends_on = %v, want [mongo]", deps)
+	}
+}
+
+// "--service tunnel" from an old script never passes through LoadConfig's
+// migration, so the error it hits must name the replacement.
+func TestGenerateCompose_RemovedTunnelServiceErrorPointsAtTheModule(t *testing.T) {
+	cfg := makeConfig(func(c *types.DevcontainerConfig) {
+		c.Compose.Services = []types.SelectedService{{ID: "tunnel"}}
+	})
+	_, err := domain.GenerateCompose(cfg)
+	if err == nil {
+		t.Fatal("expected an error for the removed tunnel service")
+	}
+	for _, frag := range []string{"tunnel", "cloudflared", "--with"} {
+		if !strings.Contains(err.Error(), frag) {
+			t.Errorf("error %q must mention %q", err, frag)
+		}
+	}
+	// Any other unknown id keeps the plain message.
+	other := makeConfig(func(c *types.DevcontainerConfig) {
+		c.Compose.Services = []types.SelectedService{{ID: "nope"}}
+	})
+	if _, err := domain.GenerateCompose(other); err == nil || !strings.Contains(err.Error(), "unknown compose service: nope") {
+		t.Errorf("unknown service error = %v, want the plain message", err)
+	}
+}
+
+// A module's RequiresEnv must reach the devcontainer container, with a "${X:-}"
+// default so an unset token is an empty value rather than a compose warning.
+func TestGenerateCompose_ModuleEnvReachesDevcontainer(t *testing.T) {
+	cfg := makeConfig(func(c *types.DevcontainerConfig) {
+		c.Dockerfile.Modules = []types.SelectedModule{{ID: types.ModuleCloudflared}}
+	})
+	yml := mustGenerateCompose(t, cfg)
+	var parsed map[string]any
+	if err := yaml.Unmarshal([]byte(yml), &parsed); err != nil {
+		t.Fatalf("invalid YAML: %v", err)
+	}
+	devSvc := parsed["services"].(map[string]any)["devcontainer-ssh"].(map[string]any)
+	env, _ := devSvc["environment"].([]any)
+	if len(env) != 1 || env[0] != "TUNNEL_TOKEN=${TUNNEL_TOKEN:-}" {
+		t.Errorf("environment = %v, want [TUNNEL_TOKEN=${TUNNEL_TOKEN:-}]", devSvc["environment"])
+	}
+
+	// Without the module there is nothing to pass through, so the key stays out
+	// of the compose file entirely.
+	bare := makeConfig(func(c *types.DevcontainerConfig) {})
+	var parsedBare map[string]any
+	if err := yaml.Unmarshal([]byte(mustGenerateCompose(t, bare)), &parsedBare); err != nil {
+		t.Fatalf("invalid YAML: %v", err)
+	}
+	bareSvc := parsedBare["services"].(map[string]any)["devcontainer-ssh"].(map[string]any)
+	if _, ok := bareSvc["environment"]; ok {
+		t.Errorf("devcontainer must declare no environment without a module asking for one: %v", bareSvc["environment"])
+	}
+}
+
+// CollectRequiredEnvVars drives the wizard's env prompts; it must see module
+// declarations, not just service ones, and must not ask twice for one name.
+func TestCollectRequiredEnvVars_ServicesAndModules(t *testing.T) {
+	cfg := makeConfig(func(c *types.DevcontainerConfig) {
+		c.Dockerfile.Modules = []types.SelectedModule{
+			{ID: types.ModuleCloudflared},
+			{ID: types.ModuleCloudflared},
+		}
+	})
+	vars := domain.CollectRequiredEnvVars(cfg)
+	if len(vars) != 1 || vars[0].Name != "TUNNEL_TOKEN" {
+		t.Fatalf("CollectRequiredEnvVars = %+v, want one TUNNEL_TOKEN entry", vars)
+	}
+	if vars[0].Prompt == "" {
+		t.Error("TUNNEL_TOKEN needs a prompt for the wizard to render a step")
+	}
+
+	none := domain.CollectRequiredEnvVars(makeConfig(func(c *types.DevcontainerConfig) {}))
+	if len(none) != 0 {
+		t.Errorf("CollectRequiredEnvVars = %+v, want none for a bare config", none)
 	}
 }
 
 func TestGenerateCompose_DeterministicAcrossRuns(t *testing.T) {
 	cfg := makeConfig(func(c *types.DevcontainerConfig) {
-		c.Compose.Services = []types.SelectedService{{ID: "mongo"}, {ID: "postgres"}, {ID: "redis"}, {ID: "tunnel"}}
+		c.Compose.Services = []types.SelectedService{{ID: "mongo"}, {ID: "postgres"}, {ID: "redis"}}
 		c.Compose.Subnet = "172.25.0.0/24"
 	})
 	first := mustGenerateCompose(t, cfg)

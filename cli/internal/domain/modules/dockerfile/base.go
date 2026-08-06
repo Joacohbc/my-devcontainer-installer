@@ -13,7 +13,7 @@ const UbuntuLTS = "24.04"
 // p10kStyles are the Powerlevel10k presets shipped upstream under
 // powerlevel10k/config/p10k-<style>.zsh. "none" leaves p10k unconfigured, so
 // the container drops into the interactive `p10k configure` wizard on first
-// login (the pre-existing behavior).
+// login.
 var p10kStyles = map[string]bool{
 	"none":    true,
 	"lean":    true,
@@ -21,6 +21,14 @@ var p10kStyles = map[string]bool{
 	"rainbow": true,
 	"pure":    true,
 }
+
+// DefaultP10kStyle is the style baked in when the option is absent or holds an
+// unrecognized value. It is deliberately a real preset rather than "none": the
+// remote images are generated with --no-interactive, which never fills option
+// defaults in, so a "none" fallback shipped every prebuilt image unconfigured
+// and dropped first-time users into the `p10k configure` wizard. Opting out is
+// still possible by selecting "none" explicitly.
+const DefaultP10kStyle = "lean"
 
 var BaseModule = &ModuleSpec{
 	ID:        types.ModuleBase,
@@ -40,7 +48,7 @@ var BaseModule = &ModuleSpec{
 				{Value: "rainbow", Label: "Rainbow"},
 				{Value: "pure", Label: "Pure"},
 			},
-			Default: "none",
+			Default: DefaultP10kStyle,
 		},
 	},
 	Context: func(opts map[string]any) *types.ContextSection {
@@ -60,7 +68,7 @@ var BaseModule = &ModuleSpec{
 	Render: func(opts map[string]any) string {
 		p10kStyle := types.StringOpt(opts, "p10kStyle", "")
 		if !p10kStyles[p10kStyle] {
-			p10kStyle = "none"
+			p10kStyle = DefaultP10kStyle
 		}
 		zshInstallerCmd := "/tmp/zsh-installer.sh"
 		if p10kStyle != "none" {

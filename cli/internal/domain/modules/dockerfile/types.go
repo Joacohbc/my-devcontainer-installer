@@ -3,14 +3,20 @@ package dockerfile
 import "github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 
 type ModuleSpec struct {
-	ID              types.ModuleID
-	Label           string
-	Category        types.DockerfileCategory
-	UICategory      types.UICategory
-	Always          bool
-	Requires        []types.ModuleID
-	Conflicts       []types.ModuleID
-	Options         []types.ModuleOption
+	ID         types.ModuleID
+	Label      string
+	Category   types.DockerfileCategory
+	UICategory types.UICategory
+	Always     bool
+	Requires   []types.ModuleID
+	Conflicts  []types.ModuleID
+	Options    []types.ModuleOption
+	// RequiresEnv are env vars this module's tool reads at runtime. The generate
+	// wizard prompts for each one, the answer lands in the project's .env, and
+	// the devcontainer service passes it into the container. An empty answer is a
+	// supported state, not a missing one: the var stays out of the .env and
+	// arrives empty, so the module must work without it.
+	RequiresEnv     []types.RequiredEnvVar
 	CopyFiles       []string
 	PostScriptFiles func(opts map[string]any) []string
 	// PostScriptAutoStart marks this module's PostScriptFiles as non-interactive

@@ -10,7 +10,7 @@ import (
 // Every service that declares a Context must produce a placeable section for a
 // bare RenderContext: a title with no body renders as a dangling heading.
 func TestServiceContextSectionsAreWellFormed(t *testing.T) {
-	for _, svc := range []*ServiceSpec{DevcontainerService, PostgresService, RedisService, MongoService, TunnelService} {
+	for _, svc := range []*ServiceSpec{DevcontainerService, PostgresService, RedisService, MongoService} {
 		if svc.Context == nil {
 			t.Errorf("service %q declares no Context; an agent cannot discover it", svc.ID)
 			continue

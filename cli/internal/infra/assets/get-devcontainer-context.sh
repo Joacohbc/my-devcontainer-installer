@@ -79,6 +79,7 @@ lsof|-v|lsof
 ffmpeg|-version|ffmpeg
 chromium|--version|Chromium
 ngrok|--version|ngrok
+cloudflared|--version|cloudflared
 claude|--version|Claude Code
 codex|--version|Codex CLI
 copilot|--version|GitHub Copilot CLI
