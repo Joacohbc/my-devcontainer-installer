@@ -55,24 +55,24 @@ type SyncResult struct {
 const syncHelperImage = "ubuntu:24.04"
 
 // sharedTargetsFunc defines `is_shared_target <home-relative-path>`, true when
-// the path lies inside one of the shared entries (ENTRY_SHARED_MAP holds every
+// the path lies inside one of the shared entries (ENTRY_SHARED_PAIRS holds every
 // entry as "<id>=<home-relative target>"). It is what tells a symlink pointing
 // at another persisted config (~/.claude/skills/x -> ~/.agents/skills/x) apart
 // from one pointing at something that only exists on the host.
 const sharedTargetsFunc = `is_shared_target() {
-  for _pair in $ENTRY_SHARED_MAP; do
-    _t="${_pair#*=}"
+  for _shared_pair in $ENTRY_SHARED_PAIRS; do
+    _shared_entry_target="${_shared_pair#*=}"
     case "$1" in
-      "$_t"|"$_t"/*) return 0 ;;
+      "$_shared_entry_target"|"$_shared_entry_target"/*) return 0 ;;
     esac
   done
   return 1
 }
 `
 
-// volumeAliasesFunc defines `ensure_volume_aliases`, which mirrors the home
-// layout at the volume root: every entry also gets a relative link under its
-// HOME-relative name (.claude -> claude, .config/gh -> ../gh, …).
+// volumeAliasesFunc defines `ensure_volume_aliases` and its helpers, which
+// mirror the home layout at the volume root: every entry also gets a relative
+// link under its HOME-relative name (.claude -> claude, .config/gh -> ../gh, …).
 //
 // The volume is flat (one dir per entry id) while the home it is symlinked
 // into is not, and ~/.claude is itself a link into that flat root — so a
@@ -82,21 +82,30 @@ const sharedTargetsFunc = `is_shared_target() {
 // link alive both when it is copied in from the host and when a tool inside a
 // container writes it straight onto the volume. Keep in sync with the matching
 // block in entrypoint.sh (which creates them on every container start).
-const volumeAliasesFunc = `ensure_volume_aliases() {
-  for _pair in $ENTRY_SHARED_MAP; do
-    _id="${_pair%%=*}"
-    _target="${_pair#*=}"
-    _alias="/vol/$_target"
-    if [ -e "$_alias" ] && [ ! -L "$_alias" ]; then continue; fi
-    mkdir -p "$(dirname "$_alias")"
-    _prefix=""
-    _dir="$(dirname "$_target")"
-    while [ "$_dir" != "." ] && [ "$_dir" != "/" ]; do
-      _prefix="../$_prefix"
-      _dir="$(dirname "$_dir")"
-    done
-    ln -sfn "$_prefix$_id" "$_alias"
-    if [ -n "$ENTRY_OWNER" ]; then chown -h "$ENTRY_OWNER" "$_alias" 2>/dev/null || true; fi
+const volumeAliasesFunc = `prefix_to_volume_root() {
+  _remaining_dir="$(dirname "$1")"
+  _parent_hops=""
+  while [ "$_remaining_dir" != "." ] && [ "$_remaining_dir" != "/" ]; do
+    _parent_hops="../$_parent_hops"
+    _remaining_dir="$(dirname "$_remaining_dir")"
+  done
+  printf '%s' "$_parent_hops"
+}
+
+ensure_volume_alias() {
+  _entry_id="$1"
+  _entry_target="$2"
+  _alias_path="/vol/$_entry_target"
+  if [ -e "$_alias_path" ] && [ ! -L "$_alias_path" ]; then return 0; fi
+  mkdir -p "$(dirname "$_alias_path")"
+  ln -sfn "$(prefix_to_volume_root "$_entry_target")$_entry_id" "$_alias_path"
+  if [ -n "$ENTRY_OWNER" ]; then chown -h "$ENTRY_OWNER" "$_alias_path" 2>/dev/null || true; fi
+  return 0
+}
+
+ensure_volume_aliases() {
+  for _alias_pair in $ENTRY_SHARED_PAIRS; do
+    ensure_volume_alias "${_alias_pair%%=*}" "${_alias_pair#*=}"
   done
   return 0
 }
@@ -129,43 +138,78 @@ const volumeAliasesFunc = `ensure_volume_aliases() {
 //     to error "cannot stat" here and failed the whole sync for entries like
 //     ~/.claude, where Claude Code leaves a dangling `debug/latest` pointer;
 //     leaving it dangling is no worse than it already was on the host.
-const fixSymlinksFunc = `fix_symlinks() {
-  _root="$1"; _src="$2"
-  # An unset host home must never degrade into the "/*" pattern below, which
-  # would match (and rewrite) every absolute link target.
-  _hh="${ENTRY_HOST_HOME:-/nonexistent-host-home}"
-  _list="$(mktemp)"
-  find "$_root" -type l > "$_list"
-  while IFS= read -r _link; do
-    [ -L "$_link" ] || continue
-    _rel="${_link#"$_root"}"
-    _rel="${_rel#/}"
-    _srclink="$_src/$_rel"
-    [ -L "$_srclink" ] || continue
-    _target="$(readlink "$_srclink")"
-    _absolute=1
-    case "$_target" in
-      "$_hh"/*) _target="/host/${_target#"$_hh"/}" ;;
-      /*) ;;
-      *) _target="$(dirname "$_srclink")/$_target"; _absolute=0 ;;
-    esac
-    _resolved="$(readlink -m "$_target")"
-    _home_rel=""
-    case "$_resolved" in
-      /host/*) _home_rel="${_resolved#/host/}" ;;
-    esac
-    if [ -n "$_home_rel" ] && is_shared_target "$_home_rel"; then
-      if [ "$_absolute" = 1 ]; then
-        rm -rf "$_link"
-        ln -sfn "$ENTRY_DEV_HOME/$_home_rel" "$_link"
-      fi
-      continue
-    fi
-    [ -e "$_resolved" ] || continue
-    rm -rf "$_link"
-    cp -a "$_resolved" "$_link"
-  done < "$_list"
-  rm -f "$_list"
+const fixSymlinksFunc = `UNMATCHABLE_HOST_HOME=/nonexistent-host-home
+
+symlink_target_is_absolute() {
+  case "$(readlink "$1")" in
+    /*) return 0 ;;
+  esac
+  return 1
+}
+
+resolve_symlink_in_source() {
+  _source_link_path="$1"
+  _raw_target="$(readlink "$_source_link_path")"
+  # An unset host home would leave the pattern below as a bare "/*", matching
+  # (and rewriting) every absolute link target.
+  _host_home="${ENTRY_HOST_HOME:-$UNMATCHABLE_HOST_HOME}"
+  case "$_raw_target" in
+    "$_host_home"/*) _raw_target="/host/${_raw_target#"$_host_home"/}" ;;
+    /*) ;;
+    *) _raw_target="$(dirname "$_source_link_path")/$_raw_target" ;;
+  esac
+  readlink -m "$_raw_target"
+}
+
+home_relative_path() {
+  case "$1" in
+    /host/*) printf '%s' "${1#/host/}" ;;
+  esac
+}
+
+source_link_of() {
+  _path_within_tree="${1#"$2"}"
+  printf '%s' "$3/${_path_within_tree#/}"
+}
+
+repoint_at_container_home() {
+  rm -rf "$1"
+  ln -sfn "$ENTRY_DEV_HOME/$2" "$1"
+}
+
+replace_with_real_copy() {
+  rm -rf "$1"
+  cp -a "$2" "$1"
+}
+
+fix_symlink() {
+  _copied_link="$1"
+  _source_link="$2"
+  [ -L "$_copied_link" ] || return 0
+  [ -L "$_source_link" ] || return 0
+
+  _resolved_target="$(resolve_symlink_in_source "$_source_link")"
+  _shared_entry_path="$(home_relative_path "$_resolved_target")"
+
+  if [ -n "$_shared_entry_path" ] && is_shared_target "$_shared_entry_path"; then
+    symlink_target_is_absolute "$_source_link" || return 0
+    repoint_at_container_home "$_copied_link" "$_shared_entry_path"
+    return 0
+  fi
+
+  [ -e "$_resolved_target" ] || return 0
+  replace_with_real_copy "$_copied_link" "$_resolved_target"
+}
+
+fix_symlinks() {
+  _copied_tree="$1"
+  _source_tree="$2"
+  _found_links="$(mktemp)"
+  find "$_copied_tree" -type l > "$_found_links"
+  while IFS= read -r _found_link; do
+    fix_symlink "$_found_link" "$(source_link_of "$_found_link" "$_copied_tree" "$_source_tree")"
+  done < "$_found_links"
+  rm -f "$_found_links"
   return 0
 }
 `
@@ -243,11 +287,12 @@ func (s SharedConfigService) SyncFromHost(entries []types.SharedConfigEntry, hos
 	return res, nil
 }
 
-// sharedEntryMap renders every shared entry as "<id>=<home-relative target>",
-// space-separated. The helper needs the WHOLE catalog, not just the entries
-// being synced: a link inside one entry routinely points into another, and the
-// volume aliases must exist for all of them regardless of what was requested.
-func sharedEntryMap() string {
+// renderSharedEntryPairs renders every shared entry as
+// "<id>=<home-relative target>", space-separated. The helper needs the WHOLE
+// catalog, not just the entries being synced: a link inside one entry routinely
+// points into another, and the volume aliases must exist for all of them
+// regardless of what was requested.
+func renderSharedEntryPairs() string {
 	pairs := make([]string, len(types.SharedConfigEntries))
 	for i, e := range types.SharedConfigEntries {
 		pairs[i] = e.ID + "=" + e.Target
@@ -276,7 +321,7 @@ func (s SharedConfigService) syncEntry(e types.SharedConfigEntry, hostHome, owne
 		// map says which targets are shared entries.
 		"-e", "ENTRY_HOST_HOME=" + strings.TrimSuffix(filepath.ToSlash(hostHome), "/"),
 		"-e", "ENTRY_DEV_HOME=" + types.DevUserHome,
-		"-e", "ENTRY_SHARED_MAP=" + sharedEntryMap(),
+		"-e", "ENTRY_SHARED_PAIRS=" + renderSharedEntryPairs(),
 		syncHelperImage, "sh", "-c", syncEntryScript,
 	})
 	if err != nil {

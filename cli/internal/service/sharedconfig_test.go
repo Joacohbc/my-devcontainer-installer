@@ -251,8 +251,8 @@ func TestSyncEntryScriptRunsTheSymlinkPasses(t *testing.T) {
 	}
 }
 
-// sharedEntryTarget is a small lookup helper for the script tests.
-func sharedEntryTarget(t *testing.T, id string) types.SharedConfigEntry {
+// lookupSharedConfigEntry is a fatal-on-miss lookup for the script tests.
+func lookupSharedConfigEntry(t *testing.T, id string) types.SharedConfigEntry {
 	t.Helper()
 	e, ok := types.SharedConfigEntryByID(id)
 	if !ok {
@@ -278,7 +278,7 @@ func runSyncEntryScript(t *testing.T, volDir, hostDir string, e types.SharedConf
 		"ENTRY_OWNER=",
 		"ENTRY_HOST_HOME="+hostDir,
 		"ENTRY_DEV_HOME="+types.DevUserHome,
-		"ENTRY_SHARED_MAP="+sharedEntryMap(),
+		"ENTRY_SHARED_PAIRS="+renderSharedEntryPairs(),
 	)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -289,10 +289,10 @@ func runSyncEntryScript(t *testing.T, volDir, hostDir string, e types.SharedConf
 	}
 }
 
-// realTempDir is t.TempDir() with symlinks resolved: the script compares
-// resolved paths against the /host prefix, and a /tmp that is itself a symlink
-// would make every comparison miss.
-func realTempDir(t *testing.T) string {
+// createPhysicalTempDir is t.TempDir() with symlinks resolved: the script
+// compares resolved paths against the /host prefix, and a /tmp that is itself a
+// symlink would make every comparison miss.
+func createPhysicalTempDir(t *testing.T) string {
 	t.Helper()
 	dir, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
@@ -313,17 +313,17 @@ func TestSyncEntryScriptFixesSymlinks(t *testing.T) {
 		t.Skip("sh not available")
 	}
 
-	vol := realTempDir(t)
-	host := realTempDir(t)
+	vol := createPhysicalTempDir(t)
+	host := createPhysicalTempDir(t)
 
-	mkdirAll := func(parts ...string) string {
+	createHostDir := func(parts ...string) string {
 		p := filepath.Join(append([]string{host}, parts...)...)
 		if err := os.MkdirAll(p, 0o755); err != nil {
 			t.Fatal(err)
 		}
 		return p
 	}
-	symlink := func(target string, parts ...string) {
+	createHostSymlink := func(target string, parts ...string) {
 		if err := os.Symlink(target, filepath.Join(append([]string{host}, parts...)...)); err != nil {
 			t.Fatal(err)
 		}
@@ -331,30 +331,30 @@ func TestSyncEntryScriptFixesSymlinks(t *testing.T) {
 
 	// The canonical global skills store, plus a config dir that links into it
 	// both ways round (relative, as skills.sh writes them, and absolute).
-	skill := mkdirAll(".agents", "skills", "wayfinder")
-	if err := os.WriteFile(filepath.Join(skill, "SKILL.md"), []byte("skill"), 0o644); err != nil {
+	skillDir := createHostDir(".agents", "skills", "wayfinder")
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("skill"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	mkdirAll(".claude", "skills")
-	symlink("../../.agents/skills/wayfinder", ".claude", "skills", "relative-shared")
-	symlink(filepath.Join(host, ".agents", "skills", "wayfinder"), ".claude", "skills", "absolute-shared")
+	createHostDir(".claude", "skills")
+	createHostSymlink("../../.agents/skills/wayfinder", ".claude", "skills", "relative-shared")
+	createHostSymlink(filepath.Join(host, ".agents", "skills", "wayfinder"), ".claude", "skills", "absolute-shared")
 
 	// A link that stays inside this entry, one pointing at content that is NOT
 	// a shared entry (only reachable by copying it), and a dangling one.
 	if err := os.WriteFile(filepath.Join(host, ".claude", "settings.json"), []byte("{}"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	symlink("../settings.json", ".claude", "skills", "internal")
-	outside := mkdirAll("projects", "tool")
-	if err := os.WriteFile(filepath.Join(outside, "data.txt"), []byte("outside"), 0o644); err != nil {
+	createHostSymlink("../settings.json", ".claude", "skills", "internal")
+	nonSharedDir := createHostDir("projects", "tool")
+	if err := os.WriteFile(filepath.Join(nonSharedDir, "data.txt"), []byte("outside"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	symlink("../projects/tool", ".claude", "outside")
-	mkdirAll(".claude", "debug")
-	symlink("session-does-not-exist", ".claude", "debug", "latest")
+	createHostSymlink("../projects/tool", ".claude", "outside")
+	createHostDir(".claude", "debug")
+	createHostSymlink("session-does-not-exist", ".claude", "debug", "latest")
 
-	runSyncEntryScript(t, vol, host, sharedEntryTarget(t, "agents"))
-	runSyncEntryScript(t, vol, host, sharedEntryTarget(t, "claude"))
+	runSyncEntryScript(t, vol, host, lookupSharedConfigEntry(t, "agents"))
+	runSyncEntryScript(t, vol, host, lookupSharedConfigEntry(t, "claude"))
 
 	// The home-shaped aliases must exist for every entry, so a relative
 	// cross-entry link has a name to land on inside the flat volume.
@@ -387,27 +387,27 @@ func TestSyncEntryScriptFixesSymlinks(t *testing.T) {
 	assertSymlinkTarget(t, filepath.Join(skills, "internal"), "../settings.json")
 
 	// Content outside the shared entries only survives as a real copy.
-	copied := filepath.Join(vol, "claude", "outside")
-	info, err := os.Lstat(copied)
+	copiedDir := filepath.Join(vol, "claude", "outside")
+	copiedInfo, err := os.Lstat(copiedDir)
 	if err != nil {
 		t.Fatalf("outside: %v", err)
 	}
-	if info.Mode()&os.ModeSymlink != 0 {
+	if copiedInfo.Mode()&os.ModeSymlink != 0 {
 		t.Error("a link to non-shared host content must be replaced with a real copy")
 	}
-	if data, err := os.ReadFile(filepath.Join(copied, "data.txt")); err != nil || string(data) != "outside" {
+	if data, err := os.ReadFile(filepath.Join(copiedDir, "data.txt")); err != nil || string(data) != "outside" {
 		t.Errorf("copied content = %q, %v; want %q", data, err, "outside")
 	}
 
 	// A link dangling on the host is left alone, not treated as an error: it is
 	// no worse in the volume than it already was, and `cp -aL` used to abort the
 	// whole sync over it (Claude Code leaves ~/.claude/debug/latest behind).
-	dangling := filepath.Join(vol, "claude", "debug", "latest")
-	dinfo, err := os.Lstat(dangling)
+	danglingLink := filepath.Join(vol, "claude", "debug", "latest")
+	danglingInfo, err := os.Lstat(danglingLink)
 	if err != nil {
 		t.Fatalf("dangling link should still exist: %v", err)
 	}
-	if dinfo.Mode()&os.ModeSymlink == 0 {
+	if danglingInfo.Mode()&os.ModeSymlink == 0 {
 		t.Error("a link already dangling on the host must stay a symlink")
 	}
 }
@@ -424,14 +424,14 @@ func assertSymlinkTarget(t *testing.T, path, want string) {
 	}
 }
 
-// TestSharedEntryMapCoversEveryEntry: the helper needs the whole catalog, not
+// TestRenderedSharedEntryPairsCoverEveryEntry: the helper needs the whole catalog, not
 // just the entries being synced — a link inside one entry routinely points into
 // another, and the volume aliases must exist for all of them.
-func TestSharedEntryMapCoversEveryEntry(t *testing.T) {
-	m := sharedEntryMap()
+func TestRenderedSharedEntryPairsCoverEveryEntry(t *testing.T) {
+	pairs := renderSharedEntryPairs()
 	for _, e := range types.SharedConfigEntries {
-		if !strings.Contains(m, e.ID+"="+e.Target) {
-			t.Errorf("sharedEntryMap() missing %s=%s, got %q", e.ID, e.Target, m)
+		if !strings.Contains(pairs, e.ID+"="+e.Target) {
+			t.Errorf("renderSharedEntryPairs() missing %s=%s, got %q", e.ID, e.Target, pairs)
 		}
 	}
 }
