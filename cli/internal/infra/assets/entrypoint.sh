@@ -101,6 +101,19 @@ if [ -d "$SHARED_CONFIG_DIR" ]; then
     if [ "$(stat -c %u "$SHARED_CONFIG_DIR")" != "$DEV_UID" ]; then
         chown -R "$DEV_UID:$DEV_GID" "$SHARED_CONFIG_DIR" 2>/dev/null || true
     fi
+    # "../" once per parent directory of a home-relative target, so a link at
+    # <volume>/$1 can point back at the volume root ("" for .claude, "../" for
+    # .config/gh).
+    prefix_to_root() {
+        local dir prefix=""
+        dir="$(dirname "$1")"
+        while [ "$dir" != "." ] && [ "$dir" != "/" ]; do
+            prefix="../$prefix"
+            dir="$(dirname "$dir")"
+        done
+        printf '%s' "$prefix"
+    }
+
     while read -r entry_id entry_kind entry_target; do
         [ -z "$entry_id" ] && continue
         src="$SHARED_CONFIG_DIR/$entry_id"
@@ -113,6 +126,23 @@ if [ -d "$SHARED_CONFIG_DIR" ]; then
             touch "$src"
         fi
         chown "$DEV_UID:$DEV_GID" "$src" 2>/dev/null || true
+
+        # Mirror the HOME layout at the volume root: <volume>/.claude -> claude,
+        # <volume>/.config/gh -> ../gh, … The volume is flat (one dir per entry
+        # id) while the home it is symlinked into is not, and ~/.claude is itself
+        # a link into that flat root — so a RELATIVE cross-entry symlink such as
+        # ~/.claude/skills/x -> ../../.agents/skills/x (what `npx skills add -g`
+        # writes) lands on <volume>/.agents/skills/x, a name the flat layout does
+        # not have, and dangles. These aliases give it one. Never clobber
+        # something real sitting at that name.
+        alias_path="$SHARED_CONFIG_DIR/$entry_target"
+        if [ ! -e "$alias_path" ] || [ -L "$alias_path" ]; then
+            alias_parent="$(dirname "$alias_path")"
+            mkdir -p "$alias_parent"
+            chown "$DEV_UID:$DEV_GID" "$alias_parent" 2>/dev/null || true
+            ln -sfn "$(prefix_to_root "$entry_target")$entry_id" "$alias_path"
+            chown -h "$DEV_UID:$DEV_GID" "$alias_path" 2>/dev/null || true
+        fi
 
         # Link into the home, never clobbering pre-existing real (non-symlink)
         # config. ln -sfn both creates a missing link and repoints a stale one.

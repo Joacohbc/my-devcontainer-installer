@@ -54,29 +54,119 @@ type SyncResult struct {
 // already present in the daemon.
 const syncHelperImage = "ubuntu:24.04"
 
-// derefSymlinksFunc defines a `deref_symlinks <dir>` shell function that
-// replaces every symlink under <dir> whose target exists with a real copy of
-// that target — the same dereferencing `cp -aL` does. This matters for
-// entries like "claude"/"codex"/"agents": tools such as the skills.sh CLI
-// (`npx skills add -g`) install global skills/agents into a canonical
-// ~/.agents/skills store and symlink them into each agent's own config dir
-// (e.g. ~/.claude/skills/<name> -> ~/.agents/skills/<name>). Copying that
-// symlink verbatim would point at a host path that does not exist inside the
-// volume/container, leaving a dangling link.
-//
-// Unlike `cp -aL`, a symlink whose target does NOT exist is left as-is
-// instead of aborting: `cp -aL` errors "cannot stat" on a dangling symlink,
-// which previously failed the whole sync for entries like ~/.claude, where
-// Claude Code itself leaves a dangling `debug/latest` pointer. Leaving it
-// dangling here is no worse than it already was on the host.
-const derefSymlinksFunc = `deref_symlinks() {
-  find "$1" -type l | while IFS= read -r link; do
-    if [ -e "$link" ]; then
-      resolved=$(readlink -f "$link")
-      rm -f "$link"
-      cp -a "$resolved" "$link"
-    fi
+// sharedTargetsFunc defines `is_shared_target <home-relative-path>`, true when
+// the path lies inside one of the shared entries (ENTRY_SHARED_MAP holds every
+// entry as "<id>=<home-relative target>"). It is what tells a symlink pointing
+// at another persisted config (~/.claude/skills/x -> ~/.agents/skills/x) apart
+// from one pointing at something that only exists on the host.
+const sharedTargetsFunc = `is_shared_target() {
+  for _pair in $ENTRY_SHARED_MAP; do
+    _t="${_pair#*=}"
+    case "$1" in
+      "$_t"|"$_t"/*) return 0 ;;
+    esac
   done
+  return 1
+}
+`
+
+// volumeAliasesFunc defines `ensure_volume_aliases`, which mirrors the home
+// layout at the volume root: every entry also gets a relative link under its
+// HOME-relative name (.claude -> claude, .config/gh -> ../gh, …).
+//
+// The volume is flat (one dir per entry id) while the home it is symlinked
+// into is not, and ~/.claude is itself a link into that flat root — so a
+// RELATIVE cross-entry symlink such as ~/.claude/skills/x ->
+// ../../.agents/skills/x lands on <volume>/.agents/skills/x, a name the flat
+// layout does not have. These aliases give it one, which is what keeps such a
+// link alive both when it is copied in from the host and when a tool inside a
+// container writes it straight onto the volume. Keep in sync with the matching
+// block in entrypoint.sh (which creates them on every container start).
+const volumeAliasesFunc = `ensure_volume_aliases() {
+  for _pair in $ENTRY_SHARED_MAP; do
+    _id="${_pair%%=*}"
+    _target="${_pair#*=}"
+    _alias="/vol/$_target"
+    if [ -e "$_alias" ] && [ ! -L "$_alias" ]; then continue; fi
+    mkdir -p "$(dirname "$_alias")"
+    _prefix=""
+    _dir="$(dirname "$_target")"
+    while [ "$_dir" != "." ] && [ "$_dir" != "/" ]; do
+      _prefix="../$_prefix"
+      _dir="$(dirname "$_dir")"
+    done
+    ln -sfn "$_prefix$_id" "$_alias"
+    if [ -n "$ENTRY_OWNER" ]; then chown -h "$ENTRY_OWNER" "$_alias" 2>/dev/null || true; fi
+  done
+  return 0
+}
+`
+
+// fixSymlinksFunc defines `fix_symlinks <copied-tree> <source-tree>`, the pass
+// that makes symlinks inside a copied entry mean the same thing in the volume
+// as they did on the host. It matters for entries like
+// "claude"/"codex"/"agents": tools such as the skills.sh CLI (`npx skills add -g`)
+// install global skills/agents into a canonical ~/.agents/skills store and
+// symlink them into each agent's own config dir (e.g. ~/.claude/skills/<name> ->
+// ~/.agents/skills/<name>).
+//
+// Every link is resolved against the SOURCE tree under /host, never against the
+// copy — that is the whole point. Resolving in the destination (what this used
+// to do) can only ever succeed for links that stay inside the entry, i.e. the
+// ones that need no help at all, and silently left every cross-entry link
+// dangling in the volume and therefore in every container.
+//
+// Three outcomes, in order:
+//
+//   - the target is inside another shared entry → keep it a LINK, so both sides
+//     stay one store instead of drifting copies. A relative link is left
+//     verbatim (the volume aliases make it resolve); an absolute host path is
+//     repointed at ENTRY_DEV_HOME, the home the volume is symlinked into.
+//   - the target is outside the shared entries but exists on the host → replace
+//     the link with a real copy of that content, which is the only way it can
+//     survive into a container.
+//   - the target does not exist on the host either → left as-is. `cp -aL` used
+//     to error "cannot stat" here and failed the whole sync for entries like
+//     ~/.claude, where Claude Code leaves a dangling `debug/latest` pointer;
+//     leaving it dangling is no worse than it already was on the host.
+const fixSymlinksFunc = `fix_symlinks() {
+  _root="$1"; _src="$2"
+  # An unset host home must never degrade into the "/*" pattern below, which
+  # would match (and rewrite) every absolute link target.
+  _hh="${ENTRY_HOST_HOME:-/nonexistent-host-home}"
+  _list="$(mktemp)"
+  find "$_root" -type l > "$_list"
+  while IFS= read -r _link; do
+    [ -L "$_link" ] || continue
+    _rel="${_link#"$_root"}"
+    _rel="${_rel#/}"
+    _srclink="$_src/$_rel"
+    [ -L "$_srclink" ] || continue
+    _target="$(readlink "$_srclink")"
+    _absolute=1
+    case "$_target" in
+      "$_hh"/*) _target="/host/${_target#"$_hh"/}" ;;
+      /*) ;;
+      *) _target="$(dirname "$_srclink")/$_target"; _absolute=0 ;;
+    esac
+    _resolved="$(readlink -m "$_target")"
+    _home_rel=""
+    case "$_resolved" in
+      /host/*) _home_rel="${_resolved#/host/}" ;;
+    esac
+    if [ -n "$_home_rel" ] && is_shared_target "$_home_rel"; then
+      if [ "$_absolute" = 1 ]; then
+        rm -rf "$_link"
+        ln -sfn "$ENTRY_DEV_HOME/$_home_rel" "$_link"
+      fi
+      continue
+    fi
+    [ -e "$_resolved" ] || continue
+    rm -rf "$_link"
+    cp -a "$_resolved" "$_link"
+  done < "$_list"
+  rm -f "$_list"
+  return 0
 }
 `
 
@@ -84,12 +174,15 @@ const derefSymlinksFunc = `deref_symlinks() {
 // environment, mounts the volume at /vol and the host home (read-only) at
 // /host, skips when the volume already has data (unless ENTRY_FORCE), otherwise
 // replaces the entry with the host copy and re-owns it. It prints COPIED or
-// SKIPPED so the caller can classify the result. See derefSymlinksFunc for why
-// the copy is plain `cp -a` followed by a selective dereference pass rather
-// than a single `cp -aL`.
+// SKIPPED so the caller can classify the result. See fixSymlinksFunc for why
+// the copy is a plain `cp -a` followed by a symlink pass rather than a single
+// `cp -aL`; the volume aliases are refreshed on every run, skipped entries
+// included, since they cost one symlink each and nothing else creates them
+// before a container first starts.
 const syncEntryScript = `set -e
-` + derefSymlinksFunc + `dst="/vol/$ENTRY_ID"
+` + sharedTargetsFunc + volumeAliasesFunc + fixSymlinksFunc + `dst="/vol/$ENTRY_ID"
 src="/host/$ENTRY_TARGET"
+ensure_volume_aliases
 if [ -z "$ENTRY_FORCE" ]; then
   if [ "$ENTRY_KIND" = dir ]; then
     if [ -d "$dst" ] && [ -n "$(ls -A "$dst" 2>/dev/null)" ]; then echo SKIPPED; exit 0; fi
@@ -99,7 +192,7 @@ if [ -z "$ENTRY_FORCE" ]; then
 fi
 if [ "$ENTRY_KIND" = dir ]; then
   rm -rf "$dst"; mkdir -p "$dst"; cp -a "$src/." "$dst/"
-  deref_symlinks "$dst"
+  fix_symlinks "$dst" "$src"
 else
   rm -f "$dst"
   if [ -L "$src" ] && [ ! -e "$src" ]; then
@@ -150,6 +243,18 @@ func (s SharedConfigService) SyncFromHost(entries []types.SharedConfigEntry, hos
 	return res, nil
 }
 
+// sharedEntryMap renders every shared entry as "<id>=<home-relative target>",
+// space-separated. The helper needs the WHOLE catalog, not just the entries
+// being synced: a link inside one entry routinely points into another, and the
+// volume aliases must exist for all of them regardless of what was requested.
+func sharedEntryMap() string {
+	pairs := make([]string, len(types.SharedConfigEntries))
+	for i, e := range types.SharedConfigEntries {
+		pairs[i] = e.ID + "=" + e.Target
+	}
+	return strings.Join(pairs, " ")
+}
+
 // syncEntry runs the helper for one entry and reports whether it copied (vs
 // skipped because the volume already had data).
 func (s SharedConfigService) syncEntry(e types.SharedConfigEntry, hostHome, owner string, force bool) (bool, error) {
@@ -166,6 +271,12 @@ func (s SharedConfigService) syncEntry(e types.SharedConfigEntry, hostHome, owne
 		"-e", "ENTRY_KIND=" + string(e.Kind),
 		"-e", "ENTRY_FORCE=" + forceVal,
 		"-e", "ENTRY_OWNER=" + owner,
+		// Symlink resolution inputs: the host home is what an absolute link
+		// target is rewritten from, DevUserHome what it is rewritten to, and the
+		// map says which targets are shared entries.
+		"-e", "ENTRY_HOST_HOME=" + strings.TrimSuffix(filepath.ToSlash(hostHome), "/"),
+		"-e", "ENTRY_DEV_HOME=" + types.DevUserHome,
+		"-e", "ENTRY_SHARED_MAP=" + sharedEntryMap(),
 		syncHelperImage, "sh", "-c", syncEntryScript,
 	})
 	if err != nil {

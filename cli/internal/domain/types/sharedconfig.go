@@ -46,9 +46,17 @@ type SharedConfigEntry struct {
 // container the CLI creates. It also doubles as the canonical store for skills
 // and agents installed globally with the skills.sh CLI (`npx skills add -g`),
 // which places them under ~/.agents/skills (and symlinks them into each
-// agent's own config dir, e.g. ~/.claude/skills) — see the cp -aL note on
-// syncEntryScript in service/sharedconfig.go for why those symlinks are
-// dereferenced on copy instead of carried over as-is.
+// agent's own config dir, e.g. ~/.claude/skills) — see fixSymlinksFunc in
+// service/sharedconfig.go for how those cross-entry links are kept alive in
+// the volume.
+//
+// The volume is FLAT (one dir per entry id) while the home it is symlinked
+// into is not, so a relative cross-entry link written against the home layout
+// (~/.claude/skills/x -> ../../.agents/skills/x) has no name to land on once
+// ~/.claude is itself a symlink into that flat root. Both the entrypoint and
+// the sync helper therefore also mirror the home layout at the volume root
+// (<volume>/.claude -> claude, <volume>/.config/gh -> ../gh, …). Adding an
+// entry needs nothing extra for this: the alias is derived from Target.
 var SharedConfigEntries = []SharedConfigEntry{
 	{ID: "claude", Target: ".claude", Kind: SharedConfigDir},
 	{ID: "claude.json", Target: ".claude.json", Kind: SharedConfigFile},

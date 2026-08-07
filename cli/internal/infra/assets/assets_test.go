@@ -131,6 +131,93 @@ func TestEntrypointAlignsUIDInsteadOfChangingWorkspaceACLs(t *testing.T) {
 	}
 }
 
+// The shared-config volume is flat (one dir per entry id) while the home it is
+// symlinked into is not, so a relative cross-entry link written against the home
+// layout (~/.claude/skills/x -> ../../.agents/skills/x, what `npx skills add -g`
+// writes) has no name to land on inside the volume and dangles. The entrypoint
+// must mirror the home layout at the volume root so it does — without clobbering
+// anything real sitting at that name.
+func TestEntrypointMirrorsHomeLayoutAtVolumeRoot(t *testing.T) {
+	body, err := os.ReadFile(embeddedScript)
+	if err != nil {
+		t.Fatalf("reading %s: %v", embeddedScript, err)
+	}
+	script := string(body)
+	for _, frag := range []string{
+		`alias_path="$SHARED_CONFIG_DIR/$entry_target"`,
+		`[ ! -e "$alias_path" ] || [ -L "$alias_path" ]`,
+		`ln -sfn "$(prefix_to_root "$entry_target")$entry_id" "$alias_path"`,
+	} {
+		if !strings.Contains(script, frag) {
+			t.Errorf("entrypoint must mirror the home layout at the volume root (missing %q)", frag)
+		}
+	}
+}
+
+// TestEntrypointVolumeAliasesResolve runs the entrypoint's own prefix_to_root
+// helper to prove the aliases it builds point back at the flat entry, for a
+// nested target (.config/gh -> ../gh) as much as a top-level one (.claude ->
+// claude). An alias with the wrong number of "../" hops is silently dangling,
+// which is exactly the failure it exists to prevent.
+func TestEntrypointVolumeAliasesResolve(t *testing.T) {
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("bash not available")
+	}
+	body, err := os.ReadFile(embeddedScript)
+	if err != nil {
+		t.Fatalf("reading %s: %v", embeddedScript, err)
+	}
+	fn := extractShellFunc(t, string(body), "prefix_to_root")
+
+	vol := t.TempDir()
+	for _, tc := range []struct{ id, target string }{
+		{"claude", ".claude"},
+		{"gh", ".config/gh"},
+		{"antigravity-config", ".config/antigravity"},
+	} {
+		if err := os.MkdirAll(filepath.Join(vol, tc.id), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		script := fn + `
+alias_path="$1/$2"
+mkdir -p "$(dirname "$alias_path")"
+ln -sfn "$(prefix_to_root "$2")$3" "$alias_path"`
+		cmd := exec.Command("bash", "-c", script, "bash", vol, tc.target, tc.id)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("prefix_to_root(%s): %v\n%s", tc.target, err, out)
+		}
+		alias := filepath.Join(vol, filepath.FromSlash(tc.target))
+		resolved, err := filepath.EvalSymlinks(alias)
+		if err != nil {
+			t.Errorf("volume alias %s does not resolve: %v", tc.target, err)
+			continue
+		}
+		want, err := filepath.EvalSymlinks(filepath.Join(vol, tc.id))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if resolved != want {
+			t.Errorf("volume alias %s resolves to %s, want %s", tc.target, resolved, want)
+		}
+	}
+}
+
+// extractShellFunc returns the source of a `name() { … }` function defined in
+// script, so a test can run the entrypoint's real helper instead of a copy.
+func extractShellFunc(t *testing.T, script, name string) string {
+	t.Helper()
+	start := strings.Index(script, name+"() {")
+	if start < 0 {
+		t.Fatalf("entrypoint has no %s() function", name)
+	}
+	rest := script[start:]
+	end := strings.Index(rest, "\n    }\n")
+	if end < 0 {
+		t.Fatalf("could not find the end of %s()", name)
+	}
+	return rest[:end+len("\n    }\n")]
+}
+
 // Antigravity CLI 2.0 reads skills from ~/.gemini/antigravity-cli/skills and
 // does not understand ~/.agents/skills, so the entrypoint must bridge the two
 // with a symlink into the shared .agents skills, without clobbering a real dir.
