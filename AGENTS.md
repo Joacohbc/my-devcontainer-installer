@@ -324,6 +324,29 @@ opt-in — and they are **unconditional** (no build-time gate, no module option)
 a tool that is not installed simply never gets its alias, so the shipped script
 is identical in every image.
 
+### Every project path is per-project — there is no bare `/workspace`
+
+The project is bind-mounted at `types.WorkspaceDir(ws)` = `/workspaces/<ws>`,
+and the entrypoint adds a short alias at `types.WorkspaceAlias(ws)` =
+`/workspace/<ws>`. `/workspace` is a **directory holding one link per project**,
+never a link to the project itself.
+
+That distinction is the whole feature. Agents key their session history by the
+directory they were started in, and the shared-config volume makes that history
+persist across containers — so a single `/workspace` shared by every project
+merges all of their chats into one, which is exactly what the per-project mount
+exists to prevent. The short path is the one people actually `cd` into, so
+aliasing it bare quietly undoes the split.
+
+Anything that resolves the mount must handle three layouts, in this order:
+`/workspaces/<name>` (current), the `/workspace/<name>` alias, and a bare
+`/workspace` for images built before the split. `entrypoint.sh`,
+`get-devcontainer-context.sh` and `install-codex-cli.sh` each carry the same
+glob; keep them identical. The entrypoint also drops a bare `/workspace`
+symlink left in the writable layer by an older image before creating the dir.
+Covered by `TestEntrypointAliasesWorkspacePerProject` and
+`TestEntrypointWorkspaceAliasIsCreated` (which runs the real block).
+
 ### The shared-config volume is flat, the home it feeds is not
 
 `devcontainer-shared-config` holds **one entry per `types.SharedConfigEntries`

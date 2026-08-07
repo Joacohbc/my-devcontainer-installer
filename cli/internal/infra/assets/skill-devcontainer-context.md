@@ -35,9 +35,11 @@ this container", the command answers "what is true at this moment".
 
 ## What to keep in mind
 
-- **Edit code only in the workspace mount** (`/workspace`, an alias for
-  `/workspaces/<project>`). It is a bind mount of real files on the user's
-  machine: deleting there deletes on the host.
+- **Edit code only in the workspace mount** (`/workspaces/<project>`, aliased as
+  `/workspace/<project>`). It is a bind mount of real files on the user's
+  machine: deleting there deletes on the host. There is no bare `/workspace`
+  directory to work in — every project has its own path, so that whatever you
+  key to the working directory stays that project's.
 - **Everything outside the workspace and `/home/devuser` is discarded** when the
   container is recreated. Never leave work there.
 - You are `devuser` with passwordless `sudo`. Installing packages with

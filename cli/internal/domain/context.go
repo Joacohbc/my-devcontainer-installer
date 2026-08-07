@@ -62,8 +62,9 @@ versions, running services, mounted volumes — run:
 
 ## Where you are
 
-- The project is bind-mounted at `+"`%s`"+`, also reachable as the stable
-  alias `+"`/workspace`"+`. **Edit code only there.**
+- The project is bind-mounted at `+"`%s`"+`, also reachable as the shorter
+  alias `+"`%s`"+`. **Edit code only there.** Every project has its own
+  path under both roots — there is no bare `+"`/workspace`"+`.
 - You are the `+"`devuser`"+` user with passwordless `+"`sudo`"+`. Installing system
   packages with `+"`sudo apt-get install`"+` is fine and expected.
 - **Everything outside `+"`%s`"+` and `+"`/home/devuser`"+` is discarded**
@@ -71,7 +72,7 @@ versions, running services, mounted volumes — run:
 - There is no systemd and no init system. Do not use `+"`systemctl`"+` or
   `+"`service`"+`.
 
-`, workspaceDir, workspaceDir)
+`, workspaceDir, types.WorkspaceAlias(config.Workspace), workspaceDir)
 }
 
 // moduleContextSections collects the context entry of every resolved Dockerfile

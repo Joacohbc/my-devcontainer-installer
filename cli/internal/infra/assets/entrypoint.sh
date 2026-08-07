@@ -36,14 +36,24 @@ fi
 
 # Resolve the project mount. New layouts mount it at /workspaces/<name> — a
 # unique path per project so the path-keyed history of Claude Code/Antigravity
-# never collides in the shared config volume — and keep /workspace as a stable
-# alias. Older images mounted directly at /workspace still work (the glob finds
-# nothing and WORKSPACE_DIR stays /workspace).
+# never collides in the shared config volume. Older images mounted directly at
+# /workspace still work (the glob finds nothing and WORKSPACE_DIR stays
+# /workspace).
+#
+# The short alias is /workspace/<name>, NOT a bare /workspace: agents key their
+# session history by the directory they were started in, so a single path shared
+# by every project merges all of their chats into one history. A bare alias
+# silently undoes the whole point of the per-project mount, since that is the
+# path people actually cd into.
 WORKSPACE_DIR=/workspace
 for _ws in /workspaces/*; do
     [ -d "$_ws" ] || continue
     WORKSPACE_DIR="$_ws"
-    [ -e /workspace ] || ln -s "$_ws" /workspace
+    # A container started by an older image may carry the bare alias in its
+    # writable layer; replace it with the per-project one.
+    [ -L /workspace ] && rm -f /workspace
+    mkdir -p /workspace
+    ln -sfn "$_ws" "/workspace/$(basename "$_ws")"
     break
 done
 

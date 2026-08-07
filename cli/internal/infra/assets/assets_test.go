@@ -113,13 +113,32 @@ func TestEntrypointAlignsUIDInsteadOfChangingWorkspaceACLs(t *testing.T) {
 		t.Error("entrypoint must not userdel at runtime; the squatter is removed at build time")
 	}
 	// The project mount is at /workspaces/<name> (unique per project so tool
-	// history does not collide in the shared volume) with /workspace aliased to
-	// it; the UID remap must operate on the resolved dir, not a hardcoded path.
+	// history does not collide in the shared volume); the UID remap must operate
+	// on the resolved dir, not a hardcoded path.
 	if !strings.Contains(script, "for _ws in /workspaces/*") {
 		t.Error("entrypoint must resolve the project mount under /workspaces/")
 	}
-	if !strings.Contains(script, "ln -s \"$_ws\" /workspace") {
-		t.Error("entrypoint must alias /workspace to the resolved project dir")
+}
+
+// The short alias must be per-project too. A bare /workspace pointing at the
+// project is the path people actually cd into, so it silently re-merges the
+// path-keyed session history of every project the per-project mount separated.
+func TestEntrypointAliasesWorkspacePerProject(t *testing.T) {
+	body, err := os.ReadFile(embeddedScript)
+	if err != nil {
+		t.Fatalf("reading %s: %v", embeddedScript, err)
+	}
+	script := string(body)
+	if !strings.Contains(script, `ln -sfn "$_ws" "/workspace/$(basename "$_ws")"`) {
+		t.Error("entrypoint must alias the project at /workspace/<name>")
+	}
+	if strings.Contains(script, `ln -s "$_ws" /workspace`+"\n") {
+		t.Error("entrypoint must not create a bare /workspace link to the project")
+	}
+	// A container started by an older image carries the bare link in its
+	// writable layer, so the alias dir can only be created after dropping it.
+	if !strings.Contains(script, "[ -L /workspace ] && rm -f /workspace") {
+		t.Error("entrypoint must replace a bare /workspace link left by an older image")
 	}
 	// The home may only ever be chowned to devuser's ACTUAL UID/GID, never to
 	// the workspace owner directly (the remap may have failed).
@@ -129,6 +148,90 @@ func TestEntrypointAlignsUIDInsteadOfChangingWorkspaceACLs(t *testing.T) {
 	if !strings.Contains(script, `chown -R "$DEV_UID:$DEV_GID" /home/devuser`) {
 		t.Error("entrypoint must re-own the home to devuser's actual UID/GID when it drifted")
 	}
+}
+
+// TestEntrypointWorkspaceAliasIsCreated runs the entrypoint's own workspace
+// resolution block against temp stand-ins for /workspaces and /workspace, both
+// on a fresh container and on one whose writable layer still carries the bare
+// link an older image created.
+func TestEntrypointWorkspaceAliasIsCreated(t *testing.T) {
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("bash not available")
+	}
+	body, err := os.ReadFile(embeddedScript)
+	if err != nil {
+		t.Fatalf("reading %s: %v", embeddedScript, err)
+	}
+	block := extractWorkspaceBlock(t, string(body))
+
+	for _, tc := range []struct {
+		name       string
+		staleAlias bool
+	}{
+		{name: "fresh"},
+		{name: "upgraded from a bare alias", staleAlias: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			// Neutral dir names: the block is localized by string replacement,
+			// and a path containing "/workspace" would be rewritten twice.
+			root, err := os.MkdirTemp("", "dc-mount-")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer os.RemoveAll(root)
+			mounts := filepath.Join(root, "mounts")
+			alias := filepath.Join(root, "short")
+			project := filepath.Join(mounts, "myproj")
+			if err := os.MkdirAll(project, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if tc.staleAlias {
+				if err := os.Symlink(project, alias); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			script := strings.ReplaceAll(block, "/workspaces", mounts)
+			script = strings.ReplaceAll(script, "/workspace", alias)
+			if out, err := exec.Command("bash", "-c", script).CombinedOutput(); err != nil {
+				t.Fatalf("workspace block: %v\n%s", err, out)
+			}
+
+			info, err := os.Lstat(alias)
+			if err != nil {
+				t.Fatalf("alias root: %v", err)
+			}
+			if !info.IsDir() {
+				t.Fatalf("the alias root must be a directory holding one link per project, got mode %v", info.Mode())
+			}
+			link := filepath.Join(alias, "myproj")
+			target, err := os.Readlink(link)
+			if err != nil {
+				t.Fatalf("per-project alias: %v", err)
+			}
+			if target != project {
+				t.Errorf("alias -> %q, want %q", target, project)
+			}
+		})
+	}
+}
+
+// extractWorkspaceBlock returns the entrypoint's workspace-resolution block
+// (the WORKSPACE_DIR assignment through the end of its loop), so the test runs
+// the real thing instead of a copy.
+func extractWorkspaceBlock(t *testing.T, script string) string {
+	t.Helper()
+	const start = "WORKSPACE_DIR=/workspace\n"
+	i := strings.Index(script, start)
+	if i < 0 {
+		t.Fatal("entrypoint has no WORKSPACE_DIR resolution block")
+	}
+	rest := script[i:]
+	end := strings.Index(rest, "\ndone\n")
+	if end < 0 {
+		t.Fatal("could not find the end of the workspace resolution loop")
+	}
+	return rest[:end+len("\ndone\n")]
 }
 
 // The shared-config volume is flat (one dir per entry id) while the home it is

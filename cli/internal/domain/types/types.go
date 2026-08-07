@@ -78,14 +78,26 @@ const PostScriptStartDir = PostScriptDir + "/start.d"
 const DefaultPostScriptStartOrder = 50
 
 // WorkspaceRoot is the parent dir the project is mounted under. Each project
-// gets a unique /workspaces/<workspace> path (entrypoint aliases /workspace to
-// it) so the path-keyed history of Claude Code/Antigravity does not collide in
-// the shared config volume.
+// gets a unique /workspaces/<workspace> path so the path-keyed history of
+// Claude Code/Antigravity does not collide in the shared config volume.
 const WorkspaceRoot = "/workspaces"
 
 // WorkspaceDir returns the in-container mount path for a workspace.
 func WorkspaceDir(workspace string) string {
 	return WorkspaceRoot + "/" + workspace
+}
+
+// WorkspaceAliasRoot is where the entrypoint puts the short alias of the mount.
+// It is a DIRECTORY holding one link per project (/workspace/<workspace> ->
+// /workspaces/<workspace>), never a bare link to the project itself: agents key
+// their session history by the directory they run in, and the short path is the
+// one people actually cd into, so a single shared /workspace would merge every
+// project's history — exactly what the per-project mount exists to prevent.
+const WorkspaceAliasRoot = "/workspace"
+
+// WorkspaceAlias returns the short per-project path for a workspace.
+func WorkspaceAlias(workspace string) string {
+	return WorkspaceAliasRoot + "/" + workspace
 }
 
 // FallbackDBUser and FallbackDBPassword are the database credentials used when
