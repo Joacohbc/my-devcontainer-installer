@@ -324,6 +324,64 @@ opt-in — and they are **unconditional** (no build-time gate, no module option)
 a tool that is not installed simply never gets its alias, so the shipped script
 is identical in every image.
 
+### Every project path is per-project — there is no bare `/workspace`
+
+The project is bind-mounted at `types.WorkspaceDir(ws)` = `/workspaces/<ws>`,
+and the entrypoint adds a short alias at `types.WorkspaceAlias(ws)` =
+`/workspace/<ws>`. `/workspace` is a **directory holding one link per project**,
+never a link to the project itself.
+
+That distinction is the whole feature. Agents key their session history by the
+directory they were started in, and the shared-config volume makes that history
+persist across containers — so a single `/workspace` shared by every project
+merges all of their chats into one, which is exactly what the per-project mount
+exists to prevent. The short path is the one people actually `cd` into, so
+aliasing it bare quietly undoes the split.
+
+Anything that resolves the mount must handle three layouts, in this order:
+`/workspaces/<name>` (current), the `/workspace/<name>` alias, and a bare
+`/workspace` for images built before the split. `entrypoint.sh`,
+`get-devcontainer-context.sh` and `install-codex-cli.sh` each carry the same
+glob; keep them identical. The entrypoint also drops a bare `/workspace`
+symlink left in the writable layer by an older image before creating the dir.
+Covered by `TestEntrypointAliasesWorkspacePerProject` and
+`TestEntrypointWorkspaceAliasIsCreated` (which runs the real block).
+
+### The shared-config volume is flat, the home it feeds is not
+
+`devcontainer-shared-config` holds **one entry per `types.SharedConfigEntries`
+row, keyed by its id** (`claude`, `agents`, `gh`, …), and the entrypoint
+symlinks each one into the home at its `Target` (`~/.claude`, `~/.agents`,
+`~/.config/gh`). Those two layouts do not match, and `~/.claude` is itself a
+symlink into the flat root — so a **relative** cross-entry link written against
+the home layout resolves into the volume root, not the home:
+
+```
+~/.claude/skills/x -> ../../.agents/skills/x     # what `npx skills add -g` writes
+  physical dir: <volume>/claude/skills/  →  <volume>/.agents/skills/x   ✗ no such name
+```
+
+Two mechanisms keep those links alive, and neither may be dropped:
+
+- **Home-shaped aliases at the volume root** — `<volume>/.claude -> claude`,
+  `<volume>/.config/gh -> ../gh`, one per entry, derived from `Target`. Created
+  by *both* the entrypoint (every container start, so existing volumes are
+  repaired without a re-sync) and the sync helper (so a volume seeded before any
+  container ever ran is already consistent). They give the relative link above a
+  name to land on. Adding an entry needs no extra work — the alias falls out of
+  `Target` — but it does need the matching row in `entrypoint.sh`'s table.
+- **`fix_symlinks` in `service/sharedconfig.go`** — resolves every symlink of a
+  copied entry against the **source tree under `/host`**, never against the copy
+  in the volume. Resolving in the destination (what it used to do) can only
+  succeed for links that never leave the entry, i.e. the ones needing no help,
+  and silently left every cross-entry link dangling in the volume. Its three
+  outcomes: target inside another shared entry → stays a **link** (both sides
+  must remain one store; a relative one verbatim, an absolute host path
+  repointed at `types.DevUserHome`); target outside the shared entries but
+  present on the host → replaced with a **real copy**, the only way it survives
+  into a container; target dangling on the host too → left alone (never an
+  error — `cp -aL` used to abort the whole sync over `~/.claude/debug/latest`).
+
 ### `~/CONTEXT.md` is generated per project
 
 `~/CONTEXT.md` is the orientation document an AI agent reads first. It is

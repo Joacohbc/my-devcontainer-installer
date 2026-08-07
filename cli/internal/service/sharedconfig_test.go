@@ -231,69 +231,221 @@ func TestSyncFromHostForcePassesFlagToHelper(t *testing.T) {
 	}
 }
 
-// TestSyncEntryScriptUsesDerefSymlinksForDirs guards against a regression to
+// TestSyncEntryScriptRunsTheSymlinkPasses guards against a regression to a
 // plain `cp -a` for directory entries: global skills/agents installed via the
 // skills.sh CLI are symlinked into each tool's config dir (e.g.
 // ~/.claude/skills/<name> -> ~/.agents/skills/<name>), so the copy into the
-// volume must dereference those links and persist real content, not a
-// dangling host-path symlink. The actual dereferencing behavior (including
-// tolerance for already-dangling symlinks) is exercised directly against the
-// shell in TestDerefSymlinksFunc.
-func TestSyncEntryScriptUsesDerefSymlinksForDirs(t *testing.T) {
-	if !strings.Contains(syncEntryScript, `deref_symlinks "$dst"`) {
-		t.Errorf("syncEntryScript must call deref_symlinks on directory entries, got: %s", syncEntryScript)
+// volume must resolve those links against the host instead of carrying them
+// over blind. The behavior itself is exercised against the real shell in
+// TestSyncEntryScriptFixesSymlinks.
+func TestSyncEntryScriptRunsTheSymlinkPasses(t *testing.T) {
+	for _, want := range []string{"ensure_volume_aliases", `fix_symlinks "$dst" "$src"`} {
+		if !strings.Contains(syncEntryScript, want) {
+			t.Errorf("syncEntryScript must call %s, got: %s", want, syncEntryScript)
+		}
+	}
+	// The old pass resolved links in the destination, where a cross-entry
+	// target can never exist — the exact bug that left them dangling.
+	if strings.Contains(syncEntryScript, `deref_symlinks "$dst"`) {
+		t.Error("syncEntryScript must not resolve symlinks against the copy in the volume")
 	}
 }
 
-// TestDerefSymlinksFunc runs the actual `deref_symlinks` shell function (used
-// by syncEntryScript) against a real directory to verify: a symlink whose
-// target exists is replaced with a real copy of that content, and a dangling
-// symlink (e.g. the ~/.claude/debug/latest pointer Claude Code itself leaves
-// behind) is left alone instead of aborting the script. Before this test,
-// syncEntryScript used a bare `cp -aL`, which errors "cannot stat" on a
-// dangling symlink and failed the whole sync for any entry containing one.
-func TestDerefSymlinksFunc(t *testing.T) {
+// requireGNUCoreutils skips a test that shells out to syncEntryScript when the
+// local userland is not GNU. The script only ever runs inside syncHelperImage,
+// a pinned Ubuntu, so it is free to use `readlink -m` and friends; executing it
+// against BSD tools (a macOS dev box or CI runner) would assert on an
+// environment that never exists in production. Linux CI still covers it.
+func requireGNUCoreutils(t *testing.T) {
+	t.Helper()
+	if err := exec.Command("readlink", "-m", "/").Run(); err != nil {
+		t.Skipf("GNU coreutils not available (%v); the sync helper only ever runs in %s", err, syncHelperImage)
+	}
+}
+
+// lookupSharedConfigEntry is a fatal-on-miss lookup for the script tests.
+func lookupSharedConfigEntry(t *testing.T, id string) types.SharedConfigEntry {
+	t.Helper()
+	e, ok := types.SharedConfigEntryByID(id)
+	if !ok {
+		t.Fatalf("no shared-config entry %q", id)
+	}
+	return e
+}
+
+// runSyncEntryScript executes the real syncEntryScript against local stand-ins
+// for the helper container's /vol and /host mounts, so the shell logic is
+// covered without Docker.
+func runSyncEntryScript(t *testing.T, volDir, hostDir string, e types.SharedConfigEntry) {
+	t.Helper()
+	script := strings.ReplaceAll(syncEntryScript, "/vol", volDir)
+	script = strings.ReplaceAll(script, "/host", hostDir)
+
+	cmd := exec.Command("sh", "-c", script)
+	cmd.Env = append(os.Environ(),
+		"ENTRY_ID="+e.ID,
+		"ENTRY_TARGET="+e.Target,
+		"ENTRY_KIND="+string(e.Kind),
+		"ENTRY_FORCE=1",
+		"ENTRY_OWNER=",
+		"ENTRY_HOST_HOME="+hostDir,
+		"ENTRY_DEV_HOME="+types.DevUserHome,
+		"ENTRY_SHARED_PAIRS="+renderSharedEntryPairs(),
+	)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("syncEntryScript(%s): %v\n%s", e.ID, err, out)
+	}
+	if !strings.Contains(string(out), "COPIED") {
+		t.Fatalf("syncEntryScript(%s) did not report COPIED: %s", e.ID, out)
+	}
+}
+
+// createPhysicalTempDir is t.TempDir() with symlinks resolved: the script
+// compares resolved paths against the /host prefix, and a /tmp that is itself a
+// symlink would make every comparison miss.
+func createPhysicalTempDir(t *testing.T) string {
+	t.Helper()
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+// TestSyncEntryScriptFixesSymlinks runs the real sync helper script over a host
+// home laid out the way the skills.sh CLI leaves one, and pins every outcome a
+// symlink can have. The regression it guards: the pass used to resolve links
+// against the COPY in the volume, where a cross-entry target such as
+// ../../.agents/skills/<name> can never exist (the volume is flat, ~/.claude is
+// itself a link into it), so those links were carried over verbatim and landed
+// dangling in the volume — and therefore in every container.
+func TestSyncEntryScriptFixesSymlinks(t *testing.T) {
 	if _, err := exec.LookPath("sh"); err != nil {
 		t.Skip("sh not available")
 	}
+	requireGNUCoreutils(t)
 
-	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "real.txt"), []byte("hello"), 0o644); err != nil {
+	vol := createPhysicalTempDir(t)
+	host := createPhysicalTempDir(t)
+
+	createHostDir := func(parts ...string) string {
+		p := filepath.Join(append([]string{host}, parts...)...)
+		if err := os.MkdirAll(p, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	createHostSymlink := func(target string, parts ...string) {
+		if err := os.Symlink(target, filepath.Join(append([]string{host}, parts...)...)); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// The canonical global skills store, plus a config dir that links into it
+	// both ways round (relative, as skills.sh writes them, and absolute).
+	skillDir := createHostDir(".agents", "skills", "wayfinder")
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("skill"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(filepath.Join(dir, "real.txt"), filepath.Join(dir, "resolvable-link")); err != nil {
+	createHostDir(".claude", "skills")
+	createHostSymlink("../../.agents/skills/wayfinder", ".claude", "skills", "relative-shared")
+	createHostSymlink(filepath.Join(host, ".agents", "skills", "wayfinder"), ".claude", "skills", "absolute-shared")
+
+	// A link that stays inside this entry, one pointing at content that is NOT
+	// a shared entry (only reachable by copying it), and a dangling one.
+	if err := os.WriteFile(filepath.Join(host, ".claude", "settings.json"), []byte("{}"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(filepath.Join(dir, "does-not-exist"), filepath.Join(dir, "dangling-link")); err != nil {
+	createHostSymlink("../settings.json", ".claude", "skills", "internal")
+	nonSharedDir := createHostDir("projects", "tool")
+	if err := os.WriteFile(filepath.Join(nonSharedDir, "data.txt"), []byte("outside"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	createHostSymlink("../projects/tool", ".claude", "outside")
+	createHostDir(".claude", "debug")
+	createHostSymlink("session-does-not-exist", ".claude", "debug", "latest")
 
-	script := derefSymlinksFunc + `deref_symlinks "$1"`
-	cmd := exec.Command("sh", "-c", script, "sh", dir)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("deref_symlinks failed: %v, output: %s", err, out)
+	runSyncEntryScript(t, vol, host, lookupSharedConfigEntry(t, "agents"))
+	runSyncEntryScript(t, vol, host, lookupSharedConfigEntry(t, "claude"))
+
+	// The home-shaped aliases must exist for every entry, so a relative
+	// cross-entry link has a name to land on inside the flat volume.
+	for _, e := range types.SharedConfigEntries {
+		alias := filepath.Join(vol, filepath.FromSlash(e.Target))
+		info, err := os.Lstat(alias)
+		if err != nil {
+			t.Errorf("volume alias %s missing: %v", e.Target, err)
+			continue
+		}
+		if info.Mode()&os.ModeSymlink == 0 {
+			t.Errorf("volume alias %s must be a symlink", e.Target)
+		}
 	}
 
-	resolvable := filepath.Join(dir, "resolvable-link")
-	info, err := os.Lstat(resolvable)
+	skills := filepath.Join(vol, "claude", "skills")
+
+	// A relative link into another shared entry stays a link — both sides must
+	// remain one store — and now resolves inside the volume.
+	assertSymlinkTarget(t, filepath.Join(skills, "relative-shared"), "../../.agents/skills/wayfinder")
+	if _, err := os.Stat(filepath.Join(skills, "relative-shared", "SKILL.md")); err != nil {
+		t.Errorf("relative cross-entry link does not resolve inside the volume: %v", err)
+	}
+
+	// An absolute host path cannot survive as-is, so it is repointed at the
+	// home the volume is symlinked into.
+	assertSymlinkTarget(t, filepath.Join(skills, "absolute-shared"), types.DevUserHome+"/.agents/skills/wayfinder")
+
+	// A link that never left the entry is untouched (it already resolves).
+	assertSymlinkTarget(t, filepath.Join(skills, "internal"), "../settings.json")
+
+	// Content outside the shared entries only survives as a real copy.
+	copiedDir := filepath.Join(vol, "claude", "outside")
+	copiedInfo, err := os.Lstat(copiedDir)
 	if err != nil {
-		t.Fatalf("resolvable-link: %v", err)
+		t.Fatalf("outside: %v", err)
 	}
-	if info.Mode()&os.ModeSymlink != 0 {
-		t.Errorf("resolvable-link should have been replaced with a real copy, still a symlink")
+	if copiedInfo.Mode()&os.ModeSymlink != 0 {
+		t.Error("a link to non-shared host content must be replaced with a real copy")
 	}
-	content, err := os.ReadFile(resolvable)
-	if err != nil || string(content) != "hello" {
-		t.Errorf("resolvable-link content = %q, %v; want %q", content, err, "hello")
+	if data, err := os.ReadFile(filepath.Join(copiedDir, "data.txt")); err != nil || string(data) != "outside" {
+		t.Errorf("copied content = %q, %v; want %q", data, err, "outside")
 	}
 
-	dangling := filepath.Join(dir, "dangling-link")
-	danglingInfo, err := os.Lstat(dangling)
+	// A link dangling on the host is left alone, not treated as an error: it is
+	// no worse in the volume than it already was, and `cp -aL` used to abort the
+	// whole sync over it (Claude Code leaves ~/.claude/debug/latest behind).
+	danglingLink := filepath.Join(vol, "claude", "debug", "latest")
+	danglingInfo, err := os.Lstat(danglingLink)
 	if err != nil {
-		t.Fatalf("dangling-link should still exist (as a symlink): %v", err)
+		t.Fatalf("dangling link should still exist: %v", err)
 	}
 	if danglingInfo.Mode()&os.ModeSymlink == 0 {
-		t.Errorf("dangling-link should remain a symlink, not be touched")
+		t.Error("a link already dangling on the host must stay a symlink")
+	}
+}
+
+func assertSymlinkTarget(t *testing.T, path, want string) {
+	t.Helper()
+	got, err := os.Readlink(path)
+	if err != nil {
+		t.Errorf("%s should still be a symlink: %v", filepath.Base(path), err)
+		return
+	}
+	if got != want {
+		t.Errorf("%s -> %q, want %q", filepath.Base(path), got, want)
+	}
+}
+
+// TestRenderedSharedEntryPairsCoverEveryEntry: the helper needs the whole catalog, not
+// just the entries being synced — a link inside one entry routinely points into
+// another, and the volume aliases must exist for all of them.
+func TestRenderedSharedEntryPairsCoverEveryEntry(t *testing.T) {
+	pairs := renderSharedEntryPairs()
+	for _, e := range types.SharedConfigEntries {
+		if !strings.Contains(pairs, e.ID+"="+e.Target) {
+			t.Errorf("renderSharedEntryPairs() missing %s=%s, got %q", e.ID, e.Target, pairs)
+		}
 	}
 }
 

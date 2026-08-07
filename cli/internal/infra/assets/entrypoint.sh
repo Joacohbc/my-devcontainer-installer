@@ -36,14 +36,32 @@ fi
 
 # Resolve the project mount. New layouts mount it at /workspaces/<name> — a
 # unique path per project so the path-keyed history of Claude Code/Antigravity
-# never collides in the shared config volume — and keep /workspace as a stable
-# alias. Older images mounted directly at /workspace still work (the glob finds
-# nothing and WORKSPACE_DIR stays /workspace).
-WORKSPACE_DIR=/workspace
-for _ws in /workspaces/*; do
-    [ -d "$_ws" ] || continue
-    WORKSPACE_DIR="$_ws"
-    [ -e /workspace ] || ln -s "$_ws" /workspace
+# never collides in the shared config volume. Older images mounted directly at
+# /workspace still work (the glob finds nothing and the legacy mount is used).
+#
+# The short alias is /workspace/<name>, NOT a bare /workspace: agents key their
+# session history by the directory they were started in, so a single path shared
+# by every project merges all of their chats into one history. A bare alias
+# silently undoes the whole point of the per-project mount, since that is the
+# path people actually cd into.
+WORKSPACE_MOUNT_ROOT=/workspaces
+WORKSPACE_ALIAS_ROOT=/workspace
+LEGACY_WORKSPACE_MOUNT=/workspace
+
+alias_project_mount() {
+    local project_mount="$1"
+    # A container started by an older image carries a bare alias LINK in its
+    # writable layer, which has to go before the alias root can be a directory.
+    [ -L "$WORKSPACE_ALIAS_ROOT" ] && rm -f "$WORKSPACE_ALIAS_ROOT"
+    mkdir -p "$WORKSPACE_ALIAS_ROOT"
+    ln -sfn "$project_mount" "$WORKSPACE_ALIAS_ROOT/$(basename "$project_mount")"
+}
+
+WORKSPACE_DIR=$LEGACY_WORKSPACE_MOUNT
+for _project_mount in "$WORKSPACE_MOUNT_ROOT"/*; do
+    [ -d "$_project_mount" ] || continue
+    WORKSPACE_DIR="$_project_mount"
+    alias_project_mount "$_project_mount"
     break
 done
 
@@ -101,6 +119,34 @@ if [ -d "$SHARED_CONFIG_DIR" ]; then
     if [ "$(stat -c %u "$SHARED_CONFIG_DIR")" != "$DEV_UID" ]; then
         chown -R "$DEV_UID:$DEV_GID" "$SHARED_CONFIG_DIR" 2>/dev/null || true
     fi
+    prefix_to_volume_root() {
+        local remaining_dir parent_hops=""
+        remaining_dir="$(dirname "$1")"
+        while [ "$remaining_dir" != "." ] && [ "$remaining_dir" != "/" ]; do
+            parent_hops="../$parent_hops"
+            remaining_dir="$(dirname "$remaining_dir")"
+        done
+        printf '%s' "$parent_hops"
+    }
+
+    # Mirror the HOME layout at the volume root: <volume>/.claude -> claude,
+    # <volume>/.config/gh -> ../gh, … The volume is flat (one dir per entry id)
+    # while the home it is symlinked into is not, and ~/.claude is itself a link
+    # into that flat root — so a RELATIVE cross-entry symlink such as
+    # ~/.claude/skills/x -> ../../.agents/skills/x (what `npx skills add -g`
+    # writes) lands on <volume>/.agents/skills/x, a name the flat layout does not
+    # have, and dangles. These aliases give it one.
+    mirror_entry_at_home_name() {
+        local entry_id="$1" entry_target="$2" alias_path alias_parent
+        alias_path="$SHARED_CONFIG_DIR/$entry_target"
+        if [ -e "$alias_path" ] && [ ! -L "$alias_path" ]; then return 0; fi
+        alias_parent="$(dirname "$alias_path")"
+        mkdir -p "$alias_parent"
+        chown "$DEV_UID:$DEV_GID" "$alias_parent" 2>/dev/null || true
+        ln -sfn "$(prefix_to_volume_root "$entry_target")$entry_id" "$alias_path"
+        chown -h "$DEV_UID:$DEV_GID" "$alias_path" 2>/dev/null || true
+    }
+
     while read -r entry_id entry_kind entry_target; do
         [ -z "$entry_id" ] && continue
         src="$SHARED_CONFIG_DIR/$entry_id"
@@ -113,6 +159,8 @@ if [ -d "$SHARED_CONFIG_DIR" ]; then
             touch "$src"
         fi
         chown "$DEV_UID:$DEV_GID" "$src" 2>/dev/null || true
+
+        mirror_entry_at_home_name "$entry_id" "$entry_target"
 
         # Link into the home, never clobbering pre-existing real (non-symlink)
         # config. ln -sfn both creates a missing link and repoints a stale one.

@@ -46,6 +46,16 @@ func TestGenerateContext_PreambleUsesWorkspaceDir(t *testing.T) {
 			t.Errorf("preamble must mention %q:\n%s", frag, out)
 		}
 	}
+
+	// The short alias is per-project too; naming a bare /workspace would send an
+	// agent to a path shared by every project.
+	alias := types.WorkspaceAlias("myproj")
+	if !strings.Contains(out, alias) {
+		t.Errorf("preamble must mention the per-project alias %q:\n%s", alias, out)
+	}
+	if strings.Contains(out, "`"+types.WorkspaceAliasRoot+"`\n") {
+		t.Errorf("preamble must not point at a bare %s:\n%s", types.WorkspaceAliasRoot, out)
+	}
 }
 
 // A module that was not selected must not appear. This is the whole point of

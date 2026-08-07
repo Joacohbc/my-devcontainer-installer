@@ -113,13 +113,10 @@ func TestEntrypointAlignsUIDInsteadOfChangingWorkspaceACLs(t *testing.T) {
 		t.Error("entrypoint must not userdel at runtime; the squatter is removed at build time")
 	}
 	// The project mount is at /workspaces/<name> (unique per project so tool
-	// history does not collide in the shared volume) with /workspace aliased to
-	// it; the UID remap must operate on the resolved dir, not a hardcoded path.
-	if !strings.Contains(script, "for _ws in /workspaces/*") {
+	// history does not collide in the shared volume); the UID remap must operate
+	// on the resolved dir, not a hardcoded path.
+	if !strings.Contains(script, `for _project_mount in "$WORKSPACE_MOUNT_ROOT"/*`) {
 		t.Error("entrypoint must resolve the project mount under /workspaces/")
-	}
-	if !strings.Contains(script, "ln -s \"$_ws\" /workspace") {
-		t.Error("entrypoint must alias /workspace to the resolved project dir")
 	}
 	// The home may only ever be chowned to devuser's ACTUAL UID/GID, never to
 	// the workspace owner directly (the remap may have failed).
@@ -129,6 +126,199 @@ func TestEntrypointAlignsUIDInsteadOfChangingWorkspaceACLs(t *testing.T) {
 	if !strings.Contains(script, `chown -R "$DEV_UID:$DEV_GID" /home/devuser`) {
 		t.Error("entrypoint must re-own the home to devuser's actual UID/GID when it drifted")
 	}
+}
+
+// The short alias must be per-project too. A bare /workspace pointing at the
+// project is the path people actually cd into, so it silently re-merges the
+// path-keyed session history of every project the per-project mount separated.
+func TestEntrypointAliasesWorkspacePerProject(t *testing.T) {
+	body, err := os.ReadFile(embeddedScript)
+	if err != nil {
+		t.Fatalf("reading %s: %v", embeddedScript, err)
+	}
+	script := string(body)
+	if !strings.Contains(script, `ln -sfn "$project_mount" "$WORKSPACE_ALIAS_ROOT/$(basename "$project_mount")"`) {
+		t.Error("entrypoint must alias the project at /workspace/<name>")
+	}
+	if strings.Contains(script, `ln -s "$_project_mount" /workspace`+"\n") {
+		t.Error("entrypoint must not create a bare /workspace link to the project")
+	}
+	// A container started by an older image carries the bare link in its
+	// writable layer, so the alias dir can only be created after dropping it.
+	if !strings.Contains(script, `[ -L "$WORKSPACE_ALIAS_ROOT" ] && rm -f "$WORKSPACE_ALIAS_ROOT"`) {
+		t.Error("entrypoint must replace a bare /workspace link left by an older image")
+	}
+}
+
+// TestEntrypointWorkspaceAliasIsCreated runs the entrypoint's own workspace
+// resolution block against temp stand-ins for /workspaces and /workspace, both
+// on a fresh container and on one whose writable layer still carries the bare
+// link an older image created.
+func TestEntrypointWorkspaceAliasIsCreated(t *testing.T) {
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("bash not available")
+	}
+	body, err := os.ReadFile(embeddedScript)
+	if err != nil {
+		t.Fatalf("reading %s: %v", embeddedScript, err)
+	}
+	workspaceBlock := extractWorkspaceBlock(t, string(body))
+
+	for _, tc := range []struct {
+		name              string
+		hasStaleBareAlias bool
+	}{
+		{name: "fresh"},
+		{name: "upgraded from a bare alias", hasStaleBareAlias: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			// Neutral dir names: the block is localized by string replacement,
+			// and a path containing "/workspace" would be rewritten twice.
+			containerRoot, err := os.MkdirTemp("", "dc-mount-")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer os.RemoveAll(containerRoot)
+			mountRoot := filepath.Join(containerRoot, "mounts")
+			aliasRoot := filepath.Join(containerRoot, "short")
+			projectMount := filepath.Join(mountRoot, "myproj")
+			if err := os.MkdirAll(projectMount, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if tc.hasStaleBareAlias {
+				if err := os.Symlink(projectMount, aliasRoot); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			localizedBlock := strings.ReplaceAll(workspaceBlock, "/workspaces", mountRoot)
+			localizedBlock = strings.ReplaceAll(localizedBlock, "/workspace", aliasRoot)
+			if out, err := exec.Command("bash", "-c", localizedBlock).CombinedOutput(); err != nil {
+				t.Fatalf("workspace block: %v\n%s", err, out)
+			}
+
+			aliasRootInfo, err := os.Lstat(aliasRoot)
+			if err != nil {
+				t.Fatalf("alias root: %v", err)
+			}
+			if !aliasRootInfo.IsDir() {
+				t.Fatalf("the alias root must be a directory holding one link per project, got mode %v", aliasRootInfo.Mode())
+			}
+			projectAlias := filepath.Join(aliasRoot, "myproj")
+			aliasTarget, err := os.Readlink(projectAlias)
+			if err != nil {
+				t.Fatalf("per-project alias: %v", err)
+			}
+			if aliasTarget != projectMount {
+				t.Errorf("alias -> %q, want %q", aliasTarget, projectMount)
+			}
+		})
+	}
+}
+
+// extractWorkspaceBlock returns the entrypoint's workspace-resolution block
+// (the WORKSPACE_DIR assignment through the end of its loop), so the test runs
+// the real thing instead of a copy.
+func extractWorkspaceBlock(t *testing.T, script string) string {
+	t.Helper()
+	const start = "WORKSPACE_MOUNT_ROOT=/workspaces\n"
+	i := strings.Index(script, start)
+	if i < 0 {
+		t.Fatal("entrypoint has no workspace resolution block")
+	}
+	rest := script[i:]
+	end := strings.Index(rest, "\ndone\n")
+	if end < 0 {
+		t.Fatal("could not find the end of the workspace resolution loop")
+	}
+	return rest[:end+len("\ndone\n")]
+}
+
+// The shared-config volume is flat (one dir per entry id) while the home it is
+// symlinked into is not, so a relative cross-entry link written against the home
+// layout (~/.claude/skills/x -> ../../.agents/skills/x, what `npx skills add -g`
+// writes) has no name to land on inside the volume and dangles. The entrypoint
+// must mirror the home layout at the volume root so it does — without clobbering
+// anything real sitting at that name.
+func TestEntrypointMirrorsHomeLayoutAtVolumeRoot(t *testing.T) {
+	body, err := os.ReadFile(embeddedScript)
+	if err != nil {
+		t.Fatalf("reading %s: %v", embeddedScript, err)
+	}
+	script := string(body)
+	for _, frag := range []string{
+		`mirror_entry_at_home_name "$entry_id" "$entry_target"`,
+		`if [ -e "$alias_path" ] && [ ! -L "$alias_path" ]; then return 0; fi`,
+		`ln -sfn "$(prefix_to_volume_root "$entry_target")$entry_id" "$alias_path"`,
+	} {
+		if !strings.Contains(script, frag) {
+			t.Errorf("entrypoint must mirror the home layout at the volume root (missing %q)", frag)
+		}
+	}
+}
+
+// TestEntrypointVolumeAliasesResolve runs the entrypoint's own prefix_to_volume_root
+// helper to prove the aliases it builds point back at the flat entry, for a
+// nested target (.config/gh -> ../gh) as much as a top-level one (.claude ->
+// claude). An alias with the wrong number of "../" hops is silently dangling,
+// which is exactly the failure it exists to prevent.
+func TestEntrypointVolumeAliasesResolve(t *testing.T) {
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("bash not available")
+	}
+	body, err := os.ReadFile(embeddedScript)
+	if err != nil {
+		t.Fatalf("reading %s: %v", embeddedScript, err)
+	}
+	fn := extractShellFunc(t, string(body), "prefix_to_volume_root")
+
+	vol := t.TempDir()
+	for _, tc := range []struct{ id, target string }{
+		{"claude", ".claude"},
+		{"gh", ".config/gh"},
+		{"antigravity-config", ".config/antigravity"},
+	} {
+		if err := os.MkdirAll(filepath.Join(vol, tc.id), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		script := fn + `
+alias_path="$1/$2"
+mkdir -p "$(dirname "$alias_path")"
+ln -sfn "$(prefix_to_volume_root "$2")$3" "$alias_path"`
+		cmd := exec.Command("bash", "-c", script, "bash", vol, tc.target, tc.id)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("prefix_to_volume_root(%s): %v\n%s", tc.target, err, out)
+		}
+		alias := filepath.Join(vol, filepath.FromSlash(tc.target))
+		resolved, err := filepath.EvalSymlinks(alias)
+		if err != nil {
+			t.Errorf("volume alias %s does not resolve: %v", tc.target, err)
+			continue
+		}
+		want, err := filepath.EvalSymlinks(filepath.Join(vol, tc.id))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if resolved != want {
+			t.Errorf("volume alias %s resolves to %s, want %s", tc.target, resolved, want)
+		}
+	}
+}
+
+// extractShellFunc returns the source of a `name() { … }` function defined in
+// script, so a test can run the entrypoint's real helper instead of a copy.
+func extractShellFunc(t *testing.T, script, name string) string {
+	t.Helper()
+	start := strings.Index(script, name+"() {")
+	if start < 0 {
+		t.Fatalf("entrypoint has no %s() function", name)
+	}
+	rest := script[start:]
+	end := strings.Index(rest, "\n    }\n")
+	if end < 0 {
+		t.Fatalf("could not find the end of %s()", name)
+	}
+	return rest[:end+len("\n    }\n")]
 }
 
 // Antigravity CLI 2.0 reads skills from ~/.gemini/antigravity-cli/skills and

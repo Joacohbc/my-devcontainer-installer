@@ -33,11 +33,14 @@ done
 # ── Runtime facts ────────────────────────────────────────────────────────────
 
 # Resolve the workspace the same way the entrypoint does: a per-project mount
-# under /workspaces/<name>, with /workspace as a stable alias for older layouts.
+# under /workspaces/<name> (aliased as /workspace/<name>), falling back to a
+# bare /workspace for images built before the per-project layout.
 WORKSPACE_DIR=/workspace
+WORKSPACE_ALIAS=
 for _ws in /workspaces/*; do
     [ -d "$_ws" ] || continue
     WORKSPACE_DIR="$_ws"
+    WORKSPACE_ALIAS="/workspace/$(basename "$_ws")"
     break
 done
 
@@ -139,6 +142,7 @@ json_escape() { sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'; }
 emit_json() {
     printf '{\n'
     printf '  "workspace": "%s",\n' "$WORKSPACE_DIR"
+    printf '  "workspaceAlias": "%s",\n' "$WORKSPACE_ALIAS"
     printf '  "hostname": "%s",\n' "$(hostname)"
     printf '  "user": "%s",\n' "$(id -un)"
     printf '  "uid": %s,\n' "$(id -u)"
@@ -184,7 +188,7 @@ emit_static_context() {
     echo "# This container, right now"
     echo
     echo "- Hostname: $(hostname)"
-    echo "- Workspace: $WORKSPACE_DIR"
+    echo "- Workspace: $WORKSPACE_DIR${WORKSPACE_ALIAS:+ (alias: $WORKSPACE_ALIAS)}"
     echo "- User: $(id -un) (uid $(id -u), gid $(id -g))"
     echo "- Docker socket mounted: $DOCKER_SOCK"
     echo "- Shared config volume mounted: $SHARED_CONFIG"
