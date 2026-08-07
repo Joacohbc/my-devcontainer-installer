@@ -251,6 +251,18 @@ func TestSyncEntryScriptRunsTheSymlinkPasses(t *testing.T) {
 	}
 }
 
+// requireGNUCoreutils skips a test that shells out to syncEntryScript when the
+// local userland is not GNU. The script only ever runs inside syncHelperImage,
+// a pinned Ubuntu, so it is free to use `readlink -m` and friends; executing it
+// against BSD tools (a macOS dev box or CI runner) would assert on an
+// environment that never exists in production. Linux CI still covers it.
+func requireGNUCoreutils(t *testing.T) {
+	t.Helper()
+	if err := exec.Command("readlink", "-m", "/").Run(); err != nil {
+		t.Skipf("GNU coreutils not available (%v); the sync helper only ever runs in %s", err, syncHelperImage)
+	}
+}
+
 // lookupSharedConfigEntry is a fatal-on-miss lookup for the script tests.
 func lookupSharedConfigEntry(t *testing.T, id string) types.SharedConfigEntry {
 	t.Helper()
@@ -312,6 +324,7 @@ func TestSyncEntryScriptFixesSymlinks(t *testing.T) {
 	if _, err := exec.LookPath("sh"); err != nil {
 		t.Skip("sh not available")
 	}
+	requireGNUCoreutils(t)
 
 	vol := createPhysicalTempDir(t)
 	host := createPhysicalTempDir(t)
