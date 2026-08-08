@@ -83,6 +83,7 @@ ffmpeg|-version|ffmpeg
 chromium|--version|Chromium
 ngrok|--version|ngrok
 cloudflared|--version|cloudflared
+tailscale|version|Tailscale
 claude|--version|Claude Code
 codex|--version|Codex CLI
 copilot|--version|GitHub Copilot CLI

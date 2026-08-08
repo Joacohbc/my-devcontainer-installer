@@ -40,6 +40,7 @@ const (
 	ModuleDod            ModuleID = "dod"
 	ModuleNgrok          ModuleID = "ngrok"
 	ModuleCloudflared    ModuleID = "cloudflared"
+	ModuleTailscale      ModuleID = "tailscale"
 	ModuleCleanup        ModuleID = "cleanup"
 )
 

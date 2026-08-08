@@ -322,6 +322,67 @@ func TestCloudflaredModuleRender(t *testing.T) {
 	}
 }
 
+// Like cloudflared, tailscale is installed into the image and reads its
+// credential at runtime — but it joins a private tailnet instead of publishing
+// a public URL, and it has to be told how to run without systemd or a TUN
+// device.
+func TestTailscaleModuleRender(t *testing.T) {
+	out := dockerfile.TailscaleModule.Render(nil)
+	if !strings.Contains(out, "apt-get install -y tailscale") {
+		t.Errorf("tailscale module must install the tailscale package:\n%s", out)
+	}
+	if !strings.Contains(out, "signed-by=/etc/apt/keyrings/tailscale-archive-keyring.gpg") {
+		t.Errorf("tailscale apt list must be signed by the installed keyring:\n%s", out)
+	}
+	// Tailscale publishes one suite per Ubuntu release, so the keyring URL and
+	// the suite have to follow the base image instead of being hardcoded.
+	if !strings.Contains(out, "${VERSION_CODENAME}") {
+		t.Errorf("tailscale repo must follow the base image's release codename:\n%s", out)
+	}
+	// The declared env var is what the generator passes through to the container
+	// and what the wizard prompts for; without it the auth key can never arrive.
+	if len(dockerfile.TailscaleModule.RequiresEnv) != 1 {
+		t.Fatalf("tailscale must declare exactly its auth key env var, got %v", dockerfile.TailscaleModule.RequiresEnv)
+	}
+	env := dockerfile.TailscaleModule.RequiresEnv[0]
+	// The name must stay TS_AUTHKEY: it is what tailscaled itself reads, so a key
+	// exported for the official container image works here unchanged.
+	if dockerfile.TailscaleAuthKeyEnv != "TS_AUTHKEY" {
+		t.Errorf("TailscaleAuthKeyEnv = %q, want TS_AUTHKEY", dockerfile.TailscaleAuthKeyEnv)
+	}
+	if env.Name != dockerfile.TailscaleAuthKeyEnv {
+		t.Errorf("tailscale env var = %q, want %q", env.Name, dockerfile.TailscaleAuthKeyEnv)
+	}
+	// An empty key is a supported answer (the interactive login), so it must
+	// carry no Default that would silently pre-fill the prompt.
+	if env.Default != "" {
+		t.Errorf("TS_AUTHKEY must have no default, got %q", env.Default)
+	}
+	sec := dockerfile.TailscaleModule.Context(nil)
+	if sec == nil {
+		t.Fatal("tailscale must document itself for agents")
+	}
+	for _, frag := range []string{
+		"TS_AUTHKEY",
+		// No systemd and no TUN device: without these two an agent would run the
+		// plain "tailscale up" from the docs and hit a daemon that never started.
+		"--tun=userspace-networking",
+		"tailscale up",
+		"socks5://localhost:1055",
+		// State lives in the writable layer, so a recreate means re-authenticating.
+		"/var/lib/tailscale",
+	} {
+		if !strings.Contains(sec.Body, frag) {
+			t.Errorf("tailscale context must mention %q:\n%s", frag, sec.Body)
+		}
+	}
+	// A tailnet is private, but funnel is not: the warning has to separate them
+	// instead of leaving an agent to assume either extreme.
+	if !strings.Contains(sec.Body, "tailscale funnel") || !strings.Contains(sec.Body, "public internet") {
+		t.Errorf("tailscale context must warn that funnel is public:\n%s", sec.Body)
+	}
+}
+
 func TestDatabaseClientModulesRender(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -389,6 +450,7 @@ func TestAptModulesIncludeStandardCleanup(t *testing.T) {
 		{"github-cli", dockerfile.GithubCliModule, nil},
 		{"ngrok", dockerfile.NgrokModule, nil},
 		{"cloudflared", dockerfile.CloudflaredModule, nil},
+		{"tailscale", dockerfile.TailscaleModule, nil},
 		{"dod", dockerfile.DodModule, nil},
 		{"chrome", dockerfile.ChromeModule, nil},
 		{"java-temurin", dockerfile.JavaTemurinModule, nil},
@@ -447,6 +509,7 @@ func TestModuleRunLayerCounts(t *testing.T) {
 		{"github-cli", dockerfile.GithubCliModule, nil, 1},
 		{"ngrok", dockerfile.NgrokModule, nil, 1},
 		{"cloudflared", dockerfile.CloudflaredModule, nil, 1},
+		{"tailscale", dockerfile.TailscaleModule, nil, 1},
 		{"dod", dockerfile.DodModule, nil, 1},
 		{"chrome", dockerfile.ChromeModule, nil, 1},
 		{"java-temurin", dockerfile.JavaTemurinModule, nil, 1},

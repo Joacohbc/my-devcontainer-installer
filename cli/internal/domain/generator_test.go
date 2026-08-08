@@ -206,6 +206,25 @@ func TestGenerateDockerfile_CloudflaredModule(t *testing.T) {
 	assertContainsStr(t, df, "arch=$(dpkg --print-architecture)", "cloudflared")
 }
 
+// tailscale, like cloudflared, is a Dockerfile module: the daemon runs inside
+// the devcontainer, so the node's Tailscale address is the container itself.
+func TestGenerateDockerfile_TailscaleModule(t *testing.T) {
+	cfg := makeConfig(func(c *types.DevcontainerConfig) {
+		c.Dockerfile.Modules = []types.SelectedModule{{ID: types.ModuleTailscale}}
+	})
+	df := mustGenerateDockerfile(t, cfg)
+	assertContainsStr(t, df, "pkgs.tailscale.com/stable/ubuntu", "tailscale")
+	assertContainsStr(t, df, "apt-get install -y tailscale", "tailscale")
+	// The apt list must be signed by the keyring it just installed, and scoped to
+	// the build's architecture (images are built for amd64 and arm64).
+	assertContainsStr(t, df, "signed-by=/etc/apt/keyrings/tailscale-archive-keyring.gpg", "tailscale")
+	assertContainsStr(t, df, "arch=$(dpkg --print-architecture)", "tailscale")
+	// Tailscale publishes one suite per Ubuntu release: the codename is read from
+	// the base image at build time rather than pinned a second time here.
+	assertContainsStr(t, df, ". /etc/os-release", "tailscale")
+	assertContainsStr(t, df, "${VERSION_CODENAME}", "tailscale")
+}
+
 func TestGenerateDockerfile_DodModule(t *testing.T) {
 	cfg := makeConfig(func(c *types.DevcontainerConfig) {
 		c.Dockerfile.Modules = []types.SelectedModule{{ID: "dod"}}
@@ -1128,6 +1147,40 @@ func TestCollectRequiredEnvVars_ServicesAndModules(t *testing.T) {
 	none := domain.CollectRequiredEnvVars(makeConfig(func(c *types.DevcontainerConfig) {}))
 	if len(none) != 0 {
 		t.Errorf("CollectRequiredEnvVars = %+v, want none for a bare config", none)
+	}
+
+	// Two modules each declaring their own var: both are prompted for and both
+	// reach the container, so neither tool ends up silently credential-less.
+	both := domain.CollectRequiredEnvVars(makeConfig(func(c *types.DevcontainerConfig) {
+		c.Dockerfile.Modules = []types.SelectedModule{
+			{ID: types.ModuleCloudflared},
+			{ID: types.ModuleTailscale},
+		}
+	}))
+	if len(both) != 2 || both[0].Name != "TUNNEL_TOKEN" || both[1].Name != "TS_AUTHKEY" {
+		t.Fatalf("CollectRequiredEnvVars = %+v, want TUNNEL_TOKEN and TS_AUTHKEY", both)
+	}
+}
+
+// The tailscale auth key follows the same passthrough as cloudflared's token: a
+// compose environment entry, never a Dockerfile ENV, so it stays out of the
+// shared image and out of its fingerprint.
+func TestGenerateCompose_TailscaleAuthKeyReachesDevcontainer(t *testing.T) {
+	cfg := makeConfig(func(c *types.DevcontainerConfig) {
+		c.Dockerfile.Modules = []types.SelectedModule{{ID: types.ModuleTailscale}}
+	})
+	yml := mustGenerateCompose(t, cfg)
+	var parsed map[string]any
+	if err := yaml.Unmarshal([]byte(yml), &parsed); err != nil {
+		t.Fatalf("invalid YAML: %v", err)
+	}
+	devSvc := parsed["services"].(map[string]any)["devcontainer-ssh"].(map[string]any)
+	env, _ := devSvc["environment"].([]any)
+	if len(env) != 1 || env[0] != "TS_AUTHKEY=${TS_AUTHKEY:-}" {
+		t.Errorf("environment = %v, want [TS_AUTHKEY=${TS_AUTHKEY:-}]", devSvc["environment"])
+	}
+	if df := mustGenerateDockerfile(t, cfg); strings.Contains(df, "TS_AUTHKEY") {
+		t.Errorf("the auth key must never be baked into the image:\n%s", df)
 	}
 }
 

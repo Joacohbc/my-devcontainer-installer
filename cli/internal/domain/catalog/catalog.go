@@ -42,6 +42,7 @@ var DockerfileModules = []*dockerfile.ModuleSpec{
 	dockerfile.DodModule,
 	dockerfile.NgrokModule,
 	dockerfile.CloudflaredModule,
+	dockerfile.TailscaleModule,
 	dockerfile.CleanupModule,
 }
 

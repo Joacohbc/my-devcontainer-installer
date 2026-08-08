@@ -27,7 +27,7 @@ Con un asistente interactivo (*TUI*), te permite componer en segundos un contene
 | **Bases de Datos** | [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?logo=postgresql&logoColor=white)](#) [![MongoDB](https://img.shields.io/badge/MongoDB-47A248?logo=mongodb&logoColor=white)](#) [![Redis](https://img.shields.io/badge/Redis-DC382D?logo=redis&logoColor=white)](#) [![SQLite](https://img.shields.io/badge/SQLite-003B57?logo=sqlite&logoColor=white)](#) | Servicios orquestados en red privada (`postgres`, `mongo`, `redis`) o cliente local (`sqlite3`). Incluye clientes CLI opcionales (`psql`, `mongosh`, `redis-cli`). |
 | **Agentes de IA y Herramientas** | [![Claude Code](https://img.shields.io/badge/Claude_Code-D97757?logo=claude&logoColor=white)](#) [![GitHub Copilot](https://img.shields.io/badge/GitHub_Copilot-000000?logo=githubcopilot&logoColor=white)](#) [![Codex CLI](https://img.shields.io/badge/Codex_CLI-10A37F?logo=openai&logoColor=white)](#) [![OpenCode](https://img.shields.io/badge/OpenCode-4B32C6?logo=gnubash&logoColor=white)](#) [![Antigravity CLI](https://img.shields.io/badge/Antigravity_CLI-4285F4?logo=google&logoColor=white)](#) [![Caveman](https://img.shields.io/badge/Caveman-000000?logo=gnubash&logoColor=white)](#) [![Graphify](https://img.shields.io/badge/Graphify-000000?logo=diagramsdotnet&logoColor=white)](#) | CLIs e instaladores integrados para Claude Code, Copilot CLI, Codex CLI, OpenCode y Antigravity CLI, junto a utilidades como `caveman` (compresión de contexto) y `graphify` (grafos de conocimiento). |
 | **Herramientas de Sistema** | [![Docker](https://img.shields.io/badge/Docker_DoD-2496ED?logo=docker&logoColor=white)](#) [![GitHub CLI](https://img.shields.io/badge/GitHub_CLI-181717?logo=github&logoColor=white)](#) [![Chromium](https://img.shields.io/badge/Chromium-4285F4?logo=googlechrome&logoColor=white)](#) [![FFmpeg](https://img.shields.io/badge/FFmpeg-007808?logo=ffmpeg&logoColor=white)](#) | Docker-out-of-Docker (`/var/run/docker.sock`), `gh`, Chromium headless para testing/web scraping y FFmpeg para procesamiento multimedia. |
-| **Red y Conectividad** | [![OpenSSH](https://img.shields.io/badge/OpenSSH-000000?logo=openssh&logoColor=white)](#) [![Cloudflare](https://img.shields.io/badge/Cloudflare_Tunnel-F38020?logo=cloudflare&logoColor=white)](#) [![ngrok](https://img.shields.io/badge/ngrok-1F1E24?logo=ngrok&logoColor=white)](#) | Automatización de claves SSH, ProxyCommand para servidores remotos, túneles seguros con Cloudflare Zero Trust, Ngrok y gestión de puertos. |
+| **Red y Conectividad** | [![OpenSSH](https://img.shields.io/badge/OpenSSH-000000?logo=openssh&logoColor=white)](#) [![Cloudflare](https://img.shields.io/badge/Cloudflare_Tunnel-F38020?logo=cloudflare&logoColor=white)](#) [![Tailscale](https://img.shields.io/badge/Tailscale-242424?logo=tailscale&logoColor=white)](#) [![ngrok](https://img.shields.io/badge/ngrok-1F1E24?logo=ngrok&logoColor=white)](#) | Automatización de claves SSH, ProxyCommand para servidores remotos, túneles seguros con Cloudflare Zero Trust, red privada con Tailscale, Ngrok y gestión de puertos. |
 | **Entorno de Terminal** | [![Zsh](https://img.shields.io/badge/Zsh-F15A24?logo=zsh&logoColor=white)](#) [![Zellij](https://img.shields.io/badge/Zellij-000000?logo=gnu-bash&logoColor=white)](#) [![Micro](https://img.shields.io/badge/Micro-4A154B?logo=visualstudiocode&logoColor=white)](#) | ZSH con Oh My Zsh preconfigurado, multiplexor Zellij, editores `micro`/`nano` y manual integrado (`cat ~/help`). |
 
 ## Arquitectura y Modos de Conectividad
@@ -108,6 +108,52 @@ graph LR
     ZeroTrust -- "Túnel Encriptado" --> Cloudflared
     Cloudflared -- "localhost" --> DevContainer
     Cloudflared -- "Ruteo IP Privada" --> DBs
+```
+</details>
+
+<details>
+<summary><b>4. Red Privada (Tailscale)</b></summary>
+
+Una malla WireGuard privada entre tus propios dispositivos, sin publicar nada en internet. `tailscale` se instala **dentro** del devcontainer (módulo `tailscale`), así que el contenedor entra a la tailnet con su propia IP y tus otros equipos lo alcanzan directo.
+
+Como no hay systemd (ni `/dev/net/tun`), el demonio se arranca a mano en modo *userspace*:
+
+```bash
+sudo tailscaled --tun=userspace-networking \
+  --socks5-server=localhost:1055 \
+  --outbound-http-proxy-listen=localhost:1055 >/tmp/tailscaled.log 2>&1 &
+
+# Con clave (la pide el asistente y viaja por el .env como TS_AUTHKEY):
+sudo tailscale up --authkey="$TS_AUTHKEY" --hostname=devcontainer
+# Sin clave: imprime una URL de login para abrir en tu navegador.
+sudo tailscale up
+```
+
+El tráfico **entrante** desde la tailnet llega normal (el demonio lo reenvía a `localhost`); el **saliente** hacia la tailnet debe pasar por el proxy SOCKS5 (`ALL_PROXY=socks5://localhost:1055`). Todo esto queda documentado en el `~/CONTEXT.md` del contenedor.
+
+```mermaid
+graph LR
+    subgraph Remote["Tus Dispositivos"]
+        Laptop["Laptop / Móvil + Tailscale"]
+    end
+
+    subgraph Tailnet["Tailnet (WireGuard)"]
+        Coord["Coordinación Tailscale"]
+    end
+
+    subgraph LocalNetwork["Tu Red Local"]
+        subgraph DockerEnv["Entorno Docker"]
+            subgraph DevContainer["🖥️ Devcontainer-SSH"]
+                Tailscaled["tailscaled (userspace)"]
+            end
+            DBs[("🗄️ Bases de Datos")]
+        end
+    end
+
+    Laptop -- "Malla Cifrada" --> Coord
+    Coord -- "Peer to Peer" --> Tailscaled
+    Tailscaled -- "localhost" --> DevContainer
+    Tailscaled -- "Ruteo IP Privada" --> DBs
 ```
 </details>
 
