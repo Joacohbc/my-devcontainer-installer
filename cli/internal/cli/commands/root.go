@@ -30,6 +30,9 @@ config shared sync/backup/restore) and cleanup (clean: clean catalog,
 clean containers, clean images, clean ssh, clean networks, clean volumes, clean all). Run 'devcontainer-cli <command> --help'
 for the full details of any one.
 
+For AI assistants: 'skill install' teaches an agent running on this machine to
+drive the CLI, and 'context' reports what a container has inside it.
+
 Build modes:
   local-cached  Build the full Dockerfile/compose pipeline locally and tag the
                 image by a content fingerprint so identical setups are reused.

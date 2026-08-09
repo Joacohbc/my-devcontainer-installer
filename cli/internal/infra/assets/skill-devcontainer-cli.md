@@ -1,0 +1,226 @@
+---
+name: devcontainer-cli
+description: Drive devcontainer-cli from the host to give a project a disposable Docker dev environment. Use when asked to create, start, stop, rebuild or destroy a devcontainer, to run builds/tests/commands inside one instead of on this machine, to reach a service running in one (published ports, port-forward, SSH), or to inspect what a container has installed. Also use before installing a toolchain or database on the host, when a container is the better place for it.
+---
+
+# devcontainer-cli from the host
+
+`devcontainer-cli` builds and manages disposable Docker development
+environments ("devcontainers") for a project directory. You are running **on the
+host**: you drive the CLI, and the work happens inside the container.
+
+Use it whenever a task wants a toolchain, a database or a risky command that
+should not touch this machine. Anything installed inside is thrown away with the
+container; the project directory itself is a bind mount, so edits there are real
+edits on the host.
+
+## Orient before acting
+
+    devcontainer-cli --version
+    devcontainer-cli status            # this project's containers
+    devcontainer-cli status --all      # every managed container on the machine
+
+If the binary is missing, say so instead of installing it silently — the
+installer is the user's call (`cli/install.sh` in the project repo).
+
+A directory already has a devcontainer when it contains
+`devcontainer.config.json` (the project's answers) and `.dc_<workspace>/`
+(generated `Dockerfile`, `docker-compose.yml`, `.env` under
+`.dc_<workspace>/build/`). Both are safe to read and belong to the CLI — edit
+them by re-running generation, not by hand.
+
+`<workspace>` defaults to the sanitized directory name, and container names are
+`<workspace>-<service>`: the dev container itself is
+`<workspace>-devcontainer-ssh`, databases are `<workspace>-postgres`,
+`<workspace>-redis`, `<workspace>-mongo`.
+
+## Create an environment
+
+Run the generator from the project directory. **Always pass
+`--no-interactive`** — without it the CLI opens a TUI wizard that you cannot
+answer:
+
+    cd /path/to/project
+    devcontainer-cli --no-interactive --force --with nodejs,pnpm,github-cli
+
+That generates the files, builds the image and starts the stack. Useful flags
+(`devcontainer-cli --help` for the full list):
+
+| Flag | Effect |
+|---|---|
+| `--with a,b,c` | Dockerfile modules (toolchains/tools) to install |
+| `--preset <id>` | Start from a module bundle; `config preset list` shows them |
+| `--service mongo,postgres,redis` | Add database services to the compose stack |
+| `--ports 3000:3000,8080:80` | Publish container ports (bound to 127.0.0.1 unless an IP is given) |
+| `--volumes myvol:/data,./cache:/cache` | Extra mounts on the dev container |
+| `--workspace <name>` | Override the workspace name (default: directory name) |
+| `--mode remote --variant nodejs` | Skip the local build, pull a prebuilt ghcr.io image |
+| `--force` | Overwrite existing generated files without asking |
+| `--no-build` | Generate only; build/start later with `up --build` |
+
+Module ids for `--with`: `github-cli`, `nodejs`, `pnpm`, `yarn`, `bun`,
+`python`, `go`, `rust`, `php`, `c-cpp`, `java-temurin`, `java-openjdk`,
+`sqlite`, `postgres-client`, `redis-client`, `mongo-client`, `claude-code`,
+`codex-cli`, `copilot-cli`, `opencode`, `antigravity-cli`, `graphify`,
+`caveman`, `zellij`, `chrome`, `ffmpeg`, `dod` (Docker-out-of-Docker), `ngrok`,
+`cloudflared`. (`base`, `aliases` and `cleanup` are always applied; pick only
+one of the two `java-*` modules.)
+
+Databases are compose **services**, not modules: use `--service postgres`, and
+`--with postgres-client` only if you also want `psql` in the dev container.
+
+Re-running the command with different flags regenerates the project; add
+`--force` so it does not stop to ask about overwriting.
+
+## Run commands inside
+
+    devcontainer-cli shell -- go test ./...        # one-off command, exit code propagated
+    devcontainer-cli shell -- pnpm install
+    devcontainer-cli shell --user devuser -- whoami
+    devcontainer-cli shell -T -- pg_dump -U devuser devdb > dump.sql
+
+`shell -- <cmd>` is a `docker exec` wrapper and the normal way to do work in the
+container. Notes that matter:
+
+- With an explicit command it does **not** default to `devuser`; pass
+  `--user devuser` when the command must run as that user (it is who owns the
+  workspace files).
+- Pass `-T` whenever you redirect output to a file, so no TTY mangles the stream.
+- With no command it opens an interactive login shell — useless to you, so
+  always give a command.
+- `-c/--container <name>` targets another container in the stack (a database,
+  for example).
+
+The project is mounted at `/workspaces/<workspace>` inside the container
+(short alias `/workspace/<workspace>`), which is also the shell's working
+directory. Never assume a bare `/workspace`.
+
+For anything compose covers but the wrappers don't:
+
+    devcontainer-cli compose ps
+    devcontainer-cli compose exec -T postgres psql -U devuser -c '\l'
+
+## Lifecycle
+
+    devcontainer-cli up                # create/recreate and start (detached)
+    devcontainer-cli up --build        # rebuild the image first
+    devcontainer-cli start | stop | restart
+    devcontainer-cli down              # remove containers + network, keep volumes
+    devcontainer-cli down -v --yes     # also delete the named volumes (data loss)
+    devcontainer-cli destroy --yes     # down -v + delete .dc_<ws>/ and the config
+
+`start`/`stop`/`restart` accept `-c <container>` to act on one container.
+`destroy` is irreversible and requires `--yes` in non-interactive mode; confirm
+with the user before running it.
+
+    devcontainer-cli update            # rebuild (local-cached) or pull (remote)
+    devcontainer-cli update --rebuild  # force a rebuild
+
+## Reach services in the container
+
+Ports published at generation time (`--ports`) are reachable on `127.0.0.1`
+directly. For a port that was not published, tunnel it instead of regenerating:
+
+    devcontainer-cli port-forward 3000              # 127.0.0.1:3000 -> container:3000
+    devcontainer-cli port-forward 8080:80           # 127.0.0.1:8080 -> container:80
+    devcontainer-cli port-forward 5432:postgres:5432  # reach a sibling service
+
+`port-forward` tunnels over SSH and stays in the **foreground** until Ctrl+C, so
+run it in the background (or in a separate terminal) if you need to keep
+working, and pass `--no-interactive` so it never stops to prompt.
+
+Publishing a port permanently means regenerating with the port included:
+
+    devcontainer-cli --no-interactive --force --ports 3000:3000
+
+SSH access to the dev container (a real SSH session; it configures the key and
+the Host block on first use):
+
+    devcontainer-cli ssh -- go version
+    devcontainer-cli ssh --forward --ports 3000,8080:80
+
+Sibling services are reached **inside** the container by compose service name
+(`postgres`, `redis`, `mongo`), never `localhost`.
+
+To let an unrelated container talk to the project:
+
+    devcontainer-cli network connect other-app
+
+## Inspect
+
+    devcontainer-cli context           # what is installed inside; --json for parsing
+    devcontainer-cli status            # compact table (state, ports, image)
+    devcontainer-cli info              # ports, mounts, IPs, timestamps
+    devcontainer-cli logs -f
+    devcontainer-cli logs postgres --tail 100
+    devcontainer-cli ls -la /home/devuser
+
+`context` is the one to read before planning work inside a container: it prints
+the container's own `~/CONTEXT.md` plus the live tool inventory with versions,
+so you never guess whether a toolchain is there.
+
+Move files with `copy` (`:` marks the container side):
+
+    devcontainer-cli copy ./seed.sql :/home/devuser/seed.sql
+    devcontainer-cli copy :/home/devuser/out.log ./out.log
+
+## Throwaway container, no project files
+
+When there is no project to configure — a scratch environment, a quick
+experiment:
+
+    devcontainer-cli run --no-interactive --variant nodejs --name scratch
+    devcontainer-cli run --no-interactive --variant python --name scratch-py \
+      --volumes work:/work --ports 8000:8000
+
+Variants: `nodejs`, `bun`, `python`, `go`, `java-temurin`, `node-go`,
+`node-python`, `node-java-temurin`, `bun-go`, `bun-python`, `bun-java-temurin`.
+Tear one down with `devcontainer-cli destroy --container <name> --yes`.
+
+## Global config, presets, shared logins
+
+    devcontainer-cli config                       # current defaults
+    devcontainer-cli config preset list           # module bundles for --preset
+    devcontainer-cli config alias set ll "ls -la" # aliases for every container
+    devcontainer-cli config alias sync            # apply them without a rebuild
+
+`config shared sync` seeds a shared Docker volume from this machine's tool
+configs (`~/.claude`, `~/.config/gh`, …) so logins persist across every
+container. It copies credentials into a volume — only run it when the user asks
+for it, and never as a side effect of another task.
+
+## Cleanup
+
+    devcontainer-cli clean --dry-run           # preview across all categories
+    devcontainer-cli clean containers          # stopped managed containers
+    devcontainer-cli clean images
+    devcontainer-cli clean all --yes           # sweep everything managed
+
+Every `clean` subcommand touches only resources this CLI created (they carry a
+managed label). Use `--dry-run` first and show the user what would go.
+
+## Rules
+
+- **`--no-interactive` on every command that can prompt** (generation, `run`,
+  `down`, `destroy`, `clean`, `port-forward`). Without it a wizard opens and the
+  command hangs. Add `-y/--yes` for destructive commands — and get the user's
+  agreement first for `destroy`, `down -v` and `clean --all`.
+- **Nothing outside the workspace mount and `/home/devuser` survives** a
+  recreate. Install-and-forget inside the container is fine for a one-off; a
+  toolchain that must persist belongs in `--with` and a regenerate.
+- **Changing the image is a host-side action.** Adding a module, a service or a
+  published port means re-running generation with `--force`, then
+  `up --build` — not `apt-get install` inside the container.
+- **Prefer `--mode remote --variant <v>`** when the user just needs an
+  environment fast and the variant matches: it pulls a prebuilt image instead of
+  building one.
+- Run every command from the project directory; the CLI resolves the workspace
+  from the current directory unless `--workspace` says otherwise.
+- Long-running commands (`logs -f`, `port-forward`, `ssh` without a command,
+  `shell` with no command) do not return. Give them a command, a `--tail`, or
+  run them in the background.
+- `--help` on any command is authoritative and current; check it before
+  inventing a flag.
+
+<!-- devcontainer-cli:managed skill=devcontainer-cli — written by 'devcontainer-cli skill install'; local edits are replaced on reinstall. -->
+

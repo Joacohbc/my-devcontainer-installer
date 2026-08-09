@@ -27,7 +27,7 @@ func TestNewRootCommand_RegistersAllSubcommands(t *testing.T) {
 		"ssh", "clean", "port-forward", "run", "down", "destroy",
 		"start", "stop", "restart", "update",
 		"upgrade-cli", "config", "cleanup-tips", "shell", "logs", "copy",
-		"up", "status", "ls", "info", "network", "context", "compose",
+		"up", "status", "ls", "info", "network", "context", "compose", "skill",
 	}
 	have := map[string]bool{}
 	for _, c := range root.Commands() {
@@ -696,6 +696,77 @@ func TestContextCommand_Flags(t *testing.T) {
 	}
 	if err := ctx.Args(ctx, []string{"extra"}); err == nil {
 		t.Error("expected 'context' to reject positional arguments")
+	}
+}
+
+func TestSkillCommand_Structure(t *testing.T) {
+	root := NewRootCommand("test")
+	skill := findSubcommand(root, "skill")
+	if skill == nil {
+		t.Fatal("expected 'skill' command to be registered")
+	}
+	for _, name := range []string{"install", "remove", "show"} {
+		if findSubcommand(skill, name) == nil {
+			t.Errorf("expected 'skill %s' subcommand", name)
+		}
+	}
+	if remove := findSubcommand(skill, "remove"); remove != nil {
+		if !slices.Contains(remove.Aliases, "uninstall") {
+			t.Errorf("expected 'skill remove' to alias 'uninstall', got %v", remove.Aliases)
+		}
+		// Deleting files without a confirmation must be an explicit choice.
+		for _, name := range []string{"yes", "no-interactive", "force"} {
+			if remove.Flags().Lookup(name) == nil {
+				t.Errorf("expected 'skill remove' flag --%s", name)
+			}
+		}
+	}
+	// The target selectors are on the group and on every subcommand that acts
+	// on a target, so `skill --scope project` and `skill install --scope
+	// project` mean the same thing.
+	for _, cmd := range []*cobra.Command{skill, findSubcommand(skill, "install"), findSubcommand(skill, "remove")} {
+		for _, name := range []string{"agent", "scope"} {
+			if cmd.Flags().Lookup(name) == nil {
+				t.Errorf("expected %q flag --%s", cmd.Name(), name)
+			}
+		}
+	}
+	if install := findSubcommand(skill, "install"); install != nil {
+		if install.Flags().Lookup("force") == nil {
+			t.Error("expected 'skill install' flag --force")
+		}
+		if err := install.Args(install, []string{"extra"}); err == nil {
+			t.Error("expected 'skill install' to reject positional arguments")
+		}
+	}
+}
+
+func TestSkillTargets_ResolvesAgentsAndScope(t *testing.T) {
+	cmd := newSkillInstallCommand()
+	if err := cmd.Flags().Set("agent", "claude"); err != nil {
+		t.Fatalf("setting --agent: %v", err)
+	}
+	if err := cmd.Flags().Set("scope", domain.SkillScopeProject); err != nil {
+		t.Fatalf("setting --scope: %v", err)
+	}
+	agents, base, err := skillTargets(cmd)
+	if err != nil {
+		t.Fatalf("skillTargets: %v", err)
+	}
+	if len(agents) != 1 || agents[0].ID != "claude" {
+		t.Errorf("expected only the claude agent, got %v", agents)
+	}
+	cwd, _ := os.Getwd()
+	if base != cwd {
+		t.Errorf("project scope base = %q, want the cwd %q", base, cwd)
+	}
+
+	bad := newSkillInstallCommand()
+	if err := bad.Flags().Set("agent", "nope"); err != nil {
+		t.Fatalf("setting --agent: %v", err)
+	}
+	if _, _, err := skillTargets(bad); err == nil {
+		t.Error("expected an unknown --agent value to be rejected")
 	}
 }
 

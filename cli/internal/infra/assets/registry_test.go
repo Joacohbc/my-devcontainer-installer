@@ -89,6 +89,27 @@ func TestContextSkillIsRegisteredAsADoc(t *testing.T) {
 	}
 }
 
+func TestHostSkillIsRegisteredAsAHostDoc(t *testing.T) {
+	var found bool
+	for _, a := range Registry {
+		if a.File != "skill-devcontainer-cli.md" {
+			continue
+		}
+		found = true
+		if a.Kind != KindHostDoc {
+			t.Errorf("the host skill must be KindHostDoc, got %q", a.Kind)
+		}
+		// It documents the CLI for an agent on the host; copying it into a
+		// container would only plant a document about the wrong machine.
+		if _, ok := LookupCopyable(a.Name); ok {
+			t.Errorf("the host skill %q must not be copyable", a.Name)
+		}
+	}
+	if !found {
+		t.Error("the host skill must be listed in the registry")
+	}
+}
+
 func TestLookupCopyable(t *testing.T) {
 	a, ok := LookupCopyable("install-claude-code")
 	if !ok {
