@@ -176,7 +176,26 @@ devcontainer-cli context --json          # Salida estructurada, pensada para age
 get-devcontainer-context                 # Lo mismo, desde adentro del contenedor
 ```
 
-### 6. Aliases en todos los contenedores (`config alias`)
+### 6. Skill para el agente del host (`skill`)
+Lo anterior es la mitad de adentro del contenedor. La mitad de **afuera** es `devcontainer-cli skill`: instala en tu máquina una skill que le enseña a un agente del host (Claude Code, Antigravity, …) a manejar esta CLI — generar el devcontainer de un proyecto, correr builds y tests adentro, publicar o tunelizar puertos, revisar qué trae la imagen y destruir el entorno. Con eso el agente puede meter el trabajo en un contenedor en vez de ensuciar tu máquina.
+
+El documento se escribe en los mismos dos directorios que usa la skill de adentro: `~/.claude/skills/devcontainer-cli/SKILL.md` y `~/.agents/skills/devcontainer-cli/SKILL.md`. Si ya hay un archivo ahí que no escribió la CLI, no se pisa sin `--force`.
+```bash
+devcontainer-cli skill                       # Dónde iría y qué hay instalado hoy
+devcontainer-cli skill install               # Instalar (o actualizar) la skill
+devcontainer-cli skill install --agent claude --scope project  # Sólo Claude Code, sólo en este proyecto
+devcontainer-cli skill show                  # Imprimir el documento (para otro agente)
+devcontainer-cli skill remove                # Quitar lo que instaló la CLI
+```
+Volvé a correr `skill install` después de un `upgrade-cli` para quedarte con la versión nueva del documento; los agentes la toman en la sesión siguiente.
+
+El mismo documento está publicado en el repo (`skills/devcontainer-cli/SKILL.md`), así que una máquina que todavía no tiene el binario puede instalarlo con el CLI de Skills — es la línea que imprimen `skill` y `skill install`:
+```bash
+npx skills add Joacohbc/my-devcontainer-installer@devcontainer-cli -g
+```
+Las dos vías escriben el mismo archivo, así que `devcontainer-cli skill` reconoce como propia una copia instalada por `npx`.
+
+### 7. Aliases en todos los contenedores (`config alias`)
 La imagen trae aliases por defecto: `kill_port <puerto>`, `npm`→`pnpm`, `npx`→`pnpm dlx`, `pip`/`pip3`→`uv pip`, y un lanzador `<tool>_yolo` por agente (`claude_yolo`, `codex_yolo`, `copilot_yolo`, `agy_yolo`) que corre el CLI sin prompts de permisos —el contenedor ya es el sandbox—. Los comandos `claude`, `codex`, `copilot` y `agy` quedan intactos: saltear los permisos es opt-in.
 
 Tus propios aliases los definís **por comandos** y se guardan en la configuración de la CLI (`config.json`), no en un archivo suelto de tu home. `config alias sync` los renderiza dentro del volumen compartido, así que se aplican a **todos** los contenedores sin reconstruir ninguna imagen y sin reiniciar nada (toman efecto en la próxima shell):
@@ -188,13 +207,13 @@ devcontainer-cli config alias sync               # Aplicarlos a todos los conten
 ```
 Como se sourcean después de los defaults de la imagen, lo que definas ahí siempre gana.
 
-### 7. Conectar otros servicios a la red (`network`)
+### 8. Conectar otros servicios a la red (`network`)
 Conecta cualquier otro contenedor Docker a la red privada del workspace actual:
 ```bash
 devcontainer-cli network connect mi-servicio-extra --alias db-extra
 ```
 
-### 8. Limpieza del sistema (`clean`)
+### 9. Limpieza del sistema (`clean`)
 ```bash
 devcontainer-cli clean ssh              # Elimina bloques SSH y known_hosts obsoletos
 devcontainer-cli clean all              # Menú interactivo de limpieza de imágenes/volúmenes/redes

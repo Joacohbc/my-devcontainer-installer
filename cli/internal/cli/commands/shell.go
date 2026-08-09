@@ -43,7 +43,7 @@ entirely on the 'docker exec' channel (no ssh-into-container step).`,
   devcontainer-cli shell --via me@docker-host -c dc-ssh`,
 		RunE: runShell,
 	}
-	cmd.Flags().String("user", "", "User to run the command as (interactive shell defaults to devuser; ignored when an explicit command is passed)")
+	cmd.Flags().String("user", "", "User to run the command as; always honoured, but only an interactive shell defaults it to devuser")
 	cmd.Flags().String("type", "", "Shell to open: bash, zsh or sh (interactive shell defaults to zsh)")
 	cmd.Flags().BoolP("no-tty", "T", false, "Disable pseudo-TTY allocation (use when piping output to a file, e.g. a DB dump)")
 	cmd.Flags().String("via", "", "Reach the container through an existing SSH connection to its Docker host (requires --container): USER@HOST or an ssh-config alias")
