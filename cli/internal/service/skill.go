@@ -95,6 +95,8 @@ func (s SkillService) Install(base string, agents []domain.SkillAgent, force boo
 		return fmt.Errorf("no skill was installed")
 	}
 	s.Report.Info("Agents pick the skill up on their next session; ask yours to use the '%s' skill.", domain.HostSkillName)
+	s.Report.Info("Without this binary (another machine, a teammate) the same skill installs from the repo with:")
+	s.Report.Info("  %s", domain.HostSkillNpxCommand())
 	return nil
 }
 

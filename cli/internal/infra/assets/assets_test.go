@@ -1,6 +1,7 @@
 package assets_test
 
 import (
+	"bytes"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -439,6 +440,28 @@ func TestEntrypointDoesNotTouchAgentMemoryFiles(t *testing.T) {
 // The global skill baked into every image must declare the frontmatter an agent
 // needs to discover it (name + description) and must point at both halves of the
 // context: the static ~/CONTEXT.md and the live get-devcontainer-context.
+// The host skill is shipped twice: embedded here, and committed at
+// skills/devcontainer-cli/SKILL.md so the Skills CLI (`npx skills add`) can
+// install it straight from the repo. go:embed cannot reach out of this
+// directory, so the copies are kept honest by this test rather than by a
+// symlink. They must be byte-identical: that is what makes an npx-installed
+// copy indistinguishable from one `skill install` wrote (SkillCurrent, not
+// SkillForeign).
+func TestHostSkillMirrorsTheRepoCopy(t *testing.T) {
+	embedded, err := os.ReadFile("skill-devcontainer-cli.md")
+	if err != nil {
+		t.Fatalf("reading the embedded host skill: %v", err)
+	}
+	repoCopy := filepath.Join("..", "..", "..", "..", "skills", "devcontainer-cli", "SKILL.md")
+	published, err := os.ReadFile(repoCopy)
+	if err != nil {
+		t.Fatalf("reading %s: %v (the repo copy is what `npx skills add` installs)", repoCopy, err)
+	}
+	if !bytes.Equal(embedded, published) {
+		t.Errorf("skill-devcontainer-cli.md and %s have diverged; copy the embedded asset over the repo one", repoCopy)
+	}
+}
+
 func TestContextSkillDocument(t *testing.T) {
 	body, err := os.ReadFile("skill-devcontainer-context.md")
 	if err != nil {

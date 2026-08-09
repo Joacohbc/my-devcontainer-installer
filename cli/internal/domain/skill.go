@@ -34,6 +34,26 @@ const HostSkillAsset = "skill-devcontainer-cli.md"
 // which is never overwritten without --force.
 const HostSkillMarker = "devcontainer-cli:managed skill=devcontainer-cli"
 
+// HostSkillRepo is the GitHub repository the same document is published from,
+// so it can also be installed with the Skills CLI by someone who does not have
+// this binary yet (a teammate, a fresh machine, an agent that only knows
+// `npx skills`).
+const HostSkillRepo = "Joacohbc/my-devcontainer-installer"
+
+// HostSkillRepoPath is where that copy lives in the repository. The Skills CLI
+// discovers skills as <dir>/SKILL.md, which is why the repo carries a mirror of
+// the embedded asset instead of pointing at it: go:embed cannot reach out of
+// its own directory, so the two files are kept byte-identical by a test.
+// Identical bytes are also what lets `skill` report an npx-installed copy as
+// current rather than foreign.
+const HostSkillRepoPath = "skills/" + HostSkillName + "/" + HostSkillFile
+
+// HostSkillNpxCommand returns the Skills CLI invocation that installs this
+// skill straight from the repository, globally.
+func HostSkillNpxCommand() string {
+	return fmt.Sprintf("npx skills add %s@%s -g", HostSkillRepo, HostSkillName)
+}
+
 // SkillAgent is one host-side agent that reads skills from a directory.
 type SkillAgent struct {
 	ID    string // selection id, e.g. "claude"

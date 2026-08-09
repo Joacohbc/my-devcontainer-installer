@@ -28,6 +28,8 @@ setup: every generated image already carries the 'devcontainer-context' skill,
 which tells an agent running INSIDE a container where it is.
 
 With no subcommand this lists the install targets and what is currently at each.
+The same document is published in the repo, so a machine without this binary can
+install it with the Skills CLI instead; both commands print that invocation.
 
 Subcommands:
   install    Write the skill into your agents' skill directories.
@@ -65,7 +67,11 @@ skill directory (narrow it with --agent).
 Re-running it upgrades a skill installed by an older version of the CLI, so run
 it again after 'upgrade-cli'. A file the CLI did not write is never replaced
 without --force. Agents load skills at session start, so restart yours after
-installing.`,
+installing.
+
+It finishes by printing the equivalent 'npx skills add' command, which installs
+the same document straight from the repository — that is the one to pass on to a
+machine that does not have this binary.`,
 		Example: `  # Every supported agent, in your home directory
   devcontainer-cli skill install
 
@@ -167,6 +173,7 @@ func runSkillStatus(cmd *cobra.Command, _ []string) error {
 	}
 	console.NewLine()
 	console.Info("Install or update it with: devcontainer-cli skill install")
+	console.Info("Or from the repo with the Skills CLI: %s", domain.HostSkillNpxCommand())
 	return nil
 }
 

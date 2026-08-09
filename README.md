@@ -189,6 +189,12 @@ devcontainer-cli skill remove                # Quitar lo que instaló la CLI
 ```
 Volvé a correr `skill install` después de un `upgrade-cli` para quedarte con la versión nueva del documento; los agentes la toman en la sesión siguiente.
 
+El mismo documento está publicado en el repo (`skills/devcontainer-cli/SKILL.md`), así que una máquina que todavía no tiene el binario puede instalarlo con el CLI de Skills — es la línea que imprimen `skill` y `skill install`:
+```bash
+npx skills add Joacohbc/my-devcontainer-installer@devcontainer-cli -g
+```
+Las dos vías escriben el mismo archivo, así que `devcontainer-cli skill` reconoce como propia una copia instalada por `npx`.
+
 ### 7. Aliases en todos los contenedores (`config alias`)
 La imagen trae aliases por defecto: `kill_port <puerto>`, `npm`→`pnpm`, `npx`→`pnpm dlx`, `pip`/`pip3`→`uv pip`, y un lanzador `<tool>_yolo` por agente (`claude_yolo`, `codex_yolo`, `copilot_yolo`, `agy_yolo`) que corre el CLI sin prompts de permisos —el contenedor ya es el sandbox—. Los comandos `claude`, `codex`, `copilot` y `agy` quedan intactos: saltear los permisos es opt-in.
 

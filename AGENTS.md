@@ -494,9 +494,21 @@ ports, inspect it, tear it down. It never ends up in an image.
 | Piece | Where |
 |---|---|
 | Content | `internal/infra/assets/skill-devcontainer-cli.md` (embedded, `KindHostDoc`) |
+| Published copy | `skills/devcontainer-cli/SKILL.md` at the **repo root** |
 | Paths, scopes, state classification | `internal/domain/skill.go` |
 | Install / remove / status | `internal/service/skill.go` (`SkillService`) |
 | Command | `internal/cli/commands/skill.go` |
+
+**The document is committed twice, on purpose.** The Skills CLI
+(`npx skills add <owner/repo>@<skill>`) discovers a skill as `<dir>/SKILL.md`,
+so the repo carries `skills/devcontainer-cli/SKILL.md` — that is what a machine
+without this binary installs. `go:embed` cannot reach out of its own directory,
+so the copy cannot be a symlink either; `TestHostSkillMirrorsTheRepoCopy` keeps
+the two byte-identical instead. **Edit the embedded asset, then copy it over the
+repo one** — never one alone. Byte equality is load-bearing beyond tidiness: it
+is what makes an npx-installed copy classify as `current` rather than `foreign`.
+`domain.HostSkillRepo`/`HostSkillRepoPath`/`HostSkillNpxCommand()` are the
+single source of that invocation, printed by both `skill` and `skill install`.
 
 Load-bearing details:
 

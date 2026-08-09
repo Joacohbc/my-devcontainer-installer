@@ -3,6 +3,7 @@ package domain_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
@@ -55,6 +56,21 @@ func TestResolveHostSkillAgents(t *testing.T) {
 
 	if _, err := domain.ResolveHostSkillAgents([]string{"claude", "nope"}); err == nil {
 		t.Error("expected an unknown agent id to be rejected")
+	}
+}
+
+func TestHostSkillNpxCommand(t *testing.T) {
+	got := domain.HostSkillNpxCommand()
+	for _, frag := range []string{"npx skills add", domain.HostSkillRepo, domain.HostSkillName, "-g"} {
+		if !strings.Contains(got, frag) {
+			t.Errorf("the Skills CLI command must contain %q, got %q", frag, got)
+		}
+	}
+	// The Skills CLI discovers a skill as <dir>/SKILL.md, so the published
+	// path must keep that shape or `npx skills add` finds nothing.
+	if !strings.HasPrefix(domain.HostSkillRepoPath, "skills/") ||
+		!strings.HasSuffix(domain.HostSkillRepoPath, "/"+domain.HostSkillFile) {
+		t.Errorf("HostSkillRepoPath = %q, want skills/<name>/%s", domain.HostSkillRepoPath, domain.HostSkillFile)
 	}
 }
 
