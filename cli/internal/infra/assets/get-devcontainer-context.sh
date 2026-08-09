@@ -4,8 +4,9 @@
 # of the runtime, the installed tools and the reachable services.
 #
 # Installed at build time to ~/.local/bin/get-devcontainer-context (already on
-# PATH via the base module's .local_bin_init.sh). Also copyable into older
-# containers with `devcontainer-cli copy --asset get-devcontainer-context`.
+# PATH: the base module declares that directory in the image environment). Also
+# copyable into older containers with
+# `devcontainer-cli copy --asset get-devcontainer-context`.
 #
 #   get-devcontainer-context           human/markdown output (default)
 #   get-devcontainer-context --json    structured output, easier to parse

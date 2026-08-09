@@ -8,6 +8,9 @@ var GolangModule = &ModuleSpec{
 	Category:   types.CategoryLang,
 	UICategory: types.UICategoryLanguages,
 	CopyFiles:  []string{"golang_utils.sh"},
+	ProvidesEnv: func(opts map[string]any) ContainerEnv {
+		return ContainerEnv{PathEntries: []PathEntry{"/usr/local/go/bin", "$HOME/go/bin"}}
+	},
 	PostScriptFiles: func(opts map[string]any) []string {
 		return []string{"update_golang.sh", "golang_utils.sh"}
 	},

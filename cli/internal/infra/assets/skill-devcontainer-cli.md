@@ -82,17 +82,23 @@ Re-running the command with different flags regenerates the project; add
 `shell -- <cmd>` is a `docker exec` wrapper and the normal way to do work in the
 container.
 
-**Wrap the command in `bash -lc '…'` unless you are sure you don't need to.**
-`docker exec` runs your argv directly — it is not a shell — and the image puts
-the version-managed toolchains on PATH from the rc files (`~/.profile`,
-`~/.bashrc`, `~/.zshrc`), not from a Docker `ENV`. So a bare
-`shell -- uv pip install x` fails with `executable file not found in $PATH`
-even though `uv` is installed, and the same goes for `node`/`npm` (fnm),
-`pnpm`, `cargo`, `bun`, and anything under `~/.local/bin`. A login bash reads
-those files and sees the same PATH an interactive session does. It is also the
-only way to get pipes, `&&`, globs, `$VAR` expansion or `cd` — none of which
-exist without a shell. Use `bash`, not `zsh`: a non-interactive `zsh -lc` skips
-`~/.zshrc` and would miss the same PATH.
+**Wrap the command in `bash -lc '…'` when it needs a shell.** `docker exec` runs
+your argv directly — it is not a shell — so without the wrapper there are no
+pipes, no `&&`, no globs, no `$VAR` expansion and no `cd`, and the container's
+`pip`→`uv pip` and `npm`→`pnpm` indirections (shell functions and aliases) do
+not exist either. Use `bash`, not `zsh`: a non-interactive `zsh -lc` skips
+`~/.zshrc`.
+
+Finding a binary is a separate matter. The image declares its toolchain PATH in
+the image environment, so `uv`, `pnpm`, `cargo`, `bun` and `~/.local/bin` are
+found by a bare `shell -- <cmd>`. Two exceptions:
+
+- **`node` and `npm` under fnm** resolve per session, so they still need
+  `bash -lc`.
+- **An image built before this was in place** carries the PATH only in its rc
+  files. If a tool you know is installed comes back as
+  `executable file not found in $PATH`, re-run it wrapped, and consider
+  `devcontainer-cli update --rebuild`.
 
 Other notes that matter:
 
@@ -245,10 +251,10 @@ managed label). Use `--dry-run` first and show the user what would go.
   `down`, `destroy`, `clean`, `port-forward`). Without it a wizard opens and the
   command hangs. Add `-y/--yes` for destructive commands — and get the user's
   agreement first for `destroy`, `down -v` and `clean --all`.
-- **`bash -lc '…'` around anything that needs a toolchain or shell syntax.**
-  `command not found` from `shell --` almost always means the tool is there but
-  the PATH is not — re-run it wrapped before concluding anything is missing, and
-  check with `context` if it still fails.
+- **`bash -lc '…'` around anything using shell syntax** (`&&`, `|`, `*`, `cd`,
+  `$VAR`) or the container's `pip`/`npm` indirections. `command not found` from
+  `shell --` usually means the tool is there but the PATH is not — re-run it
+  wrapped before concluding anything is missing, and check with `context`.
 - **Install packages with the container's package manager** (`uv pip`, `pnpm`),
   not the one the project's docs assume. An error telling you to create a venv,
   pass `--break-system-packages` or `apt install python3-xyz` means you used the

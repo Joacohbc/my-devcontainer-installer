@@ -19,6 +19,19 @@ var PythonModule = &ModuleSpec{
 			Default: true,
 		},
 	},
+	// UV_SYSTEM_PYTHON makes `uv pip` target the container's own interpreter
+	// without a virtualenv — the container is already the isolation boundary.
+	// alias.sh exports it too, for the shells that predate this declaration;
+	// here it also reaches a process started without one.
+	ProvidesEnv: func(opts map[string]any) ContainerEnv {
+		if !types.BoolOpt(opts, "uv", true) {
+			return ContainerEnv{}
+		}
+		return ContainerEnv{
+			Assignments: []EnvVar{{Name: "UV_SYSTEM_PYTHON", Value: "1"}},
+			PathEntries: []PathEntry{"$HOME/.local/bin"},
+		}
+	},
 	Context: func(opts map[string]any) *types.ContextSection {
 		if !types.BoolOpt(opts, "uv", true) {
 			return &types.ContextSection{
@@ -65,7 +78,6 @@ RUN apt-get update && apt-get install -y python3 python3-pip && %s
 RUN apt-get update && apt-get install -y python3 python3-pip && \
     su - devuser -c 'curl -LsSf https://astral.sh/uv/install.sh | sh' && \
     %s
-%s
-`, aptCleanup(), emitShellInit(".python_init.sh", []string{`export PATH="$HOME/.local/bin:$PATH"`}))
+`, aptCleanup())
 	},
 }

@@ -58,6 +58,10 @@ Applies to:
 6. **Runtime env vars**: a tool that reads a token/secret at runtime declares it
    in the module's `RequiresEnv` (see below) — never hardcodes it in the
    Dockerfile, which would bake it into a shared image layer.
+7. **Build-time env vars**: a PATH entry or a variable the module's own tools
+   need is declared in `ProvidesEnv` (see "The container environment is declared
+   as data"), never exported from a shell-init file — otherwise it exists only
+   for processes that start a shell.
 
 ### Module-declared runtime env vars (`RequiresEnv`)
 
@@ -283,6 +287,58 @@ The other three kinds are never copyable: `KindBuild` (build-time scripts) and
 and `KindHostDoc` (markdown installed on the **host**, currently
 `skill-devcontainer-cli.md`, the agent skill for driving this CLI), which
 describes the host and has no business inside a container at all.
+
+### The container environment is declared as data, not as shell text
+
+A module contributes to the container's environment through
+`dockerfile.ModuleSpec.ProvidesEnv func(opts) ContainerEnv` — the build-time
+counterpart of `RequiresEnv`, which is asked of the *user* at runtime. It must
+never write `export PATH=…` into a shell-init file instead, and the reason is
+what the whole design turns on:
+
+**PATH is process environment, not shell ergonomics.** A value that only exists
+because a shell sourced a file reaches exactly the consumers that start a
+shell — so `devcontainer-cli shell -- uv pip install x` (a bare `docker exec`,
+no shell at all) fails with `executable file not found` even though uv is
+installed. Declared as data, the generator renders the same value to every
+target that needs it:
+
+| target | rendered by | reaches |
+|---|---|---|
+| `ENV` in the Dockerfile | `RenderDockerfileEnv` | every process, no shell involved |
+| `~/.dc-env.sh` | `RenderEnvScript` | shells, incl. `ssh <host> <cmd>` (a non-interactive `zsh -c`) |
+
+Both come from one `MergeContainerEnv` of every resolved module, emitted by
+`domain.renderEnvironmentBlocks`. Adding a target later is one more renderer
+function; no module changes.
+
+Load-bearing details:
+
+- **`EnvValue` carries the `$HOME` contract.** `ForShell()` keeps `$HOME` (a
+  shell expands it); `Expanded()` resolves it to `types.DevUserHome` for targets
+  that expand nothing. A renderer that forgets which one it needs is a bug the
+  type makes visible. `PathEntry` is an alias of it, named for the use site.
+- **The blocks are emitted after every module**, never inside one. The leading
+  Dockerfile layers must stay byte-identical across variants for the
+  `devcontainer-base` cache to be reused (see the frozen contracts), and an
+  `ENV` whose content depends on the selected modules would break that if it
+  came earlier. The build steps that need a PATH therefore still export it
+  themselves inside their own `su - devuser -c '…'` (pnpm does).
+- **`RenderEnvScript` prepends each entry through a `case` guard**, in reverse
+  declaration order. The guard is what makes double-sourcing harmless — a login
+  bash reads `.profile`, which on Ubuntu also sources `.bashrc`, and both carry
+  the source line. The reversal is what makes the resulting order match
+  `RenderDockerfileEnv`.
+- **`.zshenv` is why `ssh <alias> <command>` works.** sshd runs `$SHELL -c`,
+  which for zsh is neither login nor interactive, so `.zshrc`/`.zprofile` are
+  never read. It is the only zsh startup file that always is.
+- **Aliases and functions never go here.** A process cannot inherit them, so
+  they stay in `alias.sh` (see below). `ContainerEnv` has nowhere to put one,
+  which is the point.
+- **Genuinely dynamic init stays in `Render`.** `eval "$(fnm env)"` and
+  `nvm use` resolve per session, so the nodejs module keeps its own
+  `~/.nodejs_init.sh` — which yarn's build step also sources. A consequence
+  worth knowing: `node` under fnm still needs a shell, unlike uv/cargo/bun.
 
 ### The two alias layers and `~/CONTEXT.md`
 

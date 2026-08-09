@@ -12,6 +12,14 @@ var rcFiles = []string{".zshrc", ".bashrc", ".profile"}
 const devuserHome = types.DevUserHome
 
 func emitShellInit(initFileName string, lines []string) string {
+	return emitShellInitTo(rcFiles, initFileName, lines)
+}
+
+// emitShellInitTo is emitShellInit with an explicit list of startup files. The
+// environment script needs a different list from a module's shell init: it must
+// also land in .zshenv, which zsh reads for every invocation rather than only
+// for an interactive or login one.
+func emitShellInitTo(files []string, initFileName string, lines []string) string {
 	for _, l := range lines {
 		if strings.Contains(l, "'") {
 			panic(fmt.Sprintf("shell init line cannot contain single quotes: %s", l))
@@ -26,7 +34,7 @@ func emitShellInit(initFileName string, lines []string) string {
 	}
 	argsStr := strings.Join(args, " ")
 	sourceLine := `. \$HOME/` + initFileName
-	rcList := strings.Join(rcFiles, " ")
+	rcList := strings.Join(files, " ")
 	// Both steps run as devuser, so chain them in a single RUN layer: write the
 	// init file, then source it from each rc file.
 	return fmt.Sprintf(
