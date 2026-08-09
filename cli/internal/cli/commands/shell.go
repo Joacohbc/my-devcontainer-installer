@@ -26,6 +26,13 @@ with zsh. With an explicit command those defaults are left alone, so commands
 work against containers that have no devuser/zsh (e.g. a database container).
 Pass -T when piping a command's output to a file so the stream isn't mangled.
 
+An explicit command is exec'd directly, NOT through a shell: it sees the image's
+PATH, while the version-managed toolchains (uv, fnm/node, pnpm, cargo, bun,
+~/.local/bin) are exported from devuser's rc files. Wrap those in a login bash —
+'shell --user devuser -- bash -lc "uv pip install x"' — which also buys you
+pipes, '&&', globs and 'cd'. Use bash, not zsh: a non-interactive 'zsh -lc'
+skips ~/.zshrc and would miss the same PATH.
+
 Pass --via USER@HOST (with --container) to reach a container on a different
 Docker host through an existing SSH connection to it — unlike 'ssh --via' this
 needs nothing installed or configured in the container itself, since it rides
@@ -35,6 +42,9 @@ entirely on the 'docker exec' channel (no ssh-into-container step).`,
 
   # Run a one-off command
   devcontainer-cli shell -- go version
+
+  # A toolchain from a version manager needs a login shell for its PATH
+  devcontainer-cli shell --user devuser -- bash -lc 'uv pip install requests'
 
   # Pipe a DB dump out without a TTY
   devcontainer-cli shell -c <ws>-postgres -T -- pg_dump -U devuser devdb > dump.sql
