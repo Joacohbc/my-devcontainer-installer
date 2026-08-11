@@ -90,15 +90,15 @@ not exist either. Use `bash`, not `zsh`: a non-interactive `zsh -lc` skips
 `~/.zshrc`.
 
 Finding a binary is a separate matter. The image declares its toolchain PATH in
-the image environment, so `uv`, `pnpm`, `cargo`, `bun` and `~/.local/bin` are
-found by a bare `shell -- <cmd>`. Two exceptions:
+the image environment, so `node`, `uv`, `pnpm`, `cargo`, `bun`, `go` and
+anything in `~/.local/bin` are found by a bare `shell -- <cmd>`. Node resolves
+to the version the image was built with; a shell still picks whatever
+`fnm`/`nvm` selects for that session, so switching versions works as usual.
 
-- **`node` and `npm` under fnm** resolve per session, so they still need
-  `bash -lc`.
-- **An image built before this was in place** carries the PATH only in its rc
-  files. If a tool you know is installed comes back as
-  `executable file not found in $PATH`, re-run it wrapped, and consider
-  `devcontainer-cli update --rebuild`.
+The exception is **an image built before this was in place**, which carries the
+PATH only in its rc files. If a tool you know is installed comes back as
+`executable file not found in $PATH`, re-run it wrapped in `bash -lc` and
+rebuild with `devcontainer-cli update --rebuild`.
 
 Other notes that matter:
 

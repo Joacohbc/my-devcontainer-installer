@@ -337,8 +337,14 @@ Load-bearing details:
   which is the point.
 - **Genuinely dynamic init stays in `Render`.** `eval "$(fnm env)"` and
   `nvm use` resolve per session, so the nodejs module keeps its own
-  `~/.nodejs_init.sh` — which yarn's build step also sources. A consequence
-  worth knowing: `node` under fnm still needs a shell, unlike uv/cargo/bun.
+  `~/.nodejs_init.sh` — which yarn's build step also sources.
+- **A version manager needs a fixed path invented for it.** Neither fnm nor nvm
+  exposes one (fnm resolves the active version from `fnm env`, nvm nests it under
+  a version-named directory), so nothing could be declared. The nodejs build
+  selects the version and records the resulting bin dir as
+  `~/.node-current` (`dockerfile.NodeCurrentLink`), and *that* is the declared
+  PATH entry. A shell still wins: the init script prepends whatever fnm/nvm
+  selects for the session, so only shell-less callers see the built-in version.
 
 ### The two alias layers and `~/CONTEXT.md`
 

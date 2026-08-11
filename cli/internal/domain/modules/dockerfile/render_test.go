@@ -115,6 +115,57 @@ func TestBaseModuleProvidesLocalBinOnPath(t *testing.T) {
 	}
 }
 
+// Neither fnm nor nvm has a stable path to the active Node: fnm resolves it
+// from `fnm env` and nvm nests it under a version-named directory, so a command
+// running without a shell could not find node at all. The build leaves a link
+// at a fixed path and the module declares that path instead.
+func TestNodejsModuleMakesNodeReachableWithoutAShell(t *testing.T) {
+	for _, manager := range []string{"fnm", "nvm"} {
+		t.Run(manager, func(t *testing.T) {
+			opts := map[string]any{"manager": manager}
+
+			out := dockerfile.NodejsModule.Render(opts)
+			if !strings.Contains(out, `ln -sfn "$(dirname "$(command -v node)")"`) {
+				t.Errorf("the build must record the active node bin dir:\n%s", out)
+			}
+			if !strings.Contains(out, dockerfile.NodeCurrentLink) {
+				t.Errorf("expected the link to be %q:\n%s", dockerfile.NodeCurrentLink, out)
+			}
+
+			env := dockerfile.NodejsModule.ProvidesEnv(opts)
+			if !containsPathEntry(env, dockerfile.PathEntry("$HOME/"+dockerfile.NodeCurrentLink)) {
+				t.Errorf("%s must declare the node link on PATH, got %v", manager, env.PathEntries)
+			}
+			// fnm is a binary of its own; nvm is a shell function with nothing
+			// to put on PATH.
+			hasFnm := containsPathEntry(env, "$HOME/.fnm")
+			if hasFnm != (manager == "fnm") {
+				t.Errorf("%s: fnm on PATH = %v, want %v", manager, hasFnm, manager == "fnm")
+			}
+		})
+	}
+}
+
+// The fnm build step must select a version before recording the link, or
+// `command -v node` finds nothing to point at.
+func TestNodejsFnmSelectsVersionBeforeLinking(t *testing.T) {
+	out := dockerfile.NodejsModule.Render(map[string]any{"manager": "fnm"})
+	useAt := strings.Index(out, "fnm use ")
+	linkAt := strings.Index(out, "ln -sfn")
+	if useAt == -1 || linkAt == -1 || useAt > linkAt {
+		t.Errorf("expected `fnm use` before the link:\n%s", out)
+	}
+}
+
+func containsPathEntry(env dockerfile.ContainerEnv, want dockerfile.PathEntry) bool {
+	for _, entry := range env.PathEntries {
+		if entry == want {
+			return true
+		}
+	}
+	return false
+}
+
 func TestNodejsModuleRender(t *testing.T) {
 	cases := []struct {
 		name    string
