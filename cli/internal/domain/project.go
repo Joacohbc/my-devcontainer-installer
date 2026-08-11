@@ -6,6 +6,14 @@ import (
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 )
 
+// WorkspaceNetworkName is the compose network a workspace's containers share.
+// It is daemon-global, which is why the subnet check has to be able to tell it
+// apart from every other network: a project's own network is not a conflict
+// with itself.
+func WorkspaceNetworkName(workspace string) string {
+	return workspace + "-network"
+}
+
 func ResolveWorkspace(cwd string, config *types.DevcontainerConfig) string {
 	if config != nil && config.Workspace != "" {
 		return config.Workspace

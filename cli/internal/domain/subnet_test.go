@@ -107,3 +107,51 @@ func TestFormatCidr(t *testing.T) {
 		t.Errorf("expected 172.25.0.0/28, got %q", got)
 	}
 }
+
+// fakeNetworkCapture replies to the two docker calls ListUsedSubnets makes: the
+// id listing and the inspect that prints one "<network> <cidr>" line per range.
+func fakeNetworkCapture(inspectOutput string) domain.CaptureFunc {
+	return func(args []string) (int, string, string) {
+		if len(args) > 1 && args[1] == "ls" {
+			return 0, "id1\nid2\n", ""
+		}
+		return 0, inspectOutput, ""
+	}
+}
+
+func TestListUsedSubnets(t *testing.T) {
+	used := domain.ListUsedSubnets(fakeNetworkCapture("bridge 172.17.0.0/16\napi-network 172.25.0.0/28\n"))
+	if len(used) != 2 {
+		t.Fatalf("expected both networks to count as used, got %v", used)
+	}
+}
+
+// A project's own network holds exactly the subnet the project is about to ask
+// for, so counting it would move the project off its own range on every
+// regeneration.
+func TestListUsedSubnetsIgnoresNamedNetworks(t *testing.T) {
+	inspect := "bridge 172.17.0.0/16\napi-network 172.25.0.0/28\n"
+	used := domain.ListUsedSubnets(fakeNetworkCapture(inspect), "api-network")
+	if len(used) != 1 {
+		t.Fatalf("expected the ignored network to be excluded, got %v", used)
+	}
+	if domain.FormatCidr(used[0]) != "172.17.0.0/16" {
+		t.Errorf("expected the other network to survive, got %s", domain.FormatCidr(used[0]))
+	}
+	if domain.SubnetConflict("172.25.0.0/28", used) != nil {
+		t.Error("the project's own subnet must not conflict with itself")
+	}
+}
+
+func TestListUsedSubnetsAcceptsSubnetOnlyLines(t *testing.T) {
+	used := domain.ListUsedSubnets(fakeNetworkCapture("172.25.0.0/28\n"), "api-network")
+	if len(used) != 1 {
+		t.Fatalf("a line carrying only a CIDR must still count as used, got %v", used)
+	}
+}
+
+func TestWorkspaceNetworkName(t *testing.T) {
+	if got := domain.WorkspaceNetworkName("api"); got != "api-network" {
+		t.Errorf("WorkspaceNetworkName = %q, want %q", got, "api-network")
+	}
+}

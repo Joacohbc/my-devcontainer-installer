@@ -322,7 +322,7 @@ func GenerateCompose(config *types.DevcontainerConfig) (string, error) {
 	ctx := composeContext{
 		config:                config,
 		workspace:             config.Workspace,
-		networkName:           config.Workspace + "-network",
+		networkName:           WorkspaceNetworkName(config.Workspace),
 		subnet:                subnet,
 		labels:                types.ComposeLabels(config),
 		enabledIDs:            resolved.enabledIDs,
@@ -730,7 +730,7 @@ func PlannedComposeNames(config *types.DevcontainerConfig) (containers []string,
 		containers = append(containers, prefixContainer(config.Workspace, base))
 	}
 
-	network = config.Workspace + "-network"
+	network = WorkspaceNetworkName(config.Workspace)
 	for v := range declaredVolumes {
 		volumes = append(volumes, prefixVolume(config.Workspace, v))
 	}

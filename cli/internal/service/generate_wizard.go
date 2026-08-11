@@ -595,7 +595,7 @@ func (s GenerateService) Configure(base *types.DevcontainerConfig, cwd string, p
 		workspace = domain.SanitizeDockerName(filepath.Base(cwd), "devcontainer")
 	}
 
-	usedSubnets := domain.ListUsedSubnets(captureFunc())
+	usedSubnets := domain.ListUsedSubnets(captureFunc(), domain.WorkspaceNetworkName(workspace))
 	preferredSubnet := base.Compose.Subnet
 	if preferredSubnet == "" {
 		preferredSubnet = domain.DefaultSubnet
