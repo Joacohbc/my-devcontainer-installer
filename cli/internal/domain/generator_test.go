@@ -220,8 +220,8 @@ func TestGenerateDockerfile_PythonWithUvByDefault(t *testing.T) {
 	})
 	df := mustGenerateDockerfile(t, cfg)
 	assertContainsStr(t, df, "astral.sh/uv/install.sh", "python default")
-	assertContainsStr(t, df, ".python_init.sh", "python default")
-	assertContainsStr(t, df, "for f in .zshrc .bashrc .profile", "python default")
+	assertContainsStr(t, df, `ENV UV_SYSTEM_PYTHON="1"`, "python default")
+	assertContainsStr(t, df, "/home/devuser/.local/bin", "python default")
 }
 
 func TestGenerateDockerfile_PythonWithoutUv(t *testing.T) {
@@ -240,8 +240,57 @@ func TestGenerateDockerfile_BunShellInit(t *testing.T) {
 	})
 	df := mustGenerateDockerfile(t, cfg)
 	assertContainsStr(t, df, "bun.sh/install", "bun")
-	assertContainsStr(t, df, ".bun_init.sh", "bun")
-	assertContainsStr(t, df, "for f in .zshrc .bashrc .profile", "bun")
+	assertContainsStr(t, df, `ENV BUN_INSTALL="/home/devuser/.bun"`, "bun")
+	assertContainsStr(t, df, "/home/devuser/.bun/bin", "bun")
+}
+
+// Every module's declared environment reaches the image through both targets:
+// the ENV instructions a process inherits with no shell involved, and the
+// script the shells source.
+func TestGenerateDockerfile_EnvironmentReachesBothTargets(t *testing.T) {
+	cfg := makeConfig(func(c *types.DevcontainerConfig) {
+		c.Dockerfile.Modules = []types.SelectedModule{{ID: "rust"}, {ID: "go"}}
+	})
+	df := mustGenerateDockerfile(t, cfg)
+
+	assertContainsStr(t, df, `ENV PATH="/home/devuser/.local/bin:/usr/local/go/bin:/home/devuser/go/bin:/home/devuser/.cargo/bin:$PATH"`, "merged ENV PATH")
+	assertContainsStr(t, df, "/home/devuser/.dc-env.sh", "env script")
+	assertContainsStr(t, df, "for f in .zshenv .profile .bashrc", "env script rc files")
+	assertContainsStr(t, df, `case \":\$PATH:\" in`, "env script prepend guard")
+}
+
+// The leading layers of the Dockerfile must stay byte-identical across image
+// variants so the shared base cache is reused. An ENV block whose content
+// depends on the selected modules therefore has to come after every module.
+func TestGenerateDockerfile_EnvironmentComesAfterEveryModule(t *testing.T) {
+	cfg := makeConfig(func(c *types.DevcontainerConfig) {
+		c.Dockerfile.Modules = []types.SelectedModule{{ID: "rust"}}
+	})
+	df := mustGenerateDockerfile(t, cfg)
+
+	environmentAt := strings.Index(df, "## ENVIRONMENT")
+	if environmentAt == -1 {
+		t.Fatalf("expected an ENVIRONMENT block:\n%s", df)
+	}
+	for _, section := range []string{"## RUST", "## CLEANUP"} {
+		sectionAt := strings.Index(df, section)
+		if sectionAt == -1 {
+			t.Fatalf("expected section %q:\n%s", section, df)
+		}
+		if sectionAt > environmentAt {
+			t.Errorf("the ENVIRONMENT block must come after %s", section)
+		}
+	}
+}
+
+func TestGenerateDockerfile_NoEnvironmentBlockWithoutDeclarations(t *testing.T) {
+	cfg := makeConfig(func(c *types.DevcontainerConfig) {
+		c.Dockerfile.Modules = []types.SelectedModule{{ID: "sqlite"}}
+	})
+	df := mustGenerateDockerfile(t, cfg)
+	// The base module always declares ~/.local/bin, so the block is always
+	// present; what must not appear is an entry no selected module asked for.
+	assertNotContainsStr(t, df, "cargo", "no unrelated PATH entry")
 }
 
 func TestGenerateDockerfile_YarnAutoAddNodejs(t *testing.T) {
@@ -265,8 +314,7 @@ func TestGenerateDockerfile_PnpmAutoAddNodejs(t *testing.T) {
 	assertContainsStr(t, df, "get.pnpm.io/install.sh", "pnpm")
 	// pnpm must expose its global bin dir on PATH (zsh/bash/profile) and pin a
 	// store-dir on the persisted home so no stray store lands in the workspace.
-	assertContainsStr(t, df, "PNPM_HOME", "pnpm exports PNPM_HOME")
-	assertContainsStr(t, df, ".pnpm_init.sh", "pnpm uses emitShellInit")
+	assertContainsStr(t, df, `ENV PNPM_HOME="/home/devuser/.local/share/pnpm"`, "pnpm declares PNPM_HOME")
 	assertContainsStr(t, df, "store-dir", "pnpm pins a store-dir")
 	// pnpm aborts every command (even `config set`) when its configured global
 	// bin dir is not on PATH, and that dir has moved between pnpm releases
@@ -274,8 +322,9 @@ func TestGenerateDockerfile_PnpmAutoAddNodejs(t *testing.T) {
 	// candidates on PATH before invoking pnpm. The store-dir must go through
 	// `pnpm config set --global` (pnpm >= 11 ignores a hand-written legacy rc).
 	assertContainsStr(t, df, `export PATH="$PNPM_HOME/bin:$PNPM_HOME:$PATH" && pnpm config set store-dir`, "pnpm config runs with both bin dirs on PATH")
-	// Runtime shells need the same dirs on PATH for `pnpm` to be found.
-	assertContainsStr(t, df, `\$PNPM_HOME/bin:\$PNPM_HOME:\$PATH`, "pnpm exposes its bin dirs on PATH")
+	// Every runtime process needs the same dirs on PATH for `pnpm` to be found,
+	// with or without a shell of its own.
+	assertContainsStr(t, df, "/home/devuser/.local/share/pnpm/bin:/home/devuser/.local/share/pnpm", "pnpm exposes its bin dirs on PATH")
 }
 
 func TestGenerateDockerfile_NodejsFnmManager(t *testing.T) {

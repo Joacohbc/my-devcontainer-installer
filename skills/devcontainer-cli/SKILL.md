@@ -74,22 +74,46 @@ Re-running the command with different flags regenerates the project; add
 
 ## Run commands inside
 
-    devcontainer-cli shell -- go test ./...        # one-off command, exit code propagated
-    devcontainer-cli shell -- pnpm install
-    devcontainer-cli shell --user devuser -- whoami
+    devcontainer-cli shell --user devuser -- bash -lc 'uv pip install requests'
+    devcontainer-cli shell --user devuser -- bash -lc 'cd /workspaces/myapp && pnpm install'
+    devcontainer-cli shell -- go test ./...        # exit code propagated
     devcontainer-cli shell -T -- pg_dump -U devuser devdb > dump.sql
 
 `shell -- <cmd>` is a `docker exec` wrapper and the normal way to do work in the
-container. Notes that matter:
+container.
+
+**Wrap the command in `bash -lc '…'` when it needs a shell.** `docker exec` runs
+your argv directly — it is not a shell — so without the wrapper there are no
+pipes, no `&&`, no globs, no `$VAR` expansion and no `cd`, and the container's
+`pip`→`uv pip` and `npm`→`pnpm` indirections (shell functions and aliases) do
+not exist either. Use `bash`, not `zsh`: a non-interactive `zsh -lc` skips
+`~/.zshrc`.
+
+Finding a binary is a separate matter. The image declares its toolchain PATH in
+the image environment, so `node`, `uv`, `pnpm`, `cargo`, `bun`, `go` and
+anything in `~/.local/bin` are found by a bare `shell -- <cmd>`. Node resolves
+to the version the image was built with; a shell still picks whatever
+`fnm`/`nvm` selects for that session, so switching versions works as usual.
+
+The exception is **an image built before this was in place**, which carries the
+PATH only in its rc files. If a tool you know is installed comes back as
+`executable file not found in $PATH`, re-run it wrapped in `bash -lc` and
+rebuild with `devcontainer-cli update --rebuild`.
+
+Other notes that matter:
 
 - With an explicit command it does **not** default to `devuser`; pass
   `--user devuser` when the command must run as that user (it is who owns the
-  workspace files).
-- Pass `-T` whenever you redirect output to a file, so no TTY mangles the stream.
+  workspace files, and whose rc files carry the PATH).
+- Redirections you write on the host line (`> dump.sql`) are handled by *your*
+  shell, so they need no `bash -lc` — but pass `-T` for them, so no TTY mangles
+  the stream.
 - With no command it opens an interactive login shell — useless to you, so
   always give a command.
-- `-c/--container <name>` targets another container in the stack (a database,
-  for example).
+- `-c/--container <name>` targets another container in the stack. Database
+  containers are plain images with no devuser and often no bash: run those
+  commands bare (`-c <ws>-postgres -- psql -U devuser -l`), not through
+  `bash -lc`.
 
 The project is mounted at `/workspaces/<workspace>` inside the container
 (short alias `/workspace/<workspace>`), which is also the shell's working
@@ -99,6 +123,28 @@ For anything compose covers but the wrappers don't:
 
     devcontainer-cli compose ps
     devcontainer-cli compose exec -T postgres psql -U devuser -c '\l'
+
+### Package managers are not the ones you expect
+
+The image replaces the usual tools, and the replacements live in shell
+functions and aliases — so the tool you reach for from `shell --` is often the
+wrong one. Run `devcontainer-cli context` to see which of these the image has.
+
+- **Python: `uv pip install X`.** Not `pip install`, and never
+  `python3 -m pip install` — the base is Ubuntu 24.04, whose system Python is
+  PEP 668 "externally managed", so plain pip refuses with
+  `error: externally-managed-environment`. Inside a login shell `pip`/`pip3`
+  are *functions* forwarding to `uv pip` (with `UV_SYSTEM_PYTHON=1`), but
+  `python3 -m pip` bypasses them and hits the same wall. **Do not create a
+  virtualenv and do not pass `--break-system-packages`**: the container is the
+  isolation boundary. If the image was built without uv, `pip install --user X`
+  is the fallback.
+- **Node: call `pnpm` directly.** `npm`/`npx` are *aliases*, and a
+  non-interactive shell does not expand aliases — so `bash -lc 'npm install'`
+  really runs npm, not pnpm.
+
+      devcontainer-cli shell --user devuser -- bash -lc 'uv pip install requests'
+      devcontainer-cli shell --user devuser -- bash -lc 'pnpm add -D vitest'
 
 ## Lifecycle
 
@@ -205,6 +251,14 @@ managed label). Use `--dry-run` first and show the user what would go.
   `down`, `destroy`, `clean`, `port-forward`). Without it a wizard opens and the
   command hangs. Add `-y/--yes` for destructive commands — and get the user's
   agreement first for `destroy`, `down -v` and `clean --all`.
+- **`bash -lc '…'` around anything using shell syntax** (`&&`, `|`, `*`, `cd`,
+  `$VAR`) or the container's `pip`/`npm` indirections. `command not found` from
+  `shell --` usually means the tool is there but the PATH is not — re-run it
+  wrapped before concluding anything is missing, and check with `context`.
+- **Install packages with the container's package manager** (`uv pip`, `pnpm`),
+  not the one the project's docs assume. An error telling you to create a venv,
+  pass `--break-system-packages` or `apt install python3-xyz` means you used the
+  wrong one — switch, don't force it.
 - **Nothing outside the workspace mount and `/home/devuser` survives** a
   recreate. Install-and-forget inside the container is fine for a one-off; a
   toolchain that must persist belongs in `--with` and a regenerate.

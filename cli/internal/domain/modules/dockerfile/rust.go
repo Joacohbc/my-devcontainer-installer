@@ -21,6 +21,9 @@ var RustModule = &ModuleSpec{
 			),
 		}
 	},
+	ProvidesEnv: func(opts map[string]any) ContainerEnv {
+		return ContainerEnv{PathEntries: []PathEntry{"$HOME/.cargo/bin"}}
+	},
 	Render: func(opts map[string]any) string {
 		return fmt.Sprintf(`##
 ## RUST
@@ -28,9 +31,6 @@ var RustModule = &ModuleSpec{
 RUN apt-get update && apt-get install -y --no-install-recommends build-essential && \
     su - devuser -c "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path" && \
     %s
-%s
-`, aptCleanup(), emitShellInit(".rust_init.sh", []string{
-			`export PATH="$HOME/.cargo/bin:$PATH"`,
-		}))
+`, aptCleanup())
 	},
 }

@@ -2184,3 +2184,51 @@ func TestStaticCompletion(t *testing.T) {
 		t.Errorf("empty staticCompletion returned %v", items)
 	}
 }
+
+// A subnet clash is resolved the same way in both modes when the subnet is the
+// built-in default: nothing is being decided for the user, so --no-interactive
+// must not turn an automatic reassignment into an error.
+func TestResolveSubnet(t *testing.T) {
+	taken, ok := domain.ParseCidr(domain.DefaultSubnet)
+	if !ok {
+		t.Fatal("parsing the default subnet")
+	}
+	used := []domain.CidrRange{*taken}
+	pinned := "10.42.0.0/28"
+	pinnedTaken, _ := domain.ParseCidr(pinned)
+
+	cases := []struct {
+		name        string
+		subnet      string
+		used        []domain.CidrRange
+		interactive bool
+		wantMoved   bool
+		wantErr     bool
+	}{
+		{name: "free subnet is kept", subnet: domain.DefaultSubnet, used: nil},
+		{name: "default moves when interactive", subnet: domain.DefaultSubnet, used: used, interactive: true, wantMoved: true},
+		{name: "default moves when non-interactive", subnet: domain.DefaultSubnet, used: used, wantMoved: true},
+		{name: "pinned moves when interactive", subnet: pinned, used: []domain.CidrRange{*pinnedTaken}, interactive: true, wantMoved: true},
+		{name: "pinned errors when non-interactive", subnet: pinned, used: []domain.CidrRange{*pinnedTaken}, wantErr: true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got, err := resolveSubnet(c.subnet, c.used, c.interactive)
+			if c.wantErr {
+				if err == nil {
+					t.Fatalf("expected an error, got subnet %q", got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("resolveSubnet: %v", err)
+			}
+			if moved := got != c.subnet; moved != c.wantMoved {
+				t.Errorf("subnet = %q (moved=%v), want moved=%v", got, moved, c.wantMoved)
+			}
+			if got == "" {
+				t.Error("a resolved subnet must never be empty")
+			}
+		})
+	}
+}

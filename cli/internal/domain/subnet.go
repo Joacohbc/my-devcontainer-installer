@@ -129,8 +129,21 @@ func LastHost(cidr string) (string, bool) {
 }
 
 // ListUsedSubnets queries Docker (via the injected capture func) for the CIDR
-// ranges already allocated to existing networks.
-func ListUsedSubnets(capture CaptureFunc) []CidrRange {
+// ranges already allocated to existing networks on the daemon
+// occupies, except the ones named in ignoreNetworks. A project must ignore its
+// own network: regenerating a project whose stack is up would otherwise find
+// its own subnet taken and move the project onto a different one on every run.
+func ListUsedSubnets(capture CaptureFunc, ignoreNetworks ...string) []CidrRange {
+	ignored := make(map[string]bool, len(ignoreNetworks))
+	for _, name := range ignoreNetworks {
+		if name != "" {
+			ignored[name] = true
+		}
+	}
+	return listUsedSubnets(capture, ignored)
+}
+
+func listUsedSubnets(capture CaptureFunc, ignored map[string]bool) []CidrRange {
 	idStatus, idStdout, _ := capture([]string{"network", "ls", "--quiet"})
 	if idStatus != 0 {
 		return nil
@@ -144,22 +157,37 @@ func ListUsedSubnets(capture CaptureFunc) []CidrRange {
 	if len(ids) == 0 {
 		return nil
 	}
-	args := append([]string{"network", "inspect", "--format", "{{range .IPAM.Config}}{{.Subnet}}\n{{end}}"}, ids...)
+	args := append([]string{"network", "inspect", "--format", "{{$name := .Name}}{{range .IPAM.Config}}{{$name}} {{.Subnet}}\n{{end}}"}, ids...)
 	status, stdout, _ := capture(args)
 	if status != 0 {
 		return nil
 	}
 	var out []CidrRange
 	for _, line := range strings.Split(stdout, "\n") {
-		s := strings.TrimSpace(line)
-		if s == "" {
+		name, cidr, ok := splitNetworkSubnet(line)
+		if !ok || ignored[name] {
 			continue
 		}
-		if c, ok := ParseCidr(s); ok {
+		if c, parsed := ParseCidr(cidr); parsed {
 			out = append(out, *c)
 		}
 	}
 	return out
+}
+
+// splitNetworkSubnet parses one "<network> <cidr>" line. A line carrying only a
+// CIDR is accepted with an empty name, so a network listing produced by an
+// older format still counts as used rather than being silently dropped.
+func splitNetworkSubnet(line string) (name, cidr string, ok bool) {
+	fields := strings.Fields(strings.TrimSpace(line))
+	switch len(fields) {
+	case 0:
+		return "", "", false
+	case 1:
+		return "", fields[0], true
+	default:
+		return fields[0], fields[1], true
+	}
 }
 
 func subnetCandidates() []string {

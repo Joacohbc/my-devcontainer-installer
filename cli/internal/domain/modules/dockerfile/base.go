@@ -36,6 +36,12 @@ var BaseModule = &ModuleSpec{
 	Category:  types.CategoryBase,
 	Always:    true,
 	CopyFiles: []string{"zsh-installer.sh", "setup-help.sh"},
+	// ~/.local/bin holds whatever the post-script installers (Claude Code,
+	// Antigravity, …) and pip/uv --user drop, so it is declared by the base
+	// rather than by any single language module.
+	ProvidesEnv: func(opts map[string]any) ContainerEnv {
+		return ContainerEnv{PathEntries: []PathEntry{"$HOME/.local/bin"}}
+	},
 	Options: []types.ModuleOption{
 		{
 			ID:    "p10kStyle",
@@ -55,9 +61,11 @@ var BaseModule = &ModuleSpec{
 		return &types.ContextSection{
 			Title: "Base image",
 			Body: ctxBody(
-				"Ubuntu "+UbuntuLTS+" LTS. The login shell is zsh (oh-my-zsh + powerlevel10k),",
-				"but every init file the CLI writes is sourced from `.zshrc`, `.bashrc` and",
-				"`.profile` alike, so a non-interactive `bash -lc` sees the same PATH.",
+				"Ubuntu "+UbuntuLTS+" LTS. The login shell is zsh (oh-my-zsh + powerlevel10k).",
+				"PATH and the toolchain variables are baked into the image environment, so a",
+				"process started without any shell (`docker exec <binary>`) already has them;",
+				"they are also in `~/"+EnvScriptFile+"`, sourced from `.zshenv`, `.profile` and",
+				"`.bashrc`. Aliases and functions are the exception — those need a shell.",
 				"",
 				"Preinstalled: `git`, `curl`, `wget`, `jq`, `unzip`, `lsof`, plus the `micro` and",
 				"`nano` terminal editors. `cat ~/help` prints a micro/zellij keyboard",
@@ -140,11 +148,6 @@ COPY setup-help.sh /tmp/setup-help.sh
 RUN chmod +x /tmp/setup-help.sh && \
     su - devuser -c "/tmp/setup-help.sh" && \
     rm /tmp/setup-help.sh
-
-# Put ~/.local/bin on PATH for devuser. Tools installed by the post-scripts
-# (Claude Code, Antigravity, …) and pip/uv --user binaries land there, so this
-# is always-on rather than tied to any single language module.
-%s
-`, UbuntuLTS, aptCleanup(), zshInstallerCmd, emitShellInit(".local_bin_init.sh", []string{`export PATH="$HOME/.local/bin:$PATH"`}))
+`, UbuntuLTS, aptCleanup(), zshInstallerCmd)
 	},
 }

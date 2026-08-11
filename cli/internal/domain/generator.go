@@ -9,6 +9,7 @@ import (
 	"github.com/goccy/go-yaml"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/catalog"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/modules/compose"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/modules/dockerfile"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 )
 
@@ -22,10 +23,11 @@ func GenerateDockerfile(config *types.DevcontainerConfig) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	fragments := make([]string, 0, len(resolved)+2)
+	fragments := make([]string, 0, len(resolved)+4)
 	for _, r := range resolved {
 		fragments = append(fragments, strings.TrimSpace(r.Module.Render(r.Options)))
 	}
+	fragments = append(fragments, renderEnvironmentBlocks(resolved)...)
 	postScripts, err := postScriptsDockerfileBlock(config)
 	if err != nil {
 		return "", err
@@ -35,6 +37,33 @@ func GenerateDockerfile(config *types.DevcontainerConfig) (string, error) {
 	}
 	fragments = append(fragments, types.DockerfileLabelBlock(config))
 	return types.GeneratedHeader + "\n\n" + strings.Join(fragments, "\n\n") + "\n", nil
+}
+
+// renderEnvironmentBlocks turns every resolved module's declared environment
+// into the Dockerfile fragments that deliver it. Both blocks come from the same
+// merged value: one ENV section a process inherits without any shell, and one
+// sourced script for shells that start before it.
+//
+// They are emitted after every module, never inside one: the leading layers of
+// the Dockerfile must stay byte-identical across image variants for the shared
+// base cache to be reused, and an ENV instruction whose content depends on the
+// selected modules would break that if it came earlier.
+func renderEnvironmentBlocks(resolved []ResolvedModule) []string {
+	envs := make([]dockerfile.ContainerEnv, 0, len(resolved))
+	for _, r := range resolved {
+		if r.Module.ProvidesEnv == nil {
+			continue
+		}
+		envs = append(envs, r.Module.ProvidesEnv(r.Options))
+	}
+	merged := dockerfile.MergeContainerEnv(envs...)
+	var blocks []string
+	for _, block := range []string{dockerfile.RenderDockerfileEnv(merged), dockerfile.RenderEnvScript(merged)} {
+		if block != "" {
+			blocks = append(blocks, block)
+		}
+	}
+	return blocks
 }
 
 func postScriptsDockerfileBlock(config *types.DevcontainerConfig) (string, error) {
@@ -293,7 +322,7 @@ func GenerateCompose(config *types.DevcontainerConfig) (string, error) {
 	ctx := composeContext{
 		config:                config,
 		workspace:             config.Workspace,
-		networkName:           config.Workspace + "-network",
+		networkName:           WorkspaceNetworkName(config.Workspace),
 		subnet:                subnet,
 		labels:                types.ComposeLabels(config),
 		enabledIDs:            resolved.enabledIDs,
@@ -701,7 +730,7 @@ func PlannedComposeNames(config *types.DevcontainerConfig) (containers []string,
 		containers = append(containers, prefixContainer(config.Workspace, base))
 	}
 
-	network = config.Workspace + "-network"
+	network = WorkspaceNetworkName(config.Workspace)
 	for v := range declaredVolumes {
 		volumes = append(volumes, prefixVolume(config.Workspace, v))
 	}

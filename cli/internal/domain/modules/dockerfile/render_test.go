@@ -100,13 +100,70 @@ func TestBaseModuleRender(t *testing.T) {
 			t.Errorf("base must install the ~/help quick reference (%q):\n%s", frag, out)
 		}
 	}
+}
+
+func TestBaseModuleProvidesLocalBinOnPath(t *testing.T) {
 	// ~/.local/bin must be on PATH unconditionally (post-script installers and
-	// pip/uv --user binaries land there), via a shell-init file.
-	for _, frag := range []string{".local_bin_init.sh", `export PATH=\"\$HOME/.local/bin:\$PATH\"`} {
-		if !strings.Contains(out, frag) {
-			t.Errorf("base must wire ~/.local/bin onto PATH (%q):\n%s", frag, out)
+	// pip/uv --user binaries land there). It is declared, not exported from the
+	// module's own Dockerfile fragment, so it reaches the image ENV too.
+	env := dockerfile.BaseModule.ProvidesEnv(nil)
+	if len(env.PathEntries) != 1 || env.PathEntries[0] != "$HOME/.local/bin" {
+		t.Errorf("base must declare ~/.local/bin on PATH, got %v", env.PathEntries)
+	}
+	if strings.Contains(dockerfile.BaseModule.Render(nil), "export PATH") {
+		t.Error("base must not export PATH from its Dockerfile fragment; ProvidesEnv owns that")
+	}
+}
+
+// Neither fnm nor nvm has a stable path to the active Node: fnm resolves it
+// from `fnm env` and nvm nests it under a version-named directory, so a command
+// running without a shell could not find node at all. The build leaves a link
+// at a fixed path and the module declares that path instead.
+func TestNodejsModuleMakesNodeReachableWithoutAShell(t *testing.T) {
+	for _, manager := range []string{"fnm", "nvm"} {
+		t.Run(manager, func(t *testing.T) {
+			opts := map[string]any{"manager": manager}
+
+			out := dockerfile.NodejsModule.Render(opts)
+			if !strings.Contains(out, `ln -sfn "$(dirname "$(command -v node)")"`) {
+				t.Errorf("the build must record the active node bin dir:\n%s", out)
+			}
+			if !strings.Contains(out, dockerfile.NodeCurrentLink) {
+				t.Errorf("expected the link to be %q:\n%s", dockerfile.NodeCurrentLink, out)
+			}
+
+			env := dockerfile.NodejsModule.ProvidesEnv(opts)
+			if !containsPathEntry(env, dockerfile.PathEntry("$HOME/"+dockerfile.NodeCurrentLink)) {
+				t.Errorf("%s must declare the node link on PATH, got %v", manager, env.PathEntries)
+			}
+			// fnm is a binary of its own; nvm is a shell function with nothing
+			// to put on PATH.
+			hasFnm := containsPathEntry(env, "$HOME/.fnm")
+			if hasFnm != (manager == "fnm") {
+				t.Errorf("%s: fnm on PATH = %v, want %v", manager, hasFnm, manager == "fnm")
+			}
+		})
+	}
+}
+
+// The fnm build step must select a version before recording the link, or
+// `command -v node` finds nothing to point at.
+func TestNodejsFnmSelectsVersionBeforeLinking(t *testing.T) {
+	out := dockerfile.NodejsModule.Render(map[string]any{"manager": "fnm"})
+	useAt := strings.Index(out, "fnm use ")
+	linkAt := strings.Index(out, "ln -sfn")
+	if useAt == -1 || linkAt == -1 || useAt > linkAt {
+		t.Errorf("expected `fnm use` before the link:\n%s", out)
+	}
+}
+
+func containsPathEntry(env dockerfile.ContainerEnv, want dockerfile.PathEntry) bool {
+	for _, entry := range env.PathEntries {
+		if entry == want {
+			return true
 		}
 	}
+	return false
 }
 
 func TestNodejsModuleRender(t *testing.T) {
@@ -194,9 +251,80 @@ func TestRustModuleRender(t *testing.T) {
 	if !strings.Contains(out, "build-essential") {
 		t.Errorf("expected build-essential dependencies:\n%s", out)
 	}
-	if !strings.Contains(out, ".rust_init.sh") {
-		t.Errorf("expected rust shell init script:\n%s", out)
+	if env := dockerfile.RustModule.ProvidesEnv(nil); len(env.PathEntries) != 1 || env.PathEntries[0] != "$HOME/.cargo/bin" {
+		t.Errorf("rust must declare ~/.cargo/bin on PATH, got %v", env.PathEntries)
 	}
+}
+
+func TestModulesProvidingEnvDeclareItAsData(t *testing.T) {
+	cases := []struct {
+		module      *dockerfile.ModuleSpec
+		opts        map[string]any
+		assignments map[string]dockerfile.EnvValue
+		pathEntries []dockerfile.PathEntry
+	}{
+		{
+			module:      dockerfile.BunModule,
+			assignments: map[string]dockerfile.EnvValue{"BUN_INSTALL": "$HOME/.bun"},
+			pathEntries: []dockerfile.PathEntry{"$HOME/.bun/bin"},
+		},
+		{
+			module:      dockerfile.PnpmModule,
+			assignments: map[string]dockerfile.EnvValue{"PNPM_HOME": "$HOME/.local/share/pnpm"},
+			pathEntries: []dockerfile.PathEntry{"$HOME/.local/share/pnpm/bin", "$HOME/.local/share/pnpm"},
+		},
+		{
+			module:      dockerfile.PythonModule,
+			opts:        map[string]any{"uv": true},
+			assignments: map[string]dockerfile.EnvValue{"UV_SYSTEM_PYTHON": "1"},
+			pathEntries: []dockerfile.PathEntry{"$HOME/.local/bin"},
+		},
+		{
+			module:      dockerfile.GolangModule,
+			pathEntries: []dockerfile.PathEntry{"/usr/local/go/bin", "$HOME/go/bin"},
+		},
+	}
+	for _, c := range cases {
+		t.Run(string(c.module.ID), func(t *testing.T) {
+			env := c.module.ProvidesEnv(c.opts)
+			for name, want := range c.assignments {
+				if got := assignmentValue(env, name); got != want {
+					t.Errorf("%s = %q, want %q", name, got, want)
+				}
+			}
+			if len(env.PathEntries) != len(c.pathEntries) {
+				t.Fatalf("PATH entries = %v, want %v", env.PathEntries, c.pathEntries)
+			}
+			for i, want := range c.pathEntries {
+				if env.PathEntries[i] != want {
+					t.Errorf("PATH entry %d = %q, want %q", i, env.PathEntries[i], want)
+				}
+			}
+			// The declaration replaces the module's own shell-init file; keeping
+			// both would put the same entry on PATH twice and let the two drift
+			// apart. An export inside an install step is fine — that one is for
+			// the build, which runs before the image environment exists.
+			if strings.Contains(c.module.Render(c.opts), "_init.sh") {
+				t.Errorf("%s must not write a shell-init file for its environment", c.module.ID)
+			}
+		})
+	}
+}
+
+func TestPythonWithoutUvProvidesNoEnv(t *testing.T) {
+	env := dockerfile.PythonModule.ProvidesEnv(map[string]any{"uv": false})
+	if !env.IsEmpty() {
+		t.Errorf("without uv the python module has no environment to declare, got %+v", env)
+	}
+}
+
+func assignmentValue(env dockerfile.ContainerEnv, name string) dockerfile.EnvValue {
+	for _, assignment := range env.Assignments {
+		if assignment.Name == name {
+			return assignment.Value
+		}
+	}
+	return ""
 }
 
 func TestCCppModuleRender(t *testing.T) {
@@ -432,14 +560,18 @@ func TestModuleRunLayerCounts(t *testing.T) {
 		opts    map[string]any
 		wantRun int
 	}{
+		// Modules whose only shell init was a set of exports render one layer
+		// now: the exports moved to ProvidesEnv, which the generator emits once
+		// for the whole image. Only genuinely dynamic init (fnm/nvm) still costs
+		// a module its own shell-init layer.
 		{"nodejs nvm", dockerfile.NodejsModule, nil, 2}, // install + shell-init
 		{"nodejs fnm", dockerfile.NodejsModule, map[string]any{"manager": "fnm"}, 2},
-		{"python with uv", dockerfile.PythonModule, map[string]any{"uv": true}, 2}, // install+uv + shell-init
+		{"python with uv", dockerfile.PythonModule, map[string]any{"uv": true}, 1},
 		{"python no uv", dockerfile.PythonModule, map[string]any{"uv": false}, 1},
-		{"rust", dockerfile.RustModule, nil, 2}, // install+rustup + shell-init
+		{"rust", dockerfile.RustModule, nil, 1},
 		{"c-cpp", dockerfile.CCppModule, nil, 1},
-		{"pnpm", dockerfile.PnpmModule, nil, 2}, // install+pnpm + shell-init
-		{"bun", dockerfile.BunModule, nil, 2},   // install + shell-init
+		{"pnpm", dockerfile.PnpmModule, nil, 1},
+		{"bun", dockerfile.BunModule, nil, 1},
 		{"yarn", dockerfile.YarnModule, nil, 1}, // corepack enable + prepare (single RUN)
 		{"sqlite", dockerfile.SqliteModule, nil, 1},
 		{"ffmpeg", dockerfile.FfmpegModule, nil, 1},

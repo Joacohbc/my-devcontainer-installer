@@ -36,9 +36,12 @@ func buildArgs(config *types.DevcontainerConfig) map[string]string {
 	}
 }
 
-// UsedSubnets returns the Docker subnets already in use, for conflict detection.
-func (s GenerateService) UsedSubnets() []domain.CidrRange {
-	return domain.ListUsedSubnets(captureFunc())
+// UsedSubnets returns the Docker subnets already in use, for conflict
+// detection. Pass the networks that must not count as a conflict — a project's
+// own network above all, which is already allocated with exactly the subnet the
+// project is about to ask for.
+func (s GenerateService) UsedSubnets(ignoreNetworks ...string) []domain.CidrRange {
+	return domain.ListUsedSubnets(captureFunc(), ignoreNetworks...)
 }
 
 // NameConflicts returns managed-resource name clashes for the config.

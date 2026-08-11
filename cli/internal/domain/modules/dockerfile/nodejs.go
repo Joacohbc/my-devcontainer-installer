@@ -6,6 +6,23 @@ import (
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 )
 
+// NodeCurrentLink points at the bin directory of the Node version the image was
+// built with, relative to devuser's home. Neither fnm nor nvm exposes a stable
+// path: fnm resolves the active version from `fnm env` and nvm keeps its
+// binaries under a version-named directory, so neither can be declared in the
+// image environment as it stands. The build therefore asks the working shell
+// where `node` actually is and leaves this link behind, which is a path that
+// does not change — so `docker exec <container> node` resolves without a shell.
+//
+// A shell still wins over it: the init script prepends the version fnm/nvm
+// selects for that session, so switching versions at runtime behaves as before
+// and only shell-less callers see the version the image was built with.
+const NodeCurrentLink = ".node-current"
+
+// linkNodeCurrent records the active Node bin directory. It runs inside the
+// same shell that just installed and selected the version.
+const linkNodeCurrent = `ln -sfn "$(dirname "$(command -v node)")" "$HOME/` + NodeCurrentLink + `"`
+
 var NodejsModule = &ModuleSpec{
 	ID:         types.ModuleNodejs,
 	Label:      "Node.js (fnm or nvm, for devuser)",
@@ -51,8 +68,21 @@ var NodejsModule = &ModuleSpec{
 				"Switch versions with `"+manager+" use <version>` — never with `sudo apt`. The",
 				"version manager is initialised from `~/.nodejs_init.sh`, which every shell",
 				"sources, so `node` is on PATH in login and non-login shells alike.",
+				"",
+				"`~/"+NodeCurrentLink+"` points at the version this image was built with, and is",
+				"what makes `node` resolve for a command that runs with no shell at all",
+				"(`docker exec`). A shell overrides it with whatever "+manager+" selects, so",
+				"switching versions still works normally.",
 			),
 		}
+	},
+	ProvidesEnv: func(opts map[string]any) ContainerEnv {
+		env := ContainerEnv{PathEntries: []PathEntry{"$HOME/" + NodeCurrentLink}}
+		if types.StringOpt(opts, "manager", "fnm") == "fnm" {
+			// nvm is a shell function, so it has no binary to put on PATH.
+			env.PathEntries = append(env.PathEntries, "$HOME/.fnm")
+		}
+		return env
 	},
 	Render: func(opts map[string]any) string {
 		manager := types.StringOpt(opts, "manager", "fnm")
@@ -83,9 +113,9 @@ func renderNvm(version string) string {
 ##
 RUN NVM_VERSION=$(curl -s https://api.github.com/repos/nvm-sh/nvm/releases/latest | jq -r .tag_name) && \
     su - devuser -c "curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/${NVM_VERSION}/install.sh | bash" && \
-    su - devuser -c 'export NVM_DIR="$HOME/.nvm" && . "$NVM_DIR/nvm.sh" && %s'
+    su - devuser -c 'export NVM_DIR="$HOME/.nvm" && . "$NVM_DIR/nvm.sh" && %s && %s'
 %s
-`, installNode, emitShellInit(".nodejs_init.sh", initLines))
+`, installNode, linkNodeCurrent, emitShellInit(".nodejs_init.sh", initLines))
 }
 
 func renderFnm(version string) string {
@@ -106,7 +136,7 @@ func renderFnm(version string) string {
 ## FNM + NODE (devuser)
 ##
 RUN su - devuser -c 'curl -fsSL https://fnm.vercel.app/install | bash -s -- --install-dir "$HOME/.fnm" --skip-shell' && \
-    su - devuser -c 'export PATH="$HOME/.fnm:$PATH" && eval "$(fnm env)" && %s'
+    su - devuser -c 'export PATH="$HOME/.fnm:$PATH" && eval "$(fnm env)" && %s && %s && %s'
 %s
-`, installNode, emitShellInit(".nodejs_init.sh", initLines))
+`, installNode, useLine, linkNodeCurrent, emitShellInit(".nodejs_init.sh", initLines))
 }

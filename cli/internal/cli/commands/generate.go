@@ -349,15 +349,18 @@ func validateConfig(cwd string, config *types.DevcontainerConfig, flags *genFlag
 	}
 
 	if config.Compose.Subnet != "" {
-		used := svc.UsedSubnets()
-		if clash := domain.SubnetConflict(config.Compose.Subnet, used); clash != nil {
-			free := domain.FindFreeSubnet(config.Compose.Subnet, used)
-			if flags.interactive {
-				logger.Std().Warn("subnet overlap", "wanted", config.Compose.Subnet, "conflict", domain.FormatCidr(*clash), "using", free)
-				config.Compose.Subnet = free
+		used := svc.UsedSubnets(domain.WorkspaceNetworkName(config.Workspace))
+		resolved, err := resolveSubnet(config.Compose.Subnet, used, flags.interactive)
+		if err != nil {
+			return err
+		}
+		if resolved != config.Compose.Subnet {
+			if config.Compose.Subnet == domain.DefaultSubnet {
+				console.Info("Subnet %s is taken by another Docker network; using %s instead.", config.Compose.Subnet, resolved)
 			} else {
-				return fmt.Errorf("subnet %s overlaps with existing Docker network %s. Set subnet to %s in devcontainer.config.json or remove the conflicting network", config.Compose.Subnet, domain.FormatCidr(*clash), free)
+				console.Warn("Subnet %s is taken by another Docker network; using %s instead.", config.Compose.Subnet, resolved)
 			}
+			config.Compose.Subnet = resolved
 		}
 	}
 
@@ -638,6 +641,28 @@ func writeOutput(filePath, content string, force bool) bool {
 	}
 	os.WriteFile(filePath, []byte(content), 0o644)
 	return true
+}
+
+// resolveSubnet returns the subnet the project should use, moving off a taken
+// one. A subnet nobody chose (the built-in default) is reassigned in both
+// modes: no decision is being taken away from the user, since the CLI already
+// knows the free range and picking it needs no prompt — the same way an
+// auto-derived workspace name is disambiguated. A subnet the user pinned is
+// theirs, so outside interactive mode a clash is reported instead of quietly
+// changing what they wrote.
+func resolveSubnet(subnet string, used []domain.CidrRange, interactive bool) (string, error) {
+	clash := domain.SubnetConflict(subnet, used)
+	if clash == nil {
+		return subnet, nil
+	}
+	free := domain.FindFreeSubnet(subnet, used)
+	if free == subnet {
+		return "", fmt.Errorf("subnet %s overlaps with existing Docker network %s and no free subnet is available. Remove the conflicting network", subnet, domain.FormatCidr(*clash))
+	}
+	if subnet != domain.DefaultSubnet && !interactive {
+		return "", fmt.Errorf("subnet %s overlaps with existing Docker network %s. Set subnet to %s in devcontainer.config.json or remove the conflicting network", subnet, domain.FormatCidr(*clash), free)
+	}
+	return free, nil
 }
 
 func maybeOverwrite(filePath, label string, interactive, force bool) (bool, error) {

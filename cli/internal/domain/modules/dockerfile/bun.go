@@ -1,10 +1,6 @@
 package dockerfile
 
-import (
-	"fmt"
-
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
-)
+import "github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 
 var BunModule = &ModuleSpec{
 	ID:         types.ModuleBun,
@@ -20,15 +16,17 @@ var BunModule = &ModuleSpec{
 			),
 		}
 	},
+	ProvidesEnv: func(opts map[string]any) ContainerEnv {
+		return ContainerEnv{
+			Assignments: []EnvVar{{Name: "BUN_INSTALL", Value: "$HOME/.bun"}},
+			PathEntries: []PathEntry{"$HOME/.bun/bin"},
+		}
+	},
 	Render: func(opts map[string]any) string {
-		return fmt.Sprintf(`##
+		return `##
 ## BUN
 ##
 RUN su - devuser -c "curl -fsSL https://bun.sh/install | bash"
-%s
-`, emitShellInit(".bun_init.sh", []string{
-			`export BUN_INSTALL="$HOME/.bun"`,
-			`export PATH="$BUN_INSTALL/bin:$PATH"`,
-		}))
+`
 	},
 }
