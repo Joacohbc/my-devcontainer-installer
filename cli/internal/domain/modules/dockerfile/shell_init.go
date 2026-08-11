@@ -11,6 +11,16 @@ var rcFiles = []string{".zshrc", ".bashrc", ".profile"}
 
 const devuserHome = types.DevUserHome
 
+// emitShellInit writes a module's own init file and sources it from the rc
+// files. It is for initialisation only a shell can carry out — `eval "$(fnm
+// env --use-on-cd)"` installs a cd hook, `fnm use` picks a version for that one
+// session. Those are actions, not values, which is why they cannot be declared.
+//
+// Anything that IS a value — a PATH entry, a variable a tool reads — belongs in
+// the module's ProvidesEnv instead (see environment.go). Exporting it from here
+// would hand it only to the processes that start a shell, so `docker exec
+// <container> <tool>` would not find it. The nodejs module is the only caller
+// left for exactly that reason.
 func emitShellInit(initFileName string, lines []string) string {
 	return emitShellInitTo(rcFiles, initFileName, lines)
 }
