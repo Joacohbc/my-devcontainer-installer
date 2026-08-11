@@ -21,7 +21,15 @@ const NodeCurrentLink = ".node-current"
 
 // linkNodeCurrent records the active Node bin directory. It runs inside the
 // same shell that just installed and selected the version.
-const linkNodeCurrent = `ln -sfn "$(dirname "$(command -v node)")" "$HOME/` + NodeCurrentLink + `"`
+//
+// The path is resolved with readlink first, because what a shell has on PATH is
+// not where Node lives: `fnm env` points at a per-session directory under
+// .local/state/fnm_multishells/<id>, which fnm creates for that shell and
+// reclaims later. Linking to it would leave a symlink that works right up until
+// fnm sweeps the session away. Resolving reaches the version's own installation
+// directory, which is as permanent as the image. Under nvm the binary is
+// already a real path, so resolving is a no-op there.
+const linkNodeCurrent = `ln -sfn "$(dirname "$(readlink -f "$(command -v node)")")" "$HOME/` + NodeCurrentLink + `"`
 
 var NodejsModule = &ModuleSpec{
 	ID:         types.ModuleNodejs,

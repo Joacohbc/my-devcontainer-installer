@@ -125,8 +125,11 @@ func TestNodejsModuleMakesNodeReachableWithoutAShell(t *testing.T) {
 			opts := map[string]any{"manager": manager}
 
 			out := dockerfile.NodejsModule.Render(opts)
-			if !strings.Contains(out, `ln -sfn "$(dirname "$(command -v node)")"`) {
-				t.Errorf("the build must record the active node bin dir:\n%s", out)
+			// Resolved with readlink: under fnm the PATH entry is a per-session
+			// directory fnm reclaims later, so linking to it unresolved would
+			// leave a link that breaks once that session is swept away.
+			if !strings.Contains(out, `ln -sfn "$(dirname "$(readlink -f "$(command -v node)")")"`) {
+				t.Errorf("the build must record the RESOLVED node bin dir:\n%s", out)
 			}
 			if !strings.Contains(out, dockerfile.NodeCurrentLink) {
 				t.Errorf("expected the link to be %q:\n%s", dockerfile.NodeCurrentLink, out)
