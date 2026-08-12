@@ -2,7 +2,9 @@ package domain
 
 import (
 	"fmt"
+	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -133,10 +135,38 @@ func ProfileScripts(p catalog.Profile) ([]types.CustomScript, error) {
 		if err := ValidateCustomScript(s); err != nil {
 			return nil, fmt.Errorf("profile %q: %w", p.ID, err)
 		}
-		s.Source = filepath.Join(p.Dir, s.File)
+		// A repo-shipped profile resolves against the embedded tree, which is
+		// always slash-separated, not against the host's path syntax.
+		if p.Embedded {
+			s.Source, s.Embedded = path.Join(p.Dir, s.File), true
+		} else {
+			s.Source = filepath.Join(p.Dir, s.File)
+		}
 		out = append(out, s)
 	}
 	return out, nil
+}
+
+// ReadCustomScript returns a script's bytes from wherever it lives: the host
+// filesystem for a user profile or --script, the CLI's embedded profile tree for
+// a repo-shipped one. Every caller that materializes a script goes through here,
+// so neither of the two origins needs a second code path.
+func ReadCustomScript(s types.CustomScript) ([]byte, error) {
+	if s.Source == "" {
+		return nil, fmt.Errorf("custom script %q has no source to read from", s.File)
+	}
+	if s.Embedded {
+		data, err := fs.ReadFile(catalog.BuiltinProfileFS, s.Source)
+		if err != nil {
+			return nil, fmt.Errorf("built-in script %q: %w", s.File, err)
+		}
+		return data, nil
+	}
+	data, err := os.ReadFile(s.Source)
+	if err != nil {
+		return nil, fmt.Errorf("custom script %q: %w", s.File, err)
+	}
+	return data, nil
 }
 
 // CollectCustomScriptFiles returns every configured custom script's build-dir

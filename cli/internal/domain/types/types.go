@@ -235,10 +235,14 @@ const CustomScriptPrefix = "custom-"
 type CustomScript struct {
 	File string     `json:"file" yaml:"file"`
 	When ScriptWhen `json:"when,omitempty" yaml:"when,omitempty"`
-	// Source is the absolute host path the script is copied from. It is only set
-	// while a profile is being applied — it is never persisted, because the
-	// materialized copy in the build dir is the source of truth afterwards.
+	// Source is where the script is copied from: an absolute host path, or a
+	// path inside the embedded built-in profile tree when Embedded is set. It is
+	// only set while a profile is being applied — it is never persisted, because
+	// the materialized copy in the build dir is the source of truth afterwards.
 	Source string `json:"-" yaml:"-"`
+	// Embedded marks Source as a path inside the CLI's own embedded profile
+	// tree rather than on the host filesystem.
+	Embedded bool `json:"-" yaml:"-"`
 }
 
 // ResolvedWhen is When with the default applied.

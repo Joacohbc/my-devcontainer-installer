@@ -257,3 +257,53 @@ func TestPartitionCustomScriptsAllowsExactDuplicates(t *testing.T) {
 		t.Errorf("expected the duplicate to collapse to one entry, got %v", build)
 	}
 }
+
+// A repo-shipped profile resolves its scripts against the embedded tree, not the
+// host filesystem — nothing of it exists on disk.
+func TestProfileScriptsForEmbeddedProfile(t *testing.T) {
+	p, ok := catalog.Resolve("scraper", "")
+	if !ok {
+		t.Fatal("expected to resolve the scraper profile")
+	}
+
+	scripts, err := domain.ProfileScripts(p)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(scripts) != 1 {
+		t.Fatalf("expected 1 script, got %d", len(scripts))
+	}
+	s := scripts[0]
+	if !s.Embedded {
+		t.Error("a built-in profile's script must be marked embedded")
+	}
+	if s.Source != "profiles/scraper/install-scraper-tools.sh" {
+		t.Errorf("expected a slash-separated embedded path, got %q", s.Source)
+	}
+
+	data, err := domain.ReadCustomScript(s)
+	if err != nil {
+		t.Fatalf("the embedded script must be readable: %v", err)
+	}
+	if !strings.HasPrefix(string(data), "#!") {
+		t.Error("expected the script to start with a shebang")
+	}
+}
+
+func TestReadCustomScript(t *testing.T) {
+	dir := t.TempDir()
+	host := filepath.Join(dir, "setup.sh")
+	if err := os.WriteFile(host, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := domain.ReadCustomScript(types.CustomScript{File: "setup.sh", Source: host}); err != nil {
+		t.Errorf("a host script must be readable: %v", err)
+	}
+	if _, err := domain.ReadCustomScript(types.CustomScript{File: "setup.sh"}); err == nil {
+		t.Error("expected an error for a script with no source")
+	}
+	if _, err := domain.ReadCustomScript(types.CustomScript{File: "nope.sh", Source: "profiles/nope/nope.sh", Embedded: true}); err == nil {
+		t.Error("expected an error for a missing embedded script")
+	}
+}

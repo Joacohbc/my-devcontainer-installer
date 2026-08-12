@@ -26,10 +26,12 @@ func newProfileCommand() *cobra.Command {
 		Long: `devcontainer-cli config profile — manage profiles, named bundles of Dockerfile
 modules plus your own scripts, that you can reuse when generating projects.
 
-Built-in profiles ship with the CLI; your own are saved under
-~/.devcontainer-cli/profiles/. A profile with no scripts is a single <id>.yml;
-one that carries scripts is an <id>/ directory holding profile.yml and the .sh
-files next to it. Pass a profile to 'devcontainer-cli --profile <id>' (or pick
+Built-in profiles ship with the CLI, some of them (like 'scraper') carrying
+scripts of their own; your own are saved under ~/.devcontainer-cli/profiles/. A
+profile with no scripts is a single <id>.yml; one that carries scripts is an
+<id>/ directory holding profile.yml and the .sh files next to it. Copying a
+built-in that ships scripts writes them out as a normal user profile you can
+edit. Pass a profile to 'devcontainer-cli --profile <id>' (or pick
 one in the interactive wizard) to pre-select its modules and add its scripts.
 
 Each script declares when it runs: 'build' bakes it into the image, 'start' runs
@@ -469,9 +471,11 @@ func saveProfile(dir string, p catalog.Profile) (string, error) {
 		if s.Source == "" {
 			continue
 		}
-		data, err := os.ReadFile(s.Source)
+		// Goes through the domain reader so copying a repo-shipped profile lands
+		// its embedded scripts on disk just like a user profile's.
+		data, err := domain.ReadCustomScript(s)
 		if err != nil {
-			return "", fmt.Errorf("failed to read script %s: %w", s.Source, err)
+			return "", err
 		}
 		if err := os.WriteFile(filepath.Join(profileDir, s.File), data, 0o755); err != nil {
 			return "", fmt.Errorf("failed to copy script %s: %w", s.File, err)

@@ -1,7 +1,9 @@
 package catalog_test
 
 import (
+	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 	"testing"
@@ -68,13 +70,90 @@ func TestBuiltinProfilesNoPnpmWithoutNodejs(t *testing.T) {
 	}
 }
 
-// A built-in ships no scripts, so it never needs a directory to resolve them
-// against — which is what lets Dir stay empty for them.
-func TestBuiltinProfilesHaveNoScripts(t *testing.T) {
+// A built-in that declares scripts must be one of the repo-shipped (embedded)
+// ones: a Go literal has no directory to resolve a script against, so it would
+// fail at generate time rather than here.
+func TestBuiltinProfilesWithScriptsAreEmbedded(t *testing.T) {
 	for _, p := range catalog.BuiltinProfiles {
-		if len(p.Scripts) > 0 {
-			t.Errorf("built-in profile %q must not declare scripts, got %v", p.ID, p.Scripts)
+		if len(p.Scripts) == 0 {
+			continue
 		}
+		if !p.Embedded || p.Dir == "" {
+			t.Errorf("built-in profile %q declares scripts but is not embedded (dir %q)", p.ID, p.Dir)
+		}
+	}
+}
+
+// Every repo-shipped profile must parse and every script it names must exist in
+// the embedded tree, or the profile is dead weight nobody notices until a build.
+func TestEmbeddedProfilesAreWellFormed(t *testing.T) {
+	entries, err := fs.ReadDir(catalog.BuiltinProfileFS, catalog.BuiltinProfileRoot)
+	if err != nil {
+		t.Fatalf("the embedded profile tree must exist: %v", err)
+	}
+
+	var dirs []string
+	for _, e := range entries {
+		if e.IsDir() {
+			dirs = append(dirs, e.Name())
+		}
+	}
+	if len(dirs) == 0 {
+		t.Fatal("expected at least one repo-shipped profile")
+	}
+
+	for _, id := range dirs {
+		p, ok := catalog.Resolve(id, "")
+		if !ok {
+			t.Errorf("embedded profile %q does not resolve — did its profile.yml fail to parse?", id)
+			continue
+		}
+		if !p.Embedded {
+			t.Errorf("profile %q must be marked embedded", id)
+		}
+		if p.ID != id {
+			t.Errorf("profile in directory %q declares id %q; they must match", id, p.ID)
+		}
+		if len(p.Modules) == 0 {
+			t.Errorf("profile %q lists no modules", id)
+		}
+		for _, m := range p.Modules {
+			if catalog.GetDockerfileModule(types.ModuleID(m)) == nil {
+				t.Errorf("profile %q lists unknown module %q", id, m)
+			}
+		}
+		for _, s := range p.Scripts {
+			if _, err := fs.Stat(catalog.BuiltinProfileFS, path.Join(p.Dir, s.File)); err != nil {
+				t.Errorf("profile %q references %q, which is not in the embedded tree: %v", id, s.File, err)
+			}
+		}
+	}
+}
+
+// The scraper profile is the reason repo-shipped profiles exist; its shape is
+// what the feature promises.
+func TestScraperProfile(t *testing.T) {
+	p, ok := catalog.Resolve("scraper", "")
+	if !ok {
+		t.Fatal("expected to resolve the scraper profile")
+	}
+	if p.Source != "builtin" {
+		t.Errorf("expected source builtin, got %s", p.Source)
+	}
+	for _, want := range []string{"chrome", "python", "nodejs", "pnpm", "sqlite", "ffmpeg", "graphify"} {
+		if !slices.Contains(p.Modules, want) {
+			t.Errorf("expected the scraper profile to include %q, got %v", want, p.Modules)
+		}
+	}
+	// Same cache convention as every other built-in.
+	if len(p.Modules) == 0 || p.Modules[0] != "github-cli" {
+		t.Errorf("github-cli must be listed first for the base layer cache, got %v", p.Modules)
+	}
+	if len(p.Scripts) != 1 {
+		t.Fatalf("expected exactly one script, got %v", p.Scripts)
+	}
+	if p.Scripts[0].ResolvedWhen() != types.ScriptWhenBuild {
+		t.Errorf("the toolchain must be baked into the image, got when=%s", p.Scripts[0].ResolvedWhen())
 	}
 }
 

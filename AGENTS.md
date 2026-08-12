@@ -466,8 +466,44 @@ Two on-disk shapes, both valid:
 
 `Profile.Dir` is what the scripts resolve against, which is why the loader sets
 it in both shapes (the containing directory for a flat file, the profile's own
-directory otherwise). A built-in has no `Dir` and must therefore declare no
-scripts — `TestBuiltinProfilesHaveNoScripts` enforces it.
+directory otherwise).
+
+### A repo-shipped profile is data, not a Go literal
+
+The CLI ships profiles from **two** places, and which one a profile belongs in
+is decided by one thing: whether it carries files.
+
+| where | for | example |
+|---|---|---|
+| `catalog.plainBuiltinProfiles` (Go literals in `profiles.go`) | a pure module bundle | `nodejs`, `bun`, `base` |
+| `internal/domain/catalog/profiles/<id>/` (embedded) | a profile that ships scripts | `scraper` |
+
+`go:embed` cannot reach out of its own directory, so a profile that references a
+`.sh` **cannot** be a Go literal — the file has to sit next to the manifest, and
+that directory has to be under the package that embeds it. `BuiltinProfiles` is
+the concatenation of both, so nothing downstream knows the difference.
+
+Adding one is a directory drop: `catalog/profiles/<id>/profile.yml` plus its
+`.sh` files. `TestEmbeddedProfilesAreWellFormed` then checks it parses, that its
+id matches its directory, that every module id it lists exists, and that every
+script it names is really in the embedded tree.
+
+Two rules hold it together:
+
+- **`Embedded` marks where `Dir` points.** `catalog.Profile.Embedded` and
+  `types.CustomScript.Embedded` say the path is inside `BuiltinProfileFS`, not on
+  the host, and `ProfileScripts` joins it with `path` rather than `filepath`
+  because an embedded FS is always slash-separated.
+- **One reader for both origins.** `domain.ReadCustomScript` is the only way a
+  script's bytes are fetched — embedded tree or host file. `prepareBuildDir` and
+  `config profile copy` both go through it, which is why copying a repo-shipped
+  profile writes its scripts to disk as a normal user profile.
+
+The plain bundles stay Go literals on purpose: their ids are what the CI variant
+matrix builds, and one readable table is easier to keep in sync than twelve
+files. Keeping the pure module bundles there means a built-in that declares
+scripts must be an embedded one — `TestBuiltinProfilesWithScriptsAreEmbedded`
+enforces it, since a Go literal has no `Dir` to resolve a script against.
 
 **A script declares when it runs** (`types.CustomScript.When`, default `build`),
 and each value maps onto machinery that already existed:

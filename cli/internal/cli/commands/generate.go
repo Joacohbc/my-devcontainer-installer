@@ -419,9 +419,9 @@ func materializeCustomScripts(config *types.DevcontainerConfig, buildDir string)
 		if s.Source == "" {
 			continue
 		}
-		data, rerr := os.ReadFile(s.Source)
+		data, rerr := domain.ReadCustomScript(s)
 		if rerr != nil {
-			return nil, fmt.Errorf("custom script %q: %w", s.File, rerr)
+			return nil, rerr
 		}
 		if werr := os.WriteFile(filepath.Join(buildDir, s.BuildFile()), data, 0o755); werr != nil {
 			return nil, werr

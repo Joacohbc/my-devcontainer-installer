@@ -1,0 +1,19 @@
+# A repo-shipped profile. Unlike the plain module bundles in profiles.go, it
+# ships a script, so it lives here as data next to the file it references.
+#
+# github-cli is listed first for the same reason every other built-in does it:
+# its Dockerfile layer is shared with the cached devcontainer-base image.
+id: scraper
+label: Scraper (Chromium, Python+uv, Node+pnpm, scraping toolchain)
+modules:
+  - github-cli
+  - nodejs
+  - pnpm
+  - python
+  - chrome
+  - sqlite
+  - ffmpeg
+  - graphify
+scripts:
+  - file: install-scraper-tools.sh
+    when: build
