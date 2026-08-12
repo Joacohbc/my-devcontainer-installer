@@ -35,6 +35,7 @@ const (
 	flagScript         = "script"
 	flagSkill          = "skill"
 	flagSkillsMode     = "skills-mode"
+	flagForwardPorts   = "forward-ports"
 	flagNoInteractive  = "no-interactive"
 	flagNonInteractive = "non-interactive"
 	flagForcePrompt    = "force-prompt"
@@ -56,6 +57,7 @@ func addGenerateFlags(cmd *cobra.Command) {
 	f.String(flagWorkspace, "", "Workspace name (default: current dir name)")
 	f.String(flagPorts, "", "Ports to publish on the devcontainer (e.g. 8080:80,5432:5432); bound to 127.0.0.1 unless an IP is given; 'none' clears them")
 	f.String(flagVolumes, "", "Extra volume mounts on the devcontainer (e.g. myvol:/data,./cache:/cache); 'none' clears them")
+	f.String(flagForwardPorts, "", "Ports 'port-forward' tunnels when called with no argument (e.g. 3000,8080:80); 'none' clears them")
 	f.Bool(flagSharedConfig, true, "Mount the global shared AI/dev tool config volume (devcontainer-shared-config) so logins/sessions persist across containers; --shared-config=false to opt out")
 	f.String(flagProfile, "", "Apply a profile (module bundle + custom scripts). See 'config profile list'.")
 	f.String(flagPreset, "", "Deprecated alias for --profile")
@@ -119,6 +121,11 @@ type genFlags struct {
 	// to the explicit flags above.
 	profileSkills     []types.SkillID
 	profileSkillsMode types.SkillMode
+	forwardPorts      *[]string // nil = not set (keep existing); non-nil overrides
+	// profilePorts and profileForwardPorts come from the applied profile and lose
+	// to the explicit flags above.
+	profilePorts        []string
+	profileForwardPorts []string
 	// keepWorkspace is set when the workspace name must not be auto-uniquified: the
 	// user pinned it with --workspace, or it was already persisted for this project.
 	// Derived in initAndConfigure, not parsed from a flag.
@@ -151,6 +158,18 @@ func parseClearableCSV(get func(string) (string, error), flag string) []string {
 // (the generator binds specs without an explicit IP to 127.0.0.1).
 func parsePortsFlag(get func(string) (string, error)) []string {
 	return parseClearableCSV(get, flagPorts)
+}
+
+// validateForwardPorts checks tunnel specs with the parser that will open them,
+// rather than with the compose validator: their middle field is a compose
+// service name ("5432:postgres:5432"), which is not a port.
+func validateForwardPorts(specs []string) error {
+	for _, spec := range specs {
+		if _, err := parsePortMapping(spec, ""); err != nil {
+			return fmt.Errorf("invalid forward port %q: %w", spec, err)
+		}
+	}
+	return nil
 }
 
 func parseGenFlags(cmd *cobra.Command) (*genFlags, error) {
@@ -187,6 +206,13 @@ func parseGenFlags(cmd *cobra.Command) (*genFlags, error) {
 			return nil, fmt.Errorf("profile %q: %w", p.ID, serr)
 		}
 		g.profileSkills, g.profileSkillsMode = p.Skills, p.SkillsMode
+		if verr := domain.ValidatePortSpecs(p.Ports); verr != nil {
+			return nil, fmt.Errorf("profile %q: %w", p.ID, verr)
+		}
+		if verr := validateForwardPorts(p.ForwardPorts); verr != nil {
+			return nil, fmt.Errorf("profile %q: %w", p.ID, verr)
+		}
+		g.profilePorts, g.profileForwardPorts = p.Ports, p.ForwardPorts
 	}
 
 	if f.Changed(flagSkill) {
@@ -236,6 +262,13 @@ func parseGenFlags(cmd *cobra.Command) (*genFlags, error) {
 	if f.Changed(flagVolumes) {
 		volumes := parseClearableCSV(f.GetString, flagVolumes)
 		g.volumes = &volumes
+	}
+	if f.Changed(flagForwardPorts) {
+		forward := parseClearableCSV(f.GetString, flagForwardPorts)
+		if err := validateForwardPorts(forward); err != nil {
+			return nil, err
+		}
+		g.forwardPorts = &forward
 	}
 	if f.Changed(flagSharedConfig) {
 		v, _ := f.GetBool(flagSharedConfig)
@@ -613,6 +646,13 @@ func saveAndPostProcess(cwd string, config *types.DevcontainerConfig, plan *serv
 		}
 	}
 
+	if _, err := (service.GitRepoService{Report: console, Prompt: console}).EnsureRepo(cwd, flags.interactive); err != nil {
+		return err
+	}
+
+	// Kept interactive-only: it asks before appending to a file the user owns,
+	// and --no-interactive means no prompts. A repository created just above by
+	// an explicit opt-in still gets its entries on the next interactive run.
 	if flags.interactive {
 		if err := maybeUpdateGitignore(cwd, config.Workspace); err != nil {
 			return err
@@ -739,8 +779,17 @@ func applyGenFlags(config *types.DevcontainerConfig, flags *genFlags) {
 		}
 		config.Compose.Services = services
 	}
+	// An explicit --ports/--forward-ports wins over the profile's, like --with
+	// does over its modules.
 	if flags.ports != nil {
 		config.Compose.Ports = *flags.ports
+	} else if len(flags.profilePorts) > 0 {
+		config.Compose.Ports = flags.profilePorts
+	}
+	if flags.forwardPorts != nil {
+		config.ForwardPorts = *flags.forwardPorts
+	} else if len(flags.profileForwardPorts) > 0 {
+		config.ForwardPorts = flags.profileForwardPorts
 	}
 	if flags.volumes != nil {
 		config.Compose.Volumes = *flags.volumes

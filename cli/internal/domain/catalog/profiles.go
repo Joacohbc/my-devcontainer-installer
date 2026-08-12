@@ -46,7 +46,14 @@ type Profile struct {
 	// applied to the project rather than baked into the image.
 	Skills     []types.SkillID `yaml:"skills,omitempty"`
 	SkillsMode types.SkillMode `yaml:"skills_mode,omitempty"`
-	Source     string          `yaml:"-"`
+	// Ports are published by the generated stack, ForwardPorts are the tunnels
+	// `port-forward` opens with no argument. Both accept the same two shapes: a
+	// bare container port ("3000"), which lets Docker pick a free host port so
+	// two projects from this profile can run at once, or an explicit mapping
+	// ("3000:3000"), which is predictable but collides on the second project.
+	Ports        []string `yaml:"ports,omitempty"`
+	ForwardPorts []string `yaml:"forward_ports,omitempty"`
+	Source       string   `yaml:"-"`
 	// Dir is the directory the profile's scripts are resolved against: the
 	// profile's own directory for a directory-shaped profile, the containing
 	// directory for a flat <id>.yml, and the path inside BuiltinProfileFS for a

@@ -30,6 +30,8 @@ Subcommands:
   ssh-key             Path to the shared managed SSH key (and key utilities).
   ssh-config-file     Path of the CLI-managed SSH config file (Include'd from
                       ~/.ssh/config, which the CLI otherwise leaves alone).
+  git-init            Whether generate offers to 'git init' a project directory
+                      that is not a repository yet (true/false, default false).
   alias               Your own shell aliases, applied to every container.
   profile             List/create/copy/remove reusable profiles (module
                       bundles + custom scripts). Aliased as 'preset'.
@@ -47,6 +49,7 @@ Config file: ` + domain.GlobalConfigPath(),
 		SilenceUsage: true,
 	}
 	cmd.AddCommand(newConfigKeyCommand("registry", "image registry"))
+	cmd.AddCommand(newConfigKeyCommand("git-init", "'git init' offer for a project directory that is not a repository yet (true/false, default false)"))
 	cmd.AddCommand(newConfigKeyCommand("db-user", "DB user"))
 	cmd.AddCommand(newConfigKeyCommand("db-password", "DB password"))
 	cmd.AddCommand(newConfigSSHKeyCommand())

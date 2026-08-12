@@ -26,7 +26,14 @@ type GlobalConfig struct {
 	// RenderUserAliases and pushed into the shared-config volume with
 	// `config alias sync`. Managed with `config alias set/unset`, never by hand.
 	Aliases map[string]string `json:"aliases,omitempty"`
+	// GitInit opts into `generate` offering to run `git init` when the project
+	// directory is not a repository yet. Off by default: the directory is the
+	// user's, and creating a repository in it is not something to do unasked.
+	GitInit bool `json:"gitInit,omitempty"`
 }
+
+// GitInitEnabled reports whether generate may offer to initialise a repository.
+func GitInitEnabled() bool { return LoadGlobalConfig().GitInit }
 
 const DefaultRegistry = "ghcr.io/joacohbc/"
 

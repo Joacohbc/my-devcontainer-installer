@@ -456,15 +456,20 @@ type ComposeConfig struct {
 }
 
 type DevcontainerConfig struct {
-	Mode        BuildMode         `json:"mode" yaml:"mode"`
-	Image       string            `json:"image" yaml:"image"`
-	Workspace   string            `json:"workspace" yaml:"workspace"`
-	Dockerfile  DockerfileConfig  `json:"dockerfile" yaml:"dockerfile"`
-	Compose     ComposeConfig     `json:"compose" yaml:"compose"`
-	Env         map[string]string `json:"env" yaml:"env"`
-	Skills      SkillsConfig      `json:"skills,omitempty" yaml:"skills,omitempty"`
-	Remote      *RemoteConfig     `json:"remote,omitempty" yaml:"remote,omitempty"`
-	Fingerprint string            `json:"fingerprint,omitempty" yaml:"fingerprint,omitempty"`
+	Mode       BuildMode         `json:"mode" yaml:"mode"`
+	Image      string            `json:"image" yaml:"image"`
+	Workspace  string            `json:"workspace" yaml:"workspace"`
+	Dockerfile DockerfileConfig  `json:"dockerfile" yaml:"dockerfile"`
+	Compose    ComposeConfig     `json:"compose" yaml:"compose"`
+	Env        map[string]string `json:"env" yaml:"env"`
+	Skills     SkillsConfig      `json:"skills,omitempty" yaml:"skills,omitempty"`
+	// ForwardPorts are the SSH tunnels `port-forward` opens when called with no
+	// argument. They are separate from Compose.Ports: those are published by the
+	// stack and reachable as soon as it is up, while these exist only while the
+	// command runs.
+	ForwardPorts []string      `json:"forwardPorts,omitempty" yaml:"forwardPorts,omitempty"`
+	Remote       *RemoteConfig `json:"remote,omitempty" yaml:"remote,omitempty"`
+	Fingerprint  string        `json:"fingerprint,omitempty" yaml:"fingerprint,omitempty"`
 	// BuildUID/BuildGID are the host owner ids baked into a local-cached image so
 	// devuser matches the bind-mounted workspace. They are resolved fresh at
 	// generate time (never persisted) and feed both the compose build args and the

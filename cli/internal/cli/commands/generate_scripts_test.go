@@ -384,3 +384,77 @@ func TestApplyGenFlags_SkillPrecedence(t *testing.T) {
 		t.Errorf("an explicit --skills-mode must win over the profile's, got %q", explicit.Skills.Mode)
 	}
 }
+
+// A profile's ports apply to the project, and an explicit flag overrides them —
+// the same precedence --with has over the profile's modules.
+func TestApplyGenFlags_PortPrecedence(t *testing.T) {
+	fromProfile := &types.DevcontainerConfig{}
+	applyGenFlags(fromProfile, &genFlags{
+		profilePorts:        []string{"3000"},
+		profileForwardPorts: []string{"5432:postgres:5432"},
+	})
+	if !slices.Equal(fromProfile.Compose.Ports, []string{"3000"}) {
+		t.Errorf("expected the profile's published ports, got %v", fromProfile.Compose.Ports)
+	}
+	if !slices.Equal(fromProfile.ForwardPorts, []string{"5432:postgres:5432"}) {
+		t.Errorf("expected the profile's forward ports, got %v", fromProfile.ForwardPorts)
+	}
+
+	explicit := &types.DevcontainerConfig{}
+	ports, forward := []string{"8080:80"}, []string{"9229"}
+	applyGenFlags(explicit, &genFlags{
+		ports:               &ports,
+		forwardPorts:        &forward,
+		profilePorts:        []string{"3000"},
+		profileForwardPorts: []string{"5432"},
+	})
+	if !slices.Equal(explicit.Compose.Ports, ports) {
+		t.Errorf("an explicit --ports must win, got %v", explicit.Compose.Ports)
+	}
+	if !slices.Equal(explicit.ForwardPorts, forward) {
+		t.Errorf("an explicit --forward-ports must win, got %v", explicit.ForwardPorts)
+	}
+
+	// "none" clears them rather than falling back to the profile's.
+	cleared := &types.DevcontainerConfig{}
+	empty := []string{}
+	applyGenFlags(cleared, &genFlags{ports: &empty, profilePorts: []string{"3000"}})
+	if len(cleared.Compose.Ports) != 0 {
+		t.Errorf("expected --ports none to clear them, got %v", cleared.Compose.Ports)
+	}
+}
+
+func TestParseGenFlags_ForwardPorts(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	flags, err := parseGenFlagsFor(t, "--forward-ports", "3000,5432:postgres:5432")
+	if err != nil {
+		t.Fatalf("parseGenFlags: %v", err)
+	}
+	if flags.forwardPorts == nil || !slices.Equal(*flags.forwardPorts, []string{"3000", "5432:postgres:5432"}) {
+		t.Errorf("unexpected forward ports: %v", flags.forwardPorts)
+	}
+
+	if _, err := parseGenFlagsFor(t, "--forward-ports", "not-a-port"); err == nil {
+		t.Error("expected an invalid port spec to be rejected")
+	}
+}
+
+// A profile with bad ports must fail at generate time, not at compose time.
+func TestParseGenFlags_ProfileWithInvalidPortsFails(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmpHome)
+
+	dir := filepath.Join(tmpHome, "devcontainer-cli", "profiles")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "broken.yml"),
+		[]byte("id: broken\nmodules: [github-cli]\nports: [\"nope\"]\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := parseGenFlagsFor(t, "--profile", "broken"); err == nil {
+		t.Error("expected a profile with an invalid port to be rejected")
+	}
+}

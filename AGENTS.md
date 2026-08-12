@@ -505,6 +505,24 @@ files. Keeping the pure module bundles there means a built-in that declares
 scripts must be an embedded one — `TestBuiltinProfilesWithScriptsAreEmbedded`
 enforces it, since a Go literal has no `Dir` to resolve a script against.
 
+**A profile can also carry ports**, in two lists with two different grammars:
+
+| field | goes to | grammar |
+|---|---|---|
+| `ports:` | `Compose.Ports`, published by the stack | docker compose — `[IP:][HOST:]CONTAINER` |
+| `forward_ports:` | `ForwardPorts`, the tunnels `port-forward` opens with no argument | `port-forward` — `PORT`, `LOCAL:CONTAINER`, `LOCAL:SERVICE:CONTAINER` |
+
+The middle field differs — a host IP in one, a compose **service name** in the
+other — so each is checked by the parser that consumes it:
+`domain.ValidatePortSpecs` for the published ones, `parsePortMapping` (through
+`validateForwardPorts`) for the tunnels. One shared validator would reject
+`5432:postgres:5432`, which is valid for a tunnel.
+
+Both accept a bare container port (`3000`), which leaves the host port to Docker
+so two projects from one profile can run at once, and an explicit mapping
+(`3000:3000`), which is predictable but collides on the second project. The
+profile chooses; `BindLoopback` renders either.
+
 **A script declares when it runs** (`types.CustomScript.When`, default `build`),
 and each value maps onto machinery that already existed:
 
