@@ -6,6 +6,8 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/catalog"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/project"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/service"
@@ -456,5 +458,41 @@ func TestParseGenFlags_ProfileWithInvalidPortsFails(t *testing.T) {
 
 	if _, err := parseGenFlagsFor(t, "--profile", "broken"); err == nil {
 		t.Error("expected a profile with an invalid port to be rejected")
+	}
+}
+
+// A copy that silently dropped the source's ports would produce a profile that
+// looks the same and behaves differently.
+func TestProfileCopy_CarriesPortsAndSkills(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmpHome)
+
+	dir := filepath.Join(tmpHome, "devcontainer-cli", "profiles")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	manifest := "id: src\nmodules: [github-cli]\nports: [\"3000\"]\nforward_ports: [\"5432:postgres:5432\"]\nskills: [firecrawl]\nskills_mode: auto\n"
+	if err := os.WriteFile(filepath.Join(dir, "src.yml"), []byte(manifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	root := NewRootCommand("test")
+	root.SetArgs([]string{"config", "profile", "copy", "src", "dst", "--no-interactive"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("unexpected error copying the profile: %v", err)
+	}
+
+	copied, ok := catalog.Resolve("dst", domain.ProfileDirs()...)
+	if !ok {
+		t.Fatal("expected the copy to resolve")
+	}
+	if !slices.Equal(copied.Ports, []string{"3000"}) {
+		t.Errorf("expected the published ports to be copied, got %v", copied.Ports)
+	}
+	if !slices.Equal(copied.ForwardPorts, []string{"5432:postgres:5432"}) {
+		t.Errorf("expected the forward ports to be copied, got %v", copied.ForwardPorts)
+	}
+	if !slices.Contains(copied.Skills, types.SkillFirecrawl) || copied.SkillsMode != types.SkillModeAuto {
+		t.Errorf("expected the skills and mode to be copied, got %v / %q", copied.Skills, copied.SkillsMode)
 	}
 }

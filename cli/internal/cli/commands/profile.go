@@ -37,6 +37,12 @@ one in the interactive wizard) to pre-select its modules and add its scripts.
 Each script declares when it runs: 'build' bakes it into the image, 'start' runs
 it once per container, 'manual' only copies it to ~/post-script/.
 
+A profile can also carry ports: 'ports:' are published by the generated stack,
+'forward_ports:' are the tunnels 'port-forward' opens when called with no
+argument. Both take a bare container port (3000 — Docker picks a free host port,
+so two projects from one profile can run at once) or an explicit mapping
+(3000:3000 — predictable, but the second project collides).
+
 A profile can also carry agent skills, installed project-scoped into the
 workspace by the Skills CLI. Their mode is 'manual' (the default — you run
 'install_skills' yourself) or 'auto' (installed on every container start);
@@ -99,6 +105,12 @@ func newProfileListCommand() *cobra.Command {
 					}
 					if len(p.Skills) > 0 {
 						console.Print(fmt.Sprintf("  %s  %s\n", strings.Repeat(" ", width), ui.Subtle(describeSkills(p))))
+					}
+					if len(p.Ports) > 0 {
+						console.Print(fmt.Sprintf("  %s  %s\n", strings.Repeat(" ", width), ui.Subtle("ports: "+strings.Join(p.Ports, ", "))))
+					}
+					if len(p.ForwardPorts) > 0 {
+						console.Print(fmt.Sprintf("  %s  %s\n", strings.Repeat(" ", width), ui.Subtle("forward: "+strings.Join(p.ForwardPorts, ", "))))
 					}
 				}
 			}
@@ -372,12 +384,14 @@ func runProfileCopy(cmd *cobra.Command, args []string) error {
 	}
 
 	path, err := saveProfile(domain.ProfileDir(), catalog.Profile{
-		ID:         newID,
-		Label:      label,
-		Modules:    p.Modules,
-		Scripts:    scripts,
-		Skills:     p.Skills,
-		SkillsMode: p.SkillsMode,
+		ID:           newID,
+		Label:        label,
+		Modules:      p.Modules,
+		Scripts:      scripts,
+		Skills:       p.Skills,
+		SkillsMode:   p.SkillsMode,
+		Ports:        p.Ports,
+		ForwardPorts: p.ForwardPorts,
 	})
 	if err != nil {
 		return err
