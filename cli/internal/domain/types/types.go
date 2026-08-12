@@ -237,6 +237,13 @@ const (
 	// SkillsInstallAlias the shell alias pointing at it.
 	SkillsInstallCommand = "install-skills"
 	SkillsInstallAlias   = "install_skills"
+
+	// SkillRefSeparator splits a skill entry into its source and the name of the
+	// one skill to take from it. The entries travel space-separated, so an entry
+	// has to stay a single token; this keeps the selector in it without needing a
+	// second argument. It appears in neither an owner/repo shorthand nor a
+	// repository URL path.
+	SkillRefSeparator = "#"
 )
 
 // SkillsConfig is the project's agent skills and how they get installed. They

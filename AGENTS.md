@@ -595,12 +595,16 @@ Four properties are load-bearing:
   not infer intent from how it was launched. The default is `manual` because the
   installer writes into the bind-mounted workspace, which is the user's own
   repository.
-- **A `Ref` is one token.** `npx skills add` accepts both an `owner/repo`
-  shorthand and the URL of a single skill's directory, so a repo holding several
-  skills is addressable without a second argument — `firecrawl/cli` ships ten,
-  and the catalogue pins `.../skills/firecrawl-cli` so an unattended install
-  cannot take the other nine. The refs travel space-separated in
-  `DEVCONTAINER_SKILLS`, which `TestAgentSkillCatalogue` enforces.
+- **An entry is one token, and never names a branch.** A repo holding several
+  skills is selected with `--skill <name>` (`Spec.Skill`), not by pointing `Ref`
+  at the skill's directory URL: that URL carries a branch name, and
+  `antibrow/anti-detect-browser-skills` defaults to `master` while
+  `anthropics/skills` defaults to `main` — a rename would silently break the
+  ref. `Spec.InstallRef()` folds the two into `source#skill` so the entries stay
+  space-separated in `DEVCONTAINER_SKILLS`, and the installer splits them back.
+  `TestAgentSkillCatalogue` enforces all three: single token, no separator
+  inside either half, no `/tree/` in a ref. `firecrawl/cli` ships ten skills, so
+  its selector is what keeps an unattended install from taking the other nine.
 
 ### `~/CONTEXT.md` is generated per project
 

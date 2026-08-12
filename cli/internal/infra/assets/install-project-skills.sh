@@ -53,13 +53,25 @@ fi
 cd "$target"
 log "Installing agent skills into $target"
 
+# An entry is "<source>" or "<source>#<skill>". The selector form is what lets a
+# repo holding several skills be named without pinning its branch, which a
+# directory URL would.
+install_entry() {
+    local entry="$1" source="${1%%#*}" name="${1#*#}"
+    if [ "$name" = "$entry" ]; then
+        npx --yes skills add "$source"
+        return
+    fi
+    npx --yes skills add "$source" --skill "$name"
+}
+
 failed=0
-for skill in "${REQUESTED_SKILLS[@]}"; do
-    log "  $skill"
+for entry in "${REQUESTED_SKILLS[@]}"; do
+    log "  $entry"
     # Exiting non-zero leaves the entrypoint's .done sentinel unwritten, so a
     # failure that is really a network blip is retried on the next start.
-    if ! npx --yes skills add "$skill"; then
-        echo "ERROR: failed to install skill $skill" >&2
+    if ! install_entry "$entry"; then
+        echo "ERROR: failed to install skill $entry" >&2
         failed=1
     fi
 done

@@ -47,9 +47,9 @@ func ApplySelectedSkills(config *types.DevcontainerConfig) {
 	config.Dockerfile.Modules = append(config.Dockerfile.Modules, types.SelectedModule{ID: types.ModuleSkills})
 }
 
-// SkillRefs are the selected skills as the Skills CLI addresses them, in
-// catalogue order and without duplicates. Unknown ids are skipped; ValidateSkills
-// is what turns them into an error.
+// SkillRefs are the selected skills as the installer receives them, in catalogue
+// order and without duplicates. Unknown ids are skipped; ValidateSkills is what
+// turns them into an error.
 func SkillRefs(config types.SkillsConfig) []string {
 	seen := map[types.SkillID]bool{}
 	refs := make([]string, 0, len(config.Skills))
@@ -58,7 +58,7 @@ func SkillRefs(config types.SkillsConfig) []string {
 			continue
 		}
 		seen[spec.ID] = true
-		refs = append(refs, spec.Ref)
+		refs = append(refs, spec.InstallRef())
 	}
 	return refs
 }

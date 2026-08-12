@@ -13,11 +13,14 @@ import "github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 type Spec struct {
 	ID    types.SkillID
 	Label string
-	// Ref is the single argument the Skills CLI resolves. It is either an
-	// owner/repo shorthand, when the repo is one skill, or the URL of a skill's
-	// own directory when the repo holds several — the CLI accepts both, so a
-	// multi-skill repo needs no second argument and no invented syntax.
+	// Ref is the source the Skills CLI resolves: an owner/repo shorthand or a
+	// repository URL.
 	Ref string
+	// Skill names the one skill to take when Ref holds several. Selecting it by
+	// name (`skills add <ref> --skill <name>`) rather than by pointing Ref at the
+	// skill's directory URL is what keeps the reference free of a branch name —
+	// a repo that renames master to main would break the URL form.
+	Skill string
 	// RequiresModules are the Dockerfile modules the skill's tooling needs, so a
 	// project selecting a skill it cannot run is reported rather than discovered
 	// once an agent tries to follow it.
@@ -26,12 +29,13 @@ type Spec struct {
 	Context func() *types.ContextSection
 }
 
-// firecrawl/cli holds ten skills; the reference pins the one that teaches the
+// firecrawl/cli holds ten skills; the selector pins the one that teaches the
 // CLI itself, so an unattended install cannot pull in the other nine.
 var FirecrawlSkill = &Spec{
 	ID:              types.SkillFirecrawl,
 	Label:           "Firecrawl (scrape/crawl/map/search via the firecrawl CLI)",
-	Ref:             "https://github.com/firecrawl/cli/tree/main/skills/firecrawl-cli",
+	Ref:             "firecrawl/cli",
+	Skill:           "firecrawl-cli",
 	RequiresModules: []types.ModuleID{types.ModuleNodejs},
 	Context: func() *types.ContextSection {
 		return &types.ContextSection{
@@ -63,7 +67,8 @@ var AgentBrowserSkill = &Spec{
 var WebappTestingSkill = &Spec{
 	ID:              types.SkillWebappTesting,
 	Label:           "Webapp testing (Python Playwright on headless Chromium)",
-	Ref:             "https://github.com/anthropics/skills/tree/main/skills/webapp-testing",
+	Ref:             "anthropics/skills",
+	Skill:           "webapp-testing",
 	RequiresModules: []types.ModuleID{types.ModulePython, types.ModuleChrome},
 	Context: func() *types.ContextSection {
 		return &types.ContextSection{
@@ -81,6 +86,16 @@ var All = []*Spec{
 	FirecrawlSkill,
 	AgentBrowserSkill,
 	WebappTestingSkill,
+}
+
+// InstallRef is the entry the installer receives: the source, with the skill
+// selector appended when the source holds more than one. It stays a single
+// token because the entries travel space-separated in the environment.
+func (s *Spec) InstallRef() string {
+	if s.Skill == "" {
+		return s.Ref
+	}
+	return s.Ref + types.SkillRefSeparator + s.Skill
 }
 
 // Get returns the spec for an id, or nil when the id is unknown.

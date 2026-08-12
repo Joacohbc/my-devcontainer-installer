@@ -47,16 +47,25 @@ func TestSkillsConfigResolvedMode(t *testing.T) {
 	}
 }
 
-// Every catalogued skill must carry a reference the Skills CLI can resolve as a
-// single argument, and a context entry.
+// Every catalogued skill must resolve to a single-token entry the installer can
+// split, and describe itself.
 func TestAgentSkillCatalogue(t *testing.T) {
 	for _, spec := range catalog.AgentSkills {
 		if spec.ID == "" || spec.Label == "" || spec.Ref == "" {
 			t.Errorf("skill %+v is missing an id, label or ref", spec)
 		}
-		if strings.ContainsAny(spec.Ref, " \t") {
-			t.Errorf("skill %q has a multi-token ref %q; the refs travel space-separated in %s",
-				spec.ID, spec.Ref, types.SkillsEnvVar)
+		if strings.ContainsAny(spec.InstallRef(), " \t") {
+			t.Errorf("skill %q has a multi-token entry %q; the entries travel space-separated in %s",
+				spec.ID, spec.InstallRef(), types.SkillsEnvVar)
+		}
+		// The separator splits the entry, so it cannot appear inside either half.
+		if strings.Contains(spec.Ref, types.SkillRefSeparator) || strings.Contains(spec.Skill, types.SkillRefSeparator) {
+			t.Errorf("skill %q has %q in a ref or selector, which is the entry separator", spec.ID, types.SkillRefSeparator)
+		}
+		// A branch name in a ref breaks the day the repo renames its default
+		// branch; the --skill selector exists so it never has to be there.
+		if strings.Contains(spec.Ref, "/tree/") {
+			t.Errorf("skill %q pins a branch in %q; name the skill with Skill instead", spec.ID, spec.Ref)
 		}
 		if spec.Context == nil || spec.Context().Body == "" {
 			t.Errorf("skill %q must describe itself in CONTEXT.md", spec.ID)
@@ -125,10 +134,15 @@ func TestApplySelectedSkillsWithoutSkillsAddsNothing(t *testing.T) {
 func TestSkillRefs(t *testing.T) {
 	config := types.SkillsConfig{Skills: []types.SkillID{types.SkillFirecrawl, types.SkillFirecrawl}}
 	refs := domain.SkillRefs(config)
-	// firecrawl/cli holds ten skills, so the reference pins the one directory
-	// rather than the repo: an unattended install must not take the other nine.
-	if !slices.Equal(refs, []string{"https://github.com/firecrawl/cli/tree/main/skills/firecrawl-cli"}) {
-		t.Errorf("expected the pinned skill directory, got %v", refs)
+	// firecrawl/cli holds ten skills, so the entry carries a selector for the one
+	// we want: an unattended install must not take the other nine.
+	if !slices.Equal(refs, []string{"firecrawl/cli#firecrawl-cli"}) {
+		t.Errorf("expected the selector entry, got %v", refs)
+	}
+
+	// A source that is one skill needs no selector.
+	if refs := domain.SkillRefs(types.SkillsConfig{Skills: []types.SkillID{types.SkillAgentBrowser}}); !slices.Equal(refs, []string{"vercel-labs/agent-browser"}) {
+		t.Errorf("expected a bare source, got %v", refs)
 	}
 
 	// Catalogue order, not selection order.
