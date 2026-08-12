@@ -61,8 +61,8 @@ func addGenerateFlags(cmd *cobra.Command) {
 	f.String(flagPreset, "", "Deprecated alias for --profile")
 	_ = f.MarkDeprecated(flagPreset, "use --profile instead")
 	f.StringArray(flagScript, nil, "Custom script to add, as <path>[:build|start|manual] (default build); repeatable. build bakes it into the image, start runs it once per container, manual only copies it to ~/post-script/")
-	f.String(flagSkill, "", "Comma-separated agent skills to install in the project (e.g. firecrawl). See 'config profile list'; implies the nodejs module")
-	f.String(flagSkillsMode, "", "How the project's agent skills get installed: auto (on every container start) or manual (you run 'install-skills'). Default auto")
+	f.String(flagSkill, "", "Comma-separated agent skills installed into the project workspace (firecrawl, agent-browser, webapp-testing); implies the nodejs module")
+	f.String(flagSkillsMode, "", "How the project's agent skills get installed: manual (default — you run 'install-skills') or auto (on every container start, writing into the workspace unprompted)")
 	f.Bool(flagNoInteractive, false, "Fail if any value is missing instead of prompting")
 	f.Bool(flagNonInteractive, false, "Alias for --no-interactive")
 	f.Bool(flagForcePrompt, false, "Prompt even if config file exists")
@@ -376,6 +376,18 @@ func validateConfig(cwd string, config *types.DevcontainerConfig, flags *genFlag
 			console.Info("Workspace name %q is taken by another project; using %q instead.", config.Workspace, unique)
 			config.Workspace = unique
 		}
+	}
+
+	// A skill whose tooling is absent still installs, and then tells an agent to
+	// run something the image does not have. Report it instead of adding modules
+	// the user did not ask for.
+	if missing := domain.MissingSkillModules(config); len(missing) > 0 {
+		ids := make([]string, 0, len(missing))
+		for _, id := range missing {
+			ids = append(ids, string(id))
+		}
+		console.Warn("The selected skills expect module(s) this project does not have: %s. Add them with --with, or the skills will describe tools that are not installed.",
+			strings.Join(ids, ", "))
 	}
 
 	if config.Mode == types.BuildModeRemote && config.Image == "" && config.Remote != nil && config.Remote.Variant != "" {

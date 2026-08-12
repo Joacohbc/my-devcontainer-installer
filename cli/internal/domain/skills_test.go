@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/catalog"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 )
 
@@ -32,12 +33,39 @@ func TestValidateSkills(t *testing.T) {
 	}
 }
 
+// The default is manual: the installer writes into the user's own repository, so
+// the first write is not a decision to take for them.
 func TestSkillsConfigResolvedMode(t *testing.T) {
-	if got := (types.SkillsConfig{}).ResolvedMode(); got != types.DefaultSkillMode {
-		t.Errorf("expected the default mode %q, got %q", types.DefaultSkillMode, got)
+	if types.DefaultSkillMode != types.SkillModeManual {
+		t.Errorf("expected the default mode to be manual, got %q", types.DefaultSkillMode)
 	}
-	if got := (types.SkillsConfig{Mode: types.SkillModeManual}).ResolvedMode(); got != types.SkillModeManual {
+	if got := (types.SkillsConfig{}).ResolvedMode(); got != types.SkillModeManual {
+		t.Errorf("expected an unset mode to resolve to manual, got %q", got)
+	}
+	if got := (types.SkillsConfig{Mode: types.SkillModeAuto}).ResolvedMode(); got != types.SkillModeAuto {
 		t.Errorf("expected an explicit mode to win, got %q", got)
+	}
+}
+
+// Every catalogued skill must carry a reference the Skills CLI can resolve as a
+// single argument, and a context entry.
+func TestAgentSkillCatalogue(t *testing.T) {
+	for _, spec := range catalog.AgentSkills {
+		if spec.ID == "" || spec.Label == "" || spec.Ref == "" {
+			t.Errorf("skill %+v is missing an id, label or ref", spec)
+		}
+		if strings.ContainsAny(spec.Ref, " \t") {
+			t.Errorf("skill %q has a multi-token ref %q; the refs travel space-separated in %s",
+				spec.ID, spec.Ref, types.SkillsEnvVar)
+		}
+		if spec.Context == nil || spec.Context().Body == "" {
+			t.Errorf("skill %q must describe itself in CONTEXT.md", spec.ID)
+		}
+		for _, id := range spec.RequiresModules {
+			if catalog.GetDockerfileModule(id) == nil {
+				t.Errorf("skill %q requires unknown module %q", spec.ID, id)
+			}
+		}
 	}
 }
 
@@ -97,8 +125,16 @@ func TestApplySelectedSkillsWithoutSkillsAddsNothing(t *testing.T) {
 func TestSkillRefs(t *testing.T) {
 	config := types.SkillsConfig{Skills: []types.SkillID{types.SkillFirecrawl, types.SkillFirecrawl}}
 	refs := domain.SkillRefs(config)
-	if !slices.Equal(refs, []string{"firecrawl/cli"}) {
-		t.Errorf("expected the deduplicated CLI reference, got %v", refs)
+	// firecrawl/cli holds ten skills, so the reference pins the one directory
+	// rather than the repo: an unattended install must not take the other nine.
+	if !slices.Equal(refs, []string{"https://github.com/firecrawl/cli/tree/main/skills/firecrawl-cli"}) {
+		t.Errorf("expected the pinned skill directory, got %v", refs)
+	}
+
+	// Catalogue order, not selection order.
+	ordered := domain.SkillRefs(types.SkillsConfig{Skills: []types.SkillID{types.SkillWebappTesting, types.SkillFirecrawl}})
+	if len(ordered) != 2 || !strings.Contains(ordered[0], "firecrawl") {
+		t.Errorf("expected catalogue order, got %v", ordered)
 	}
 	if refs := domain.SkillRefs(types.SkillsConfig{Skills: []types.SkillID{"nope"}}); len(refs) != 0 {
 		t.Errorf("an unknown id resolves to no reference, got %v", refs)
@@ -112,18 +148,18 @@ func TestSkillsEnv(t *testing.T) {
 		t.Errorf("expected no environment without skills, got %v", env)
 	}
 
-	env := domain.SkillsEnv(types.SkillsConfig{Skills: []types.SkillID{types.SkillFirecrawl}})
+	env := domain.SkillsEnv(types.SkillsConfig{Skills: []types.SkillID{types.SkillAgentBrowser}})
 	joined := strings.Join(env, "\n")
-	if !strings.Contains(joined, types.SkillsEnvVar+"=firecrawl/cli") {
+	if !strings.Contains(joined, types.SkillsEnvVar+"=vercel-labs/agent-browser") {
 		t.Errorf("expected the skill refs, got %v", env)
 	}
 	if !strings.Contains(joined, types.SkillsModeEnvVar+"="+string(types.DefaultSkillMode)) {
 		t.Errorf("expected the resolved mode, got %v", env)
 	}
 
-	manual := domain.SkillsEnv(types.SkillsConfig{Mode: types.SkillModeManual, Skills: []types.SkillID{types.SkillFirecrawl}})
-	if !strings.Contains(strings.Join(manual, "\n"), types.SkillsModeEnvVar+"=manual") {
-		t.Errorf("expected the explicit mode, got %v", manual)
+	auto := domain.SkillsEnv(types.SkillsConfig{Mode: types.SkillModeAuto, Skills: []types.SkillID{types.SkillFirecrawl}})
+	if !strings.Contains(strings.Join(auto, "\n"), types.SkillsModeEnvVar+"=auto") {
+		t.Errorf("expected the explicit mode, got %v", auto)
 	}
 }
 

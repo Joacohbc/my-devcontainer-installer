@@ -38,9 +38,9 @@ Each script declares when it runs: 'build' bakes it into the image, 'start' runs
 it once per container, 'manual' only copies it to ~/post-script/.
 
 A profile can also carry agent skills, installed project-scoped into the
-workspace by the Skills CLI. Their mode is 'auto' (installed on every container
-start) or 'manual' (you run 'install_skills' yourself); either one pulls in the
-nodejs module.
+workspace by the Skills CLI. Their mode is 'manual' (the default — you run
+'install_skills' yourself) or 'auto' (installed on every container start);
+either one pulls in the nodejs module.
 
 Subcommands:
   list                List built-in and user profiles with their modules.

@@ -129,13 +129,13 @@ func TestGenerateDockerfile_SkillsModule(t *testing.T) {
 	assertContainsStr(t, df, "start.d/95-autostart-project-skills.sh", "skills entrypoint hook")
 	// The chosen skills reach the container through compose, so an image is not
 	// rebuilt when the list changes.
-	assertNotContainsStr(t, df, "firecrawl/cli", "the skill refs must not be baked into the image")
+	assertNotContainsStr(t, df, "firecrawl", "the skill refs must not be baked into the image")
 }
 
 // The refs and the mode ride on the devcontainer service's environment.
 func TestGenerateCompose_SkillsEnvironment(t *testing.T) {
 	cfg := makeConfig(func(c *types.DevcontainerConfig) {
-		c.Skills = types.SkillsConfig{Mode: types.SkillModeManual, Skills: []types.SkillID{types.SkillFirecrawl}}
+		c.Skills = types.SkillsConfig{Mode: types.SkillModeAuto, Skills: []types.SkillID{types.SkillAgentBrowser}}
 	})
 	domain.ApplySelectedSkills(cfg)
 
@@ -143,8 +143,8 @@ func TestGenerateCompose_SkillsEnvironment(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	assertContainsStr(t, composeFile, "DEVCONTAINER_SKILLS=firecrawl/cli", "skill refs")
-	assertContainsStr(t, composeFile, "DEVCONTAINER_SKILLS_MODE=manual", "skills mode")
+	assertContainsStr(t, composeFile, "DEVCONTAINER_SKILLS=vercel-labs/agent-browser", "skill refs")
+	assertContainsStr(t, composeFile, "DEVCONTAINER_SKILLS_MODE=auto", "skills mode")
 }
 
 func TestGenerateCompose_NoSkillsEnvironmentWithoutSkills(t *testing.T) {

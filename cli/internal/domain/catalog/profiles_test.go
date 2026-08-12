@@ -161,11 +161,15 @@ func TestScraperProfile(t *testing.T) {
 	// The agent skill is declared, not scripted: a script cannot install one
 	// correctly, since the agent config dirs are symlinks into the shared-config
 	// volume that only exists at runtime.
-	if !slices.Contains(p.Skills, types.SkillFirecrawl) {
-		t.Errorf("expected the firecrawl skill, got %v", p.Skills)
+	for _, want := range []types.SkillID{types.SkillFirecrawl, types.SkillAgentBrowser, types.SkillWebappTesting} {
+		if !slices.Contains(p.Skills, want) {
+			t.Errorf("expected the %q skill, got %v", want, p.Skills)
+		}
 	}
-	if p.SkillsMode != types.SkillModeAuto {
-		t.Errorf("expected skills mode auto, got %q", p.SkillsMode)
+	// Left unset so it follows the default, which is manual: the installer writes
+	// into the user's repository.
+	if p.SkillsMode != "" {
+		t.Errorf("expected the scraper profile to leave the mode at its default, got %q", p.SkillsMode)
 	}
 }
 

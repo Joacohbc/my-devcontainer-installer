@@ -20,7 +20,9 @@ scripts:
   - file: install-scraper-tools.sh
     when: build
 # Project-scoped agent skills, installed into the workspace by the skills module
-# (which is what pulls nodejs in).
+# (which is what pulls nodejs in). The mode is left at the default, manual: the
+# installer writes into the project, so the first write is the user's call.
 skills:
   - firecrawl
-skills_mode: auto
+  - agent-browser
+  - webapp-testing

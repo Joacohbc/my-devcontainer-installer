@@ -588,11 +588,19 @@ Four properties are load-bearing:
   (`DEVCONTAINER_SKILLS`, `DEVCONTAINER_SKILLS_MODE`, from `domain.SkillsEnv`).
   Changing the list is a compose change, so a project does not rebuild its image
   to add a skill. Only the installer itself is baked, and it is static.
-- **The mode needs a caller, not a guess.** `auto` installs on every container
-  start, `manual` leaves `install-skills` (aliased `install_skills`) to the user.
-  The entrypoint runs start.d scripts with no arguments, so
-  `autostart-project-skills.sh` exists to pass `--auto` — the installer must not
-  infer intent from how it was launched.
+- **The mode needs a caller, not a guess.** `manual` (the default) leaves
+  `install-skills` (aliased `install_skills`) to the user; `auto` installs on
+  every container start. The entrypoint runs start.d scripts with no arguments,
+  so `autostart-project-skills.sh` exists to pass `--auto` — the installer must
+  not infer intent from how it was launched. The default is `manual` because the
+  installer writes into the bind-mounted workspace, which is the user's own
+  repository.
+- **A `Ref` is one token.** `npx skills add` accepts both an `owner/repo`
+  shorthand and the URL of a single skill's directory, so a repo holding several
+  skills is addressable without a second argument — `firecrawl/cli` ships ten,
+  and the catalogue pins `.../skills/firecrawl-cli` so an unattended install
+  cannot take the other nine. The refs travel space-separated in
+  `DEVCONTAINER_SKILLS`, which `TestAgentSkillCatalogue` enforces.
 
 ### `~/CONTEXT.md` is generated per project
 

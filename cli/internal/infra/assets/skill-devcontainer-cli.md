@@ -51,8 +51,8 @@ That generates the files, builds the image and starts the stack. Useful flags
 | `--with a,b,c` | Dockerfile modules (toolchains/tools) to install |
 | `--profile <id>` | Start from a profile: a module bundle plus its custom scripts; `config profile list` shows them |
 | `--script <path>[:build\|start\|manual]` | Add a script of your own (repeatable): baked into the image, run once per container start, or only copied to `~/post-script/` |
-| `--skill firecrawl` | Agent skills to install **into the project workspace** via the Skills CLI. Adds the internal `skills` module, which requires `nodejs` |
-| `--skills-mode auto\|manual` | `auto` installs them on every container start; `manual` leaves the `install-skills` command (aliased `install_skills`) to the user. Default `auto` |
+| `--skill firecrawl,agent-browser,webapp-testing` | Agent skills to install **into the project workspace** via the Skills CLI. Adds the internal `skills` module, which requires `nodejs` |
+| `--skills-mode manual\|auto` | `manual` (default) leaves the `install-skills` command (aliased `install_skills`) to the user; `auto` installs on every container start, writing into the workspace unprompted |
 | `--service mongo,postgres,redis` | Add database services to the compose stack |
 | `--ports 3000:3000,8080:80` | Publish container ports (bound to 127.0.0.1 unless an IP is given) |
 | `--volumes myvol:/data,./cache:/cache` | Extra mounts on the dev container |

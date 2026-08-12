@@ -201,23 +201,29 @@ type SelectedModule struct {
 // SkillID identifies an agent skill in the catalog.
 type SkillID string
 
-const SkillFirecrawl SkillID = "firecrawl"
+const (
+	SkillFirecrawl     SkillID = "firecrawl"
+	SkillAgentBrowser  SkillID = "agent-browser"
+	SkillWebappTesting SkillID = "webapp-testing"
+)
 
 // SkillMode says who installs the project's agent skills.
 type SkillMode string
 
 const (
+	// SkillModeManual only provides the command and its alias, leaving the write
+	// to the user. It is the default because the installer writes into the
+	// bind-mounted workspace — the user's own repository — and doing that
+	// unasked on every container start is not a decision to take for them.
+	SkillModeManual SkillMode = "manual"
 	// SkillModeAuto installs them on every container start, so a fresh container
 	// is ready without the user doing anything.
 	SkillModeAuto SkillMode = "auto"
-	// SkillModeManual only provides the command and its alias, leaving the write
-	// into the project directory to the user.
-	SkillModeManual SkillMode = "manual"
 )
 
-var SkillModes = []SkillMode{SkillModeAuto, SkillModeManual}
+var SkillModes = []SkillMode{SkillModeManual, SkillModeAuto}
 
-const DefaultSkillMode = SkillModeAuto
+const DefaultSkillMode = SkillModeManual
 
 const (
 	// SkillsEnvVar carries the space-separated skill references into the
