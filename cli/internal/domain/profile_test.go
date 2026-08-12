@@ -270,23 +270,23 @@ func TestProfileScriptsForEmbeddedProfile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(scripts) != 1 {
-		t.Fatalf("expected 1 script, got %d", len(scripts))
+	if len(scripts) == 0 {
+		t.Fatal("expected the profile to carry scripts")
 	}
-	s := scripts[0]
-	if !s.Embedded {
-		t.Error("a built-in profile's script must be marked embedded")
-	}
-	if s.Source != "profiles/scraper/install-scraper-tools.sh" {
-		t.Errorf("expected a slash-separated embedded path, got %q", s.Source)
-	}
-
-	data, err := domain.ReadCustomScript(s)
-	if err != nil {
-		t.Fatalf("the embedded script must be readable: %v", err)
-	}
-	if !strings.HasPrefix(string(data), "#!") {
-		t.Error("expected the script to start with a shebang")
+	for _, s := range scripts {
+		if !s.Embedded {
+			t.Errorf("a built-in profile's script must be marked embedded: %+v", s)
+		}
+		if want := "profiles/scraper/" + s.File; s.Source != want {
+			t.Errorf("expected a slash-separated embedded path %q, got %q", want, s.Source)
+		}
+		data, err := domain.ReadCustomScript(s)
+		if err != nil {
+			t.Fatalf("the embedded script %q must be readable: %v", s.File, err)
+		}
+		if !strings.HasPrefix(string(data), "#!") {
+			t.Errorf("expected %q to start with a shebang", s.File)
+		}
 	}
 }
 

@@ -6,6 +6,7 @@ import (
 	"path"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/catalog"
@@ -149,11 +150,35 @@ func TestScraperProfile(t *testing.T) {
 	if len(p.Modules) == 0 || p.Modules[0] != "github-cli" {
 		t.Errorf("github-cli must be listed first for the base layer cache, got %v", p.Modules)
 	}
-	if len(p.Scripts) != 1 {
-		t.Fatalf("expected exactly one script, got %v", p.Scripts)
+	byFile := map[string]types.ScriptWhen{}
+	for _, s := range p.Scripts {
+		byFile[s.File] = s.ResolvedWhen()
 	}
-	if p.Scripts[0].ResolvedWhen() != types.ScriptWhenBuild {
-		t.Errorf("the toolchain must be baked into the image, got when=%s", p.Scripts[0].ResolvedWhen())
+	// The toolchain is baked in; the agent skills cannot be, because ~/.claude
+	// and ~/.agents are symlinks into the shared-config volume, which only exists
+	// once a container runs. Installing them at build time would write into a
+	// directory the volume then shadows.
+	if got := byFile["install-scraper-tools.sh"]; got != types.ScriptWhenBuild {
+		t.Errorf("the toolchain must be baked into the image, got when=%q", got)
+	}
+	if got := byFile["install-scraper-skills.sh"]; got != types.ScriptWhenStart {
+		t.Errorf("the agent skills must be installed at container start, got when=%q", got)
+	}
+}
+
+// A repo-shipped profile must never install an agent skill at build time: the
+// image would write into a path the shared-config volume shadows at runtime.
+func TestEmbeddedProfileSkillScriptsRunAtStart(t *testing.T) {
+	for _, p := range catalog.BuiltinProfiles {
+		for _, s := range p.Scripts {
+			if !strings.Contains(s.File, "skill") {
+				continue
+			}
+			if s.ResolvedWhen() != types.ScriptWhenStart {
+				t.Errorf("profile %q installs skills in %q at when=%q; it must be start",
+					p.ID, s.File, s.ResolvedWhen())
+			}
+		}
 	}
 }
 

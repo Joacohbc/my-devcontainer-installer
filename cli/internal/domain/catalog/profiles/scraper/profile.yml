@@ -15,5 +15,10 @@ modules:
   - ffmpeg
   - graphify
 scripts:
+  # The toolchain is baked into the image.
   - file: install-scraper-tools.sh
     when: build
+  # The agent skills cannot be: they live in the shared-config volume, which
+  # only exists at runtime. See the script's own header.
+  - file: install-scraper-skills.sh
+    when: start

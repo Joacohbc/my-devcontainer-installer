@@ -547,6 +547,16 @@ Adding a `when` value means: the constant + `types.ScriptWhens`, a branch in
 `PartitionCustomScripts`, the rendering for it, and cases in
 `domain/profile_test.go` and `domain/generator_custom_scripts_test.go`.
 
+**An agent skill can only be installed at `start`.** `~/.claude` and `~/.agents`
+are symlinks into the shared-config volume, which exists only once a container
+runs — the same reason the image bakes its own skill into
+`~/.devcontainer-skills/` instead. A `when: build` script that runs
+`npx skills add` writes into a directory the volume then shadows, so the skill is
+invisible in every container that mounts it. `TestEmbeddedProfileSkillScriptsRunAtStart`
+enforces this for repo-shipped profiles. The consequence is inherent, not a
+choice: the skill lands in the *shared* volume, so it reaches every container
+using it, not only the ones built from that profile.
+
 ### `~/CONTEXT.md` is generated per project
 
 `~/CONTEXT.md` is the orientation document an AI agent reads first. It is
