@@ -51,6 +51,8 @@ That generates the files, builds the image and starts the stack. Useful flags
 | `--with a,b,c` | Dockerfile modules (toolchains/tools) to install |
 | `--profile <id>` | Start from a profile: a module bundle plus its custom scripts; `config profile list` shows them |
 | `--script <path>[:build\|start\|manual]` | Add a script of your own (repeatable): baked into the image, run once per container start, or only copied to `~/post-script/` |
+| `--skill firecrawl` | Agent skills to install **into the project workspace** via the Skills CLI. Adds the internal `skills` module, which requires `nodejs` |
+| `--skills-mode auto\|manual` | `auto` installs them on every container start; `manual` leaves the `install-skills` command (aliased `install_skills`) to the user. Default `auto` |
 | `--service mongo,postgres,redis` | Add database services to the compose stack |
 | `--ports 3000:3000,8080:80` | Publish container ports (bound to 127.0.0.1 unless an IP is given) |
 | `--volumes myvol:/data,./cache:/cache` | Extra mounts on the dev container |
@@ -65,7 +67,8 @@ Module ids for `--with`: `github-cli`, `nodejs`, `pnpm`, `yarn`, `bun`,
 `codex-cli`, `copilot-cli`, `opencode`, `antigravity-cli`, `graphify`,
 `caveman`, `zellij`, `chrome`, `ffmpeg`, `dod` (Docker-out-of-Docker), `ngrok`,
 `cloudflared`. (`base`, `aliases` and `cleanup` are always applied; pick only
-one of the two `java-*` modules.)
+one of the two `java-*` modules. The `skills` module is added for you by
+`--skill` and is not picked directly.)
 
 Databases are compose **services**, not modules: use `--service postgres`, and
 `--with postgres-client` only if you also want `psql` in the dev container.

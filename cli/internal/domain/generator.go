@@ -498,7 +498,7 @@ func (c composeContext) renderContext(svc *compose.ServiceSpec, isDevcontainer b
 	}
 	if isDevcontainer {
 		rc.Ports = devcontainerPorts(c.config)
-		rc.ModuleEnv = devcontainerModuleEnv(c.config)
+		rc.ModuleEnv = append(devcontainerModuleEnv(c.config), SkillsEnv(c.config.Skills)...)
 		rc.WorkspaceDir = types.WorkspaceDir(c.workspace)
 		if types.SharedConfigEnabled(c.config) {
 			rc.SharedConfigMount = types.SharedConfigMount()

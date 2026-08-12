@@ -40,6 +40,7 @@ const (
 	ModuleDod            ModuleID = "dod"
 	ModuleNgrok          ModuleID = "ngrok"
 	ModuleCloudflared    ModuleID = "cloudflared"
+	ModuleSkills         ModuleID = "skills"
 	ModuleCleanup        ModuleID = "cleanup"
 )
 
@@ -196,6 +197,59 @@ type SelectedModule struct {
 	ID      ModuleID       `json:"id" yaml:"id"`
 	Options map[string]any `json:"options,omitempty" yaml:"options,omitempty"`
 }
+
+// SkillID identifies an agent skill in the catalog.
+type SkillID string
+
+const SkillFirecrawl SkillID = "firecrawl"
+
+// SkillMode says who installs the project's agent skills.
+type SkillMode string
+
+const (
+	// SkillModeAuto installs them on every container start, so a fresh container
+	// is ready without the user doing anything.
+	SkillModeAuto SkillMode = "auto"
+	// SkillModeManual only provides the command and its alias, leaving the write
+	// into the project directory to the user.
+	SkillModeManual SkillMode = "manual"
+)
+
+var SkillModes = []SkillMode{SkillModeAuto, SkillModeManual}
+
+const DefaultSkillMode = SkillModeAuto
+
+const (
+	// SkillsEnvVar carries the space-separated skill references into the
+	// container, and SkillsModeEnvVar the mode. Both are compose environment
+	// entries rather than image content: changing which skills a project wants
+	// must not rebuild its image.
+	SkillsEnvVar     = "DEVCONTAINER_SKILLS"
+	SkillsModeEnvVar = "DEVCONTAINER_SKILLS_MODE"
+
+	// SkillsInstallCommand is the installer on PATH inside the container, and
+	// SkillsInstallAlias the shell alias pointing at it.
+	SkillsInstallCommand = "install-skills"
+	SkillsInstallAlias   = "install_skills"
+)
+
+// SkillsConfig is the project's agent skills and how they get installed. They
+// are project-scoped: the installer writes them into the workspace mount, so
+// they belong to the project rather than to the image or the shared volume.
+type SkillsConfig struct {
+	Mode   SkillMode `json:"mode,omitempty" yaml:"mode,omitempty"`
+	Skills []SkillID `json:"skills,omitempty" yaml:"skills,omitempty"`
+}
+
+// ResolvedMode is Mode with the default applied.
+func (s SkillsConfig) ResolvedMode() SkillMode {
+	if s.Mode == "" {
+		return DefaultSkillMode
+	}
+	return s.Mode
+}
+
+func (s SkillsConfig) IsEmpty() bool { return len(s.Skills) == 0 }
 
 // ScriptWhen says at which point a custom script runs.
 type ScriptWhen string
@@ -395,6 +449,7 @@ type DevcontainerConfig struct {
 	Dockerfile  DockerfileConfig  `json:"dockerfile" yaml:"dockerfile"`
 	Compose     ComposeConfig     `json:"compose" yaml:"compose"`
 	Env         map[string]string `json:"env" yaml:"env"`
+	Skills      SkillsConfig      `json:"skills,omitempty" yaml:"skills,omitempty"`
 	Remote      *RemoteConfig     `json:"remote,omitempty" yaml:"remote,omitempty"`
 	Fingerprint string            `json:"fingerprint,omitempty" yaml:"fingerprint,omitempty"`
 	// BuildUID/BuildGID are the host owner ids baked into a local-cached image so

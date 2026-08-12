@@ -37,6 +37,11 @@ one in the interactive wizard) to pre-select its modules and add its scripts.
 Each script declares when it runs: 'build' bakes it into the image, 'start' runs
 it once per container, 'manual' only copies it to ~/post-script/.
 
+A profile can also carry agent skills, installed project-scoped into the
+workspace by the Skills CLI. Their mode is 'auto' (installed on every container
+start) or 'manual' (you run 'install_skills' yourself); either one pulls in the
+nodejs module.
+
 Subcommands:
   list                List built-in and user profiles with their modules.
   create              Create a user profile via an interactive picker.
@@ -92,6 +97,9 @@ func newProfileListCommand() *cobra.Command {
 					if len(p.Scripts) > 0 {
 						console.Print(fmt.Sprintf("  %s  %s\n", strings.Repeat(" ", width), ui.Subtle("scripts: "+describeScripts(p.Scripts))))
 					}
+					if len(p.Skills) > 0 {
+						console.Print(fmt.Sprintf("  %s  %s\n", strings.Repeat(" ", width), ui.Subtle(describeSkills(p))))
+					}
 				}
 			}
 
@@ -110,6 +118,19 @@ func describeScripts(scripts []types.CustomScript) string {
 		out = append(out, fmt.Sprintf("%s (%s)", s.File, s.ResolvedWhen()))
 	}
 	return strings.Join(out, ", ")
+}
+
+// describeSkills renders a profile's agent skills as "skills: a, b (auto)".
+func describeSkills(p catalog.Profile) string {
+	ids := make([]string, 0, len(p.Skills))
+	for _, id := range p.Skills {
+		ids = append(ids, string(id))
+	}
+	mode := p.SkillsMode
+	if mode == "" {
+		mode = types.DefaultSkillMode
+	}
+	return fmt.Sprintf("skills: %s (%s)", strings.Join(ids, ", "), mode)
 }
 
 func newProfileCreateCommand() *cobra.Command {
@@ -174,7 +195,19 @@ func runProfileCreate(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
-	profile := catalog.Profile{ID: profileID, Label: label, Modules: modules, Scripts: scripts}
+	skills, err := (service.GenerateService{Report: console}).SelectSkills(types.SkillsConfig{}, console)
+	if err != nil {
+		return err
+	}
+
+	profile := catalog.Profile{
+		ID:         profileID,
+		Label:      label,
+		Modules:    modules,
+		Scripts:    scripts,
+		Skills:     skills.Skills,
+		SkillsMode: skills.Mode,
+	}
 	path, err := saveProfile(domain.ProfileDir(), profile)
 	if err != nil {
 		return err
@@ -338,7 +371,14 @@ func runProfileCopy(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	path, err := saveProfile(domain.ProfileDir(), catalog.Profile{ID: newID, Label: label, Modules: p.Modules, Scripts: scripts})
+	path, err := saveProfile(domain.ProfileDir(), catalog.Profile{
+		ID:         newID,
+		Label:      label,
+		Modules:    p.Modules,
+		Scripts:    scripts,
+		Skills:     p.Skills,
+		SkillsMode: p.SkillsMode,
+	})
 	if err != nil {
 		return err
 	}

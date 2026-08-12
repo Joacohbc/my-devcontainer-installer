@@ -43,6 +43,10 @@ func GenerateContext(config *types.DevcontainerConfig) (string, error) {
 		writeContextSection(&b, sec)
 	}
 
+	for _, sec := range skillContextSections(config) {
+		writeContextSection(&b, sec)
+	}
+
 	writeContextSection(&b, customScriptsContextSection(config))
 
 	return strings.TrimRight(b.String(), "\n") + "\n", nil
@@ -186,4 +190,18 @@ func writeContextSection(b *strings.Builder, sec *types.ContextSection) {
 	b.WriteString("## " + sec.Title + "\n\n")
 	b.WriteString(body)
 	b.WriteString("\n\n")
+}
+
+// skillContextSections are the entries of the skills this project installs, so
+// an agent reads what its own skills cover without having to look them up.
+func skillContextSections(config *types.DevcontainerConfig) []*types.ContextSection {
+	var sections []*types.ContextSection
+	for _, id := range config.Skills.Skills {
+		spec := catalog.GetAgentSkill(id)
+		if spec == nil || spec.Context == nil {
+			continue
+		}
+		sections = append(sections, spec.Context())
+	}
+	return sections
 }

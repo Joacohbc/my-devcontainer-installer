@@ -3,6 +3,7 @@ package catalog
 import (
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/modules/compose"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/modules/dockerfile"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/modules/skills"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 )
 
@@ -42,6 +43,7 @@ var DockerfileModules = []*dockerfile.ModuleSpec{
 	dockerfile.DodModule,
 	dockerfile.NgrokModule,
 	dockerfile.CloudflaredModule,
+	dockerfile.SkillsModule,
 	dockerfile.CleanupModule,
 }
 
@@ -138,7 +140,7 @@ type CategorizedEntry struct {
 func SelectableByCategory() map[types.UICategory][]CategorizedEntry {
 	out := map[types.UICategory][]CategorizedEntry{}
 	for _, m := range DockerfileModules {
-		if m.Always || m.UICategory == "" {
+		if m.Always || m.Internal || m.UICategory == "" {
 			continue
 		}
 		out[m.UICategory] = append(out[m.UICategory], CategorizedEntry{ID: string(m.ID), Label: m.Label})
@@ -163,4 +165,19 @@ func CategoriesInOrder() []types.UICategory {
 		}
 	}
 	return out
+}
+
+// AgentSkills is the ordered catalogue of installable agent skills.
+var AgentSkills = skills.All
+
+// GetAgentSkill returns the spec for a skill id, or nil when it is unknown.
+func GetAgentSkill(id types.SkillID) *skills.Spec { return skills.Get(id) }
+
+// AgentSkillIDs returns every catalogued skill id, in catalogue order.
+func AgentSkillIDs() []string {
+	ids := make([]string, 0, len(AgentSkills))
+	for _, s := range AgentSkills {
+		ids = append(ids, string(s.ID))
+	}
+	return ids
 }

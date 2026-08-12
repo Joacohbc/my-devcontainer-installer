@@ -41,7 +41,12 @@ type Profile struct {
 	Label   string               `yaml:"label,omitempty"`
 	Modules []string             `yaml:"modules,omitempty"`
 	Scripts []types.CustomScript `yaml:"scripts,omitempty"`
-	Source  string               `yaml:"-"`
+	// Skills are the agent skills a project starting from this profile installs,
+	// and SkillsMode how they get installed. They are project-scoped, so they are
+	// applied to the project rather than baked into the image.
+	Skills     []types.SkillID `yaml:"skills,omitempty"`
+	SkillsMode types.SkillMode `yaml:"skills_mode,omitempty"`
+	Source     string          `yaml:"-"`
 	// Dir is the directory the profile's scripts are resolved against: the
 	// profile's own directory for a directory-shaped profile, the containing
 	// directory for a flat <id>.yml, and the path inside BuiltinProfileFS for a

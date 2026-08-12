@@ -114,3 +114,58 @@ func TestGenerateDockerfile_RemoteModeIgnoresCustomScripts(t *testing.T) {
 		t.Errorf("expected no Dockerfile in remote mode, got %d bytes", len(df))
 	}
 }
+
+// The skills module is what puts the installer and its alias in the image; the
+// skills themselves are runtime data, so nothing about them is baked in.
+func TestGenerateDockerfile_SkillsModule(t *testing.T) {
+	cfg := makeConfig(func(c *types.DevcontainerConfig) {
+		c.Skills = types.SkillsConfig{Skills: []types.SkillID{types.SkillFirecrawl}}
+	})
+	domain.ApplySelectedSkills(cfg)
+	df := mustGenerateDockerfile(t, cfg)
+
+	assertContainsStr(t, df, "COPY install-project-skills.sh /home/devuser/.local/bin/install-skills", "skills installer")
+	assertContainsStr(t, df, "alias install_skills=install-skills", "skills alias")
+	assertContainsStr(t, df, "start.d/95-autostart-project-skills.sh", "skills entrypoint hook")
+	// The chosen skills reach the container through compose, so an image is not
+	// rebuilt when the list changes.
+	assertNotContainsStr(t, df, "firecrawl/cli", "the skill refs must not be baked into the image")
+}
+
+// The refs and the mode ride on the devcontainer service's environment.
+func TestGenerateCompose_SkillsEnvironment(t *testing.T) {
+	cfg := makeConfig(func(c *types.DevcontainerConfig) {
+		c.Skills = types.SkillsConfig{Mode: types.SkillModeManual, Skills: []types.SkillID{types.SkillFirecrawl}}
+	})
+	domain.ApplySelectedSkills(cfg)
+
+	composeFile, err := domain.GenerateCompose(cfg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	assertContainsStr(t, composeFile, "DEVCONTAINER_SKILLS=firecrawl/cli", "skill refs")
+	assertContainsStr(t, composeFile, "DEVCONTAINER_SKILLS_MODE=manual", "skills mode")
+}
+
+func TestGenerateCompose_NoSkillsEnvironmentWithoutSkills(t *testing.T) {
+	composeFile, err := domain.GenerateCompose(makeConfig())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	assertNotContainsStr(t, composeFile, "DEVCONTAINER_SKILLS", "a project with no skills")
+}
+
+// An agent reads what its own skills cover from CONTEXT.md.
+func TestGenerateContext_SkillSections(t *testing.T) {
+	cfg := makeConfig(func(c *types.DevcontainerConfig) {
+		c.Skills = types.SkillsConfig{Skills: []types.SkillID{types.SkillFirecrawl}}
+	})
+	domain.ApplySelectedSkills(cfg)
+
+	doc, err := domain.GenerateContext(cfg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	assertContainsStr(t, doc, "## Firecrawl skill", "the skill's own section")
+	assertContainsStr(t, doc, "## Agent skills", "the skills module section")
+}

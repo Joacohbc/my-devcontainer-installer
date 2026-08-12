@@ -15,10 +15,12 @@ modules:
   - ffmpeg
   - graphify
 scripts:
-  # The toolchain is baked into the image.
+  # Only the toolchain, which is baked into the image. Agent skills are not a
+  # script's job — see `skills` below.
   - file: install-scraper-tools.sh
     when: build
-  # The agent skills cannot be: they live in the shared-config volume, which
-  # only exists at runtime. See the script's own header.
-  - file: install-scraper-skills.sh
-    when: start
+# Project-scoped agent skills, installed into the workspace by the skills module
+# (which is what pulls nodejs in).
+skills:
+  - firecrawl
+skills_mode: auto

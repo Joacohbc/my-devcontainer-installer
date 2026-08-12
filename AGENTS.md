@@ -547,15 +547,52 @@ Adding a `when` value means: the constant + `types.ScriptWhens`, a branch in
 `PartitionCustomScripts`, the rendering for it, and cases in
 `domain/profile_test.go` and `domain/generator_custom_scripts_test.go`.
 
-**An agent skill can only be installed at `start`.** `~/.claude` and `~/.agents`
-are symlinks into the shared-config volume, which exists only once a container
-runs — the same reason the image bakes its own skill into
-`~/.devcontainer-skills/` instead. A `when: build` script that runs
-`npx skills add` writes into a directory the volume then shadows, so the skill is
-invisible in every container that mounts it. `TestEmbeddedProfileSkillScriptsRunAtStart`
-enforces this for repo-shipped profiles. The consequence is inherent, not a
-choice: the skill lands in the *shared* volume, so it reaches every container
-using it, not only the ones built from that profile.
+**A custom script is the wrong channel for an agent skill.** Both global agent
+skill dirs (`~/.claude/skills`, `~/.agents/skills`) are symlinks into the
+shared-config volume, so `npx skills add -g` from a script is wrong at every
+`when`: at `build` the volume shadows the write and the skill is invisible, and
+at `start` it succeeds but leaks that project's skill into every other container
+mounting the volume. Declare skills under `skills:` instead — see the next
+section. `TestEmbeddedProfilesDoNotScriptSkillInstalls` keeps repo-shipped
+profiles from regressing to a script.
+
+### Agent skills are a catalogue entry, not a script
+
+`internal/domain/modules/skills/` is the third catalogue next to Dockerfile
+modules and compose services. A `skills.Spec` is an id, a label, the `Ref` the
+Skills CLI resolves (`firecrawl/cli`), the modules its tooling needs, and a
+`Context` section. Adding one is appending to `skills.All`.
+
+Skills are **project-scoped**: the installer runs `npx skills add` inside the
+workspace mount, so they land in the project and never in the shared volume that
+made the script approach wrong.
+
+| piece | where |
+|---|---|
+| Catalogue | `internal/domain/modules/skills/skills.go`, re-exported as `catalog.AgentSkills` |
+| Selection + mode | `types.SkillsConfig` on `DevcontainerConfig` (`--skill`, `--skills-mode`, the wizard, a profile's `skills:`/`skills_mode:`) |
+| Plumbing | `dockerfile.SkillsModule` — the installer on PATH, the `install_skills` alias, the entrypoint hook |
+| Installer | `internal/infra/assets/install-project-skills.sh` (+ `autostart-project-skills.sh`) |
+
+Four properties are load-bearing:
+
+- **The module is `Internal`, never picked.** `domain.ApplySelectedSkills` adds
+  it when the project selects skills, and `dockerfile.ModuleSpec.Internal` (the
+  mirror of `compose.ServiceSpec.Internal`) keeps it out of the wizard's
+  categories. It is applied **last** in `applyGenFlags`, because `--with`
+  rewrites the module list and a derived module has to survive that.
+- **Requiring nodejs is how npx is guaranteed.** The module declares
+  `Requires: nodejs`, so the resolver pulls the toolchain in rather than the
+  installer discovering it is missing inside a container.
+- **Which skills and which mode are compose environment, not image content**
+  (`DEVCONTAINER_SKILLS`, `DEVCONTAINER_SKILLS_MODE`, from `domain.SkillsEnv`).
+  Changing the list is a compose change, so a project does not rebuild its image
+  to add a skill. Only the installer itself is baked, and it is static.
+- **The mode needs a caller, not a guess.** `auto` installs on every container
+  start, `manual` leaves `install-skills` (aliased `install_skills`) to the user.
+  The entrypoint runs start.d scripts with no arguments, so
+  `autostart-project-skills.sh` exists to pass `--auto` — the installer must not
+  infer intent from how it was launched.
 
 ### `~/CONTEXT.md` is generated per project
 
@@ -773,7 +810,7 @@ is Cobra-native.
 | `compose` (alias `dc`) | `compose.go` | Passthrough to `docker compose` scoped to the current project (`LifecycleService.Passthrough`): forwards every argument verbatim after `-f .dc_<ws>/build/docker-compose.yml --env-file .dc_<ws>/build/.env`. The escape hatch for compose verbs the curated wrappers don't cover (`exec`, `ps`, `top`, `config`, `kill`, `run`, `port`, …), reaching every service in the stack — database services included. Uses `DisableFlagParsing` so flags like `-it` reach compose instead of cobra; a bare invocation or lone `-h`/`--help` prints the command's own help, everything else (including `<verb> --help`) is forwarded. The `--env-file` flag is included only when the generated `.env` exists, otherwise compose falls back to its own autoload. Completion (`completeComposeArgs`, which still fires under `DisableFlagParsing`) offers compose verbs on the first token and the project's compose **service** keys (`ReadComposeServices`) on later tokens — service names, since that's what `docker compose <verb> <service>` takes, not container names |
 | `update` | `update.go` | Pull/rebuild images; `--all`; per-mode dispatch |
 | `upgrade-cli` | `upgrade_cli.go` | Binary self-update from a GitHub release |
-| `config` | `config.go` | Read/write global config (subcommands `registry`, `db-user`, `db-password`, `ssh-key`, `ssh-config-file`, `alias`, `profile`, `shared`); `config ssh-config-file` sets where managed SSH Host blocks live (default `~/.ssh/devcontainer-cli.config`) — it is global rather than a per-command flag on purpose, so `ssh`, `destroy` and `clean ssh` can never disagree about which file to read. `config alias` (`config_alias.go`) manages the user's own shell aliases, stored in the CLI config (`GlobalConfig.Aliases`), not a host file: `config alias set <name> <command>` / `config alias unset <name>` edit the map, bare `config alias` lists it, and `config alias sync` renders it into the `alias.sh` shared-config volume entry (`SharedConfigService.SyncAliases`) so every container picks it up without an image rebuild; `config profile` (`profile.go`, aliased `preset`) lists/creates/copies/removes reusable **profiles** saved under `~/.devcontainer-cli/profiles/` (`remove <id...>` deletes user profiles only — built-ins are not removable; tab-completed, `-y` to skip confirmation). A profile is a list of module ids plus optional custom scripts (no services/ports/volumes/mode); `create` prompts for the id, runs a modules-only wizard (`GenerateService.SelectModules`) and then collects scripts. The interactive `generate` wizard also offers an optional "start from a user profile" step (local-cached only) that pre-selects the profile's modules and carries its scripts before the user continues with services/ports/volumes. `config shared` (`config_shared.go`) groups the shared tool-config volume ops — `config shared sync` (`sync_config.go`, seed from host configs `~/.claude`, `~/.config/gh`, …; `--force` replaces), `config shared backup` (`backup_config.go`, zip the volume; `-o` sets the destination, default a timestamped file in cwd), `config shared restore` (`restore_config.go`, load a zip made by `config shared backup`; `--force` replaces existing entries) |
+| `config` | `config.go` | Read/write global config (subcommands `registry`, `db-user`, `db-password`, `ssh-key`, `ssh-config-file`, `alias`, `profile`, `shared`); `config ssh-config-file` sets where managed SSH Host blocks live (default `~/.ssh/devcontainer-cli.config`) — it is global rather than a per-command flag on purpose, so `ssh`, `destroy` and `clean ssh` can never disagree about which file to read. `config alias` (`config_alias.go`) manages the user's own shell aliases, stored in the CLI config (`GlobalConfig.Aliases`), not a host file: `config alias set <name> <command>` / `config alias unset <name>` edit the map, bare `config alias` lists it, and `config alias sync` renders it into the `alias.sh` shared-config volume entry (`SharedConfigService.SyncAliases`) so every container picks it up without an image rebuild; `config profile` (`profile.go`, aliased `preset`) lists/creates/copies/removes reusable **profiles** (module ids + custom scripts + agent skills) saved under `~/.devcontainer-cli/profiles/` (`remove <id...>` deletes user profiles only — built-ins are not removable; tab-completed, `-y` to skip confirmation). A profile is a list of module ids plus optional custom scripts and agent skills (no services/ports/volumes/mode); `create` prompts for the id, runs a modules-only wizard (`GenerateService.SelectModules`), collects scripts, then picks skills and their mode (`GenerateService.SelectSkills`). The interactive `generate` wizard also offers an optional "start from a user profile" step (local-cached only) that pre-selects the profile's modules and carries its scripts before the user continues with services/ports/volumes. `config shared` (`config_shared.go`) groups the shared tool-config volume ops — `config shared sync` (`sync_config.go`, seed from host configs `~/.claude`, `~/.config/gh`, …; `--force` replaces), `config shared backup` (`backup_config.go`, zip the volume; `-o` sets the destination, default a timestamped file in cwd), `config shared restore` (`restore_config.go`, load a zip made by `config shared backup`; `--force` replaces existing entries) |
 | `cleanup-tips` | `cleanup_tips.go` | Print docker cleanup commands |
 | `context` | `context.go` | Print the container's own context and installed tools: runs `get-devcontainer-context` inside it via `InspectService.Context` and streams the output (`--json` for structured output). Falls back to `copy --asset get-devcontainer-context` when the image predates the `aliases` module. Complements `info` (Docker metadata) by reporting what is *inside* the container |
 | `skill` | `skill.go` | Install the **host-side** agent skill (`skill-devcontainer-cli.md`) into the host's agent skill dirs, so an assistant running on the user's machine knows how to drive this CLI. Subcommands `skill install` / `skill remove` (alias `uninstall`) / `skill show`; bare `skill` lists every target with its state (`absent`/`current`/`outdated`/`foreign`). `--agent` narrows to one agent (default: all), `--scope global\|project` picks the base dir (home vs cwd). A target holding a file the CLI did not write (no managed marker) is reported `foreign` and never overwritten or deleted without `--force`; `remove` needs `-y` in non-interactive mode. Pure file I/O — no Docker, unlike every other command |

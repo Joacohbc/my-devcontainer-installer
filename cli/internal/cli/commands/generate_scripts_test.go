@@ -3,6 +3,7 @@ package commands
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
@@ -326,5 +327,60 @@ func TestIndexOfScriptFindsANameCollision(t *testing.T) {
 	}
 	if got := indexOfScript(scripts, types.CustomScript{File: "new.sh"}); got != -1 {
 		t.Errorf("expected no collision, got %d", got)
+	}
+}
+
+func TestParseGenFlags_Skills(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	flags, err := parseGenFlagsFor(t, "--skill", "firecrawl", "--skills-mode", "manual")
+	if err != nil {
+		t.Fatalf("parseGenFlags: %v", err)
+	}
+	if len(flags.skills) != 1 || flags.skills[0] != types.SkillFirecrawl {
+		t.Errorf("expected the firecrawl skill, got %v", flags.skills)
+	}
+	if flags.skillsMode != string(types.SkillModeManual) {
+		t.Errorf("expected mode manual, got %q", flags.skillsMode)
+	}
+}
+
+func TestParseGenFlags_RejectsUnknownSkillAndMode(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	if _, err := parseGenFlagsFor(t, "--skill", "no-such-skill"); err == nil {
+		t.Error("expected an error for an unknown skill")
+	}
+	if _, err := parseGenFlagsFor(t, "--skills-mode", "someday"); err == nil {
+		t.Error("expected an error for an unknown skills mode")
+	}
+}
+
+// The profile supplies skills, and an explicit flag overrides them — the same
+// precedence --with has over the profile's modules.
+func TestApplyGenFlags_SkillPrecedence(t *testing.T) {
+	fromProfile := &types.DevcontainerConfig{}
+	applyGenFlags(fromProfile, &genFlags{
+		profileSkills:     []types.SkillID{types.SkillFirecrawl},
+		profileSkillsMode: types.SkillModeManual,
+	})
+	if len(fromProfile.Skills.Skills) != 1 || fromProfile.Skills.Mode != types.SkillModeManual {
+		t.Errorf("expected the profile's skills to apply, got %+v", fromProfile.Skills)
+	}
+	if !slices.ContainsFunc(fromProfile.Dockerfile.Modules, func(m types.SelectedModule) bool {
+		return m.ID == types.ModuleSkills
+	}) {
+		t.Error("selecting skills must add the skills module")
+	}
+
+	explicit := &types.DevcontainerConfig{}
+	applyGenFlags(explicit, &genFlags{
+		skills:            []types.SkillID{types.SkillFirecrawl},
+		skillsMode:        string(types.SkillModeAuto),
+		profileSkills:     []types.SkillID{},
+		profileSkillsMode: types.SkillModeManual,
+	})
+	if explicit.Skills.Mode != types.SkillModeAuto {
+		t.Errorf("an explicit --skills-mode must win over the profile's, got %q", explicit.Skills.Mode)
 	}
 }

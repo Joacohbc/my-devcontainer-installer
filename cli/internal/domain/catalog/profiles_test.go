@@ -154,29 +154,46 @@ func TestScraperProfile(t *testing.T) {
 	for _, s := range p.Scripts {
 		byFile[s.File] = s.ResolvedWhen()
 	}
-	// The toolchain is baked in; the agent skills cannot be, because ~/.claude
-	// and ~/.agents are symlinks into the shared-config volume, which only exists
-	// once a container runs. Installing them at build time would write into a
-	// directory the volume then shadows.
 	if got := byFile["install-scraper-tools.sh"]; got != types.ScriptWhenBuild {
 		t.Errorf("the toolchain must be baked into the image, got when=%q", got)
 	}
-	if got := byFile["install-scraper-skills.sh"]; got != types.ScriptWhenStart {
-		t.Errorf("the agent skills must be installed at container start, got when=%q", got)
+
+	// The agent skill is declared, not scripted: a script cannot install one
+	// correctly, since the agent config dirs are symlinks into the shared-config
+	// volume that only exists at runtime.
+	if !slices.Contains(p.Skills, types.SkillFirecrawl) {
+		t.Errorf("expected the firecrawl skill, got %v", p.Skills)
+	}
+	if p.SkillsMode != types.SkillModeAuto {
+		t.Errorf("expected skills mode auto, got %q", p.SkillsMode)
 	}
 }
 
-// A repo-shipped profile must never install an agent skill at build time: the
-// image would write into a path the shared-config volume shadows at runtime.
-func TestEmbeddedProfileSkillScriptsRunAtStart(t *testing.T) {
+// Installing an agent skill from a script writes into ~/.claude or ~/.agents,
+// which are symlinks into the shared-config volume: at build time the volume
+// shadows the write, and at any time it leaks the skill into every other
+// container. The `skills` field exists so no profile has to try.
+func TestEmbeddedProfilesDoNotScriptSkillInstalls(t *testing.T) {
 	for _, p := range catalog.BuiltinProfiles {
 		for _, s := range p.Scripts {
-			if !strings.Contains(s.File, "skill") {
-				continue
+			if strings.Contains(s.File, "skill") {
+				t.Errorf("profile %q installs skills through the script %q; declare them under `skills:` instead",
+					p.ID, s.File)
 			}
-			if s.ResolvedWhen() != types.ScriptWhenStart {
-				t.Errorf("profile %q installs skills in %q at when=%q; it must be start",
-					p.ID, s.File, s.ResolvedWhen())
+		}
+	}
+}
+
+// Every skill a repo-shipped profile names must exist in the catalogue, and its
+// mode must be one the installer understands.
+func TestEmbeddedProfileSkillsAreCatalogued(t *testing.T) {
+	for _, p := range catalog.BuiltinProfiles {
+		if p.SkillsMode != "" && !slices.Contains(types.SkillModes, p.SkillsMode) {
+			t.Errorf("profile %q has an unknown skills mode %q", p.ID, p.SkillsMode)
+		}
+		for _, id := range p.Skills {
+			if catalog.GetAgentSkill(id) == nil {
+				t.Errorf("profile %q names unknown skill %q", p.ID, id)
 			}
 		}
 	}

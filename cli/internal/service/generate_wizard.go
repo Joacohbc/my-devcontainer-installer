@@ -25,6 +25,8 @@ const (
 	stepKeyPorts        = "ports"
 	stepKeyVolumes      = "volumes"
 	stepKeySharedConfig = "sharedConfig"
+	stepKeySkills       = "skills"
+	stepKeySkillsMode   = "skillsMode"
 )
 
 func categoryStepKey(c types.UICategory) string  { return "cat:" + string(c) }
@@ -189,6 +191,7 @@ func (w wizardContext) steps(s *State) []Step {
 	steps = append(steps, w.portsStep())
 	steps = append(steps, w.volumesStep())
 	steps = append(steps, w.sharedConfigStep())
+	steps = append(steps, w.skillSteps(s)...)
 	steps = append(steps, w.envSteps(s)...)
 	return steps
 }
@@ -530,6 +533,7 @@ func (w wizardContext) reduce(s *State) *types.DevcontainerConfig {
 		Image:      s.String(stepKeyImage),
 		Workspace:  workspace,
 		Dockerfile: types.DockerfileConfig{Modules: modules, Scripts: w.selectedScripts(s)},
+		Skills:     w.selectedSkills(s),
 		Compose:    types.ComposeConfig{Services: services, Subnet: s.String(stepKeySubnet)},
 		Env:        env,
 	}
@@ -720,4 +724,106 @@ func VariantChoices() []Option {
 		choices[i] = Option{Value: v, Label: types.VariantLabels[v]}
 	}
 	return choices
+}
+
+// skillSteps let the project pick agent skills and how they get installed. The
+// mode step only appears once a skill is selected, since it has nothing to
+// govern otherwise. Remote mode is skipped: the installer and its alias come
+// from a Dockerfile module, and a prebuilt image was not built with it.
+func (w wizardContext) skillSteps(s *State) []Step {
+	if currentMode(s) != types.BuildModeLocalCached || len(catalog.AgentSkills) == 0 {
+		return nil
+	}
+	steps := []Step{w.skillsStep()}
+	if len(s.Strings(stepKeySkills)) > 0 {
+		steps = append(steps, w.skillsModeStep())
+	}
+	return steps
+}
+
+func (w wizardContext) skillsStep() Step {
+	return Step{Key: stepKeySkills, Build: func(s *State) Field {
+		choices := make([]Option, 0, len(catalog.AgentSkills))
+		for _, spec := range catalog.AgentSkills {
+			choices = append(choices, Option{Value: string(spec.ID), Label: spec.Label})
+		}
+		initial := skillIDStrings(w.base.Skills.Skills)
+		if s.Has(stepKeySkills) {
+			initial = s.Strings(stepKeySkills)
+		}
+		return Field{
+			Kind:    FieldMultiselect,
+			Title:   "Skills de agente para el proyecto (se instalan en el workspace):",
+			Choices: choices,
+			Initial: initial,
+		}
+	}}
+}
+
+func (w wizardContext) skillsModeStep() Step {
+	return Step{Key: stepKeySkillsMode, Build: func(s *State) Field {
+		choices := []Option{
+			{Value: string(types.SkillModeAuto), Label: "auto — instalarlas en cada arranque del contenedor"},
+			{Value: string(types.SkillModeManual), Label: "manual — dejar el comando install_skills para vos"},
+		}
+		initial := string(w.base.Skills.ResolvedMode())
+		if s.Has(stepKeySkillsMode) {
+			initial = s.String(stepKeySkillsMode)
+		}
+		return Field{Kind: FieldSelect, Title: "Cuándo se instalan las skills?", Choices: choices, Initial: initial}
+	}}
+}
+
+func (w wizardContext) selectedSkills(s *State) types.SkillsConfig {
+	if currentMode(s) != types.BuildModeLocalCached {
+		return types.SkillsConfig{}
+	}
+	if !s.Has(stepKeySkills) {
+		return w.base.Skills
+	}
+	selected := s.Strings(stepKeySkills)
+	skills := make([]types.SkillID, 0, len(selected))
+	for _, id := range selected {
+		skills = append(skills, types.SkillID(id))
+	}
+	if len(skills) == 0 {
+		return types.SkillsConfig{}
+	}
+	mode := w.base.Skills.Mode
+	if s.Has(stepKeySkillsMode) {
+		mode = types.SkillMode(s.String(stepKeySkillsMode))
+	}
+	return types.SkillsConfig{Mode: mode, Skills: skills}
+}
+
+func skillIDStrings(ids []types.SkillID) []string {
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, string(id))
+	}
+	return out
+}
+
+// SelectSkills runs a skills-only wizard: which agent skills a profile carries
+// and how a project using it installs them. It backs `config profile create`,
+// where skills are part of the bundle just like modules.
+func (s GenerateService) SelectSkills(base types.SkillsConfig, prompt Prompter) (types.SkillsConfig, error) {
+	if len(catalog.AgentSkills) == 0 {
+		return types.SkillsConfig{}, nil
+	}
+
+	ctx := wizardContext{base: &types.DevcontainerConfig{Skills: base}}
+	build := func(st *State) []Step {
+		steps := []Step{ctx.skillsStep()}
+		if len(st.Strings(stepKeySkills)) > 0 {
+			steps = append(steps, ctx.skillsModeStep())
+		}
+		return steps
+	}
+
+	state, err := prompt.Wizard(build)
+	if err != nil {
+		return types.SkillsConfig{}, err
+	}
+	return ctx.selectedSkills(state), nil
 }

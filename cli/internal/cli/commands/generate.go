@@ -33,6 +33,8 @@ const (
 	flagProfile        = "profile"
 	flagPreset         = "preset"
 	flagScript         = "script"
+	flagSkill          = "skill"
+	flagSkillsMode     = "skills-mode"
 	flagNoInteractive  = "no-interactive"
 	flagNonInteractive = "non-interactive"
 	flagForcePrompt    = "force-prompt"
@@ -59,6 +61,8 @@ func addGenerateFlags(cmd *cobra.Command) {
 	f.String(flagPreset, "", "Deprecated alias for --profile")
 	_ = f.MarkDeprecated(flagPreset, "use --profile instead")
 	f.StringArray(flagScript, nil, "Custom script to add, as <path>[:build|start|manual] (default build); repeatable. build bakes it into the image, start runs it once per container, manual only copies it to ~/post-script/")
+	f.String(flagSkill, "", "Comma-separated agent skills to install in the project (e.g. firecrawl). See 'config profile list'; implies the nodejs module")
+	f.String(flagSkillsMode, "", "How the project's agent skills get installed: auto (on every container start) or manual (you run 'install-skills'). Default auto")
 	f.Bool(flagNoInteractive, false, "Fail if any value is missing instead of prompting")
 	f.Bool(flagNonInteractive, false, "Alias for --no-interactive")
 	f.Bool(flagForcePrompt, false, "Prompt even if config file exists")
@@ -76,6 +80,10 @@ func addGenerateFlags(cmd *cobra.Command) {
 	}
 	_ = cmd.RegisterFlagCompletionFunc(flagProfile, completeProfileFunc)
 	_ = cmd.RegisterFlagCompletionFunc(flagPreset, completeProfileFunc)
+	_ = cmd.RegisterFlagCompletionFunc(flagSkill, func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		return completeCSV(toComplete, catalog.AgentSkillIDs()), cobra.ShellCompDirectiveNoFileComp
+	})
+	_ = cmd.RegisterFlagCompletionFunc(flagSkillsMode, staticCompletion(string(types.SkillModeAuto), string(types.SkillModeManual)))
 	_ = cmd.RegisterFlagCompletionFunc(flagMode, staticCompletion(string(types.BuildModeLocalCached), string(types.BuildModeRemote)))
 	_ = cmd.RegisterFlagCompletionFunc(flagVariant, staticCompletion(types.RemoteVariants...))
 	_ = cmd.RegisterFlagCompletionFunc(flagWith, func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
@@ -105,6 +113,12 @@ type genFlags struct {
 	registry     string
 	profile      string
 	scripts      []types.CustomScript
+	skills       []types.SkillID
+	skillsMode   string
+	// profileSkills and profileSkillsMode come from the applied profile and lose
+	// to the explicit flags above.
+	profileSkills     []types.SkillID
+	profileSkillsMode types.SkillMode
 	// keepWorkspace is set when the workspace name must not be auto-uniquified: the
 	// user pinned it with --workspace, or it was already persisted for this project.
 	// Derived in initAndConfigure, not parsed from a flag.
@@ -169,6 +183,21 @@ func parseGenFlags(cmd *cobra.Command) (*genFlags, error) {
 			return nil, serr
 		}
 		g.scripts = append(g.scripts, scripts...)
+		if serr := domain.ValidateSkills(types.SkillsConfig{Mode: p.SkillsMode, Skills: p.Skills}); serr != nil {
+			return nil, fmt.Errorf("profile %q: %w", p.ID, serr)
+		}
+		g.profileSkills, g.profileSkillsMode = p.Skills, p.SkillsMode
+	}
+
+	if f.Changed(flagSkill) {
+		raw, _ := f.GetString(flagSkill)
+		for _, id := range splitCSV(raw) {
+			g.skills = append(g.skills, types.SkillID(id))
+		}
+	}
+	g.skillsMode, _ = f.GetString(flagSkillsMode)
+	if err := domain.ValidateSkills(types.SkillsConfig{Mode: types.SkillMode(g.skillsMode), Skills: g.skills}); err != nil {
+		return nil, err
 	}
 
 	specs, _ := f.GetStringArray(flagScript)
@@ -655,6 +684,19 @@ func applyGenFlags(config *types.DevcontainerConfig, flags *genFlags) {
 		config.Dockerfile.Scripts = mergeCustomScripts(config.Dockerfile.Scripts, flags.scripts)
 	}
 
+	// An explicit --skill/--skills-mode wins over the profile's, like --with does
+	// over the profile's modules.
+	if len(flags.skills) > 0 {
+		config.Skills.Skills = flags.skills
+	} else if len(flags.profileSkills) > 0 {
+		config.Skills.Skills = flags.profileSkills
+	}
+	if flags.skillsMode != "" {
+		config.Skills.Mode = types.SkillMode(flags.skillsMode)
+	} else if flags.profileSkillsMode != "" {
+		config.Skills.Mode = flags.profileSkillsMode
+	}
+
 	if flags.mode != "" {
 		config.Mode = types.BuildMode(flags.mode)
 	}
@@ -716,6 +758,10 @@ func applyGenFlags(config *types.DevcontainerConfig, flags *genFlags) {
 	} else if config.Mode == types.BuildModeRemote && config.Remote != nil {
 		config.Image = domain.ResolveRemoteImage(config.Remote.Variant, domain.ResolveRegistry(flags.registry, config.Remote.Registry))
 	}
+
+	// Last, because --with rewrites the module list above and the skills module
+	// has to survive that: it is derived from the selected skills, not chosen.
+	domain.ApplySelectedSkills(config)
 }
 
 func writeOutput(filePath, content string, force bool) bool {

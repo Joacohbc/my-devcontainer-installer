@@ -8,9 +8,13 @@ type ModuleSpec struct {
 	Category   types.DockerfileCategory
 	UICategory types.UICategory
 	Always     bool
-	Requires   []types.ModuleID
-	Conflicts  []types.ModuleID
-	Options    []types.ModuleOption
+	// Internal marks a module the generator derives rather than the user picks:
+	// it never appears in the wizard's categories and therefore declares no
+	// UICategory. Mirrors compose.ServiceSpec.Internal.
+	Internal  bool
+	Requires  []types.ModuleID
+	Conflicts []types.ModuleID
+	Options   []types.ModuleOption
 	// RequiresEnv are env vars this module's tool reads at runtime. The generate
 	// wizard prompts for each one, the answer lands in the project's .env, and
 	// the devcontainer service passes it into the container. An empty answer is a
