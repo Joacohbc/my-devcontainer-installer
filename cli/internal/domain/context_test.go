@@ -230,3 +230,33 @@ func TestCatalogContextSectionsAreWellFormed(t *testing.T) {
 		}
 	}
 }
+
+// A project's own scripts are listed in CONTEXT.md split by when they run, so
+// an agent knows what already happened and what it has to run itself.
+func TestGenerateContext_CustomScripts(t *testing.T) {
+	cfg := makeConfig(func(c *types.DevcontainerConfig) {
+		c.Dockerfile.Scripts = []types.CustomScript{
+			{File: "install-terraform.sh"},
+			{File: "vpn-login.sh", When: types.ScriptWhenStart},
+			{File: "reset-db.sh", When: types.ScriptWhenManual},
+		}
+	})
+	doc, err := domain.GenerateContext(cfg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	assertContainsStr(t, doc, "## Project scripts", "custom scripts section")
+	assertContainsStr(t, doc, "`custom-install-terraform.sh`", "build script")
+	assertContainsStr(t, doc, "/home/devuser/post-script/custom-vpn-login.sh", "start script")
+	assertContainsStr(t, doc, "/home/devuser/post-script/custom-reset-db.sh", "manual script")
+}
+
+// Most projects have no scripts, and an empty section would be noise.
+func TestGenerateContext_NoCustomScriptsSection(t *testing.T) {
+	doc, err := domain.GenerateContext(makeConfig())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	assertNotContainsStr(t, doc, "## Project scripts", "a project with no scripts")
+}

@@ -2,7 +2,6 @@ package service
 
 import (
 	"fmt"
-	"path/filepath"
 	"strings"
 
 	"github.com/goccy/go-yaml"
@@ -212,7 +211,7 @@ func (s ConfigService) SaveProjectConfig(cwd string, cfg *types.DevcontainerConf
 	return domain.SaveConfig(cfg, cwd)
 }
 
-// Presets returns the builtin and user-defined presets.
-func (s ConfigService) Presets() []catalog.Preset {
-	return catalog.All(filepath.Join(domain.GlobalConfigDir(), "presets"))
+// Profiles returns the builtin and user-defined profiles.
+func (s ConfigService) Profiles() []catalog.Profile {
+	return catalog.All(domain.ProfileDirs()...)
 }

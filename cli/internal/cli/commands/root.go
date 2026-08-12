@@ -50,8 +50,11 @@ Run 'devcontainer-cli --help' for the full flag list, or
   # Pull a prebuilt remote image instead of building locally
   devcontainer-cli --mode remote --variant nodejs
 
-  # Start from a saved preset, then publish a port
-  devcontainer-cli --preset web --ports 3000:3000
+  # Start from a saved profile, then publish a port
+  devcontainer-cli --profile my-node --ports 3000:3000
+
+  # Add a script of your own, baked into the image
+  devcontainer-cli --with nodejs --script ./scripts/setup.sh:build
 
   # Work with the running container, then tear it down
   devcontainer-cli shell

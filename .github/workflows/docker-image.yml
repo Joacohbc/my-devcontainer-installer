@@ -17,7 +17,7 @@ jobs:
   # ── Build the shared base image once ──
   # Every variant's Dockerfile starts with the identical Base layers (FROM
   # ubuntu, apt install, useradd devuser, zsh). We build a base image using the
-  # "base" preset (always-on base + cleanup + GitHub CLI + Zellij) and publish it
+  # "base" profile (always-on base + cleanup + GitHub CLI + Zellij) and publish it
   # with an inline cache so the variant builds below can `cache-from` it and
   # skip rebuilding those shared layers. This is not a RemoteVariant — it's a
   # cache/base image only.
@@ -63,7 +63,7 @@ jobs:
         run: |
           ./cli/devcontainer-cli --no-interactive --force \
             --workspace devcontainer \
-            --preset base \
+            --profile base \
             --image ghcr.io/${{ env.REPO_OWNER }}/devcontainer-base:latest \
             --no-build
 
@@ -155,7 +155,7 @@ jobs:
         run: |
           ./cli/devcontainer-cli --no-interactive --force \
             --workspace devcontainer \
-            --preset ${{ matrix.name }} \
+            --profile ${{ matrix.name }} \
             --image ghcr.io/${{ env.REPO_OWNER }}/devcontainer-${{ matrix.name }}:latest \
             --no-build
 

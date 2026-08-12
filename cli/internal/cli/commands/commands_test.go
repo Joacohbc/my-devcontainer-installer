@@ -1689,25 +1689,42 @@ func findSubcommand(parent *cobra.Command, name string) *cobra.Command {
 	return nil
 }
 
-func TestConfigPresetCommand_Exists(t *testing.T) {
+func TestConfigProfileCommand_Exists(t *testing.T) {
 	root := NewRootCommand("test")
 	configCmd := findSubcommand(root, "config")
 	if configCmd == nil {
 		t.Fatal("expected 'config' command to be registered")
 	}
-	presetCmd := findSubcommand(configCmd, "preset")
-	if presetCmd == nil {
-		t.Fatal("expected 'config preset' command to be registered")
+	profileCmd := findSubcommand(configCmd, "profile")
+	if profileCmd == nil {
+		t.Fatal("expected 'config profile' command to be registered")
 	}
-	if findSubcommand(presetCmd, "list") == nil {
-		t.Error("expected 'config preset list' subcommand")
+	if findSubcommand(profileCmd, "list") == nil {
+		t.Error("expected 'config profile list' subcommand")
 	}
 }
 
-func TestPresetCommand_NotTopLevel(t *testing.T) {
+// 'preset' was the old name of the group and stays as an alias, so an existing
+// script or muscle-memory invocation keeps working.
+func TestConfigProfileCommand_PresetAlias(t *testing.T) {
 	root := NewRootCommand("test")
-	if findSubcommand(root, "preset") != nil {
-		t.Error("expected no top-level 'preset' command; it now lives under 'config preset'")
+	configCmd := findSubcommand(root, "config")
+	if configCmd == nil {
+		t.Fatal("expected 'config' command to be registered")
+	}
+	aliased, _, err := configCmd.Find([]string{"preset", "list"})
+	if err != nil {
+		t.Fatalf("expected 'config preset list' to still resolve: %v", err)
+	}
+	if aliased.Name() != "list" || aliased.Parent().Name() != "profile" {
+		t.Errorf("expected 'config preset' to alias 'config profile', got %s under %s", aliased.Name(), aliased.Parent().Name())
+	}
+}
+
+func TestProfileCommand_NotTopLevel(t *testing.T) {
+	root := NewRootCommand("test")
+	if findSubcommand(root, "profile") != nil {
+		t.Error("expected no top-level 'profile' command; it lives under 'config profile'")
 	}
 }
 
@@ -1762,7 +1779,7 @@ func TestMaybeUpdateGitignore_AlreadyPresent(t *testing.T) {
 	}
 }
 
-func TestApplyGenFlags_PresetWithoutServices(t *testing.T) {
+func TestApplyGenFlags_ProfileWithoutServices(t *testing.T) {
 	config := &types.DevcontainerConfig{
 		Dockerfile: types.DockerfileConfig{
 			Modules: []types.SelectedModule{
@@ -1774,26 +1791,26 @@ func TestApplyGenFlags_PresetWithoutServices(t *testing.T) {
 		},
 	}
 	flags := &genFlags{
-		preset: "nodejs",
+		profile: "nodejs",
 	}
 
 	applyGenFlags(config, flags)
 
-	// The nodejs preset is github-cli + nodejs + pnpm (zellij is always-on and
-	// no longer listed in presets).
+	// The nodejs profile is github-cli + nodejs + pnpm (zellij is always-on and
+	// no longer listed in profiles).
 	if len(config.Dockerfile.Modules) != 3 {
 		t.Errorf("expected 3 modules, got %d", len(config.Dockerfile.Modules))
 	}
 	if len(config.Compose.Services) != 0 {
-		t.Errorf("expected 0 services after applying service-less preset, got %d: %v", len(config.Compose.Services), config.Compose.Services)
+		t.Errorf("expected 0 services after applying service-less profile, got %d: %v", len(config.Compose.Services), config.Compose.Services)
 	}
 }
 
-func TestInitAndConfigure_PresetSkipsPrompts(t *testing.T) {
+func TestInitAndConfigure_ProfileSkipsPrompts(t *testing.T) {
 	dir := t.TempDir()
 
 	flags := &genFlags{
-		preset:      "nodejs",
+		profile:     "nodejs",
 		interactive: true,
 	}
 
@@ -1805,7 +1822,7 @@ func TestInitAndConfigure_PresetSkipsPrompts(t *testing.T) {
 	}
 
 	if len(config.Dockerfile.Modules) != 3 {
-		t.Errorf("expected 3 modules from early-resolved preset, got %d", len(config.Dockerfile.Modules))
+		t.Errorf("expected 3 modules from early-resolved profile, got %d", len(config.Dockerfile.Modules))
 	}
 }
 
@@ -1848,132 +1865,213 @@ func TestValidateConfig_KeepsPinnedWorkspaceOnCollision(t *testing.T) {
 	}
 }
 
-func TestPresetCommand_CreateAndCopy(t *testing.T) {
+func TestProfileCommand_CreateAndCopy(t *testing.T) {
 	root := NewRootCommand("test")
 	configCmd := findSubcommand(root, "config")
 	if configCmd == nil {
 		t.Fatal("expected 'config' command to be registered")
 	}
-	presetCmd := findSubcommand(configCmd, "preset")
-	if presetCmd == nil {
-		t.Fatal("expected 'config preset' command to be registered")
+	profileCmd := findSubcommand(configCmd, "profile")
+	if profileCmd == nil {
+		t.Fatal("expected 'config profile' command to be registered")
 	}
 
 	// Verify all subcommands exist
 	subcommands := map[string]bool{}
-	for _, sub := range presetCmd.Commands() {
+	for _, sub := range profileCmd.Commands() {
 		subcommands[sub.Name()] = true
 	}
 
 	for _, name := range []string{"list", "create", "copy", "remove"} {
 		if !subcommands[name] {
-			t.Errorf("expected preset subcommand %q to exist", name)
+			t.Errorf("expected profile subcommand %q to exist", name)
 		}
 	}
 }
 
-func TestPresetCreate_NoInteractiveFails(t *testing.T) {
+func TestProfileCreate_NoInteractiveFails(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", tmpHome)
 
 	root := NewRootCommand("test")
-	root.SetArgs([]string{"config", "preset", "create", "--no-interactive"})
+	root.SetArgs([]string{"config", "profile", "create", "--no-interactive"})
 	if err := root.Execute(); err == nil {
-		t.Fatal("expected error: 'preset create' must fail in --no-interactive mode")
+		t.Fatal("expected error: 'profile create' must fail in --no-interactive mode")
 	}
 }
 
-func TestPresetCreate_RejectsPositionalArg(t *testing.T) {
+func TestProfileCreate_RejectsPositionalArg(t *testing.T) {
 	// create no longer takes a positional id; the id is prompted interactively.
 	root := NewRootCommand("test")
-	root.SetArgs([]string{"config", "preset", "create", "some-id"})
+	root.SetArgs([]string{"config", "profile", "create", "some-id"})
 	if err := root.Execute(); err == nil {
-		t.Fatal("expected error: 'preset create' no longer accepts a positional preset id")
+		t.Fatal("expected error: 'profile create' no longer accepts a positional profile id")
 	}
 }
 
-func TestPresetCopy(t *testing.T) {
+func TestProfileCopy(t *testing.T) {
 	// Setup isolated XDG config home
 	tmpHome := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", tmpHome)
 
 	root := NewRootCommand("test")
 	// Copy 'nodejs' (builtin) to 'my-copied-nodejs' with --no-interactive
-	root.SetArgs([]string{"config", "preset", "copy", "nodejs", "my-copied-nodejs", "--no-interactive"})
+	root.SetArgs([]string{"config", "profile", "copy", "nodejs", "my-copied-nodejs", "--no-interactive"})
 
 	// Run command
 	if err := root.Execute(); err != nil {
-		t.Fatalf("unexpected error executing preset copy: %v", err)
+		t.Fatalf("unexpected error executing profile copy: %v", err)
 	}
 
-	// Verify the file was created and contains the copied details
-	presetsDir := filepath.Join(tmpHome, "devcontainer-cli", "presets")
-	copiedPath := filepath.Join(presetsDir, "my-copied-nodejs.yml")
+	// A profile with no scripts stays a flat <id>.yml.
+	copiedPath := filepath.Join(tmpHome, "devcontainer-cli", "profiles", "my-copied-nodejs.yml")
 	if _, err := os.Stat(copiedPath); os.IsNotExist(err) {
-		t.Fatalf("expected copied preset file to exist at %s, but it does not", copiedPath)
+		t.Fatalf("expected copied profile file to exist at %s, but it does not", copiedPath)
 	}
 
 	data, err := os.ReadFile(copiedPath)
 	if err != nil {
-		t.Fatalf("failed to read copied preset file: %v", err)
+		t.Fatalf("failed to read copied profile file: %v", err)
 	}
 
-	var p catalog.Preset
+	var p catalog.Profile
 	if err := yaml.Unmarshal(data, &p); err != nil {
-		t.Fatalf("failed to unmarshal copied preset: %v", err)
+		t.Fatalf("failed to unmarshal copied profile: %v", err)
 	}
 
 	if p.ID != "my-copied-nodejs" {
-		t.Errorf("expected copied preset ID to be %q, got %q", "my-copied-nodejs", p.ID)
+		t.Errorf("expected copied profile ID to be %q, got %q", "my-copied-nodejs", p.ID)
 	}
 
-	// It should copy modules from built-in nodejs preset
+	// It should copy modules from built-in nodejs profile
 	if len(p.Modules) == 0 {
-		t.Error("expected copied preset to have modules from 'nodejs' preset")
+		t.Error("expected copied profile to have modules from 'nodejs' profile")
 	}
 }
 
-func TestPresetRemove_UserPreset(t *testing.T) {
+// Copying a profile that carries scripts has to copy the scripts too, or the
+// copy would reference files that only exist in the source profile.
+func TestProfileCopy_CarriesScripts(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", tmpHome)
-	presetsDir := filepath.Join(tmpHome, "devcontainer-cli", "presets")
-	if err := os.MkdirAll(presetsDir, 0o755); err != nil {
+
+	srcDir := filepath.Join(tmpHome, "devcontainer-cli", "profiles", "src")
+	if err := os.MkdirAll(srcDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	target := filepath.Join(presetsDir, "scratch.yml")
+	manifest := "id: src\nmodules: [github-cli]\nscripts:\n  - file: setup.sh\n    when: start\n"
+	if err := os.WriteFile(filepath.Join(srcDir, "profile.yml"), []byte(manifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(srcDir, "setup.sh"), []byte("#!/bin/sh\necho hi\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	root := NewRootCommand("test")
+	root.SetArgs([]string{"config", "profile", "copy", "src", "dst", "--no-interactive"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("unexpected error executing profile copy: %v", err)
+	}
+
+	dstDir := filepath.Join(tmpHome, "devcontainer-cli", "profiles", "dst")
+	if _, err := os.Stat(filepath.Join(dstDir, "profile.yml")); err != nil {
+		t.Fatalf("expected copied profile manifest: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dstDir, "setup.sh")); err != nil {
+		t.Fatalf("expected the script to be copied alongside the manifest: %v", err)
+	}
+}
+
+func TestProfileRemove_UserProfile(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmpHome)
+	profilesDir := filepath.Join(tmpHome, "devcontainer-cli", "profiles")
+	if err := os.MkdirAll(profilesDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(profilesDir, "scratch.yml")
 	if err := os.WriteFile(target, []byte("id: scratch\nmodules: [github-cli]\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
 	root := NewRootCommand("test")
-	root.SetArgs([]string{"config", "preset", "remove", "scratch", "--yes"})
+	root.SetArgs([]string{"config", "profile", "remove", "scratch", "--yes"})
 	if err := root.Execute(); err != nil {
-		t.Fatalf("unexpected error removing preset: %v", err)
+		t.Fatalf("unexpected error removing profile: %v", err)
 	}
 	if _, err := os.Stat(target); !os.IsNotExist(err) {
-		t.Errorf("expected preset file %s to be deleted", target)
+		t.Errorf("expected profile file %s to be deleted", target)
 	}
 }
 
-func TestPresetRemove_BuiltinIsRejected(t *testing.T) {
+// A directory-shaped profile owns its scripts, so removing it takes the whole
+// directory rather than leaving the scripts orphaned.
+func TestProfileRemove_DirectoryShaped(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmpHome)
+	dir := filepath.Join(tmpHome, "devcontainer-cli", "profiles", "withscripts")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "profile.yml"), []byte("id: withscripts\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "x.sh"), []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	root := NewRootCommand("test")
+	root.SetArgs([]string{"config", "profile", "remove", "withscripts", "--yes"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("unexpected error removing profile: %v", err)
+	}
+	if _, err := os.Stat(dir); !os.IsNotExist(err) {
+		t.Errorf("expected profile directory %s to be deleted", dir)
+	}
+}
+
+// Profiles saved under the pre-rename presets/ directory must keep resolving.
+func TestProfileRemove_LegacyPresetsDir(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmpHome)
+	legacy := filepath.Join(tmpHome, "devcontainer-cli", "presets")
+	if err := os.MkdirAll(legacy, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(legacy, "old.yml")
+	if err := os.WriteFile(target, []byte("id: old\nmodules: [github-cli]\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	root := NewRootCommand("test")
+	root.SetArgs([]string{"config", "profile", "remove", "old", "--yes"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("unexpected error removing legacy profile: %v", err)
+	}
+	if _, err := os.Stat(target); !os.IsNotExist(err) {
+		t.Errorf("expected legacy profile file %s to be deleted", target)
+	}
+}
+
+func TestProfileRemove_BuiltinIsRejected(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", tmpHome)
 
 	root := NewRootCommand("test")
-	root.SetArgs([]string{"config", "preset", "remove", "nodejs", "--yes"})
+	root.SetArgs([]string{"config", "profile", "remove", "nodejs", "--yes"})
 	if err := root.Execute(); err == nil {
-		t.Fatal("expected error: built-in preset 'nodejs' must not be removable")
+		t.Fatal("expected error: built-in profile 'nodejs' must not be removable")
 	}
 }
 
-func TestPresetRemove_UnknownFails(t *testing.T) {
+func TestProfileRemove_UnknownFails(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", tmpHome)
 
 	root := NewRootCommand("test")
-	root.SetArgs([]string{"config", "preset", "remove", "does-not-exist", "--yes"})
+	root.SetArgs([]string{"config", "profile", "remove", "does-not-exist", "--yes"})
 	if err := root.Execute(); err == nil {
-		t.Fatal("expected error removing a non-existent user preset")
+		t.Fatal("expected error removing a non-existent user profile")
 	}
 }
 

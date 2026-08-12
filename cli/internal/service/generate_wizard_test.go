@@ -176,7 +176,9 @@ func TestVariantChoicesCoversRemoteVariants(t *testing.T) {
 	}
 }
 
-func TestConfigureAppliesUserPreset(t *testing.T) {
+// A profile saved under the pre-rename presets/ directory must still be offered
+// by the wizard and still pre-select its modules.
+func TestConfigureAppliesUserProfileFromLegacyPresetsDir(t *testing.T) {
 	defer useFakeDocker(&fakeRunner{status: 0})()
 
 	tmp := t.TempDir()
@@ -195,7 +197,7 @@ func TestConfigureAppliesUserPreset(t *testing.T) {
 	prompter := scriptedPrompter{answers: map[string]any{
 		stepKeyWorkspace: "ws",
 		stepKeyMode:      string(types.BuildModeLocalCached),
-		stepKeyPreset:    "mystack",
+		stepKeyProfile:   "mystack",
 		stepKeySubnet:    "172.20.0.0/24",
 	}}
 
@@ -210,8 +212,81 @@ func TestConfigureAppliesUserPreset(t *testing.T) {
 	}
 	for _, want := range []string{"claude-code", "antigravity-cli"} {
 		if !got[want] {
-			t.Errorf("expected preset module %q to be pre-selected, got %v", want, got)
+			t.Errorf("expected profile module %q to be pre-selected, got %v", want, got)
 		}
+	}
+}
+
+// Picking a profile in the wizard must bring its custom scripts along, exactly
+// like --profile does — otherwise the same profile would mean two things
+// depending on how it was applied.
+func TestConfigureAppliesUserProfileScripts(t *testing.T) {
+	defer useFakeDocker(&fakeRunner{status: 0})()
+
+	tmp := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmp)
+	profileDir := filepath.Join(tmp, "devcontainer-cli", "profiles", "withscripts")
+	if err := os.MkdirAll(profileDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	manifest := "id: withscripts\nmodules: [claude-code]\nscripts:\n  - file: setup.sh\n    when: start\n"
+	if err := os.WriteFile(filepath.Join(profileDir, "profile.yml"), []byte(manifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(profileDir, "setup.sh"), []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	svc := GenerateService{Report: nopReporter{}}
+	base := &types.DevcontainerConfig{Env: map[string]string{}}
+	prompter := scriptedPrompter{answers: map[string]any{
+		stepKeyWorkspace: "ws",
+		stepKeyMode:      string(types.BuildModeLocalCached),
+		stepKeyProfile:   "withscripts",
+		stepKeySubnet:    "172.20.0.0/24",
+	}}
+
+	cfg, err := svc.Configure(base, tmp, prompter)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(cfg.Dockerfile.Scripts) != 1 {
+		t.Fatalf("expected the profile's script to be carried over, got %+v", cfg.Dockerfile.Scripts)
+	}
+	got := cfg.Dockerfile.Scripts[0]
+	if got.When != types.ScriptWhenStart {
+		t.Errorf("expected when=start, got %s", got.When)
+	}
+	if want := filepath.Join(profileDir, "setup.sh"); got.Source != want {
+		t.Errorf("expected the script to resolve against the profile dir (%q), got %q", want, got.Source)
+	}
+}
+
+// Not picking a profile must leave the project's existing scripts alone.
+func TestConfigureKeepsExistingScriptsWithoutProfile(t *testing.T) {
+	defer useFakeDocker(&fakeRunner{status: 0})()
+
+	tmp := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmp)
+
+	svc := GenerateService{Report: nopReporter{}}
+	base := &types.DevcontainerConfig{
+		Env:        map[string]string{},
+		Dockerfile: types.DockerfileConfig{Scripts: []types.CustomScript{{File: "kept.sh"}}},
+	}
+	prompter := scriptedPrompter{answers: map[string]any{
+		stepKeyWorkspace: "ws",
+		stepKeyMode:      string(types.BuildModeLocalCached),
+		stepKeySubnet:    "172.20.0.0/24",
+	}}
+
+	cfg, err := svc.Configure(base, tmp, prompter)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(cfg.Dockerfile.Scripts) != 1 || cfg.Dockerfile.Scripts[0].File != "kept.sh" {
+		t.Errorf("expected the existing scripts to survive, got %+v", cfg.Dockerfile.Scripts)
 	}
 }
 

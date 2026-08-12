@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/logger"
@@ -29,7 +30,9 @@ const (
 	flagPorts          = "ports"
 	flagVolumes        = "volumes"
 	flagSharedConfig   = "shared-config"
+	flagProfile        = "profile"
 	flagPreset         = "preset"
+	flagScript         = "script"
 	flagNoInteractive  = "no-interactive"
 	flagNonInteractive = "non-interactive"
 	flagForcePrompt    = "force-prompt"
@@ -52,7 +55,10 @@ func addGenerateFlags(cmd *cobra.Command) {
 	f.String(flagPorts, "", "Ports to publish on the devcontainer (e.g. 8080:80,5432:5432); bound to 127.0.0.1 unless an IP is given; 'none' clears them")
 	f.String(flagVolumes, "", "Extra volume mounts on the devcontainer (e.g. myvol:/data,./cache:/cache); 'none' clears them")
 	f.Bool(flagSharedConfig, true, "Mount the global shared AI/dev tool config volume (devcontainer-shared-config) so logins/sessions persist across containers; --shared-config=false to opt out")
-	f.String(flagPreset, "", "Apply a preset (module bundle). See 'config preset list'.")
+	f.String(flagProfile, "", "Apply a profile (module bundle + custom scripts). See 'config profile list'.")
+	f.String(flagPreset, "", "Deprecated alias for --profile")
+	_ = f.MarkDeprecated(flagPreset, "use --profile instead")
+	f.StringArray(flagScript, nil, "Custom script to add, as <path>[:build|start|manual] (default build); repeatable. build bakes it into the image, start runs it once per container, manual only copies it to ~/post-script/")
 	f.Bool(flagNoInteractive, false, "Fail if any value is missing instead of prompting")
 	f.Bool(flagNonInteractive, false, "Alias for --no-interactive")
 	f.Bool(flagForcePrompt, false, "Prompt even if config file exists")
@@ -61,13 +67,15 @@ func addGenerateFlags(cmd *cobra.Command) {
 	f.Bool(flagNoBuild, false, "Skip the build/pull step after generating")
 	f.BoolP(flagVersion, "v", false, "Print the CLI version")
 
-	_ = cmd.RegisterFlagCompletionFunc(flagPreset, func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	completeProfileFunc := func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		ids := make([]string, 0)
-		for _, p := range catalog.All(presetsDir()) {
+		for _, p := range catalog.All(domain.ProfileDirs()...) {
 			ids = append(ids, p.ID)
 		}
 		return ids, cobra.ShellCompDirectiveNoFileComp
-	})
+	}
+	_ = cmd.RegisterFlagCompletionFunc(flagProfile, completeProfileFunc)
+	_ = cmd.RegisterFlagCompletionFunc(flagPreset, completeProfileFunc)
 	_ = cmd.RegisterFlagCompletionFunc(flagMode, staticCompletion(string(types.BuildModeLocalCached), string(types.BuildModeRemote)))
 	_ = cmd.RegisterFlagCompletionFunc(flagVariant, staticCompletion(types.RemoteVariants...))
 	_ = cmd.RegisterFlagCompletionFunc(flagWith, func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
@@ -78,10 +86,6 @@ func addGenerateFlags(cmd *cobra.Command) {
 	}
 	_ = cmd.RegisterFlagCompletionFunc(flagService, completeServiceFunc)
 	_ = cmd.RegisterFlagCompletionFunc(flagServices, completeServiceFunc)
-}
-
-func presetsDir() string {
-	return filepath.Join(domain.GlobalConfigDir(), "presets")
 }
 
 type genFlags struct {
@@ -99,7 +103,8 @@ type genFlags struct {
 	mode         string
 	variant      string
 	registry     string
-	preset       string
+	profile      string
+	scripts      []types.CustomScript
 	// keepWorkspace is set when the workspace name must not be auto-uniquified: the
 	// user pinned it with --workspace, or it was already persisted for this project.
 	// Derived in initAndConfigure, not parsed from a flag.
@@ -148,12 +153,31 @@ func parseGenFlags(cmd *cobra.Command) (*genFlags, error) {
 	g.mode, _ = f.GetString(flagMode)
 	g.variant, _ = f.GetString(flagVariant)
 	g.registry, _ = f.GetString(flagRegistry)
-	g.preset, _ = f.GetString(flagPreset)
+	g.profile, _ = f.GetString(flagProfile)
+	if g.profile == "" {
+		// --preset is the deprecated spelling; it still resolves to the same thing.
+		g.profile, _ = f.GetString(flagPreset)
+	}
 
-	if g.preset != "" {
-		if _, ok := catalog.Resolve(g.preset, presetsDir()); !ok {
-			return nil, fmt.Errorf("unknown preset: %s", g.preset)
+	if g.profile != "" {
+		p, ok := catalog.Resolve(g.profile, domain.ProfileDirs()...)
+		if !ok {
+			return nil, fmt.Errorf("unknown profile: %s", g.profile)
 		}
+		scripts, serr := domain.ProfileScripts(p)
+		if serr != nil {
+			return nil, serr
+		}
+		g.scripts = append(g.scripts, scripts...)
+	}
+
+	specs, _ := f.GetStringArray(flagScript)
+	for _, spec := range specs {
+		s, serr := domain.ParseScriptSpec(spec)
+		if serr != nil {
+			return nil, serr
+		}
+		g.scripts = append(g.scripts, s)
 	}
 
 	if f.Changed(flagBuild) {
@@ -275,17 +299,10 @@ func initAndConfigure(cwd string, flags *genFlags, svc service.GenerateService) 
 	// an explicit --workspace or an already-persisted project keeps its name stable.
 	flags.keepWorkspace = flags.workspace != "" || existing != nil
 
-	// Resolve preset early so its modules populate our flags. A preset is a pure
-	// module bundle, so applying one clears DB services (none come from the preset).
-	if flags.preset != "" {
-		p, _ := catalog.Resolve(flags.preset, presetsDir())
-		if flags.withModules == nil {
-			flags.withModules = p.Modules
-		}
-		if flags.services == nil {
-			flags.services = []string{}
-		}
-		// Apply preset values to config as base/defaults early so they are pre-selected if prompts are forced
+	// Resolve the profile early so its modules populate our flags. A profile
+	// carries no compose services, so applying one clears the DB services.
+	if flags.profile != "" {
+		// Apply profile values to config as base/defaults early so they are pre-selected if prompts are forced
 		applyGenFlags(config, flags)
 	}
 
@@ -385,23 +402,63 @@ func validateConfig(cwd string, config *types.DevcontainerConfig, flags *genFlag
 	return nil
 }
 
+// materializeCustomScripts copies each configured custom script from its source
+// (the profile directory it was resolved from) into the build dir under its
+// namespaced name, and returns those names.
+//
+// A script with no Source is one persisted by an earlier run: the copy in the
+// build dir is the source of truth, so it is only reported, never re-fetched.
+// That is what makes a generated project reproducible after the profile it came
+// from has been edited or deleted.
+func materializeCustomScripts(config *types.DevcontainerConfig, buildDir string) ([]string, error) {
+	names, err := domain.CollectCustomScriptFiles(config)
+	if err != nil {
+		return nil, err
+	}
+	for _, s := range config.Dockerfile.Scripts {
+		if s.Source == "" {
+			continue
+		}
+		data, rerr := os.ReadFile(s.Source)
+		if rerr != nil {
+			return nil, fmt.Errorf("custom script %q: %w", s.File, rerr)
+		}
+		if werr := os.WriteFile(filepath.Join(buildDir, s.BuildFile()), data, 0o755); werr != nil {
+			return nil, werr
+		}
+	}
+	return names, nil
+}
+
 // prepareBuildDir constructs the build target filesystem structure and validates dependencies.
 func prepareBuildDir(cwd string, config *types.DevcontainerConfig, paths project.Paths) (map[string]string, []string, error) {
 	buildDir := paths.BuildDir
 	skipBuildArtifacts := config.Mode == types.BuildModeRemote
 
-	var copyFiles, postScriptFiles []string
+	if err := os.MkdirAll(buildDir, 0o755); err != nil {
+		return nil, nil, err
+	}
+
+	var copyFiles, postScriptFiles, customScripts []string
 	if !skipBuildArtifacts {
 		copyFiles, _ = domain.CollectRequiredCopyFiles(config)
 		postScriptFiles, _ = domain.CollectRequiredPostScriptFiles(config)
-		referenced := append(append([]string{}, copyFiles...), postScriptFiles...)
+
+		// The user's own scripts are copied in before anything is validated: they
+		// come from a profile directory rather than the embedded FS, and once they
+		// are in the build dir the existing plumbing treats them like any other
+		// referenced file — ValidateRequiredFiles looks there first, Preflight
+		// skips what is already present, and their contents feed the fingerprint.
+		var err error
+		customScripts, err = materializeCustomScripts(config, buildDir)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		referenced := slices.Concat(copyFiles, postScriptFiles, customScripts)
 		if missing := assets.ValidateRequiredFiles(referenced, buildDir); len(missing) > 0 {
 			return nil, nil, fmt.Errorf("missing required script(s) (not embedded in binary or %s): %s", buildDir, strings.Join(missing, ", "))
 		}
-	}
-
-	if err := os.MkdirAll(buildDir, 0o755); err != nil {
-		return nil, nil, err
 	}
 
 	if !skipBuildArtifacts {
@@ -426,7 +483,7 @@ func prepareBuildDir(cwd string, config *types.DevcontainerConfig, paths project
 	}
 
 	copyContents := map[string]string{}
-	for _, f := range append(append([]string{}, copyFiles...), postScriptFiles...) {
+	for _, f := range slices.Concat(copyFiles, postScriptFiles, customScripts) {
 		if data, rerr := os.ReadFile(filepath.Join(buildDir, f)); rerr == nil {
 			copyContents[f] = string(data)
 		}
@@ -561,15 +618,41 @@ func generateService() service.GenerateService {
 	return service.GenerateService{Report: console}
 }
 
+// mergeCustomScripts adds the incoming scripts to the existing ones, replacing
+// an entry with the same build-dir name so re-running with the same profile
+// re-copies the script (picking up an edit) instead of duplicating it.
+func mergeCustomScripts(existing, incoming []types.CustomScript) []types.CustomScript {
+	out := append([]types.CustomScript{}, existing...)
+	for _, s := range incoming {
+		replaced := false
+		for i, cur := range out {
+			if cur.BuildFile() == s.BuildFile() {
+				out[i], replaced = s, true
+				break
+			}
+		}
+		if !replaced {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
 func applyGenFlags(config *types.DevcontainerConfig, flags *genFlags) {
-	if flags.preset != "" {
-		p, _ := catalog.Resolve(flags.preset, presetsDir())
+	if flags.profile != "" {
+		p, _ := catalog.Resolve(flags.profile, domain.ProfileDirs()...)
 		if flags.withModules == nil {
 			flags.withModules = p.Modules
 		}
 		if flags.services == nil {
 			flags.services = []string{}
 		}
+	}
+
+	// Scripts come from the profile and from --script; they are persisted in the
+	// config so a regenerated project no longer depends on either.
+	if len(flags.scripts) > 0 {
+		config.Dockerfile.Scripts = mergeCustomScripts(config.Dockerfile.Scripts, flags.scripts)
 	}
 
 	if flags.mode != "" {

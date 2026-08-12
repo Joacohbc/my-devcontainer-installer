@@ -197,6 +197,68 @@ type SelectedModule struct {
 	Options map[string]any `json:"options,omitempty" yaml:"options,omitempty"`
 }
 
+// ScriptWhen says at which point a custom script runs.
+type ScriptWhen string
+
+const (
+	// ScriptWhenBuild bakes the script into the image: it is COPYed into the
+	// build context and executed by a RUN layer, so whatever it installs is part
+	// of the image and its content feeds the fingerprint.
+	ScriptWhenBuild ScriptWhen = "build"
+	// ScriptWhenStart lands in PostScriptStartDir, which the entrypoint runs
+	// once per container on start (state is kept in ~/.post-script-state).
+	ScriptWhenStart ScriptWhen = "start"
+	// ScriptWhenManual only copies the script into PostScriptDir; the user runs
+	// it themselves, like the interactive login helpers.
+	ScriptWhenManual ScriptWhen = "manual"
+)
+
+// ScriptWhens is every accepted ScriptWhen, in the order they are offered.
+var ScriptWhens = []ScriptWhen{ScriptWhenBuild, ScriptWhenStart, ScriptWhenManual}
+
+// DefaultScriptWhen is what an entry that omits `when` gets.
+const DefaultScriptWhen = ScriptWhenBuild
+
+// CustomScriptStartOrder runs the user's own start scripts after every
+// module-provided auto-start installer, so they can build on what those set up.
+const CustomScriptStartOrder = DefaultPostScriptStartOrder + 40
+
+// CustomScriptPrefix namespaces a custom script inside the build directory, so
+// a user script can never collide with an embedded asset of the same name.
+const CustomScriptPrefix = "custom-"
+
+// CustomScript is one of the user's own scripts, contributed by a profile or by
+// `--script`. File is a bare file name (no directory part) resolved against the
+// profile directory at generate time and materialized into the build dir; the
+// generator only ever sees the copy that already lives there, which is what
+// makes a regenerated project reproducible without the profile.
+type CustomScript struct {
+	File string     `json:"file" yaml:"file"`
+	When ScriptWhen `json:"when,omitempty" yaml:"when,omitempty"`
+	// Source is the absolute host path the script is copied from. It is only set
+	// while a profile is being applied — it is never persisted, because the
+	// materialized copy in the build dir is the source of truth afterwards.
+	Source string `json:"-" yaml:"-"`
+}
+
+// ResolvedWhen is When with the default applied.
+func (c CustomScript) ResolvedWhen() ScriptWhen {
+	if c.When == "" {
+		return DefaultScriptWhen
+	}
+	return c.When
+}
+
+// BuildFile is the script's name inside the build directory (and therefore in
+// the Dockerfile's COPY). Already-prefixed names are left alone so applying a
+// profile twice does not stack prefixes.
+func (c CustomScript) BuildFile() string {
+	if strings.HasPrefix(c.File, CustomScriptPrefix) {
+		return c.File
+	}
+	return CustomScriptPrefix + c.File
+}
+
 // SelectedService is a chosen compose service plus its options. It accepts two
 // on-disk shapes for backward compatibility: a bare id string ("mongo") or an
 // object ({"id":"mongo","options":{...}}). It always marshals back to the object
@@ -295,6 +357,10 @@ type RemoteConfig struct {
 
 type DockerfileConfig struct {
 	Modules []SelectedModule `json:"modules" yaml:"modules"`
+	// Scripts are the user's own scripts, resolved from a profile (or --script)
+	// at generate time and persisted here so regenerating the project no longer
+	// depends on the profile that contributed them — exactly like Modules.
+	Scripts []CustomScript `json:"scripts,omitempty" yaml:"scripts,omitempty"`
 }
 
 type ComposeConfig struct {

@@ -49,7 +49,8 @@ That generates the files, builds the image and starts the stack. Useful flags
 | Flag | Effect |
 |---|---|
 | `--with a,b,c` | Dockerfile modules (toolchains/tools) to install |
-| `--preset <id>` | Start from a module bundle; `config preset list` shows them |
+| `--profile <id>` | Start from a profile: a module bundle plus its custom scripts; `config profile list` shows them |
+| `--script <path>[:build\|start\|manual]` | Add a script of your own (repeatable): baked into the image, run once per container start, or only copied to `~/post-script/` |
 | `--service mongo,postgres,redis` | Add database services to the compose stack |
 | `--ports 3000:3000,8080:80` | Publish container ports (bound to 127.0.0.1 unless an IP is given) |
 | `--volumes myvol:/data,./cache:/cache` | Extra mounts on the dev container |
@@ -223,10 +224,10 @@ Variants: `nodejs`, `bun`, `python`, `go`, `java-temurin`, `node-go`,
 `node-python`, `node-java-temurin`, `bun-go`, `bun-python`, `bun-java-temurin`.
 Tear one down with `devcontainer-cli destroy --container <name> --yes`.
 
-## Global config, presets, shared logins
+## Global config, profiles, shared logins
 
     devcontainer-cli config                       # current defaults
-    devcontainer-cli config preset list           # module bundles for --preset
+    devcontainer-cli config profile list          # module bundles for --profile
     devcontainer-cli config alias set ll "ls -la" # aliases for every container
     devcontainer-cli config alias sync            # apply them without a rebuild
 

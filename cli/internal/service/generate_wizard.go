@@ -18,7 +18,7 @@ var modeLabels = map[types.BuildMode]string{
 const (
 	stepKeyWorkspace    = "workspace"
 	stepKeyMode         = "mode"
-	stepKeyPreset       = "preset"
+	stepKeyProfile      = "profile"
 	stepKeyVariant      = "variant"
 	stepKeyImage        = "image"
 	stepKeySubnet       = "subnet"
@@ -165,7 +165,7 @@ type wizardContext struct {
 	workspace       string
 	usedSubnets     []domain.CidrRange
 	suggestedSubnet string
-	userPresets     []catalog.Preset
+	userProfiles    []catalog.Profile
 }
 
 func (w wizardContext) steps(s *State) []Step {
@@ -173,8 +173,8 @@ func (w wizardContext) steps(s *State) []Step {
 
 	if currentMode(s) == types.BuildModeRemote {
 		steps = append(steps, w.variantStep())
-	} else if step, ok := w.presetStep(); ok {
-		// In local-cached mode, optionally start from one of the user's presets,
+	} else if step, ok := w.profileStep(); ok {
+		// In local-cached mode, optionally start from one of the user's profiles,
 		// which pre-selects its modules before the per-category steps.
 		steps = append(steps, step)
 	}
@@ -311,16 +311,16 @@ func (w wizardContext) variantStep() Step {
 	}}
 }
 
-// presetStep lets the user start from one of their saved presets (a module
+// profileStep lets the user start from one of their saved profiles (a module
 // bundle). It is only offered in local-cached mode and when at least one user
-// preset exists. Selecting one seeds the per-category module multiselects.
-func (w wizardContext) presetStep() (Step, bool) {
-	if len(w.userPresets) == 0 {
+// profile exists. Selecting one seeds the per-category module multiselects.
+func (w wizardContext) profileStep() (Step, bool) {
+	if len(w.userProfiles) == 0 {
 		return Step{}, false
 	}
-	return Step{Key: stepKeyPreset, Build: func(s *State) Field {
+	return Step{Key: stepKeyProfile, Build: func(s *State) Field {
 		choices := []Option{{Value: "", Label: "(ninguno — elegir módulos manualmente)"}}
-		for _, p := range w.userPresets {
+		for _, p := range w.userProfiles {
 			label := p.ID
 			if len(p.Modules) > 0 {
 				label = fmt.Sprintf("%s (%s)", p.ID, strings.Join(p.Modules, ", "))
@@ -328,24 +328,24 @@ func (w wizardContext) presetStep() (Step, bool) {
 			choices = append(choices, Option{Value: p.ID, Label: label})
 		}
 		initial := ""
-		if s.Has(stepKeyPreset) {
-			initial = s.String(stepKeyPreset)
+		if s.Has(stepKeyProfile) {
+			initial = s.String(stepKeyProfile)
 		}
-		return Field{Kind: FieldSelect, Title: "Partir de un preset? (opcional):", Choices: choices, Initial: initial}
+		return Field{Kind: FieldSelect, Title: "Partir de un perfil? (opcional):", Choices: choices, Initial: initial}
 	}}, true
 }
 
-func (w wizardContext) presetByID(id string) (catalog.Preset, bool) {
-	for _, p := range w.userPresets {
+func (w wizardContext) profileByID(id string) (catalog.Profile, bool) {
+	for _, p := range w.userProfiles {
 		if p.ID == id {
 			return p, true
 		}
 	}
-	return catalog.Preset{}, false
+	return catalog.Profile{}, false
 }
 
-// presetCategoryIDs returns the preset's module ids that belong to UI category c.
-func presetCategoryIDs(p catalog.Preset, c types.UICategory) []string {
+// profileCategoryIDs returns the profile's module ids that belong to UI category c.
+func profileCategoryIDs(p catalog.Profile, c types.UICategory) []string {
 	var ids []string
 	for _, id := range p.Modules {
 		if spec := catalog.GetDockerfileModule(types.ModuleID(id)); spec != nil && spec.UICategory == c {
@@ -363,12 +363,12 @@ func (w wizardContext) categorySteps(s *State) []Step {
 		}
 		category := c
 		steps = append(steps, Step{Key: categoryStepKey(category), Build: func(s *State) Field {
-			// Seed from base, or from the chosen preset's modules in this
+			// Seed from base, or from the chosen profile's modules in this
 			// category. An explicit answer for this category always wins.
 			initial := baseCategoryIDs(w.base, category)
-			if pid := s.String(stepKeyPreset); pid != "" {
-				if p, ok := w.presetByID(pid); ok {
-					initial = presetCategoryIDs(p, category)
+			if pid := s.String(stepKeyProfile); pid != "" {
+				if p, ok := w.profileByID(pid); ok {
+					initial = profileCategoryIDs(p, category)
 				}
 			}
 			if s.Has(categoryStepKey(category)) {
@@ -529,7 +529,7 @@ func (w wizardContext) reduce(s *State) *types.DevcontainerConfig {
 		Mode:       mode,
 		Image:      s.String(stepKeyImage),
 		Workspace:  workspace,
-		Dockerfile: types.DockerfileConfig{Modules: modules},
+		Dockerfile: types.DockerfileConfig{Modules: modules, Scripts: w.selectedScripts(s)},
 		Compose:    types.ComposeConfig{Services: services, Subnet: s.String(stepKeySubnet)},
 		Env:        env,
 	}
@@ -573,6 +573,34 @@ func (w wizardContext) reduce(s *State) *types.DevcontainerConfig {
 	return draft
 }
 
+// selectedScripts are the custom scripts of the profile picked in the wizard,
+// or the ones the project already carried when no profile was picked. Picking a
+// profile replaces them rather than merging: the wizard's profile step is
+// "start from this profile", so leaving the previous profile's scripts behind
+// would quietly build an image neither profile describes.
+//
+// Remote mode builds no image here, so it carries no scripts either.
+func (w wizardContext) selectedScripts(s *State) []types.CustomScript {
+	if currentMode(s) != types.BuildModeLocalCached {
+		return nil
+	}
+	pid := s.String(stepKeyProfile)
+	if pid == "" {
+		return w.base.Dockerfile.Scripts
+	}
+	p, ok := w.profileByID(pid)
+	if !ok {
+		return w.base.Dockerfile.Scripts
+	}
+	scripts, err := domain.ProfileScripts(p)
+	if err != nil {
+		// A broken profile must not silently drop the project's own scripts; the
+		// generate flow validates and reports them right after.
+		return w.base.Dockerfile.Scripts
+	}
+	return scripts
+}
+
 func (w wizardContext) entryOptions(s *State, entryID string, options []types.ModuleOption, prevOpts map[string]any) map[string]any {
 	opts := map[string]any{}
 	for _, o := range options {
@@ -606,7 +634,7 @@ func (s GenerateService) Configure(base *types.DevcontainerConfig, cwd string, p
 		workspace:       workspace,
 		usedSubnets:     usedSubnets,
 		suggestedSubnet: domain.FindFreeSubnet(preferredSubnet, usedSubnets),
-		userPresets:     catalog.LoadUserPresets(filepath.Join(domain.GlobalConfigDir(), "presets")),
+		userProfiles:    catalog.LoadUserProfiles(domain.ProfileDirs()...),
 	}
 
 	state, err := prompt.Wizard(ctx.steps)
@@ -617,7 +645,7 @@ func (s GenerateService) Configure(base *types.DevcontainerConfig, cwd string, p
 }
 
 // moduleChoices lists the selectable Dockerfile modules in a UI category,
-// excluding compose services (a preset is a pure module bundle).
+// excluding compose services (a profile is a pure module bundle).
 func moduleChoices(c types.UICategory) []Option {
 	var out []Option
 	for _, e := range catalog.SelectableByCategory()[c] {
@@ -643,8 +671,8 @@ func baseModuleIDs(base *types.DevcontainerConfig, c types.UICategory) []string 
 
 // SelectModules runs a trimmed wizard that only offers the per-category module
 // multiselects (no services, options, workspace, ports, volumes, …) and returns
-// the chosen module ids in catalog order. It backs `config preset create`, where
-// a preset is just a reusable bundle of modules.
+// the chosen module ids in catalog order. It backs `config profile create`, where
+// a profile is just a reusable bundle of modules.
 func (s GenerateService) SelectModules(base *types.DevcontainerConfig, prompt Prompter) ([]string, error) {
 	build := func(*State) []Step {
 		var steps []Step

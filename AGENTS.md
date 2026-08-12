@@ -200,7 +200,7 @@ and `infra`, **never `cli`** (no `cli/ui`, no `cli/pick`).
 
 `generate.go`+`generate_wizard.go`, `run.go`, `destroy.go`, `update.go`,
 `lifecycle.go` (up/down/start/stop/restart), `prune.go`, `inspect.go`
-(shell/logs/status/copy/copy-asset/ls + completions), `config.go` (config/export/import/preset),
+(shell/logs/status/copy/copy-asset/ls + completions), `config.go` (config/export/import/profile),
 `ssh.go` (ssh connect + `--setup`/`--setup-external` flow), `portforward.go`, `network.go` (network connect/disconnect),
 `upgrade.go`.
 
@@ -447,6 +447,70 @@ Two mechanisms keep those links alive, and neither may be dropped:
   into a container; target dangling on the host too → left alone (never an
   error — `cp -aL` used to abort the whole sync over `~/.claude/debug/latest`).
 
+### Profiles carry modules **and** the user's own scripts
+
+A **profile** (`internal/domain/catalog/profiles.go`, `catalog.Profile`) is the
+reusable bundle a project starts from: a list of module ids plus, optionally,
+scripts the user wrote. It was called a *preset* until the rename; `--preset`
+and `config preset` still work as deprecated aliases, and
+`domain.ProfileDirs()` reads the legacy `~/.devcontainer-cli/presets/` after the
+current `profiles/`, so an existing installation keeps resolving. Nothing is
+ever written to the legacy directory.
+
+Two on-disk shapes, both valid:
+
+| shape | when |
+|---|---|
+| `profiles/<id>.yml` | a pure module bundle |
+| `profiles/<id>/profile.yml` + `*.sh` next to it | it carries scripts |
+
+`Profile.Dir` is what the scripts resolve against, which is why the loader sets
+it in both shapes (the containing directory for a flat file, the profile's own
+directory otherwise). A built-in has no `Dir` and must therefore declare no
+scripts — `TestBuiltinProfilesHaveNoScripts` enforces it.
+
+**A script declares when it runs** (`types.CustomScript.When`, default `build`),
+and each value maps onto machinery that already existed:
+
+| `when` | where it lands | who runs it |
+|---|---|---|
+| `build` | `/tmp/devcontainer-custom-scripts/` in a build layer | a `RUN` in the generated Dockerfile, as devuser, staging dir deleted in the same layer |
+| `start` | `PostScriptStartDir` with a `90-` order prefix | `entrypoint.sh`'s sorted glob, once per container |
+| `manual` | `PostScriptDir` | nobody — the user runs it |
+
+The `start`/`manual` buckets are folded into `collectPartitionedPostScripts`, so
+they share one COPY with the module-provided post-scripts; only `build` gets its
+own block, `customScriptsDockerfileBlock`. `entrypoint.sh` needed no change.
+
+Four properties are load-bearing:
+
+- **The build block is emitted last**, after every module and after
+  `renderEnvironmentBlocks`, for the same reason the environment blocks are: the
+  leading Dockerfile layers must stay byte-identical across variants or the
+  `devcontainer-base` cache stops being reused. It also happens to be what a user
+  script wants — the toolchain is already installed.
+- **Scripts are resolved and persisted, not referenced.** Applying a profile
+  copies each `.sh` into `.dc_<ws>/build/` under a `custom-` prefix
+  (`CustomScript.BuildFile()`) and writes the entries into
+  `devcontainer.config.json`. `CustomScript.Source` is deliberately **not**
+  persisted (`json:"-"`): after the first generate, the build-dir copy is the
+  source of truth, so the project still regenerates when the profile has been
+  edited or deleted. This mirrors how modules are persisted resolved.
+- **They feed the fingerprint.** Materializing happens in `prepareBuildDir`
+  *before* `assets.ValidateRequiredFiles` — which looks in the build dir first,
+  and `Preflight` skips what is already there — so the scripts flow into
+  `copyContents` like any embedded asset. Editing a script therefore changes the
+  image, at every `when` (a `start` script is COPYed into the image too).
+- **The file name is validated to a shell-safe set**
+  (`domain.ValidateCustomScript`, `^[A-Za-z0-9][A-Za-z0-9._-]*\.sh$`, no
+  directory part). It is interpolated into a `COPY` and into a single-quoted word
+  of the `RUN` that executes it, so a quote or a path separator in it would be an
+  injection, not a typo.
+
+Adding a `when` value means: the constant + `types.ScriptWhens`, a branch in
+`PartitionCustomScripts`, the rendering for it, and cases in
+`domain/profile_test.go` and `domain/generator_custom_scripts_test.go`.
+
 ### `~/CONTEXT.md` is generated per project
 
 `~/CONTEXT.md` is the orientation document an AI agent reads first. It is
@@ -663,7 +727,7 @@ is Cobra-native.
 | `compose` (alias `dc`) | `compose.go` | Passthrough to `docker compose` scoped to the current project (`LifecycleService.Passthrough`): forwards every argument verbatim after `-f .dc_<ws>/build/docker-compose.yml --env-file .dc_<ws>/build/.env`. The escape hatch for compose verbs the curated wrappers don't cover (`exec`, `ps`, `top`, `config`, `kill`, `run`, `port`, …), reaching every service in the stack — database services included. Uses `DisableFlagParsing` so flags like `-it` reach compose instead of cobra; a bare invocation or lone `-h`/`--help` prints the command's own help, everything else (including `<verb> --help`) is forwarded. The `--env-file` flag is included only when the generated `.env` exists, otherwise compose falls back to its own autoload. Completion (`completeComposeArgs`, which still fires under `DisableFlagParsing`) offers compose verbs on the first token and the project's compose **service** keys (`ReadComposeServices`) on later tokens — service names, since that's what `docker compose <verb> <service>` takes, not container names |
 | `update` | `update.go` | Pull/rebuild images; `--all`; per-mode dispatch |
 | `upgrade-cli` | `upgrade_cli.go` | Binary self-update from a GitHub release |
-| `config` | `config.go` | Read/write global config (subcommands `registry`, `db-user`, `db-password`, `ssh-key`, `ssh-config-file`, `alias`, `preset`, `shared`); `config ssh-config-file` sets where managed SSH Host blocks live (default `~/.ssh/devcontainer-cli.config`) — it is global rather than a per-command flag on purpose, so `ssh`, `destroy` and `clean ssh` can never disagree about which file to read. `config alias` (`config_alias.go`) manages the user's own shell aliases, stored in the CLI config (`GlobalConfig.Aliases`), not a host file: `config alias set <name> <command>` / `config alias unset <name>` edit the map, bare `config alias` lists it, and `config alias sync` renders it into the `alias.sh` shared-config volume entry (`SharedConfigService.SyncAliases`) so every container picks it up without an image rebuild; `config preset` (`preset.go`) lists/creates/copies/removes reusable **module-bundle** presets saved under `~/.devcontainer-cli/presets/` (`remove <id...>` deletes user presets only — built-ins are not removable; tab-completed, `-y` to skip confirmation). A preset is just a list of module ids (no services/ports/volumes/mode); `create` prompts for the id and runs a modules-only wizard (`GenerateService.SelectModules`). The interactive `generate` wizard also offers an optional "start from a user preset" step (local-cached only) that pre-selects the preset's modules before the user continues with services/ports/volumes. `config shared` (`config_shared.go`) groups the shared tool-config volume ops — `config shared sync` (`sync_config.go`, seed from host configs `~/.claude`, `~/.config/gh`, …; `--force` replaces), `config shared backup` (`backup_config.go`, zip the volume; `-o` sets the destination, default a timestamped file in cwd), `config shared restore` (`restore_config.go`, load a zip made by `config shared backup`; `--force` replaces existing entries) |
+| `config` | `config.go` | Read/write global config (subcommands `registry`, `db-user`, `db-password`, `ssh-key`, `ssh-config-file`, `alias`, `profile`, `shared`); `config ssh-config-file` sets where managed SSH Host blocks live (default `~/.ssh/devcontainer-cli.config`) — it is global rather than a per-command flag on purpose, so `ssh`, `destroy` and `clean ssh` can never disagree about which file to read. `config alias` (`config_alias.go`) manages the user's own shell aliases, stored in the CLI config (`GlobalConfig.Aliases`), not a host file: `config alias set <name> <command>` / `config alias unset <name>` edit the map, bare `config alias` lists it, and `config alias sync` renders it into the `alias.sh` shared-config volume entry (`SharedConfigService.SyncAliases`) so every container picks it up without an image rebuild; `config profile` (`profile.go`, aliased `preset`) lists/creates/copies/removes reusable **profiles** saved under `~/.devcontainer-cli/profiles/` (`remove <id...>` deletes user profiles only — built-ins are not removable; tab-completed, `-y` to skip confirmation). A profile is a list of module ids plus optional custom scripts (no services/ports/volumes/mode); `create` prompts for the id, runs a modules-only wizard (`GenerateService.SelectModules`) and then collects scripts. The interactive `generate` wizard also offers an optional "start from a user profile" step (local-cached only) that pre-selects the profile's modules and carries its scripts before the user continues with services/ports/volumes. `config shared` (`config_shared.go`) groups the shared tool-config volume ops — `config shared sync` (`sync_config.go`, seed from host configs `~/.claude`, `~/.config/gh`, …; `--force` replaces), `config shared backup` (`backup_config.go`, zip the volume; `-o` sets the destination, default a timestamped file in cwd), `config shared restore` (`restore_config.go`, load a zip made by `config shared backup`; `--force` replaces existing entries) |
 | `cleanup-tips` | `cleanup_tips.go` | Print docker cleanup commands |
 | `context` | `context.go` | Print the container's own context and installed tools: runs `get-devcontainer-context` inside it via `InspectService.Context` and streams the output (`--json` for structured output). Falls back to `copy --asset get-devcontainer-context` when the image predates the `aliases` module. Complements `info` (Docker metadata) by reporting what is *inside* the container |
 | `skill` | `skill.go` | Install the **host-side** agent skill (`skill-devcontainer-cli.md`) into the host's agent skill dirs, so an assistant running on the user's machine knows how to drive this CLI. Subcommands `skill install` / `skill remove` (alias `uninstall`) / `skill show`; bare `skill` lists every target with its state (`absent`/`current`/`outdated`/`foreign`). `--agent` narrows to one agent (default: all), `--scope global\|project` picks the base dir (home vs cwd). A target holding a file the CLI did not write (no managed marker) is reported `foreign` and never overwritten or deleted without `--force`; `remove` needs `-y` in non-interactive mode. Pure file I/O — no Docker, unlike every other command |
@@ -762,7 +826,7 @@ three plus `BuildModes` and tests.
    `java-temurin`). Compose-only services (`postgres`, `redis`, `mongo`) never go
    in `--with`. Add a module → append its id here.
 2b. **Base cache image** — `docker-image.yml` job `build-base-cache` builds a
-   minimal base (no `--preset`/`--with` → always-on `base`+`cleanup` only) and
+   minimal base (no `--profile`/`--with` → always-on `base`+`cleanup` only) and
    publishes `devcontainer-base:latest` with `cache-to: type=inline`. The
    `build-variants` jobs `needs: build-base-cache` and `cache-from` it so the
    byte-identical Base leading layers are reused. `devcontainer-base` is **not**

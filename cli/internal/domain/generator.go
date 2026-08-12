@@ -35,6 +35,13 @@ func GenerateDockerfile(config *types.DevcontainerConfig) (string, error) {
 	if postScripts != "" {
 		fragments = append(fragments, postScripts)
 	}
+	customScripts, err := customScriptsDockerfileBlock(config)
+	if err != nil {
+		return "", err
+	}
+	if customScripts != "" {
+		fragments = append(fragments, customScripts)
+	}
 	fragments = append(fragments, types.DockerfileLabelBlock(config))
 	return types.GeneratedHeader + "\n\n" + strings.Join(fragments, "\n\n") + "\n", nil
 }
@@ -113,6 +120,39 @@ func postScriptsDockerfileBlock(config *types.DevcontainerConfig) (string, error
 	return strings.Join(lines, "\n"), nil
 }
 
+// customScriptsDockerfileBlock bakes the user's own `when: build` scripts into
+// the image. It is emitted last, after every module and after the environment
+// blocks, for two reasons: the leading layers must stay byte-identical across
+// image variants so the devcontainer-base cache is reused, and a user script is
+// meant to build on the toolchain the modules just installed.
+//
+// The scripts run as devuser (passwordless sudo is available inside them, like
+// everywhere else in this image) and the staging directory is removed in the
+// same layer, so nothing of it survives into the final image.
+func customScriptsDockerfileBlock(config *types.DevcontainerConfig) (string, error) {
+	build, _, _, err := PartitionCustomScripts(config)
+	if err != nil {
+		return "", err
+	}
+	if len(build) == 0 {
+		return "", nil
+	}
+
+	const stageDir = "/tmp/devcontainer-custom-scripts"
+	lines := []string{"##", "## CUSTOM SCRIPTS (user-provided, run at build time)", "##"}
+	lines = append(lines, fmt.Sprintf("COPY %s %s/", strings.Join(build, " "), stageDir))
+
+	run := fmt.Sprintf("RUN chown -R devuser:devuser %s && chmod +x %s/*.sh", stageDir, stageDir)
+	for _, f := range build {
+		// The file name is validated to a shell-safe character set, so the
+		// single-quoted word below cannot be broken out of.
+		run += fmt.Sprintf(" \\\n    && su - devuser -c '%s/%s'", stageDir, f)
+	}
+	run += fmt.Sprintf(" \\\n    && rm -rf %s", stageDir)
+	lines = append(lines, run)
+	return strings.Join(lines, "\n"), nil
+}
+
 // postScriptStart pairs an auto-start script with its resolved run order.
 type postScriptStart struct {
 	File  string
@@ -149,6 +189,28 @@ func collectPartitionedPostScripts(config *types.DevcontainerConfig) (manual []s
 			}
 		}
 	}
+	// The user's own scripts join the same two buckets: `when: start` is an
+	// auto-start installer (ordered after every module-provided one, so it can
+	// build on them), `when: manual` is left under PostScriptDir to be run by hand.
+	_, customStart, customManual, err := PartitionCustomScripts(config)
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, f := range customStart {
+		if seen[f] {
+			continue
+		}
+		seen[f] = true
+		autoStart = append(autoStart, postScriptStart{File: f, Order: types.CustomScriptStartOrder})
+	}
+	for _, f := range customManual {
+		if seen[f] {
+			continue
+		}
+		seen[f] = true
+		manual = append(manual, f)
+	}
+
 	sort.Slice(autoStart, func(i, j int) bool {
 		if autoStart[i].Order != autoStart[j].Order {
 			return autoStart[i].Order < autoStart[j].Order
