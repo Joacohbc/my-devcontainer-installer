@@ -224,8 +224,36 @@ func askCustomScripts() ([]types.CustomScript, error) {
 			return nil, err
 		}
 		script.When = types.ScriptWhen(when.Value)
+
+		// Two different paths can share a base name (~/a/setup.sh and
+		// ~/b/setup.sh). They would land on one file inside the profile, so the
+		// second silently replaced the first and the manifest listed it twice.
+		// Make the overwrite a decision instead.
+		if i := indexOfScript(scripts, script); i >= 0 {
+			replace, err := console.Confirm(fmt.Sprintf("%s is already in this profile (%s). Replace it?", script.File, scripts[i].Source))
+			if err != nil {
+				return nil, err
+			}
+			if !replace {
+				console.Info("Skipped %s. Rename the file if you need both.", script.Source)
+				continue
+			}
+			scripts[i] = script
+			continue
+		}
 		scripts = append(scripts, script)
 	}
+}
+
+// indexOfScript finds an already-collected script that would occupy the same
+// file name inside the profile, or -1.
+func indexOfScript(scripts []types.CustomScript, s types.CustomScript) int {
+	for i, cur := range scripts {
+		if cur.File == s.File {
+			return i
+		}
+	}
+	return -1
 }
 
 // whenOption is the choice matching w, so the picker opens on it.

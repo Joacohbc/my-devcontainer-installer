@@ -314,3 +314,17 @@ func TestWhenOptionMatchesTheParsedWhen(t *testing.T) {
 		t.Errorf("expected a fallback to build, got %q", got.Value)
 	}
 }
+
+// Two paths sharing a base name would land on one file inside the profile.
+func TestIndexOfScriptFindsANameCollision(t *testing.T) {
+	scripts := []types.CustomScript{
+		{File: "setup.sh", Source: "/a/setup.sh"},
+		{File: "other.sh", Source: "/a/other.sh"},
+	}
+	if got := indexOfScript(scripts, types.CustomScript{File: "setup.sh", Source: "/b/setup.sh"}); got != 0 {
+		t.Errorf("expected the collision at index 0, got %d", got)
+	}
+	if got := indexOfScript(scripts, types.CustomScript{File: "new.sh"}); got != -1 {
+		t.Errorf("expected no collision, got %d", got)
+	}
+}

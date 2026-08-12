@@ -221,3 +221,39 @@ func TestProfileDirsPrefersCurrentOverLegacy(t *testing.T) {
 		t.Errorf("expected ProfileDir() to be the write target %q, got %q", dirs[0], domain.ProfileDir())
 	}
 }
+
+// `x.sh` and `custom-x.sh` both stage as `custom-x.sh`. Silently keeping one
+// would build an image missing the other, so it is an error, not a dedup.
+func TestPartitionCustomScriptsRejectsCollidingBuildNames(t *testing.T) {
+	config := &types.DevcontainerConfig{
+		Dockerfile: types.DockerfileConfig{
+			Scripts: []types.CustomScript{
+				{File: "setup.sh"},
+				{File: "custom-setup.sh"},
+			},
+		},
+	}
+	_, _, _, err := domain.PartitionCustomScripts(config)
+	if err == nil {
+		t.Fatal("expected an error for two scripts staged under the same name")
+	}
+	if !strings.Contains(err.Error(), "collide") {
+		t.Errorf("expected the error to name the collision, got %v", err)
+	}
+}
+
+// Listing the very same file twice is harmless — it is one script.
+func TestPartitionCustomScriptsAllowsExactDuplicates(t *testing.T) {
+	config := &types.DevcontainerConfig{
+		Dockerfile: types.DockerfileConfig{
+			Scripts: []types.CustomScript{{File: "setup.sh"}, {File: "setup.sh"}},
+		},
+	}
+	build, _, _, err := domain.PartitionCustomScripts(config)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(build) != 1 {
+		t.Errorf("expected the duplicate to collapse to one entry, got %v", build)
+	}
+}

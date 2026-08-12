@@ -154,16 +154,23 @@ func CollectCustomScriptFiles(config *types.DevcontainerConfig) ([]string, error
 // names returned are build-dir names (already prefixed), which is what both the
 // Dockerfile and the build directory use.
 func PartitionCustomScripts(config *types.DevcontainerConfig) (build, start, manual []string, err error) {
-	seen := map[string]bool{}
+	// Keyed by build-dir name so the check catches the one pair that is not an
+	// exact duplicate: `x.sh` and `custom-x.sh` both resolve to `custom-x.sh`,
+	// and letting that through would silently drop one script and build an image
+	// missing it. Listing the same file twice stays harmless.
+	seen := map[string]string{}
 	for _, s := range config.Dockerfile.Scripts {
 		if err := ValidateCustomScript(s); err != nil {
 			return nil, nil, nil, err
 		}
 		name := s.BuildFile()
-		if seen[name] {
+		if prev, ok := seen[name]; ok {
+			if prev != s.File {
+				return nil, nil, nil, fmt.Errorf("custom scripts %q and %q collide: both are staged as %q — rename one", prev, s.File, name)
+			}
 			continue
 		}
-		seen[name] = true
+		seen[name] = s.File
 		switch s.ResolvedWhen() {
 		case types.ScriptWhenStart:
 			start = append(start, name)
