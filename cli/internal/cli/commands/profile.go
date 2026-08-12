@@ -217,13 +217,25 @@ func askCustomScripts() ([]types.CustomScript, error) {
 			console.Warn("cannot read %s: %v", script.Source, serr)
 			continue
 		}
-		when, err := console.Select(fmt.Sprintf("When should %s run?", script.File), whenChoices, whenChoices[0])
+		// The path may already carry a `when` suffix (the --script spelling); if it
+		// does, that is what the picker starts on instead of the default.
+		when, err := console.Select(fmt.Sprintf("When should %s run?", script.File), whenChoices, whenOption(whenChoices, script.ResolvedWhen()))
 		if err != nil {
 			return nil, err
 		}
 		script.When = types.ScriptWhen(when.Value)
 		scripts = append(scripts, script)
 	}
+}
+
+// whenOption is the choice matching w, so the picker opens on it.
+func whenOption(choices []service.Option, w types.ScriptWhen) service.Option {
+	for _, c := range choices {
+		if c.Value == string(w) {
+			return c
+		}
+	}
+	return choices[0]
 }
 
 func scriptWhenLabel(w types.ScriptWhen) string {

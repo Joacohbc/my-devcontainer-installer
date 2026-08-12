@@ -7,6 +7,7 @@ import (
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/project"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/service"
 	"github.com/spf13/cobra"
 )
 
@@ -294,5 +295,22 @@ func TestApplyGenFlags_PersistsScripts(t *testing.T) {
 	}
 	if config.Dockerfile.Scripts[0].When != types.ScriptWhenStart {
 		t.Errorf("expected when=start, got %s", config.Dockerfile.Scripts[0].When)
+	}
+}
+
+// A path typed with a `when` suffix must open the picker on that value, not on
+// the default — otherwise the suffix looks accepted and is then silently lost.
+func TestWhenOptionMatchesTheParsedWhen(t *testing.T) {
+	choices := []service.Option{
+		{Value: string(types.ScriptWhenBuild)},
+		{Value: string(types.ScriptWhenStart)},
+		{Value: string(types.ScriptWhenManual)},
+	}
+	if got := whenOption(choices, types.ScriptWhenStart); got.Value != string(types.ScriptWhenStart) {
+		t.Errorf("expected the picker to open on start, got %q", got.Value)
+	}
+	// An unknown value falls back to the first choice rather than panicking.
+	if got := whenOption(choices, "someday"); got.Value != string(types.ScriptWhenBuild) {
+		t.Errorf("expected a fallback to build, got %q", got.Value)
 	}
 }
