@@ -91,6 +91,11 @@ func addGenerateFlags(cmd *cobra.Command) {
 	_ = cmd.RegisterFlagCompletionFunc(flagServices, completeServiceFunc)
 }
 
+// remoteVariantSSH is the one --profile value that is not a catalog profile:
+// the hand-built full image, publishable and pullable but with no modules,
+// scripts or ports of its own to resolve.
+const remoteVariantSSH = "ssh"
+
 // profileIDs lists profile ids for completion on the shared --profile flag.
 // remoteOnly restricts the list to profiles with a published prebuilt image —
 // its only caller for that is 'run', which always pulls, plus "ssh" (the
@@ -106,7 +111,7 @@ func profileIDs(remoteOnly bool) []string {
 		ids = append(ids, p.ID)
 	}
 	if remoteOnly {
-		ids = append(ids, "ssh")
+		ids = append(ids, remoteVariantSSH)
 	}
 	return ids
 }
@@ -117,7 +122,7 @@ func profileIDs(remoteOnly bool) []string {
 // published (e.g. 'scraper') is rejected here — it would only fail the pull —
 // even though it remains valid for --profile under mode=custom.
 func validRemoteVariant(v string) bool {
-	if v == "ssh" {
+	if v == remoteVariantSSH {
 		return true
 	}
 	p, ok := catalog.Resolve(v, domain.ProfileDirs()...)
@@ -232,7 +237,7 @@ func parseGenFlags(cmd *cobra.Command) (*genFlags, error) {
 	// "ssh" is not a catalog profile — it is the hand-built full image, a valid
 	// pull target under mode=profiles but with no modules/scripts/ports of its
 	// own to resolve here. Any other unrecognized id is still an error.
-	if g.profile != "" && g.profile != "ssh" {
+	if g.profile != "" && g.profile != remoteVariantSSH {
 		p, ok := catalog.Resolve(g.profile, domain.ProfileDirs()...)
 		if !ok {
 			return nil, fmt.Errorf("unknown profile: %s", g.profile)
@@ -489,6 +494,13 @@ func validateConfig(cwd string, config *types.DevcontainerConfig, flags *genFlag
 
 	if config.Mode == types.BuildModeProfiles && config.Remote == nil {
 		return fmt.Errorf("mode=profiles requires --profile (a [remote]-tagged profile id — run 'devcontainer-cli config profile list' to see them, or 'ssh' for the full image)")
+	}
+	// "ssh" is the one --profile value with no catalog entry behind it: it names
+	// the hand-built full image, so it only means anything as a pull target.
+	// Under mode=custom there is nothing to build from it, and letting it
+	// through would apply an empty bundle.
+	if config.Mode != types.BuildModeProfiles && flags.profile == remoteVariantSSH {
+		return fmt.Errorf("profile %q is a pull target only (the hand-built full image); use --mode %s to pull it, or pick a profile that carries modules", remoteVariantSSH, types.BuildModeProfiles)
 	}
 	// --profile is shared with mode=custom, where any profile (including a
 	// [local]-only one like 'scraper') is valid — so this can only be checked
@@ -801,12 +813,17 @@ func applyGenFlags(config *types.DevcontainerConfig, flags *genFlags) {
 		effectiveMode = string(config.Mode)
 	}
 	if flags.profile != "" && effectiveMode != string(types.BuildModeProfiles) {
-		p, _ := catalog.Resolve(flags.profile, domain.ProfileDirs()...)
-		if flags.withModules == nil {
-			flags.withModules = p.Modules
-		}
-		if flags.services == nil {
-			flags.services = []string{}
+		// Only a profile that actually resolves clears the services: "ssh" is a
+		// pull target with no catalog entry (validateConfig rejects it under this
+		// mode), and clearing them for an id that contributed no modules either
+		// would silently drop the project's DB services for nothing.
+		if p, ok := catalog.Resolve(flags.profile, domain.ProfileDirs()...); ok {
+			if flags.withModules == nil {
+				flags.withModules = p.Modules
+			}
+			if flags.services == nil {
+				flags.services = []string{}
+			}
 		}
 	}
 

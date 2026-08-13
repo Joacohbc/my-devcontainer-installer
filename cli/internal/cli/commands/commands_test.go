@@ -1951,6 +1951,31 @@ func TestApplyGenFlags_ProfileUnderModeProfilesKeepsServicesAndSetsRemote(t *tes
 	}
 }
 
+// "ssh" is a pull target with no catalog entry, so under mode=custom it
+// resolves to nothing. Applying it must leave the project alone rather than
+// clear its DB services for a bundle that contributed no modules either;
+// validateConfig is what rejects the combination outright.
+func TestApplyGenFlags_SSHProfileUnderCustomModeKeepsServices(t *testing.T) {
+	config := &types.DevcontainerConfig{
+		Mode: types.BuildModeCustom,
+		Dockerfile: types.DockerfileConfig{
+			Modules: []types.SelectedModule{{ID: "nodejs"}},
+		},
+		Compose: types.ComposeConfig{
+			Services: []types.SelectedService{{ID: "postgres"}},
+		},
+	}
+
+	applyGenFlags(config, &genFlags{profile: remoteVariantSSH})
+
+	if len(config.Compose.Services) != 1 || config.Compose.Services[0].ID != "postgres" {
+		t.Errorf("expected postgres service to survive, got %v", config.Compose.Services)
+	}
+	if len(config.Dockerfile.Modules) != 1 || config.Dockerfile.Modules[0].ID != "nodejs" {
+		t.Errorf("expected the modules to survive, got %v", config.Dockerfile.Modules)
+	}
+}
+
 // The same, but switching an existing custom-mode project to mode=profiles in
 // one invocation (flags.mode set explicitly rather than inherited from
 // config.Mode).
@@ -2094,6 +2119,27 @@ func TestValidateConfig_ModeProfilesAcceptsSSH(t *testing.T) {
 	flags := &genFlags{interactive: true, keepWorkspace: true}
 	if err := validateConfig(cwd, config, flags, service.GenerateService{}); err != nil {
 		t.Fatalf("validateConfig: %v", err)
+	}
+}
+
+// The mirror of the case above: "ssh" only means anything as a pull target, so
+// under mode=custom it is rejected rather than silently applied as an empty
+// module bundle.
+func TestValidateConfig_ModeCustomRejectsSSHProfile(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	cwd := t.TempDir()
+	config := &types.DevcontainerConfig{
+		Workspace: "ws",
+		Mode:      types.BuildModeCustom,
+		Image:     "devcontainer-cli/abc123:latest",
+	}
+	flags := &genFlags{interactive: true, keepWorkspace: true, profile: remoteVariantSSH}
+	err := validateConfig(cwd, config, flags, service.GenerateService{})
+	if err == nil {
+		t.Fatal("expected an error for --profile ssh under mode=custom")
+	}
+	if !strings.Contains(err.Error(), "pull target") {
+		t.Errorf("the error must say ssh is a pull target only, got: %v", err)
 	}
 }
 

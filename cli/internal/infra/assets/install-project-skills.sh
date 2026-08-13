@@ -13,7 +13,10 @@ set -euo pipefail
 log() { echo "==> $*"; }
 
 skills_mode() {
-    echo "${DEVCONTAINER_SKILLS_MODE:-auto}"
+    # Defaults to manual, matching types.DefaultSkillMode: the installer writes
+    # into the bind-mounted workspace, which is the user's own repository, so an
+    # absent variable must not be read as permission to do that on every start.
+    echo "${DEVCONTAINER_SKILLS_MODE:-manual}"
 }
 
 workspace_dir() {
