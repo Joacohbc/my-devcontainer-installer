@@ -136,7 +136,7 @@ importable from outside the module.
 | `internal/domain/types/` | Shared domain data types: config structures, constants, label calculations. No I/O, no logic. (Was `internal/core`). |
 | `internal/domain/catalog/` | The catalog of modules/services (`catalog.go`). (Was `internal/registry`). |
 | `internal/domain/modules/` | Module definitions themselves: `modules/dockerfile/` and `modules/compose/`. |
-| `internal/infra/` | I/O execution layer. Contains raw subprocess running (`infra/docker`), assets embed extraction (`infra/assets`), SSH key default setup (`infra/sshdefaults`), and low-level project file-path definitions (`infra/project`). **Never imports `domain` or `cli`.** |
+| `internal/infra/` | I/O execution layer. Contains raw subprocess running (`infra/docker`), the git binary (`infra/git` — the only place in the tree that shells out to it, mirroring how `infra/docker` owns docker), assets embed extraction (`infra/assets`), SSH key default setup (`infra/sshdefaults`), and low-level project file-path definitions (`infra/project`). **Never imports `domain` or `cli`.** |
 
 **Why `cmd/devcontainer-cli/main.go` and not `cli/main.go`:** `cli/` is the
 module root — it holds `go.mod` and the release/installer artifacts
@@ -200,7 +200,7 @@ and `infra`, **never `cli`** (no `cli/ui`, no `cli/pick`).
 
 `generate.go`+`generate_wizard.go`, `run.go`, `destroy.go`, `update.go`,
 `lifecycle.go` (up/down/start/stop/restart), `prune.go`, `inspect.go`
-(shell/logs/status/copy/copy-asset/ls + completions), `config.go` (config/export/import/preset),
+(shell/logs/status/copy/copy-asset/ls + completions), `config.go` (config/export/import/profile),
 `ssh.go` (ssh connect + `--setup`/`--setup-external` flow), `portforward.go`, `network.go` (network connect/disconnect),
 `upgrade.go`.
 
@@ -447,6 +447,262 @@ Two mechanisms keep those links alive, and neither may be dropped:
   into a container; target dangling on the host too → left alone (never an
   error — `cp -aL` used to abort the whole sync over `~/.claude/debug/latest`).
 
+### Profiles carry modules **and** the user's own scripts
+
+A **profile** (`internal/domain/catalog/profiles.go`, `catalog.Profile`) is the
+reusable bundle a project starts from: a list of module ids plus, optionally,
+scripts the user wrote. It was called a *preset* until the rename; `--preset`
+and `config preset` still work as deprecated aliases, and
+`domain.ProfileDirs()` reads the legacy `~/.devcontainer-cli/presets/` after the
+current `profiles/`, so an existing installation keeps resolving. Nothing is
+ever written to the legacy directory.
+
+Two on-disk shapes, both valid:
+
+| shape | when |
+|---|---|
+| `profiles/<id>.yml` | a pure module bundle |
+| `profiles/<id>/profile.yml` + `*.sh` next to it | it carries scripts |
+
+`Profile.Dir` is what the scripts resolve against, which is why the loader sets
+it in both shapes (the containing directory for a flat file, the profile's own
+directory otherwise).
+
+**`--profile` is one flag with two roles, told apart by mode.** There used to
+be a second flag, `--variant`, pulling double duty with `--profile`; it has
+been removed outright (not deprecated — `generate.go`/`run.go` no longer
+register it at all). Under mode=`custom`, `--profile <id>` is a module
+bundle and always builds locally, for any profile. Under mode=`profiles` (and
+always for `run`, which only ever pulls), the same flag instead names the pull
+target: it skips the build and pulls `ghcr.io/devcontainer-<id>:latest`, and
+that image only exists for the ids CI actually publishes
+(`types.RemoteVariants`). `applyProfileBundle` tells the roles apart via
+`effectiveBuildMode` (`flags.mode`, falling back to the config's current
+mode) — load-bearing, because otherwise a mode=`profiles` regenerate with
+`--profile <id>` would misapply the module-bundle branch and silently clear
+the project's compose services.
+
+**`ssh` is the one `--profile` value with no catalog entry behind it** — the
+hand-built full image, a pull target only. It is therefore the one id that
+`parseGenFlags` does not resolve (`remoteVariantSSH`), which leaves two places
+that must agree: `applyProfileBundle` only clears the services for a profile
+that actually **resolved** (clearing them for an id that
+contributed no modules either would drop the project's DB services for
+nothing), and `validateConfig` rejects `--profile ssh` outright once the
+effective mode turns out not to be `profiles`. Any *other* unresolvable id is
+still rejected earlier, at flag-parse time.
+
+**`Profile.Remote` says whether the id is also a pull target.**
+`Remote: true` on a `plainBuiltinProfiles` entry marks exactly the ids in
+`types.RemoteVariants`; `TestBuiltinProfileRemoteFlagMatchesPublishedVariants`
+keeps the two lists in lockstep so a profile can never claim a pull target
+that 404s or hide one that works. `base` is deliberately `Remote: false` even
+though `ghcr.io/devcontainer-base` exists — that image is the minimal
+base-cache build (no github-cli), not this profile's content, so pulling it
+under the `base` id would silently serve the wrong image. An embedded profile
+that ships scripts (`scraper`) or a user's own is `Remote: false` unless the
+user sets `remote: true` in its YAML themselves (for someone publishing their
+own matching image under their own registry). `ProfileChoices`
+(`service/generate_wizard.go`, backing the `run`/generate "Profile:" pickers)
+and `validRemoteVariant`/`profileIDs(remoteOnly)` (`commands/generate.go`)
+filter on this flag — `profileIDs(false)`, offering every profile, only backs
+`--profile`'s own completion, since mode=`custom` accepts any of them; `run`'s
+completion and the mode=`profiles` pull-target validation both use
+`profileIDs(true)`/`validRemoteVariant`, remote-only. `config profile list`
+renders it as a `[remote]`/`[local]` tag so the choice is visible before the
+pull is attempted.
+
+### A repo-shipped profile is data, not a Go literal
+
+The CLI ships profiles from **two** places, and which one a profile belongs in
+is decided by one thing: whether it carries files.
+
+| where | for | example |
+|---|---|---|
+| `catalog.plainBuiltinProfiles` (Go literals in `profiles.go`) | a pure module bundle | `nodejs`, `bun`, `base` |
+| `internal/domain/catalog/profiles/<id>/` (embedded) | a profile that ships scripts | `scraper` |
+
+`go:embed` cannot reach out of its own directory, so a profile that references a
+`.sh` **cannot** be a Go literal — the file has to sit next to the manifest, and
+that directory has to be under the package that embeds it. `BuiltinProfiles` is
+the concatenation of both, so nothing downstream knows the difference.
+
+Adding one is a directory drop: `catalog/profiles/<id>/profile.yml` plus its
+`.sh` files. `TestEmbeddedProfilesAreWellFormed` then checks it parses, that its
+id matches its directory, that every module id it lists exists, and that every
+script it names is really in the embedded tree.
+
+Two rules hold it together:
+
+- **`Embedded` marks where `Dir` points.** `catalog.Profile.Embedded` and
+  `types.CustomScript.Embedded` say the path is inside `BuiltinProfileFS`, not on
+  the host, and `ProfileScripts` joins it with `path` rather than `filepath`
+  because an embedded FS is always slash-separated.
+- **One reader for both origins.** `domain.ReadCustomScript` is the only way a
+  script's bytes are fetched — embedded tree or host file. `prepareBuildDir` and
+  `config profile copy` both go through it, which is why copying a repo-shipped
+  profile writes its scripts to disk as a normal user profile.
+
+The plain bundles stay Go literals on purpose: their ids are what the CI variant
+matrix builds, and one readable table is easier to keep in sync than twelve
+files. Keeping the pure module bundles there means a built-in that declares
+scripts must be an embedded one — `TestBuiltinProfilesWithScriptsAreEmbedded`
+enforces it, since a Go literal has no `Dir` to resolve a script against.
+
+**A profile can also carry ports**, in two lists with two different grammars:
+
+| field | goes to | grammar |
+|---|---|---|
+| `ports:` | `Compose.Ports`, published by the stack | docker compose — `[IP:][HOST:]CONTAINER` |
+| `forward_ports:` | `ForwardPorts`, the tunnels `port-forward` opens with no argument | `port-forward` — `PORT`, `LOCAL:CONTAINER`, `LOCAL:SERVICE:CONTAINER` |
+
+The middle field differs — a host IP in one, a compose **service name** in the
+other — so each is checked by the parser that consumes it:
+`domain.ValidatePortSpecs` for the published ones, `parsePortMapping` (through
+`validateForwardPorts`) for the tunnels. One shared validator would reject
+`5432:postgres:5432`, which is valid for a tunnel.
+
+Both accept a bare container port (`3000`), which leaves the host port to Docker
+so two projects from one profile can run at once, and an explicit mapping
+(`3000:3000`), which is predictable but collides on the second project. The
+profile chooses; `BindLoopback` renders either.
+
+**A script declares when it runs** (`types.CustomScript.When`, default `build`),
+and each value maps onto machinery that already existed:
+
+| `when` | where it lands | who runs it |
+|---|---|---|
+| `build` | `/tmp/devcontainer-custom-scripts/` in a build layer | a `RUN` in the generated Dockerfile, as devuser, staging dir deleted in the same layer |
+| `start` | `PostScriptStartDir` with a `90-` order prefix | `entrypoint.sh`'s sorted glob, once per container |
+| `manual` | `PostScriptDir` | nobody — the user runs it |
+
+The `start`/`manual` buckets are folded into `collectPartitionedPostScripts`, so
+they share one COPY with the module-provided post-scripts; only `build` gets its
+own block, `customScriptsDockerfileBlock`. `entrypoint.sh` needed no change.
+
+Four properties are load-bearing:
+
+- **The build block is emitted last**, after every module and after
+  `renderEnvironmentBlocks`, for the same reason the environment blocks are: the
+  leading Dockerfile layers must stay byte-identical across variants or the
+  `devcontainer-base` cache stops being reused. It also happens to be what a user
+  script wants — the toolchain is already installed.
+- **Scripts are resolved and persisted, not referenced.** Applying a profile
+  copies each `.sh` into `.dc_<ws>/build/` under a `custom-` prefix
+  (`CustomScript.BuildFile()`) and writes the entries into
+  `devcontainer.config.json`. `CustomScript.Source` is deliberately **not**
+  persisted (`json:"-"`): after the first generate, the build-dir copy is the
+  source of truth, so the project still regenerates when the profile has been
+  edited or deleted. This mirrors how modules are persisted resolved.
+- **They feed the fingerprint.** Materializing happens in `prepareBuildDir`
+  *before* `assets.ValidateRequiredFiles` — which looks in the build dir first,
+  and `Preflight` skips what is already there — so the scripts flow into
+  `copyContents` like any embedded asset. Editing a script therefore changes the
+  image, at every `when` (a `start` script is COPYed into the image too).
+- **The file name is validated to a shell-safe set**
+  (`domain.ValidateCustomScript`, `^[A-Za-z0-9][A-Za-z0-9._-]*\.sh$`, no
+  directory part). It is interpolated into a `COPY` and into a single-quoted word
+  of the `RUN` that executes it, so a quote or a path separator in it would be an
+  injection, not a typo.
+
+Adding a `when` value means: the constant + `types.ScriptWhens`, a branch in
+`PartitionCustomScripts`, the rendering for it, and cases in
+`domain/profile_test.go` and `domain/generator_custom_scripts_test.go`.
+
+**A custom script is the wrong channel for an agent skill.** Both global agent
+skill dirs (`~/.claude/skills`, `~/.agents/skills`) are symlinks into the
+shared-config volume, so `npx skills add -g` from a script is wrong at every
+`when`: at `build` the volume shadows the write and the skill is invisible, and
+at `start` it succeeds but leaks that project's skill into every other container
+mounting the volume. Declare skills under `skills:` instead — see the next
+section. `TestEmbeddedProfilesDoNotScriptSkillInstalls` keeps repo-shipped
+profiles from regressing to a script.
+
+### Agent skills are a catalogue entry, not a script
+
+`internal/domain/modules/skills/` is the third catalogue next to Dockerfile
+modules and compose services. A `skills.Spec` is an id, a label, the `Ref` the
+Skills CLI resolves (an `owner/repo` shorthand like `firecrawl/cli`, or a full
+repository URL), the modules its tooling needs, and a `Context` section.
+Adding one is appending to `skills.All`.
+
+**A skill that describes a tool declares the modules installing it.** A skill's
+`RequiresModules` names every module its instructions depend on — `webapp-testing`
+names `python` and `chrome` — so selecting the skill without them is reported by
+`domain.MissingSkillModules` rather than shipping a document about a binary that
+is not there.
+
+Skills are **project-scoped**: the installer runs `npx skills add` inside the
+workspace mount, so they land in the project and never in the shared volume that
+made the script approach wrong.
+
+| piece | where |
+|---|---|
+| Catalogue | `internal/domain/modules/skills/skills.go`, re-exported as `catalog.AgentSkills` (built-in only) |
+| User-defined skills | `catalog/user_skills.go` (`LoadUserSkills`), merged in by `catalog.AllAgentSkills(dirs...)`/`GetAgentSkill(id, dirs...)`/`AgentSkillIDs(dirs...)` |
+| Selection + mode | `types.SkillsConfig` on `DevcontainerConfig` (`--skill`, `--skills-mode`, the wizard, a profile's `skills:`/`skills_mode:`) |
+| Plumbing | `dockerfile.SkillsModule` — the installer on PATH, the `install_skills` alias, the entrypoint hook |
+| Installer | `internal/infra/assets/install-project-skills.sh` (+ `autostart-project-skills.sh`) |
+
+**A skill can be user-defined**, the same idea as a user profile: a flat
+`~/.devcontainer-cli/skills/<id>.yml` (`domain.SkillDirs()`/`SkillDir()`,
+loaded by `catalog.LoadUserSkills`) carrying `id`/`label`/`ref`/`skill`/
+`requires_modules`/an optional `context: {title, body}` in place of the
+Go-only `Context func()`. No scripts, no directory shape — a skill's install
+source is already a git ref the Skills CLI resolves, unlike a profile there
+are no files of the user's own to carry alongside it. `config skill
+list`/`info`/`add`/`remove` (`domain.ValidateSkillID` guards the id — same
+charset as `ValidateProfileID`, it becomes a file name) manage them; `list`
+shows built-in vs your own, tagged by group like `config profile list`. Every
+site that used to read the package-level `catalog.AgentSkills` var directly
+(the wizard's skill picker, `--skill` completion/validation,
+`domain.SkillRefs`/`MissingSkillModules`/CONTEXT.md's skill sections) now goes
+through the `dirs`-aware functions, passing `domain.SkillDirs()` — mirroring
+exactly how `catalog.Resolve`/`catalog.All` take `domain.ProfileDirs()`. A
+user-defined id shadows a built-in of the same id.
+
+Four properties are load-bearing:
+
+- **The module is `Internal`, never picked.** `domain.ApplySelectedSkills` adds
+  it when the project selects skills, and `dockerfile.ModuleSpec.Internal` (the
+  mirror of `compose.ServiceSpec.Internal`) keeps it out of the wizard's
+  categories. It is applied **last** in `applyGenFlags`, because `--with`
+  rewrites the module list and a derived module has to survive that.
+- **Requiring nodejs is how npx is guaranteed.** The module declares
+  `Requires: nodejs`, so the resolver pulls the toolchain in rather than the
+  installer discovering it is missing inside a container.
+- **Which skills and which mode are compose environment, not image content**
+  (`DEVCONTAINER_SKILLS`, `DEVCONTAINER_SKILLS_MODE`, from `domain.SkillsEnv`).
+  Changing the list is a compose change, so a project does not rebuild its image
+  to add a skill. Only the installer itself is baked, and it is static.
+- **The mode needs a caller, not a guess.** `manual` (the default) leaves
+  `install-skills` (aliased `install_skills`) to the user; `auto` installs on
+  every container start. The entrypoint runs start.d scripts with no arguments,
+  so `autostart-project-skills.sh` exists to pass `--auto` — the installer must
+  not infer intent from how it was launched. The default is `manual` because the
+  installer writes into the bind-mounted workspace, which is the user's own
+  repository.
+- **Skills and their mode are asked outside the full wizard too.** The full
+  wizard (`needsPrompts` in `initAndConfigure`) already asks via `skillsStep`;
+  a quick `--with`/no-flags interactive `generate` used to skip the question
+  entirely unless `--skill` was passed. `initAndConfigure` now calls
+  `GenerateService.SelectSkills` there as well, whenever mode ends up `custom`
+  and nothing already decided skills (`--skill`, or the applied profile's
+  own). It sets `config.Skills` directly rather than `flags.skills` — that is
+  what lets an explicit "none" answer clear an existing selection, since
+  `applyGenFlags` only overwrites `config.Skills.Skills` when
+  `flags.skills`/`profileSkills` is non-empty, and both stay empty here.
+- **An entry is one token, and never names a branch.** A repo holding several
+  skills is selected with `--skill <name>` (`Spec.Skill`), not by pointing `Ref`
+  at the skill's directory URL: that URL carries a branch name, and
+  `antibrow/anti-detect-browser-skills` defaults to `master` while
+  `anthropics/skills` defaults to `main` — a rename would silently break the
+  ref. `Spec.InstallRef()` folds the two into `source#skill` so the entries stay
+  space-separated in `DEVCONTAINER_SKILLS`, and the installer splits them back.
+  `TestAgentSkillCatalogue` enforces all three: single token, no separator
+  inside either half, no `/tree/` in a ref. `firecrawl/cli` ships ten skills, so
+  its selector is what keeps an unattended install from taking the other nine.
+
 ### `~/CONTEXT.md` is generated per project
 
 `~/CONTEXT.md` is the orientation document an AI agent reads first. It is
@@ -663,7 +919,7 @@ is Cobra-native.
 | `compose` (alias `dc`) | `compose.go` | Passthrough to `docker compose` scoped to the current project (`LifecycleService.Passthrough`): forwards every argument verbatim after `-f .dc_<ws>/build/docker-compose.yml --env-file .dc_<ws>/build/.env`. The escape hatch for compose verbs the curated wrappers don't cover (`exec`, `ps`, `top`, `config`, `kill`, `run`, `port`, …), reaching every service in the stack — database services included. Uses `DisableFlagParsing` so flags like `-it` reach compose instead of cobra; a bare invocation or lone `-h`/`--help` prints the command's own help, everything else (including `<verb> --help`) is forwarded. The `--env-file` flag is included only when the generated `.env` exists, otherwise compose falls back to its own autoload. Completion (`completeComposeArgs`, which still fires under `DisableFlagParsing`) offers compose verbs on the first token and the project's compose **service** keys (`ReadComposeServices`) on later tokens — service names, since that's what `docker compose <verb> <service>` takes, not container names |
 | `update` | `update.go` | Pull/rebuild images; `--all`; per-mode dispatch |
 | `upgrade-cli` | `upgrade_cli.go` | Binary self-update from a GitHub release |
-| `config` | `config.go` | Read/write global config (subcommands `registry`, `db-user`, `db-password`, `ssh-key`, `ssh-config-file`, `alias`, `preset`, `shared`); `config ssh-config-file` sets where managed SSH Host blocks live (default `~/.ssh/devcontainer-cli.config`) — it is global rather than a per-command flag on purpose, so `ssh`, `destroy` and `clean ssh` can never disagree about which file to read. `config alias` (`config_alias.go`) manages the user's own shell aliases, stored in the CLI config (`GlobalConfig.Aliases`), not a host file: `config alias set <name> <command>` / `config alias unset <name>` edit the map, bare `config alias` lists it, and `config alias sync` renders it into the `alias.sh` shared-config volume entry (`SharedConfigService.SyncAliases`) so every container picks it up without an image rebuild; `config preset` (`preset.go`) lists/creates/copies/removes reusable **module-bundle** presets saved under `~/.devcontainer-cli/presets/` (`remove <id...>` deletes user presets only — built-ins are not removable; tab-completed, `-y` to skip confirmation). A preset is just a list of module ids (no services/ports/volumes/mode); `create` prompts for the id and runs a modules-only wizard (`GenerateService.SelectModules`). The interactive `generate` wizard also offers an optional "start from a user preset" step (local-cached only) that pre-selects the preset's modules before the user continues with services/ports/volumes. `config shared` (`config_shared.go`) groups the shared tool-config volume ops — `config shared sync` (`sync_config.go`, seed from host configs `~/.claude`, `~/.config/gh`, …; `--force` replaces), `config shared backup` (`backup_config.go`, zip the volume; `-o` sets the destination, default a timestamped file in cwd), `config shared restore` (`restore_config.go`, load a zip made by `config shared backup`; `--force` replaces existing entries) |
+| `config` | `config.go` | Read/write global config (subcommands `registry`, `db-user`, `db-password`, `ssh-key`, `ssh-config-file`, `git-init`, `alias`, `profile`, `skill`, `shared`); `config git-init` (default `false`) opts into `generate` offering to `git init` a project directory that is not a repository yet (`GitRepoService.EnsureRepo` → `infra/git`) — it writes into the user's own directory rather than the CLI's `.dc_<ws>/`, which is why it is off by default and why an interactive run still asks before doing it; `config ssh-config-file` sets where managed SSH Host blocks live (default `~/.ssh/devcontainer-cli.config`) — it is global rather than a per-command flag on purpose, so `ssh`, `destroy` and `clean ssh` can never disagree about which file to read. `config alias` (`config_alias.go`) manages the user's own shell aliases, stored in the CLI config (`GlobalConfig.Aliases`), not a host file: `config alias set <name> <command>` / `config alias unset <name>` edit the map, bare `config alias` lists it, and `config alias sync` renders it into the `alias.sh` shared-config volume entry (`SharedConfigService.SyncAliases`) so every container picks it up without an image rebuild; `config profile` (`profile.go`, aliased `preset`) lists/creates/copies/removes reusable **profiles** (module ids + custom scripts + agent skills) saved under `~/.devcontainer-cli/profiles/` (`remove <id...>` deletes user profiles only — built-ins are not removable; tab-completed, `-y` to skip confirmation); `config profile info <id>` prints one profile's full resolved definition — source/dir, then `yaml.Marshal` of the resolved `catalog.Profile` (`Source`/`Dir`/`Embedded` are `yaml:"-"`, so this is exactly the manifest a project resolving it would read). A profile is a list of module ids plus optional custom scripts and agent skills (no services/ports/volumes/mode); `create` prompts for the id, runs a modules-only wizard (`GenerateService.SelectModules`), collects scripts, then picks skills and their mode (`GenerateService.SelectSkills`). The interactive `generate` wizard's first question offers 3 starting points, not 2: plain `custom` (pick modules by hand), `custom` from a profile (built-in or the user's own — pre-selects its modules and carries its scripts before the user continues with services/ports/volumes), or `profiles` (pull target, see below). The middle one is `modeChoiceCustomFromProfile` in `generate_wizard.go` — still `types.BuildModeCustom` once normalized (`currentMode`), it just also triggers `profileStep`, which plain `custom` skips. `config skill` (`config_skill.go`) lists built-in and user-defined agent skills (`config skill list`, grouped like `config profile list`) — a user one is a flat `~/.devcontainer-cli/skills/<id>.yml`, no scripts/directory shape, since a skill's install source is already a git ref; `config skill info <id>` prints one skill's full definition (source, install ref, required modules, its `~/CONTEXT.md` entry if any) via the local `skillInfoView` — a plain yaml-shaped mirror of `catalog`'s unexported `userSkillManifest`, since `skills.Spec.Context` is a Go func and cannot be marshaled directly, so a built-in and a user-defined skill render identically either way; `config skill add <id> --ref <source>` writes `~/.devcontainer-cli/skills/<id>.yml` from flags (`--ref` required, prompted for when interactive and missing; everything else optional), refusing to clobber an existing *user* file without `--force` — but never refusing to shadow a built-in id, which is the documented, expected way to override one; `config skill remove <id...>` deletes user-defined skills only (same built-ins-are-not-removable rule as `config profile remove`). `config shared` (`config_shared.go`) groups the shared tool-config volume ops — `config shared sync` (`sync_config.go`, seed from host configs `~/.claude`, `~/.config/gh`, …; `--force` replaces), `config shared backup` (`backup_config.go`, zip the volume; `-o` sets the destination, default a timestamped file in cwd), `config shared restore` (`restore_config.go`, load a zip made by `config shared backup`; `--force` replaces existing entries) |
 | `cleanup-tips` | `cleanup_tips.go` | Print docker cleanup commands |
 | `context` | `context.go` | Print the container's own context and installed tools: runs `get-devcontainer-context` inside it via `InspectService.Context` and streams the output (`--json` for structured output). Falls back to `copy --asset get-devcontainer-context` when the image predates the `aliases` module. Complements `info` (Docker metadata) by reporting what is *inside* the container |
 | `skill` | `skill.go` | Install the **host-side** agent skill (`skill-devcontainer-cli.md`) into the host's agent skill dirs, so an assistant running on the user's machine knows how to drive this CLI. Subcommands `skill install` / `skill remove` (alias `uninstall`) / `skill show`; bare `skill` lists every target with its state (`absent`/`current`/`outdated`/`foreign`). `--agent` narrows to one agent (default: all), `--scope global\|project` picks the base dir (home vs cwd). A target holding a file the CLI did not write (no managed marker) is reported `foreign` and never overwritten or deleted without `--force`; `remove` needs `-y` in non-interactive mode. Pure file I/O — no Docker, unlike every other command |
@@ -732,37 +988,48 @@ if !yesFlag(cmd) {
 Two `mode` values in `DevcontainerConfig` (constant `BuildModes` in
 `core/types.go`):
 
-- `local-cached` (default) — full Dockerfile + compose pipeline. Computes a
-  fingerprint and sets `config.Image` to `devcontainer-cli/<fp12>:latest`.
-  Identical Dockerfiles share one daemon-level image; an existing image skips
-  the build.
-- `remote` — skips Dockerfile generation (returns nil) and rewrites the
-  devcontainer compose service to `image: ghcr.io/<owner>/devcontainer-<variant>:latest`
-  with no `build:` key. DB services are still emitted.
+- `custom` (`types.BuildModeCustom`, default) — full Dockerfile + compose
+  pipeline. Computes a fingerprint and sets `config.Image` to
+  `devcontainer-cli/<fp12>:latest`. Identical Dockerfiles share one
+  daemon-level image; an existing image skips the build.
+- `profiles` (`types.BuildModeProfiles`) — skips Dockerfile generation
+  (returns nil) and rewrites the devcontainer compose service to
+  `image: ghcr.io/<owner>/devcontainer-<variant>:latest` with no `build:` key.
+  `--profile` (see "one flag with two roles" below) is a `catalog.Profile`
+  with `Remote: true` (`config profile list` tags it `[remote]`) or `ssh` for
+  the hand-built full image — not every profile qualifies. DB services are
+  still emitted.
 
-Compat shim: `config.go` upgrades legacy `mode: custom`/`standalone` →
-`local-cached` on load.
+Compat shim: `config.go` upgrades legacy `mode: custom`/`standalone`/
+`local-cached` → `custom`, and legacy `mode: remote` → `profiles`, on load.
+(The pre-rename spellings were literally `local-cached`/`remote`; `custom` was
+already an even older synonym for the same full-build mode, so it collides
+with nothing.)
 
 Mode is read in `domain/generator.go`, the generate flow in `root.go`
 (preflight/conflict skip + fingerprint fast-path), and `commands/update.go`
-(`local-cached` → build, `remote` → pull). Adding a mode means updating all
-three plus `BuildModes` and tests.
+(`custom` → build, `profiles` → pull). Adding a mode means updating all three
+plus `BuildModes` and tests.
 
 ---
 
 ## Contracts that MUST stay in sync
 
-1. **Remote variants** — `core/types.go` `RemoteVariants`/`VariantLabels` ↔
-   `.github/workflows/docker-image.yml` `build-variants` matrix. Adding a variant
-   = both sides + a `generator_test.go` assertion. `ssh` is the full image from
-   `build-base` → `devcontainer-ssh:latest` (not a `build-variants` entry).
+1. **Remote variants** — `core/types.go` `RemoteVariants` ↔
+   `.github/workflows/docker-image.yml` `build-variants` matrix ↔ `Remote: true`
+   on the matching `plainBuiltinProfiles` entry in `catalog/profiles.go`. Adding
+   a variant = all three sides + a `generator_test.go` assertion (the
+   `RemoteVariants`/CI pair) and `TestBuiltinProfileRemoteFlagMatchesPublishedVariants`
+   (the `RemoteVariants`/`Remote` pair). `ssh` is the full image from
+   `build-base` → `devcontainer-ssh:latest` (not a `build-variants` entry, and
+   not a catalog profile — `commands.validRemoteVariant` special-cases it).
 2. **Full-image `--with` list** — `docker-image.yml` job `build-base` passes one
    id per Dockerfile module **except** `base`/`aliases`/`cleanup` (auto-applied) and
    `java-openjdk` (mutually exclusive with `java-temurin`; the full image uses
    `java-temurin`). Compose-only services (`postgres`, `redis`, `mongo`) never go
    in `--with`. Add a module → append its id here.
 2b. **Base cache image** — `docker-image.yml` job `build-base-cache` builds a
-   minimal base (no `--preset`/`--with` → always-on `base`+`cleanup` only) and
+   minimal base (no `--profile`/`--with` → always-on `base`+`cleanup` only) and
    publishes `devcontainer-base:latest` with `cache-to: type=inline`. The
    `build-variants` jobs `needs: build-base-cache` and `cache-from` it so the
    byte-identical Base leading layers are reused. `devcontainer-base` is **not**
@@ -774,7 +1041,7 @@ three plus `BuildModes` and tests.
    (`amd64`→`x64`; `arm64` stays `arm64`, including native `darwin-arm64` —
    there is no Rosetta fallback.)
 4. **Build modes** — see above.
-5. **Fingerprint** (`local-cached`) — SHA-256 of normalized Dockerfile +
+5. **Fingerprint** (`custom` mode) — SHA-256 of normalized Dockerfile +
    copyFile contents + sorted module ids + sorted build args (the resolved host
    `USER_UID`/`USER_GID`), first 12 chars → `image =
    devcontainer-cli/<fp12>:latest`. Derived from the **Dockerfile**, not the

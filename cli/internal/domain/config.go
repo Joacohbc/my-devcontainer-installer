@@ -32,9 +32,15 @@ func LoadConfig(cwd string) (*types.DevcontainerConfig, error) {
 		cfg.Workspace = SanitizeDockerName(filepath.Base(cwd), "devcontainer")
 	}
 
-	isLegacyMode := cfg.Mode == "" || cfg.Mode == "custom" || cfg.Mode == "standalone"
-	if isLegacyMode {
-		cfg.Mode = types.BuildModeLocalCached
+	// "custom"/"standalone" are the ancient spellings of the full local build;
+	// "local-cached" was its spelling before this rename, and now collides with
+	// nothing since BuildModeCustom's own value is "custom". "remote" was the old
+	// spelling of the profile-pull mode, now BuildModeProfiles ("profiles").
+	isLegacyLocalMode := cfg.Mode == "" || cfg.Mode == "custom" || cfg.Mode == "standalone" || cfg.Mode == "local-cached"
+	if isLegacyLocalMode {
+		cfg.Mode = types.BuildModeCustom
+	} else if cfg.Mode == "remote" {
+		cfg.Mode = types.BuildModeProfiles
 	}
 
 	cfg.Dockerfile.Modules = migrateDbclients(cfg.Dockerfile.Modules)
@@ -61,7 +67,7 @@ func migrateTunnel(cfg *types.DevcontainerConfig) {
 
 	// Remote-mode configs carry no modules (the prebuilt image decides what is
 	// installed), so there is nothing to migrate the service into.
-	if cfg.Mode == types.BuildModeRemote {
+	if cfg.Mode == types.BuildModeProfiles {
 		return
 	}
 	if hasModule(cfg.Dockerfile.Modules, types.ModuleCloudflared) {
@@ -137,7 +143,7 @@ func SaveConfig(config *types.DevcontainerConfig, cwd string) error {
 func DefaultConfig(cwd string) *types.DevcontainerConfig {
 	workspace := SanitizeDockerName(filepath.Base(cwd), "devcontainer")
 	return &types.DevcontainerConfig{
-		Mode:      types.BuildModeLocalCached,
+		Mode:      types.BuildModeCustom,
 		Image:     workspace + ":local",
 		Workspace: workspace,
 		Dockerfile: types.DockerfileConfig{

@@ -13,7 +13,7 @@ import (
 
 func makeConfig(overrides ...func(*types.DevcontainerConfig)) *types.DevcontainerConfig {
 	cfg := &types.DevcontainerConfig{
-		Mode:      types.BuildModeLocalCached,
+		Mode:      types.BuildModeCustom,
 		Image:     "devcontainer-ssh:local",
 		Workspace: "devcontainer",
 		Dockerfile: types.DockerfileConfig{
@@ -351,7 +351,7 @@ func TestGenerateDockerfile_NodejsFnmSpecificVersion(t *testing.T) {
 
 func TestGenerateDockerfile_RemoteModeReturnsEmpty(t *testing.T) {
 	cfg := makeConfig(func(c *types.DevcontainerConfig) {
-		c.Mode = types.BuildModeRemote
+		c.Mode = types.BuildModeProfiles
 		c.Remote = &types.RemoteConfig{Variant: "python"}
 	})
 	out, err := domain.GenerateDockerfile(cfg)
@@ -731,7 +731,7 @@ func TestGenerateCompose_SharedConfigDisabled(t *testing.T) {
 
 func TestGenerateCompose_SharedConfigRemoteMode(t *testing.T) {
 	cfg := makeConfig(func(c *types.DevcontainerConfig) {
-		c.Mode = types.BuildModeRemote
+		c.Mode = types.BuildModeProfiles
 		c.Remote = &types.RemoteConfig{Variant: "nodejs"}
 	})
 	yml := mustGenerateCompose(t, cfg)
@@ -807,7 +807,7 @@ func TestGenerateCompose_DBServicesHaveNoHostname(t *testing.T) {
 
 func TestGenerateCompose_RemoteModeOmitsBuild(t *testing.T) {
 	cfg := makeConfig(func(c *types.DevcontainerConfig) {
-		c.Mode = types.BuildModeRemote
+		c.Mode = types.BuildModeProfiles
 		c.Image = "ghcr.io/joacohbc/devcontainer-node-java-temurin:latest"
 		c.Remote = &types.RemoteConfig{Variant: "node-java-temurin"}
 	})
@@ -828,7 +828,7 @@ func TestGenerateCompose_RemoteModeOmitsBuild(t *testing.T) {
 
 func TestGenerateCompose_RemoteModeWithDBService(t *testing.T) {
 	cfg := makeConfig(func(c *types.DevcontainerConfig) {
-		c.Mode = types.BuildModeRemote
+		c.Mode = types.BuildModeProfiles
 		c.Image = "ghcr.io/joacohbc/devcontainer-nodejs:latest"
 		c.Remote = &types.RemoteConfig{Variant: "nodejs"}
 		c.Compose.Services = []types.SelectedService{{ID: "mongo"}}
@@ -870,7 +870,7 @@ func TestResolveRemoteImage_DefaultRegistry(t *testing.T) {
 
 func TestGenerateCompose_FingerprintUsedAsImageName(t *testing.T) {
 	cfg := makeConfig(func(c *types.DevcontainerConfig) {
-		c.Mode = types.BuildModeLocalCached
+		c.Mode = types.BuildModeCustom
 		c.Fingerprint = "abc123def4567890abc123def4567890"
 		c.Image = "should-not-be-used:tag"
 	})
@@ -895,7 +895,7 @@ func TestGenerateCompose_FingerprintUsedAsImageName(t *testing.T) {
 
 func TestGenerateCompose_LocalCachedBakesHostUIDAsBuildArgs(t *testing.T) {
 	cfg := makeConfig(func(c *types.DevcontainerConfig) {
-		c.Mode = types.BuildModeLocalCached
+		c.Mode = types.BuildModeCustom
 		c.BuildUID = 1234
 		c.BuildGID = 5678
 	})

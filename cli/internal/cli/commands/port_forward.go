@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/pick"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/service"
 	"github.com/spf13/cobra"
 )
@@ -388,6 +389,19 @@ func runPortForward(cmd *cobra.Command, args []string) error {
 		portMapping = args[0]
 	}
 
+	// With no argument, a project that configured its tunnels (from a profile or
+	// --forward-ports) gets those instead of the picker: that is what makes them
+	// automatic. Passing a mapping still overrides them.
+	if portMapping == "" {
+		opened, err := forwardConfiguredPorts(alias, serviceFlag, interactive)
+		if err != nil {
+			return err
+		}
+		if opened {
+			return nil
+		}
+	}
+
 	if portMapping == "" && interactive {
 		tunnels, err := buildTunnelsInteractive(alias, interactive)
 		if err != nil {
@@ -415,54 +429,9 @@ func runPortForward(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	containerName := alias
-	if containerName == "" {
-		containerName = mapping.targetHost
-	}
-	if alias == "" {
-		container, perr := pickManagedContainer("Select devcontainer to forward into:", pickContainerOptions{Interactive: interactive})
-		if perr != nil {
-			return perr
-		}
-		containerName = container.Name
-		candidate := pick.ContainerWorkspace(container.Name)
-		if candidate == "" {
-			candidate = container.Name
-		}
-		aliases := getSSHAliases()
-		switch {
-		case slices.Contains(aliases, candidate):
-			alias = candidate
-		case len(aliases) == 0:
-			if !interactive {
-				return fmt.Errorf("no SSH aliases found in config. Run 'ssh --setup' first or specify --alias")
-			}
-			alias, err = console.AskDefault(fmt.Sprintf("No SSH alias found for '%s'. Enter alias manually:", container.Name), candidate, func(v string) error {
-				if strings.TrimSpace(v) == "" {
-					return fmt.Errorf("SSH alias cannot be empty")
-				}
-				return nil
-			})
-			if err != nil {
-				return err
-			}
-		case len(aliases) == 1:
-			alias = aliases[0]
-			console.Info("Using SSH alias '%s'.", alias)
-		default:
-			if !interactive {
-				return fmt.Errorf("SSH alias '%s' not found in any SSH config. Specify --alias or run interactively", candidate)
-			}
-			choices := make([]service.Option, len(aliases))
-			for i, a := range aliases {
-				choices[i] = service.Option{Value: a, Label: a}
-			}
-			chosen, serr := console.Select(fmt.Sprintf("Select SSH alias for container '%s':", container.Name), choices, choices[0])
-			if serr != nil {
-				return serr
-			}
-			alias = chosen.Value
-		}
+	alias, containerName, err := resolveTunnelTarget(alias, mapping.targetHost, interactive)
+	if err != nil {
+		return err
 	}
 
 	tunnel := service.Tunnel{
@@ -476,4 +445,105 @@ func runPortForward(cmd *cobra.Command, args []string) error {
 	printTunnelPlan([]service.Tunnel{tunnel})
 	console.Success("Press Ctrl+C to terminate the port forwarding session.\n")
 	return service.PortForwardService{Report: console}.OpenTunnels([]service.Tunnel{tunnel})
+}
+
+// forwardConfiguredPorts opens the tunnels the current project declared, and
+// reports whether it opened any. A directory that is not a generated project,
+// or one that declared none, falls through to the usual paths.
+func forwardConfiguredPorts(alias, serviceFlag string, interactive bool) (bool, error) {
+	cwd, err := currentDir()
+	if err != nil {
+		return false, nil
+	}
+	config, err := domain.LoadConfig(cwd)
+	if err != nil || config == nil || len(config.ForwardPorts) == 0 {
+		return false, nil
+	}
+
+	mappings := make([]parsedMapping, 0, len(config.ForwardPorts))
+	for _, spec := range config.ForwardPorts {
+		mapping, perr := parsePortMapping(spec, serviceFlag)
+		if perr != nil {
+			return false, fmt.Errorf("configured forward port %q: %w", spec, perr)
+		}
+		mappings = append(mappings, mapping)
+	}
+
+	alias, containerName, err := resolveTunnelTarget(alias, mappings[0].targetHost, interactive)
+	if err != nil {
+		return false, err
+	}
+
+	tunnels := make([]service.Tunnel, 0, len(mappings))
+	for _, mapping := range mappings {
+		tunnels = append(tunnels, service.Tunnel{
+			LocalPort:      mapping.localPort,
+			ContainerPort:  mapping.containerPort,
+			TargetHost:     mapping.targetHost,
+			Alias:          alias,
+			ContainerName:  containerName,
+			IsDevcontainer: true,
+		})
+	}
+
+	console.Info("Forwarding this project's configured ports: %s", strings.Join(config.ForwardPorts, ", "))
+	printTunnelPlan(tunnels)
+	console.Success("Press Ctrl+C to terminate the port forwarding session.\n")
+	return true, service.PortForwardService{Report: console}.OpenTunnels(tunnels)
+}
+
+// resolveTunnelTarget settles which container to tunnel into and which SSH alias
+// to reach it through. With an explicit --alias both are already known; without
+// one it picks a managed container and then matches it to an alias, asking when
+// the match is ambiguous.
+func resolveTunnelTarget(alias, fallbackContainer string, interactive bool) (string, string, error) {
+	if alias != "" {
+		return alias, alias, nil
+	}
+
+	container, err := pickManagedContainer("Select devcontainer to forward into:", pickContainerOptions{Interactive: interactive})
+	if err != nil {
+		return "", "", err
+	}
+	containerName := container.Name
+	candidate := pick.ContainerWorkspace(container.Name)
+	if candidate == "" {
+		candidate = container.Name
+	}
+
+	aliases := getSSHAliases()
+	switch {
+	case slices.Contains(aliases, candidate):
+		return candidate, containerName, nil
+	case len(aliases) == 0:
+		if !interactive {
+			return "", "", fmt.Errorf("no SSH aliases found in config. Run 'ssh --setup' first or specify --alias")
+		}
+		entered, aerr := console.AskDefault(fmt.Sprintf("No SSH alias found for '%s'. Enter alias manually:", container.Name), candidate, func(v string) error {
+			if strings.TrimSpace(v) == "" {
+				return fmt.Errorf("SSH alias cannot be empty")
+			}
+			return nil
+		})
+		if aerr != nil {
+			return "", "", aerr
+		}
+		return entered, containerName, nil
+	case len(aliases) == 1:
+		console.Info("Using SSH alias '%s'.", aliases[0])
+		return aliases[0], containerName, nil
+	default:
+		if !interactive {
+			return "", "", fmt.Errorf("SSH alias '%s' not found in any SSH config. Specify --alias or run interactively", candidate)
+		}
+		choices := make([]service.Option, len(aliases))
+		for i, a := range aliases {
+			choices[i] = service.Option{Value: a, Label: a}
+		}
+		chosen, serr := console.Select(fmt.Sprintf("Select SSH alias for container '%s':", container.Name), choices, choices[0])
+		if serr != nil {
+			return "", "", serr
+		}
+		return chosen.Value, containerName, nil
+	}
 }

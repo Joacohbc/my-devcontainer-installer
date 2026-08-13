@@ -209,7 +209,7 @@ func TestConfigExportYAML(t *testing.T) {
 	tmp := t.TempDir()
 	svc := ConfigService{Report: nopReporter{}}
 
-	cfg := &types.DevcontainerConfig{Workspace: "myws", Mode: types.BuildModeLocalCached}
+	cfg := &types.DevcontainerConfig{Workspace: "myws", Mode: types.BuildModeCustom}
 	if err := svc.SaveProjectConfig(tmp, cfg); err != nil {
 		t.Fatalf("SaveProjectConfig: %v", err)
 	}

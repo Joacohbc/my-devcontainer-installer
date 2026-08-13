@@ -10,21 +10,31 @@ import (
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 )
 
-var modeLabels = map[types.BuildMode]string{
-	types.BuildModeLocalCached: "local-cached — generate Dockerfile + compose, reuse cached image when unchanged",
-	types.BuildModeRemote:      "remote — skip the build, pull a pre-built image from the registry",
+// modeChoiceCustomFromProfile is the wizard-only third mode-step option: still
+// types.BuildModeCustom underneath (currentMode normalizes it), but it also
+// triggers the profile-picker step that plain "custom" skips. It has no
+// meaning past the wizard — reduce() never stores it, only the normalized
+// BuildMode.
+const modeChoiceCustomFromProfile = "custom-from-profile"
+
+var modeChoiceLabels = map[string]string{
+	string(types.BuildModeCustom):   "custom — pick modules yourself, build locally",
+	modeChoiceCustomFromProfile:     "custom, from a profile — start from a saved module bundle, build locally",
+	string(types.BuildModeProfiles): "profiles — skip the build, pull a pre-built image for a catalog profile",
 }
 
 const (
 	stepKeyWorkspace    = "workspace"
 	stepKeyMode         = "mode"
-	stepKeyPreset       = "preset"
+	stepKeyProfile      = "profile"
 	stepKeyVariant      = "variant"
 	stepKeyImage        = "image"
 	stepKeySubnet       = "subnet"
 	stepKeyPorts        = "ports"
 	stepKeyVolumes      = "volumes"
 	stepKeySharedConfig = "sharedConfig"
+	stepKeySkills       = "skills"
+	stepKeySkillsMode   = "skillsMode"
 )
 
 func categoryStepKey(c types.UICategory) string  { return "cat:" + string(c) }
@@ -102,17 +112,22 @@ func optionAnswer(s *State, key string, o types.ModuleOption) any {
 	}
 }
 
+// currentMode normalizes the raw wizard mode-choice answer (3 options: plain
+// custom, custom-from-a-profile, or profiles) down to the 2 real
+// types.BuildMode values used everywhere past this step. Only the literal
+// "profiles" choice means profiles mode; every other raw value (including the
+// unanswered "") is some flavor of custom.
 func currentMode(s *State) types.BuildMode {
-	if mode := s.String(stepKeyMode); mode != "" {
-		return types.BuildMode(mode)
+	if s.String(stepKeyMode) == string(types.BuildModeProfiles) {
+		return types.BuildModeProfiles
 	}
-	return types.BuildModeLocalCached
+	return types.BuildModeCustom
 }
 
 func categoryChoices(c types.UICategory, mode types.BuildMode, selectedModules map[string]bool) []Option {
 	var choices []Option
 	for _, e := range catalog.SelectableByCategory()[c] {
-		if !e.IsService && mode != types.BuildModeLocalCached {
+		if !e.IsService && mode != types.BuildModeCustom {
 			continue
 		}
 		if e.IsService {
@@ -165,18 +180,26 @@ type wizardContext struct {
 	workspace       string
 	usedSubnets     []domain.CidrRange
 	suggestedSubnet string
-	userPresets     []catalog.Preset
+	// allProfiles is every known profile — built-in and the user's own — for
+	// the "custom, from a profile" picker (profileStep). Unlike the module
+	// category steps, which only ever offer catalog module ids, this one lists
+	// whole profiles, so it needs the full catalog rather than just modules.
+	allProfiles []catalog.Profile
 }
 
 func (w wizardContext) steps(s *State) []Step {
 	steps := []Step{w.workspaceStep(), w.modeStep()}
 
-	if currentMode(s) == types.BuildModeRemote {
+	switch s.String(stepKeyMode) {
+	case string(types.BuildModeProfiles):
 		steps = append(steps, w.variantStep())
-	} else if step, ok := w.presetStep(); ok {
-		// In local-cached mode, optionally start from one of the user's presets,
-		// which pre-selects its modules before the per-category steps.
-		steps = append(steps, step)
+	case modeChoiceCustomFromProfile:
+		// Only appears when the user explicitly chose to start from a profile
+		// (built-in or their own); it pre-selects that profile's modules before
+		// the per-category steps.
+		if step, ok := w.profileStep(); ok {
+			steps = append(steps, step)
+		}
 	}
 
 	steps = append(steps, w.categorySteps(s)...)
@@ -189,6 +212,7 @@ func (w wizardContext) steps(s *State) []Step {
 	steps = append(steps, w.portsStep())
 	steps = append(steps, w.volumesStep())
 	steps = append(steps, w.sharedConfigStep())
+	steps = append(steps, w.skillSteps(s)...)
 	steps = append(steps, w.envSteps(s)...)
 	return steps
 }
@@ -214,7 +238,7 @@ func (w wizardContext) portsStep() Step {
 		}
 		return Field{
 			Kind:    FieldInput,
-			Title:   "Puertos a publicar en el devcontainer (ej. 8080:80,5432:5432 — bind a 127.0.0.1; vacío para ninguno):",
+			Title:   "Ports to publish on the devcontainer (e.g. 8080:80,5432:5432 — bound to 127.0.0.1; empty for none):",
 			Initial: initial,
 		}
 	}}
@@ -241,7 +265,7 @@ func (w wizardContext) volumesStep() Step {
 		}
 		return Field{
 			Kind:    FieldInput,
-			Title:   "Volúmenes extra a montar en el devcontainer (ej. myvol:/data,./cache:/cache — vacío para ninguno):",
+			Title:   "Extra volumes to mount on the devcontainer (e.g. myvol:/data,./cache:/cache — empty for none):",
 			Initial: initial,
 		}
 	}}
@@ -255,7 +279,7 @@ func (w wizardContext) sharedConfigStep() Step {
 		}
 		return Field{
 			Kind:    FieldConfirm,
-			Title:   "Montar el volumen global de config compartida (logins/sesiones de Claude, gh, codex… persisten entre contenedores)?",
+			Title:   "Mount the global shared config volume (logins/sessions for Claude, gh, codex… persist across containers)?",
 			Initial: initial,
 		}
 	}}
@@ -281,15 +305,22 @@ func (w wizardContext) workspaceStep() Step {
 	}}
 }
 
+// modeStep offers all 3 starting points up front (plain custom, custom from a
+// profile, profiles/remote) rather than nesting the profile choice as an
+// auto-appearing sub-step of custom — see modeChoiceCustomFromProfile.
 func (w wizardContext) modeStep() Step {
 	return Step{Key: stepKeyMode, Build: func(s *State) Field {
-		choices := make([]Option, len(types.BuildModes))
-		for i, m := range types.BuildModes {
-			choices[i] = Option{Value: string(m), Label: modeLabels[m]}
+		modeChoiceOrder := []string{string(types.BuildModeCustom), modeChoiceCustomFromProfile, string(types.BuildModeProfiles)}
+		choices := make([]Option, len(modeChoiceOrder))
+		for i, m := range modeChoiceOrder {
+			choices[i] = Option{Value: m, Label: modeChoiceLabels[m]}
 		}
+		// An existing project only ever persisted a real BuildMode, never the
+		// wizard-only "from a profile" choice, so re-entering the wizard always
+		// defaults to plain custom/profiles rather than guessing at intent.
 		initial := string(w.base.Mode)
 		if initial == "" {
-			initial = string(types.BuildModeLocalCached)
+			initial = string(types.BuildModeCustom)
 		}
 		if s.Has(stepKeyMode) {
 			initial = s.String(stepKeyMode)
@@ -307,20 +338,21 @@ func (w wizardContext) variantStep() Step {
 		if s.Has(stepKeyVariant) {
 			initial = s.String(stepKeyVariant)
 		}
-		return Field{Kind: FieldSelect, Title: "Image variant:", Choices: VariantChoices(), Initial: initial}
+		return Field{Kind: FieldSelect, Title: "Profile:", Choices: ProfileChoices(domain.ProfileDirs()...), Initial: initial}
 	}}
 }
 
-// presetStep lets the user start from one of their saved presets (a module
-// bundle). It is only offered in local-cached mode and when at least one user
-// preset exists. Selecting one seeds the per-category module multiselects.
-func (w wizardContext) presetStep() (Step, bool) {
-	if len(w.userPresets) == 0 {
+// profileStep lets the user start from any known profile — built-in or their
+// own. It only appears when they explicitly picked the "custom, from a
+// profile" mode choice (see steps()), never as an auto-appended extra
+// question. Selecting one seeds the per-category module multiselects.
+func (w wizardContext) profileStep() (Step, bool) {
+	if len(w.allProfiles) == 0 {
 		return Step{}, false
 	}
-	return Step{Key: stepKeyPreset, Build: func(s *State) Field {
-		choices := []Option{{Value: "", Label: "(ninguno — elegir módulos manualmente)"}}
-		for _, p := range w.userPresets {
+	return Step{Key: stepKeyProfile, Build: func(s *State) Field {
+		choices := []Option{{Value: "", Label: "(none — choose modules manually)"}}
+		for _, p := range w.allProfiles {
 			label := p.ID
 			if len(p.Modules) > 0 {
 				label = fmt.Sprintf("%s (%s)", p.ID, strings.Join(p.Modules, ", "))
@@ -328,24 +360,36 @@ func (w wizardContext) presetStep() (Step, bool) {
 			choices = append(choices, Option{Value: p.ID, Label: label})
 		}
 		initial := ""
-		if s.Has(stepKeyPreset) {
-			initial = s.String(stepKeyPreset)
+		if s.Has(stepKeyProfile) {
+			initial = s.String(stepKeyProfile)
 		}
-		return Field{Kind: FieldSelect, Title: "Partir de un preset? (opcional):", Choices: choices, Initial: initial}
+		return Field{Kind: FieldSelect, Title: "Start from which profile?:", Choices: choices, Initial: initial}
 	}}, true
 }
 
-func (w wizardContext) presetByID(id string) (catalog.Preset, bool) {
-	for _, p := range w.userPresets {
+func (w wizardContext) profileByID(id string) (catalog.Profile, bool) {
+	for _, p := range w.allProfiles {
 		if p.ID == id {
 			return p, true
 		}
 	}
-	return catalog.Preset{}, false
+	return catalog.Profile{}, false
 }
 
-// presetCategoryIDs returns the preset's module ids that belong to UI category c.
-func presetCategoryIDs(p catalog.Preset, c types.UICategory) []string {
+// pickedProfile is the profile chosen in profileStep, if any. Every step that
+// comes after it seeds from it through this one accessor — modules, scripts,
+// skills and skills mode alike — so "start from this profile" means the same
+// thing for all of them instead of each step deciding for itself.
+func (w wizardContext) pickedProfile(s *State) (catalog.Profile, bool) {
+	pid := s.String(stepKeyProfile)
+	if pid == "" {
+		return catalog.Profile{}, false
+	}
+	return w.profileByID(pid)
+}
+
+// profileCategoryIDs returns the profile's module ids that belong to UI category c.
+func profileCategoryIDs(p catalog.Profile, c types.UICategory) []string {
 	var ids []string
 	for _, id := range p.Modules {
 		if spec := catalog.GetDockerfileModule(types.ModuleID(id)); spec != nil && spec.UICategory == c {
@@ -363,20 +407,18 @@ func (w wizardContext) categorySteps(s *State) []Step {
 		}
 		category := c
 		steps = append(steps, Step{Key: categoryStepKey(category), Build: func(s *State) Field {
-			// Seed from base, or from the chosen preset's modules in this
+			// Seed from base, or from the chosen profile's modules in this
 			// category. An explicit answer for this category always wins.
 			initial := baseCategoryIDs(w.base, category)
-			if pid := s.String(stepKeyPreset); pid != "" {
-				if p, ok := w.presetByID(pid); ok {
-					initial = presetCategoryIDs(p, category)
-				}
+			if p, ok := w.pickedProfile(s); ok {
+				initial = profileCategoryIDs(p, category)
 			}
 			if s.Has(categoryStepKey(category)) {
 				initial = s.Strings(categoryStepKey(category))
 			}
 			return Field{
 				Kind:    FieldMultiselect,
-				Title:   types.UICategoryLabels[category] + " (Espacio para seleccionar, Enter para confirmar):",
+				Title:   types.UICategoryLabels[category] + " (Space to select, Enter to confirm):",
 				Choices: categoryChoices(category, currentMode(s), selectedModuleIDs(s)),
 				Initial: initial,
 			}
@@ -387,7 +429,7 @@ func (w wizardContext) categorySteps(s *State) []Step {
 
 func (w wizardContext) optionSteps(s *State) []Step {
 	selected := selectedEntryIDs(s)
-	localCached := currentMode(s) == types.BuildModeLocalCached
+	localCached := currentMode(s) == types.BuildModeCustom
 	var steps []Step
 	for _, m := range catalog.DockerfileModules {
 		// Always-on modules (e.g. base) never appear in the category multiselects,
@@ -424,7 +466,7 @@ func (w wizardContext) entryOptionSteps(entryID string, options []types.ModuleOp
 }
 
 func (w wizardContext) remoteImageDerived(s *State) bool {
-	return currentMode(s) == types.BuildModeRemote && s.String(stepKeyVariant) != ""
+	return currentMode(s) == types.BuildModeProfiles && s.String(stepKeyVariant) != ""
 }
 
 func (w wizardContext) imageStep() Step {
@@ -496,7 +538,7 @@ func (w wizardContext) reduce(s *State) *types.DevcontainerConfig {
 	selected := selectedEntryIDs(s)
 
 	var modules []types.SelectedModule
-	if mode == types.BuildModeLocalCached {
+	if mode == types.BuildModeCustom {
 		for _, m := range catalog.DockerfileModules {
 			// Always-on modules are never part of the category selection (see
 			// optionSteps), but their own answered options must still be saved.
@@ -529,7 +571,8 @@ func (w wizardContext) reduce(s *State) *types.DevcontainerConfig {
 		Mode:       mode,
 		Image:      s.String(stepKeyImage),
 		Workspace:  workspace,
-		Dockerfile: types.DockerfileConfig{Modules: modules},
+		Dockerfile: types.DockerfileConfig{Modules: modules, Scripts: w.selectedScripts(s)},
+		Skills:     w.selectedSkills(s),
 		Compose:    types.ComposeConfig{Services: services, Subnet: s.String(stepKeySubnet)},
 		Env:        env,
 	}
@@ -553,7 +596,7 @@ func (w wizardContext) reduce(s *State) *types.DevcontainerConfig {
 		draft.Compose.SharedConfig = w.base.Compose.SharedConfig
 	}
 
-	if mode == types.BuildModeRemote {
+	if mode == types.BuildModeProfiles {
 		variant := s.String(stepKeyVariant)
 		registry := ""
 		if w.base.Remote != nil {
@@ -571,6 +614,30 @@ func (w wizardContext) reduce(s *State) *types.DevcontainerConfig {
 		}
 	}
 	return draft
+}
+
+// selectedScripts are the custom scripts of the profile picked in the wizard,
+// or the ones the project already carried when no profile was picked. Picking a
+// profile replaces them rather than merging: the wizard's profile step is
+// "start from this profile", so leaving the previous profile's scripts behind
+// would quietly build an image neither profile describes.
+//
+// Profiles mode builds no image here, so it carries no scripts either.
+func (w wizardContext) selectedScripts(s *State) []types.CustomScript {
+	if currentMode(s) != types.BuildModeCustom {
+		return nil
+	}
+	p, ok := w.pickedProfile(s)
+	if !ok {
+		return w.base.Dockerfile.Scripts
+	}
+	scripts, err := domain.ProfileScripts(p)
+	if err != nil {
+		// A broken profile must not silently drop the project's own scripts; the
+		// generate flow validates and reports them right after.
+		return w.base.Dockerfile.Scripts
+	}
+	return scripts
 }
 
 func (w wizardContext) entryOptions(s *State, entryID string, options []types.ModuleOption, prevOpts map[string]any) map[string]any {
@@ -606,7 +673,7 @@ func (s GenerateService) Configure(base *types.DevcontainerConfig, cwd string, p
 		workspace:       workspace,
 		usedSubnets:     usedSubnets,
 		suggestedSubnet: domain.FindFreeSubnet(preferredSubnet, usedSubnets),
-		userPresets:     catalog.LoadUserPresets(filepath.Join(domain.GlobalConfigDir(), "presets")),
+		allProfiles:     catalog.All(domain.ProfileDirs()...),
 	}
 
 	state, err := prompt.Wizard(ctx.steps)
@@ -617,7 +684,7 @@ func (s GenerateService) Configure(base *types.DevcontainerConfig, cwd string, p
 }
 
 // moduleChoices lists the selectable Dockerfile modules in a UI category,
-// excluding compose services (a preset is a pure module bundle).
+// excluding compose services (a profile is a pure module bundle).
 func moduleChoices(c types.UICategory) []Option {
 	var out []Option
 	for _, e := range catalog.SelectableByCategory()[c] {
@@ -643,8 +710,8 @@ func baseModuleIDs(base *types.DevcontainerConfig, c types.UICategory) []string 
 
 // SelectModules runs a trimmed wizard that only offers the per-category module
 // multiselects (no services, options, workspace, ports, volumes, …) and returns
-// the chosen module ids in catalog order. It backs `config preset create`, where
-// a preset is just a reusable bundle of modules.
+// the chosen module ids in catalog order. It backs `config profile create`, where
+// a profile is just a reusable bundle of modules.
 func (s GenerateService) SelectModules(base *types.DevcontainerConfig, prompt Prompter) ([]string, error) {
 	build := func(*State) []Step {
 		var steps []Step
@@ -661,7 +728,7 @@ func (s GenerateService) SelectModules(base *types.DevcontainerConfig, prompt Pr
 				}
 				return Field{
 					Kind:    FieldMultiselect,
-					Title:   types.UICategoryLabels[category] + " (Espacio para seleccionar, Enter para confirmar):",
+					Title:   types.UICategoryLabels[category] + " (Space to select, Enter to confirm):",
 					Choices: choices,
 					Initial: initial,
 				}
@@ -685,11 +752,146 @@ func (s GenerateService) SelectModules(base *types.DevcontainerConfig, prompt Pr
 	return ids, nil
 }
 
-// VariantChoices lists the selectable remote image variants.
-func VariantChoices() []Option {
-	choices := make([]Option, len(types.RemoteVariants))
-	for i, v := range types.RemoteVariants {
-		choices[i] = Option{Value: v, Label: types.VariantLabels[v]}
+// ProfileChoices lists the profiles usable for --profile under the "profiles"
+// build mode: those with Profile.Remote set, i.e. a published
+// ghcr.io/devcontainer-<id> image built by CI. A profile without one (e.g.
+// 'scraper') can still be applied locally via --profile in mode=custom, but
+// is left out here — offering it would just fail the pull.
+func ProfileChoices(dirs ...string) []Option {
+	var choices []Option
+	for _, p := range catalog.All(dirs...) {
+		if !p.Remote {
+			continue
+		}
+		label := p.ID
+		if p.Label != "" {
+			label = fmt.Sprintf("%s — %s", p.ID, p.Label)
+		}
+		choices = append(choices, Option{Value: p.ID, Label: label})
 	}
 	return choices
+}
+
+// skillSteps let the project pick agent skills and how they get installed. The
+// mode step only appears once a skill is selected, since it has nothing to
+// govern otherwise. Profiles mode is skipped: the installer and its alias come
+// from a Dockerfile module, and a prebuilt image was not built with it.
+func (w wizardContext) skillSteps(s *State) []Step {
+	if currentMode(s) != types.BuildModeCustom || len(catalog.AllAgentSkills(domain.SkillDirs()...)) == 0 {
+		return nil
+	}
+	steps := []Step{w.skillsStep()}
+	if len(s.Strings(stepKeySkills)) > 0 {
+		steps = append(steps, w.skillsModeStep())
+	}
+	return steps
+}
+
+func (w wizardContext) skillsStep() Step {
+	return Step{Key: stepKeySkills, Build: func(s *State) Field {
+		all := catalog.AllAgentSkills(domain.SkillDirs()...)
+		choices := make([]Option, 0, len(all))
+		for _, spec := range all {
+			choices = append(choices, Option{Value: string(spec.ID), Label: spec.Label})
+		}
+		// Seeded like the category steps: base, then the chosen profile's own
+		// skills, then an explicit answer. A profile that declares skills means
+		// them the same way it means its modules, so they arrive pre-checked
+		// rather than as something to re-pick by hand.
+		initial := skillIDStrings(w.base.Skills.Skills)
+		if p, ok := w.pickedProfile(s); ok {
+			initial = skillIDStrings(p.Skills)
+		}
+		if s.Has(stepKeySkills) {
+			initial = s.Strings(stepKeySkills)
+		}
+		return Field{
+			Kind:    FieldMultiselect,
+			Title:   "Agent skills for the project (installed into the workspace):",
+			Choices: choices,
+			Initial: initial,
+		}
+	}}
+}
+
+func (w wizardContext) skillsModeStep() Step {
+	return Step{Key: stepKeySkillsMode, Build: func(s *State) Field {
+		choices := []Option{
+			{Value: string(types.SkillModeAuto), Label: "auto — install them on every container start"},
+			{Value: string(types.SkillModeManual), Label: "manual — leave the install_skills command for you"},
+		}
+		initial := string(w.base.Skills.ResolvedMode())
+		// A profile that pinned a mode carries it too — its skills and the way
+		// they install are one decision, not two.
+		if p, ok := w.pickedProfile(s); ok && p.SkillsMode != "" {
+			initial = string(p.SkillsMode)
+		}
+		if s.Has(stepKeySkillsMode) {
+			initial = s.String(stepKeySkillsMode)
+		}
+		return Field{Kind: FieldSelect, Title: "When should the skills install?", Choices: choices, Initial: initial}
+	}}
+}
+
+func (w wizardContext) selectedSkills(s *State) types.SkillsConfig {
+	if currentMode(s) != types.BuildModeCustom {
+		return types.SkillsConfig{}
+	}
+	// The skills step normally always runs in custom mode; when it did not,
+	// fall back the same way selectedScripts does — to the chosen profile's
+	// own skills, or the project's existing ones.
+	if !s.Has(stepKeySkills) {
+		if p, ok := w.pickedProfile(s); ok {
+			return types.SkillsConfig{Mode: p.SkillsMode, Skills: p.Skills}
+		}
+		return w.base.Skills
+	}
+	selected := s.Strings(stepKeySkills)
+	skills := make([]types.SkillID, 0, len(selected))
+	for _, id := range selected {
+		skills = append(skills, types.SkillID(id))
+	}
+	if len(skills) == 0 {
+		return types.SkillsConfig{}
+	}
+	mode := w.base.Skills.Mode
+	if p, ok := w.pickedProfile(s); ok && p.SkillsMode != "" {
+		mode = p.SkillsMode
+	}
+	if s.Has(stepKeySkillsMode) {
+		mode = types.SkillMode(s.String(stepKeySkillsMode))
+	}
+	return types.SkillsConfig{Mode: mode, Skills: skills}
+}
+
+func skillIDStrings(ids []types.SkillID) []string {
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, string(id))
+	}
+	return out
+}
+
+// SelectSkills runs a skills-only wizard: which agent skills a profile carries
+// and how a project using it installs them. It backs `config profile create`,
+// where skills are part of the bundle just like modules.
+func (s GenerateService) SelectSkills(base types.SkillsConfig, prompt Prompter) (types.SkillsConfig, error) {
+	if len(catalog.AllAgentSkills(domain.SkillDirs()...)) == 0 {
+		return types.SkillsConfig{}, nil
+	}
+
+	ctx := wizardContext{base: &types.DevcontainerConfig{Skills: base}}
+	build := func(st *State) []Step {
+		steps := []Step{ctx.skillsStep()}
+		if len(st.Strings(stepKeySkills)) > 0 {
+			steps = append(steps, ctx.skillsModeStep())
+		}
+		return steps
+	}
+
+	state, err := prompt.Wizard(build)
+	if err != nil {
+		return types.SkillsConfig{}, err
+	}
+	return ctx.selectedSkills(state), nil
 }

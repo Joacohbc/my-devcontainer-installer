@@ -3,6 +3,7 @@ package catalog
 import (
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/modules/compose"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/modules/dockerfile"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/modules/skills"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 )
 
@@ -42,6 +43,7 @@ var DockerfileModules = []*dockerfile.ModuleSpec{
 	dockerfile.DodModule,
 	dockerfile.NgrokModule,
 	dockerfile.CloudflaredModule,
+	dockerfile.SkillsModule,
 	dockerfile.CleanupModule,
 }
 
@@ -138,7 +140,7 @@ type CategorizedEntry struct {
 func SelectableByCategory() map[types.UICategory][]CategorizedEntry {
 	out := map[types.UICategory][]CategorizedEntry{}
 	for _, m := range DockerfileModules {
-		if m.Always || m.UICategory == "" {
+		if m.Always || m.Internal || m.UICategory == "" {
 			continue
 		}
 		out[m.UICategory] = append(out[m.UICategory], CategorizedEntry{ID: string(m.ID), Label: m.Label})
@@ -163,4 +165,54 @@ func CategoriesInOrder() []types.UICategory {
 		}
 	}
 	return out
+}
+
+// AgentSkills is the built-in catalogue of installable agent skills.
+var AgentSkills = skills.All
+
+// AllAgentSkills is every known skill: the user's own, loaded from dirs, then
+// the built-ins not shadowed by one of the same id — the same precedence
+// catalog.All gives a user profile over a built-in one. dirs is normally
+// domain.SkillDirs(); a caller passing none just gets AgentSkills.
+func AllAgentSkills(dirs ...string) []*skills.Spec {
+	seen := map[types.SkillID]bool{}
+	var out []*skills.Spec
+	for _, dir := range dirs {
+		for _, s := range LoadUserSkills(dir) {
+			if seen[s.ID] {
+				continue
+			}
+			seen[s.ID] = true
+			out = append(out, s)
+		}
+	}
+	for _, s := range AgentSkills {
+		if seen[s.ID] {
+			continue
+		}
+		out = append(out, s)
+	}
+	return out
+}
+
+// GetAgentSkill returns the spec for a skill id — built-in, or user-defined
+// under one of dirs — or nil when it is unknown.
+func GetAgentSkill(id types.SkillID, dirs ...string) *skills.Spec {
+	for _, s := range AllAgentSkills(dirs...) {
+		if s.ID == id {
+			return s
+		}
+	}
+	return nil
+}
+
+// AgentSkillIDs returns every known skill id — built-in and user-defined
+// under dirs — in catalogue order.
+func AgentSkillIDs(dirs ...string) []string {
+	all := AllAgentSkills(dirs...)
+	ids := make([]string, 0, len(all))
+	for _, s := range all {
+		ids = append(ids, string(s.ID))
+	}
+	return ids
 }

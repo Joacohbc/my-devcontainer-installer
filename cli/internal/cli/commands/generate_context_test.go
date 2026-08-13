@@ -12,7 +12,7 @@ import (
 
 func contextTestConfig() *types.DevcontainerConfig {
 	return &types.DevcontainerConfig{
-		Mode:       types.BuildModeLocalCached,
+		Mode:       types.BuildModeCustom,
 		Image:      "devcontainer-cli/test:latest",
 		Workspace:  "ctxws",
 		Dockerfile: types.DockerfileConfig{Modules: []types.SelectedModule{{ID: types.ModulePython}}},
@@ -81,7 +81,7 @@ func TestPrepareBuildDirContextVariesWithServices(t *testing.T) {
 func TestPrepareBuildDirSkipsContextForRemote(t *testing.T) {
 	cwd := t.TempDir()
 	config := contextTestConfig()
-	config.Mode = types.BuildModeRemote
+	config.Mode = types.BuildModeProfiles
 	paths := project.ProjectPaths(cwd, config.Workspace)
 
 	copyContents, _, err := prepareBuildDir(cwd, config, paths)

@@ -57,7 +57,7 @@ func composeBuild(projectDir, composeFile string, args []string) error {
 func (s UpdateService) UpdateOne(projectDir string, config *types.DevcontainerConfig, pull, rebuild bool) (string, bool) {
 	s.Report.Info("Updating '%s' (mode=%s) at %s", config.Workspace, config.Mode, projectDir)
 
-	if config.Mode == types.BuildModeRemote {
+	if config.Mode == types.BuildModeProfiles {
 		if config.Remote == nil {
 			s.Report.Warn("Remote config missing — skipping.")
 			return config.Image, false

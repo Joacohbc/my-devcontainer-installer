@@ -10,7 +10,7 @@ import (
 
 func localCachedConfig() *types.DevcontainerConfig {
 	return &types.DevcontainerConfig{
-		Mode:       types.BuildModeLocalCached,
+		Mode:       types.BuildModeCustom,
 		Workspace:  "ws",
 		Dockerfile: types.DockerfileConfig{Modules: []types.SelectedModule{{ID: "nodejs", Options: map[string]any{}}}},
 		Compose:    types.ComposeConfig{Subnet: "172.30.0.0/16"},
@@ -58,7 +58,7 @@ func TestPlanRemoteSkipsDockerfile(t *testing.T) {
 	defer restore()
 
 	config := &types.DevcontainerConfig{
-		Mode:      types.BuildModeRemote,
+		Mode:      types.BuildModeProfiles,
 		Image:     "ghcr.io/owner/devcontainer-nodejs:latest",
 		Workspace: "ws",
 		Remote:    &types.RemoteConfig{Variant: "nodejs"},

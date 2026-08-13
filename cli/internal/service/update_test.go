@@ -28,7 +28,7 @@ func TestUpdateOneLocalComputesComposeArgs(t *testing.T) {
 			defer restore()
 
 			projectDir := t.TempDir()
-			config := &types.DevcontainerConfig{Mode: types.BuildModeLocalCached, Workspace: "ws", Image: "img:latest"}
+			config := &types.DevcontainerConfig{Mode: types.BuildModeCustom, Workspace: "ws", Image: "img:latest"}
 			composeFile := project.ProjectPaths(projectDir, config.Workspace).ComposeFile
 			if err := os.MkdirAll(filepath.Dir(composeFile), 0o755); err != nil {
 				t.Fatal(err)
@@ -64,7 +64,7 @@ func TestUpdateOneRemotePulls(t *testing.T) {
 	defer restore()
 
 	config := &types.DevcontainerConfig{
-		Mode:      types.BuildModeRemote,
+		Mode:      types.BuildModeProfiles,
 		Workspace: "ws",
 		Remote:    &types.RemoteConfig{Variant: "nodejs"},
 	}
@@ -82,7 +82,7 @@ func TestUpdateOneRemoteMissingConfigFails(t *testing.T) {
 	restore := useFakeDocker(&fakeRunner{status: 0})
 	defer restore()
 
-	config := &types.DevcontainerConfig{Mode: types.BuildModeRemote, Workspace: "ws"}
+	config := &types.DevcontainerConfig{Mode: types.BuildModeProfiles, Workspace: "ws"}
 	svc := UpdateService{Report: nopReporter{}}
 	if _, ok := svc.UpdateOne(t.TempDir(), config, false, false); ok {
 		t.Error("expected failure when remote config is missing")

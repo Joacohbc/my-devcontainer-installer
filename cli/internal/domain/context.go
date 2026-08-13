@@ -22,7 +22,7 @@ import (
 // are prebuilt elsewhere and ship the CONTEXT.md of the module set they were
 // built with, so there is nothing for this project to COPY.
 func GenerateContext(config *types.DevcontainerConfig) (string, error) {
-	if config.Mode == types.BuildModeRemote {
+	if config.Mode == types.BuildModeProfiles {
 		return "", nil
 	}
 
@@ -43,7 +43,48 @@ func GenerateContext(config *types.DevcontainerConfig) (string, error) {
 		writeContextSection(&b, sec)
 	}
 
+	for _, sec := range skillContextSections(config) {
+		writeContextSection(&b, sec)
+	}
+
+	writeContextSection(&b, customScriptsContextSection(config))
+
 	return strings.TrimRight(b.String(), "\n") + "\n", nil
+}
+
+// customScriptsContextSection tells the agent which of the scripts in this
+// image are the user's own and what already ran, so it does not re-run a build
+// script or wait for a manual one to have happened by itself. Nil when the
+// project brought no scripts, which is the common case.
+func customScriptsContextSection(config *types.DevcontainerConfig) *types.ContextSection {
+	build, start, manual, err := PartitionCustomScripts(config)
+	if err != nil || len(build)+len(start)+len(manual) == 0 {
+		return nil
+	}
+
+	var lines []string
+	lines = append(lines, "This project ships scripts of its own, added through its profile or `--script`.\n")
+	if len(build) > 0 {
+		lines = append(lines, "Already run when the image was built (do not run them again):\n")
+		for _, f := range build {
+			lines = append(lines, "- `"+f+"`")
+		}
+		lines = append(lines, "")
+	}
+	if len(start) > 0 {
+		lines = append(lines, "Run once per container on start, by the entrypoint (logs under `~/.post-script-state`):\n")
+		for _, f := range start {
+			lines = append(lines, "- `"+types.PostScriptDir+"/"+f+"`")
+		}
+		lines = append(lines, "")
+	}
+	if len(manual) > 0 {
+		lines = append(lines, "Copied in but never run automatically — run one yourself if you need it:\n")
+		for _, f := range manual {
+			lines = append(lines, "- `"+types.PostScriptDir+"/"+f+"`")
+		}
+	}
+	return &types.ContextSection{Title: "Project scripts", Body: strings.Join(lines, "\n")}
 }
 
 // contextPreamble is the part that is true of every container the CLI builds,
@@ -137,6 +178,11 @@ func serviceContextSections(config *types.DevcontainerConfig) []*types.ContextSe
 }
 
 func writeContextSection(b *strings.Builder, sec *types.ContextSection) {
+	// A nil section is how a contributor says it has nothing to add for this
+	// config, exactly like an empty body.
+	if sec == nil {
+		return
+	}
 	body := strings.Trim(sec.Body, "\n")
 	if body == "" {
 		return
@@ -144,4 +190,18 @@ func writeContextSection(b *strings.Builder, sec *types.ContextSection) {
 	b.WriteString("## " + sec.Title + "\n\n")
 	b.WriteString(body)
 	b.WriteString("\n\n")
+}
+
+// skillContextSections are the entries of the skills this project installs, so
+// an agent reads what its own skills cover without having to look them up.
+func skillContextSections(config *types.DevcontainerConfig) []*types.ContextSection {
+	var sections []*types.ContextSection
+	for _, id := range config.Skills.Skills {
+		spec := catalog.GetAgentSkill(id, SkillDirs()...)
+		if spec == nil || spec.Context == nil {
+			continue
+		}
+		sections = append(sections, spec.Context())
+	}
+	return sections
 }

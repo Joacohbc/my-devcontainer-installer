@@ -16,8 +16,8 @@ func newUpdateCommand() *cobra.Command {
 		Short: "Update (pull or rebuild) a project's container images",
 		Long: `devcontainer-cli update — refresh the container images for a devcontainer.
 
-What it does depends on the project's build mode: 'remote' projects pull the
-newest image from the registry, while 'local-cached' projects rebuild the image
+What it does depends on the project's build mode: 'profiles' projects pull the
+newest image from the registry, while 'custom' projects rebuild the image
 from the Dockerfile when its contents changed. By default it updates the project
 in the current directory and records the new image.
 
@@ -36,8 +36,8 @@ itself, run 'devcontainer-cli upgrade-cli'.`,
 		RunE:         runUpdateImages,
 	}
 	cmd.Flags().Bool("all", false, "Update images for every project tracked in images.json")
-	cmd.Flags().Bool("pull", false, "Always pull (no-op for local-cached without rebuild)")
-	cmd.Flags().Bool("rebuild", false, "Always rebuild (no-op for remote)")
+	cmd.Flags().Bool("pull", false, "Always pull (no-op for mode=custom without rebuild)")
+	cmd.Flags().Bool("rebuild", false, "Always rebuild (no-op for mode=profiles)")
 	addContainerFlag(cmd)
 	return cmd
 }

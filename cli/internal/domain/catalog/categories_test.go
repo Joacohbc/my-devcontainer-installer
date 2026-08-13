@@ -11,7 +11,7 @@ import (
 // it would silently vanish from the grouped selection.
 func TestEverySelectableHasUICategory(t *testing.T) {
 	for _, m := range DockerfileModules {
-		if m.Always {
+		if m.Always || m.Internal {
 			continue
 		}
 		if m.UICategory == "" {

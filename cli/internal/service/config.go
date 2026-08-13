@@ -2,14 +2,19 @@ package service
 
 import (
 	"fmt"
-	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/goccy/go-yaml"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/catalog"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/modules/skills"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 )
+
+// gitInitKey is the only boolean global key; it is spelled as a string like the
+// others so it goes through the same get/set/unset command.
+const gitInitKey = "git-init"
 
 // ConfigService reads and writes global CLI config keys and project config
 // import/export. It owns validation, persistence and success reporting; the cli
@@ -52,6 +57,8 @@ func (s ConfigService) GetGlobalDefault(key string) (value string, customized bo
 		return defaulted(globalDefaults(cfg).SSHKeyPath, domain.DefaultManagedSSHKeyPath())
 	case "ssh-config-file":
 		return defaulted(globalDefaults(cfg).SSHConfigFile, domain.DefaultManagedSSHConfigPath())
+	case gitInitKey:
+		return strconv.FormatBool(cfg.GitInit), cfg.GitInit, nil
 	}
 	return "", false, fmt.Errorf("unknown config key: %s", key)
 }
@@ -74,6 +81,12 @@ func (s ConfigService) SetGlobalDefault(key, value string) error {
 	case "ssh-config-file":
 		ensureDefaults(&cfg)
 		cfg.Defaults.SSHConfigFile = value
+	case gitInitKey:
+		enabled, perr := strconv.ParseBool(value)
+		if perr != nil {
+			return fmt.Errorf("invalid %s value %q: expected true or false", gitInitKey, value)
+		}
+		cfg.GitInit = enabled
 	default:
 		return fmt.Errorf("unknown config key: %s", key)
 	}
@@ -108,6 +121,9 @@ func (s ConfigService) UnsetGlobalDefault(key string) error {
 		ensureDefaults(&cfg)
 		cfg.Defaults.SSHConfigFile = ""
 		fallback = domain.DefaultManagedSSHConfigPath()
+	case gitInitKey:
+		cfg.GitInit = false
+		fallback = "false"
 	default:
 		return fmt.Errorf("unknown config key: %s", key)
 	}
@@ -212,7 +228,12 @@ func (s ConfigService) SaveProjectConfig(cwd string, cfg *types.DevcontainerConf
 	return domain.SaveConfig(cfg, cwd)
 }
 
-// Presets returns the builtin and user-defined presets.
-func (s ConfigService) Presets() []catalog.Preset {
-	return catalog.All(filepath.Join(domain.GlobalConfigDir(), "presets"))
+// Profiles returns the builtin and user-defined profiles.
+func (s ConfigService) Profiles() []catalog.Profile {
+	return catalog.All(domain.ProfileDirs()...)
+}
+
+// AgentSkills returns the built-in and user-defined agent skills.
+func (s ConfigService) AgentSkills() []*skills.Spec {
+	return catalog.AllAgentSkills(domain.SkillDirs()...)
 }

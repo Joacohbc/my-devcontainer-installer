@@ -1,0 +1,28 @@
+# A repo-shipped profile. Unlike the plain module bundles in profiles.go, it
+# ships a script, so it lives here as data next to the file it references.
+#
+# github-cli is listed first for the same reason every other built-in does it:
+# its Dockerfile layer is shared with the cached devcontainer-base image.
+id: scraper
+label: Scraper (Chromium, Python+uv, Node+pnpm, scraping toolchain)
+modules:
+  - github-cli
+  - nodejs
+  - pnpm
+  - python
+  - chrome
+  - sqlite
+  - ffmpeg
+  - graphify
+scripts:
+  # Only the toolchain, which is baked into the image. Agent skills are not a
+  # script's job — see `skills` below.
+  - file: install-scraper-tools.sh
+    when: build
+# Project-scoped agent skills, installed into the workspace by the skills module
+# (which is what pulls nodejs in). The mode is left at the default, manual: the
+# installer writes into the project, so the first write is the user's call.
+skills:
+  - firecrawl
+  - agent-browser
+  - webapp-testing

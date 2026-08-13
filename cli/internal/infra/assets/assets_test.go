@@ -756,3 +756,101 @@ func TestContextScriptFallsBackToLsofBanner(t *testing.T) {
 		t.Errorf("lsof must fall back to the banner's first line, got %q", got)
 	}
 }
+
+// runSkillsInstaller runs install-project-skills.sh with a fake npx on PATH. The
+// workspace mount it installs into only exists inside a container, so these
+// cases stop at the mode gate — which is what governs whether it writes into
+// the user's own repository at all.
+func runSkillsInstaller(t *testing.T, env []string, args ...string) (output string, exitedZero bool) {
+	t.Helper()
+	bash, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skip("bash not available")
+	}
+	bin := t.TempDir()
+	if err := os.WriteFile(filepath.Join(bin, "npx"), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	script, err := filepath.Abs("install-project-skills.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(bash, append([]string{script}, args...)...)
+	cmd.Env = append(append(os.Environ(), "PATH="+bin+":"+os.Getenv("PATH")), env...)
+	combined, runErr := cmd.CombinedOutput()
+	return string(combined), runErr == nil
+}
+
+// The installer writes into the bind-mounted workspace — the user's own
+// repository — so an absent DEVCONTAINER_SKILLS_MODE must read as manual
+// (types.DefaultSkillMode), never as permission to install on every start.
+func TestProjectSkillsInstallerDefaultsToManualOnAutoRuns(t *testing.T) {
+	const manualNoop = "Skills mode is manual"
+	const oneSkillSelected = "DEVCONTAINER_SKILLS=owner/repo"
+
+	autoRunWithNoMode, exitedZero := runSkillsInstaller(t, []string{oneSkillSelected}, "--auto")
+	if !exitedZero {
+		t.Fatalf("an automatic run with no mode set must be a no-op, got: %s", autoRunWithNoMode)
+	}
+	if !strings.Contains(autoRunWithNoMode, manualNoop) {
+		t.Errorf("an absent DEVCONTAINER_SKILLS_MODE must default to manual, got: %s", autoRunWithNoMode)
+	}
+
+	autoRunWithModeAuto, _ := runSkillsInstaller(t, []string{oneSkillSelected, "DEVCONTAINER_SKILLS_MODE=auto"}, "--auto")
+	if strings.Contains(autoRunWithModeAuto, manualNoop) {
+		t.Errorf("mode=auto is the opt-in and must get past the gate, got: %s", autoRunWithModeAuto)
+	}
+
+	handRunWithModeManual, _ := runSkillsInstaller(t, []string{oneSkillSelected, "DEVCONTAINER_SKILLS_MODE=manual"})
+	if strings.Contains(handRunWithModeManual, manualNoop) {
+		t.Errorf("a hand-run install must ignore the manual mode, got: %s", handRunWithModeManual)
+	}
+}
+
+// Selecting nothing is a state the installer supports, not an error, whichever
+// mode it runs in.
+func TestProjectSkillsInstallerAcceptsAnEmptySelection(t *testing.T) {
+	emptySelection, exitedZero := runSkillsInstaller(t, []string{"DEVCONTAINER_SKILLS="}, "--auto")
+	if !exitedZero {
+		t.Errorf("no skills requested must exit zero, got: %s", emptySelection)
+	}
+	if !strings.Contains(emptySelection, "No skills requested") {
+		t.Errorf("no skills requested must say so, got: %s", emptySelection)
+	}
+}
+
+// The entrypoint runs its start.d scripts with no arguments, so the automatic
+// run is only distinguishable by the flag this hook passes.
+func TestAutostartProjectSkillsPassesTheAutoFlag(t *testing.T) {
+	body, err := os.ReadFile("autostart-project-skills.sh")
+	if err != nil {
+		t.Fatalf("reading autostart-project-skills.sh: %v", err)
+	}
+	if !strings.Contains(string(body), "install-skills\" --auto") {
+		t.Error("the entrypoint hook must invoke the installer with --auto")
+	}
+}
+
+// A skills entry is "<source>" or "<source>#<skill>": the selector form is what
+// names one skill of a repo holding several without pinning its branch.
+func TestProjectSkillsInstallerSplitsTheSkillSelector(t *testing.T) {
+	body, err := os.ReadFile("install-project-skills.sh")
+	if err != nil {
+		t.Fatalf("reading install-project-skills.sh: %v", err)
+	}
+	script := string(body)
+	for _, want := range []string{
+		`source="${1%%#*}"`,
+		`name="${1#*#}"`,
+		`npx --yes skills add "$source" --skill "$name"`,
+	} {
+		if !strings.Contains(script, want) {
+			t.Errorf("install-project-skills.sh must contain %q", want)
+		}
+	}
+	// Project-scoped only: a global install would leak into every container
+	// mounting the shared-config volume.
+	if strings.Contains(script, "--global") || strings.Contains(script, " -g ") {
+		t.Error("skills must be installed project-scoped, never globally")
+	}
+}

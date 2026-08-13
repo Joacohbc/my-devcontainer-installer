@@ -14,9 +14,9 @@ func init() { register(newConfigCommand()) }
 func newConfigCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "config",
-		Short: "Read or write the global CLI config and manage presets",
+		Short: "Read or write the global CLI config and manage profiles",
 		Long: `devcontainer-cli config — read and write the global, machine-wide CLI defaults
-and manage reusable module presets.
+and manage reusable profiles.
 
 These defaults are applied to every project so you don't repeat them on each
 generate (e.g. a default registry, DB credentials, the shared SSH key). Run a
@@ -30,8 +30,13 @@ Subcommands:
   ssh-key             Path to the shared managed SSH key (and key utilities).
   ssh-config-file     Path of the CLI-managed SSH config file (Include'd from
                       ~/.ssh/config, which the CLI otherwise leaves alone).
+  git-init            Whether generate offers to 'git init' a project directory
+                      that is not a repository yet (true/false, default false).
   alias               Your own shell aliases, applied to every container.
-  preset              List/create/copy/remove reusable module-bundle presets.
+  profile             List/create/copy/remove reusable profiles (module
+                      bundles + custom scripts). Aliased as 'preset'.
+  skill               List built-in and user-defined agent skills, selectable
+                      with --skill.
   shared              Sync/backup/restore the shared tool-config volume.
   export / import     Export the project config to YAML / import it back.
 
@@ -40,12 +45,13 @@ Config file: ` + domain.GlobalConfigPath(),
   devcontainer-cli config registry
   devcontainer-cli config registry ghcr.io/myuser
 
-  # Manage presets and export the current project config
-  devcontainer-cli config preset list
+  # Manage profiles and export the current project config
+  devcontainer-cli config profile list
   devcontainer-cli config export -o devcontainer.yml`,
 		SilenceUsage: true,
 	}
 	cmd.AddCommand(newConfigKeyCommand("registry", "image registry"))
+	cmd.AddCommand(newConfigKeyCommand("git-init", "'git init' offer for a project directory that is not a repository yet (true/false, default false)"))
 	cmd.AddCommand(newConfigKeyCommand("db-user", "DB user"))
 	cmd.AddCommand(newConfigKeyCommand("db-password", "DB password"))
 	cmd.AddCommand(newConfigSSHKeyCommand())
@@ -53,7 +59,8 @@ Config file: ` + domain.GlobalConfigPath(),
 	cmd.AddCommand(newConfigAliasCommand())
 	cmd.AddCommand(newConfigExportCommand())
 	cmd.AddCommand(newConfigImportCommand())
-	cmd.AddCommand(newPresetCommand())
+	cmd.AddCommand(newProfileCommand())
+	cmd.AddCommand(newConfigSkillCommand())
 	cmd.AddCommand(newConfigSharedCommand())
 	return cmd
 }

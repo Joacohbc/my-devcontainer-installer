@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/assets"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/service"
 	"github.com/spf13/cobra"
@@ -21,13 +20,13 @@ func newRunCommand() *cobra.Command {
 image, without generating a Dockerfile, compose file or any project files.
 
 This is the fast path for a throwaway environment: it pulls the ghcr.io image
-for the chosen variant and runs it directly with 'docker run'. Interactively it
-always prompts for the container name, plus the variant, volumes, ports,
+for the chosen profile and runs it directly with 'docker run'. Interactively it
+always prompts for the container name, plus the profile, volumes, ports,
 whether to mount the shared config volume and which AI installer scripts to
-copy; with --no-interactive every value must come from a flag (--variant
-becomes required, --name falls back to dc-<variant>).
+copy; with --no-interactive every value must come from a flag (--profile
+becomes required, --name falls back to dc-<profile>).
 
-The container name (default: dc-<variant>) is validated as you type it: if it
+The container name (default: dc-<profile>) is validated as you type it: if it
 already belongs to a container created by a previous 'run', that container is
 reused as-is (started if stopped, left alone if already running). If it
 belongs to any other container — a devcontainer project container, or an
@@ -35,20 +34,25 @@ unrelated container entirely — the prompt rejects it and asks again (and
 --name fails the same way non-interactively); pick a different name or remove
 the existing container first.
 
-Variants: ` + strings.Join(types.RemoteVariants, ", ") + `.`,
-		Example: `  # Interactive: pick a variant and options
+--profile takes a profile id with a published image — run
+'devcontainer-cli config profile list' and look for the [remote] tag — or the
+special value 'ssh' for the hand-built full image. A [local] profile (e.g.
+'scraper', or one of your own) has no matching ghcr.io/devcontainer-<id>
+image and is rejected here; build it instead with 'devcontainer-cli --profile
+<id>' and the default mode=custom, which generates project files and builds.`,
+		Example: `  # Interactive: pick a profile and options
   devcontainer-cli run
 
   # Non-interactive SSH box with a named volume and a forwarded port
-  devcontainer-cli run --variant ssh --name dev --volumes work:/workspace --ports 2222:22
+  devcontainer-cli run --profile ssh --name dev --volumes work:/workspace --ports 2222:22
 
   # Expose ports on the LAN and pre-install the AI CLI scripts
-  devcontainer-cli run --variant nodejs --ports 8080:80 --expose-all --copy-ai-scripts`,
+  devcontainer-cli run --profile nodejs --ports 8080:80 --expose-all --copy-ai-scripts`,
 		SilenceUsage: true,
 		RunE:         runQuickRun,
 	}
-	cmd.Flags().String("variant", "", "Image variant to run, e.g. ssh, nodejs, python (required with --no-interactive)")
-	cmd.Flags().String("name", "", "Container name (default: dc-<variant>); if it belongs to an existing quick-run container it is reused/restarted, but a name already used by any other container is rejected")
+	cmd.Flags().String("profile", "", "[remote]-tagged profile id to run as a prebuilt image, e.g. ssh, nodejs, python (required with --no-interactive); see 'config profile list'")
+	cmd.Flags().String("name", "", "Container name (default: dc-<profile>); if it belongs to an existing quick-run container it is reused/restarted, but a name already used by any other container is rejected")
 	cmd.Flags().StringSlice("volumes", nil, "Volume mounts (e.g. myvol:/workspace); repeatable or comma-separated")
 	cmd.Flags().StringSlice("ports", nil, "Port mappings (e.g. 2222:22); bound to 127.0.0.1 unless --expose-all; repeatable or comma-separated")
 	cmd.Flags().Bool("expose-all", false, "Publish ports on all interfaces (0.0.0.0) instead of binding to 127.0.0.1")
@@ -57,7 +61,9 @@ Variants: ` + strings.Join(types.RemoteVariants, ", ") + `.`,
 	cmd.Flags().String("registry", "", "Registry prefix override")
 	addInteractiveFlag(cmd)
 
-	_ = cmd.RegisterFlagCompletionFunc("variant", staticCompletion(types.RemoteVariants...))
+	_ = cmd.RegisterFlagCompletionFunc("profile", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		return profileIDs(true), cobra.ShellCompDirectiveNoFileComp
+	})
 
 	return cmd
 }
@@ -119,7 +125,7 @@ func resolveRunOptions(cmd *cobra.Command, svc service.RunService) (runOptions, 
 	opts.volumes = filterEmpty(rawVolumes)
 	opts.ports = filterEmpty(rawPorts)
 
-	variant, err := resolveRunVariant(cmd, interactive)
+	variant, err := resolveRunProfile(cmd, interactive)
 	if err != nil {
 		return runOptions{}, err
 	}
@@ -166,25 +172,24 @@ func resolveRunOptions(cmd *cobra.Command, svc service.RunService) (runOptions, 
 	return opts, nil
 }
 
-func resolveRunVariant(cmd *cobra.Command, interactive bool) (string, error) {
-	variant, _ := cmd.Flags().GetString("variant")
-	if variant != "" {
-		if _, err := types.ParseVariant(variant); err != nil {
-			return "", err
+// resolveRunProfile reads --profile, validating it against the
+// [remote]-tagged profiles the run command can actually pull.
+func resolveRunProfile(cmd *cobra.Command, interactive bool) (string, error) {
+	profile, _ := cmd.Flags().GetString("profile")
+	if profile != "" {
+		if !validRemoteVariant(profile) {
+			return "", remoteVariantError(profile)
 		}
-		return variant, nil
+		return profile, nil
 	}
 	if !interactive {
-		return "", fmt.Errorf("--variant required in non-interactive mode")
+		return "", fmt.Errorf("--profile required in non-interactive mode")
 	}
 	return promptVariant()
 }
 
 func promptVariant() (string, error) {
-	choices := make([]service.Option, len(types.RemoteVariants))
-	for i, v := range types.RemoteVariants {
-		choices[i] = service.Option{Value: v, Label: types.VariantLabels[v]}
-	}
+	choices := service.ProfileChoices(domain.ProfileDirs()...)
 	var initial service.Option
 	for _, c := range choices {
 		if c.Value == "nodejs" {
@@ -192,7 +197,7 @@ func promptVariant() (string, error) {
 			break
 		}
 	}
-	picked, err := console.Select("Image variant:", choices, initial)
+	picked, err := console.Select("Profile:", choices, initial)
 	if err != nil {
 		return "", err
 	}

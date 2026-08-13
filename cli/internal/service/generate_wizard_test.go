@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/catalog"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 )
@@ -16,7 +17,7 @@ func TestConfigureReducesWizardAnswers(t *testing.T) {
 	base := &types.DevcontainerConfig{Env: map[string]string{}}
 	prompter := scriptedPrompter{answers: map[string]any{
 		stepKeyWorkspace: "testws",
-		stepKeyMode:      string(types.BuildModeLocalCached),
+		stepKeyMode:      string(types.BuildModeCustom),
 		stepKeySubnet:    "172.45.0.0/16",
 	}}
 
@@ -27,7 +28,7 @@ func TestConfigureReducesWizardAnswers(t *testing.T) {
 	if cfg.Workspace != "testws" {
 		t.Errorf("Workspace = %q, want testws", cfg.Workspace)
 	}
-	if cfg.Mode != types.BuildModeLocalCached {
+	if cfg.Mode != types.BuildModeCustom {
 		t.Errorf("Mode = %q, want local-cached", cfg.Mode)
 	}
 	if cfg.Compose.Subnet != "172.45.0.0/16" {
@@ -42,7 +43,7 @@ func TestConfigureReducesPorts(t *testing.T) {
 	base := &types.DevcontainerConfig{Env: map[string]string{}}
 	prompter := scriptedPrompter{answers: map[string]any{
 		stepKeyWorkspace: "testws",
-		stepKeyMode:      string(types.BuildModeLocalCached),
+		stepKeyMode:      string(types.BuildModeCustom),
 		stepKeySubnet:    "172.45.0.0/16",
 		stepKeyPorts:     "8080:80, 5432:5432",
 	}}
@@ -69,7 +70,7 @@ func TestConfigureReducesVolumes(t *testing.T) {
 	base := &types.DevcontainerConfig{Env: map[string]string{}}
 	prompter := scriptedPrompter{answers: map[string]any{
 		stepKeyWorkspace: "testws",
-		stepKeyMode:      string(types.BuildModeLocalCached),
+		stepKeyMode:      string(types.BuildModeCustom),
 		stepKeySubnet:    "172.45.0.0/16",
 		stepKeyVolumes:   "myvol:/data, ./cache:/cache",
 	}}
@@ -97,7 +98,7 @@ func TestConfigureKeepsBaseSharedConfig(t *testing.T) {
 
 	answers := map[string]any{
 		stepKeyWorkspace: "testws",
-		stepKeyMode:      string(types.BuildModeLocalCached),
+		stepKeyMode:      string(types.BuildModeCustom),
 		stepKeySubnet:    "172.45.0.0/16",
 	}
 	svc := GenerateService{Report: nopReporter{}}
@@ -130,7 +131,7 @@ func TestConfigureHonorsSharedConfigAnswer(t *testing.T) {
 
 	base := map[string]any{
 		stepKeyWorkspace: "testws",
-		stepKeyMode:      string(types.BuildModeLocalCached),
+		stepKeyMode:      string(types.BuildModeCustom),
 		stepKeySubnet:    "172.45.0.0/16",
 	}
 	svc := GenerateService{Report: nopReporter{}}
@@ -164,19 +165,38 @@ func TestConfigureHonorsSharedConfigAnswer(t *testing.T) {
 	}
 }
 
-func TestVariantChoicesCoversRemoteVariants(t *testing.T) {
-	choices := VariantChoices()
-	if len(choices) != len(types.RemoteVariants) {
-		t.Fatalf("got %d choices, want %d", len(choices), len(types.RemoteVariants))
+// ProfileChoices backs --profile under mode=profiles, so it must only offer
+// profiles with a published image, never e.g. 'scraper' (local build only).
+func TestProfileChoicesOnlyListsRemoteProfiles(t *testing.T) {
+	choices := ProfileChoices()
+
+	var want []catalog.Profile
+	for _, p := range catalog.All() {
+		if p.Remote {
+			want = append(want, p)
+		}
 	}
-	for i, v := range types.RemoteVariants {
-		if choices[i].Value != v {
-			t.Errorf("choice[%d].Value = %q, want %q", i, choices[i].Value, v)
+	if len(want) == 0 {
+		t.Fatal("expected at least one remote-pullable built-in profile to test against")
+	}
+	if len(choices) != len(want) {
+		t.Fatalf("got %d choices, want %d", len(choices), len(want))
+	}
+	for i, p := range want {
+		if choices[i].Value != p.ID {
+			t.Errorf("choice[%d].Value = %q, want %q", i, choices[i].Value, p.ID)
+		}
+	}
+	for _, c := range choices {
+		if c.Value == "scraper" {
+			t.Error("ProfileChoices must not offer 'scraper': it has no published remote image")
 		}
 	}
 }
 
-func TestConfigureAppliesUserPreset(t *testing.T) {
+// A profile saved under the pre-rename presets/ directory must still be offered
+// by the wizard and still pre-select its modules.
+func TestConfigureAppliesUserProfileFromLegacyPresetsDir(t *testing.T) {
 	defer useFakeDocker(&fakeRunner{status: 0})()
 
 	tmp := t.TempDir()
@@ -194,8 +214,8 @@ func TestConfigureAppliesUserPreset(t *testing.T) {
 	base := &types.DevcontainerConfig{Env: map[string]string{}}
 	prompter := scriptedPrompter{answers: map[string]any{
 		stepKeyWorkspace: "ws",
-		stepKeyMode:      string(types.BuildModeLocalCached),
-		stepKeyPreset:    "mystack",
+		stepKeyMode:      modeChoiceCustomFromProfile,
+		stepKeyProfile:   "mystack",
 		stepKeySubnet:    "172.20.0.0/24",
 	}}
 
@@ -210,8 +230,144 @@ func TestConfigureAppliesUserPreset(t *testing.T) {
 	}
 	for _, want := range []string{"claude-code", "antigravity-cli"} {
 		if !got[want] {
-			t.Errorf("expected preset module %q to be pre-selected, got %v", want, got)
+			t.Errorf("expected profile module %q to be pre-selected, got %v", want, got)
 		}
+	}
+}
+
+// Picking a profile in the wizard must bring its custom scripts along, exactly
+// like --profile does — otherwise the same profile would mean two things
+// depending on how it was applied.
+func TestConfigureAppliesUserProfileScripts(t *testing.T) {
+	defer useFakeDocker(&fakeRunner{status: 0})()
+
+	tmp := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmp)
+	profileDir := filepath.Join(tmp, "devcontainer-cli", "profiles", "withscripts")
+	if err := os.MkdirAll(profileDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	manifest := "id: withscripts\nmodules: [claude-code]\nscripts:\n  - file: setup.sh\n    when: start\n"
+	if err := os.WriteFile(filepath.Join(profileDir, "profile.yml"), []byte(manifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(profileDir, "setup.sh"), []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	svc := GenerateService{Report: nopReporter{}}
+	base := &types.DevcontainerConfig{Env: map[string]string{}}
+	prompter := scriptedPrompter{answers: map[string]any{
+		stepKeyWorkspace: "ws",
+		stepKeyMode:      modeChoiceCustomFromProfile,
+		stepKeyProfile:   "withscripts",
+		stepKeySubnet:    "172.20.0.0/24",
+	}}
+
+	cfg, err := svc.Configure(base, tmp, prompter)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(cfg.Dockerfile.Scripts) != 1 {
+		t.Fatalf("expected the profile's script to be carried over, got %+v", cfg.Dockerfile.Scripts)
+	}
+	got := cfg.Dockerfile.Scripts[0]
+	if got.When != types.ScriptWhenStart {
+		t.Errorf("expected when=start, got %s", got.When)
+	}
+	if want := filepath.Join(profileDir, "setup.sh"); got.Source != want {
+		t.Errorf("expected the script to resolve against the profile dir (%q), got %q", want, got.Source)
+	}
+}
+
+// The "custom, from a profile" mode choice must offer built-in profiles too,
+// not just the user's own — previously the wizard's profile step only ever
+// listed catalog.LoadUserProfiles, so a built-in like 'nodejs' could only be
+// reached by picking modules by hand.
+func TestConfigureCustomFromProfileOffersBuiltinProfile(t *testing.T) {
+	defer useFakeDocker(&fakeRunner{status: 0})()
+
+	svc := GenerateService{Report: nopReporter{}}
+	base := &types.DevcontainerConfig{Env: map[string]string{}}
+	prompter := scriptedPrompter{answers: map[string]any{
+		stepKeyWorkspace: "ws",
+		stepKeyMode:      modeChoiceCustomFromProfile,
+		stepKeyProfile:   "nodejs",
+		stepKeySubnet:    "172.20.0.0/24",
+	}}
+
+	cfg, err := svc.Configure(base, "/home/user/proj", prompter)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Mode != types.BuildModeCustom {
+		t.Errorf("Mode = %q, want %q (modeChoiceCustomFromProfile normalizes to custom)", cfg.Mode, types.BuildModeCustom)
+	}
+	got := map[string]bool{}
+	for _, m := range cfg.Dockerfile.Modules {
+		got[string(m.ID)] = true
+	}
+	for _, want := range []string{"github-cli", "nodejs", "pnpm"} {
+		if !got[want] {
+			t.Errorf("expected built-in 'nodejs' profile module %q to be pre-selected, got %v", want, got)
+		}
+	}
+}
+
+// Plain "custom" must never surface the profile-picker step, even when
+// profiles (built-in or the user's own) exist — it is now opt-in via the mode
+// choice, not auto-appended.
+func TestConfigurePlainCustomSkipsProfileStep(t *testing.T) {
+	defer useFakeDocker(&fakeRunner{status: 0})()
+
+	svc := GenerateService{Report: nopReporter{}}
+	base := &types.DevcontainerConfig{Env: map[string]string{}}
+	prompter := scriptedPrompter{answers: map[string]any{
+		stepKeyWorkspace: "ws",
+		stepKeyMode:      string(types.BuildModeCustom),
+		// stepKeyProfile is deliberately answered even though it must never be
+		// asked under plain custom: scriptedPrompter only consumes answers for
+		// steps steps() actually builds, so this proves the step was skipped.
+		stepKeyProfile: "nodejs",
+		stepKeySubnet:  "172.20.0.0/24",
+	}}
+
+	cfg, err := svc.Configure(base, "/home/user/proj", prompter)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, m := range cfg.Dockerfile.Modules {
+		if string(m.ID) == "nodejs" {
+			t.Errorf("plain custom must not pre-select the profile's modules, got %v", cfg.Dockerfile.Modules)
+		}
+	}
+}
+
+// Not picking a profile must leave the project's existing scripts alone.
+func TestConfigureKeepsExistingScriptsWithoutProfile(t *testing.T) {
+	defer useFakeDocker(&fakeRunner{status: 0})()
+
+	tmp := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmp)
+
+	svc := GenerateService{Report: nopReporter{}}
+	base := &types.DevcontainerConfig{
+		Env:        map[string]string{},
+		Dockerfile: types.DockerfileConfig{Scripts: []types.CustomScript{{File: "kept.sh"}}},
+	}
+	prompter := scriptedPrompter{answers: map[string]any{
+		stepKeyWorkspace: "ws",
+		stepKeyMode:      string(types.BuildModeCustom),
+		stepKeySubnet:    "172.20.0.0/24",
+	}}
+
+	cfg, err := svc.Configure(base, tmp, prompter)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(cfg.Dockerfile.Scripts) != 1 || cfg.Dockerfile.Scripts[0].File != "kept.sh" {
+		t.Errorf("expected the existing scripts to survive, got %+v", cfg.Dockerfile.Scripts)
 	}
 }
 
@@ -261,7 +417,7 @@ func TestConfigureSavesAlwaysOnModuleOptions(t *testing.T) {
 	base := &types.DevcontainerConfig{Env: map[string]string{}}
 	prompter := scriptedPrompter{answers: map[string]any{
 		stepKeyWorkspace:                   "testws",
-		stepKeyMode:                        string(types.BuildModeLocalCached),
+		stepKeyMode:                        string(types.BuildModeCustom),
 		stepKeySubnet:                      "172.45.0.0/16",
 		optionStepKey("base", "p10kStyle"): "lean",
 	}}
@@ -294,7 +450,7 @@ func TestConfigurePromptsModuleEnvVars(t *testing.T) {
 	svc := GenerateService{Report: nopReporter{}}
 	prompter := scriptedPrompter{answers: map[string]any{
 		stepKeyWorkspace: "ws",
-		stepKeyMode:      string(types.BuildModeLocalCached),
+		stepKeyMode:      string(types.BuildModeCustom),
 		stepKeySubnet:    "172.46.0.0/16",
 		categoryStepKey(types.UICategoryDevTools): []string{string(types.ModuleCloudflared)},
 		envStepKey("TUNNEL_TOKEN"):                "tok-123",
@@ -326,6 +482,112 @@ func TestConfigurePromptsModuleEnvVars(t *testing.T) {
 	}
 	if !selected {
 		t.Errorf("cloudflared must stay selected without a token, got %v", cfg.Dockerfile.Modules)
+	}
+}
+
+// The skills picker must offer a user-defined skill alongside the built-ins —
+// it used to read the static catalog.AgentSkills only.
+func TestSkillsStepOffersUserDefinedSkill(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	dir := domain.SkillDir()
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "my-skill.yml"), []byte("id: my-skill\nlabel: My Skill\nref: me/my-skill\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx := wizardContext{base: &types.DevcontainerConfig{}}
+	field := ctx.skillsStep().Build(NewState())
+
+	found := false
+	for _, c := range field.Choices {
+		if c.Value == "my-skill" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected 'my-skill' among the choices, got %+v", field.Choices)
+	}
+}
+
+// A profile that declares skills means them the same way it means its
+// modules, so picking it in the wizard must pre-check them (and pre-select
+// its skills mode) rather than leave them to be re-picked by hand.
+func TestConfigureProfileSkillsArePreSelected(t *testing.T) {
+	defer useFakeDocker(&fakeRunner{status: 0})()
+
+	tmp := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmp)
+	profilesDir := filepath.Join(tmp, "devcontainer-cli", "profiles")
+	if err := os.MkdirAll(profilesDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	manifest := "id: withskills\nmodules: [nodejs]\nskills: [firecrawl]\nskills_mode: auto\n"
+	if err := os.WriteFile(filepath.Join(profilesDir, "withskills.yml"), []byte(manifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Answer only the profile choice: every other step falls back to the
+	// default the wizard seeds it with, which is exactly what this asserts.
+	svc := GenerateService{Report: nopReporter{}}
+	base := &types.DevcontainerConfig{Env: map[string]string{}}
+	prompter := scriptedPrompter{answers: map[string]any{
+		stepKeyWorkspace: "ws",
+		stepKeyMode:      modeChoiceCustomFromProfile,
+		stepKeyProfile:   "withskills",
+		stepKeySubnet:    "172.20.0.0/24",
+	}}
+
+	cfg, err := svc.Configure(base, tmp, prompter)
+	if err != nil {
+		t.Fatalf("Configure: %v", err)
+	}
+
+	if len(cfg.Skills.Skills) != 1 || cfg.Skills.Skills[0] != types.SkillFirecrawl {
+		t.Errorf("expected the profile's skill to be pre-selected, got %+v", cfg.Skills.Skills)
+	}
+	if cfg.Skills.Mode != types.SkillModeAuto {
+		t.Errorf("expected the profile's skills mode to be pre-selected, got %q", cfg.Skills.Mode)
+	}
+}
+
+// Seeding from a profile must not stop the user overriding it: an explicit
+// answer for the skills step still wins.
+func TestConfigureExplicitSkillsBeatProfile(t *testing.T) {
+	defer useFakeDocker(&fakeRunner{status: 0})()
+
+	tmp := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmp)
+	profilesDir := filepath.Join(tmp, "devcontainer-cli", "profiles")
+	if err := os.MkdirAll(profilesDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	manifest := "id: withskills\nmodules: [nodejs]\nskills: [firecrawl]\nskills_mode: auto\n"
+	if err := os.WriteFile(filepath.Join(profilesDir, "withskills.yml"), []byte(manifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	svc := GenerateService{Report: nopReporter{}}
+	base := &types.DevcontainerConfig{Env: map[string]string{}}
+	prompter := scriptedPrompter{answers: map[string]any{
+		stepKeyWorkspace:  "ws",
+		stepKeyMode:       modeChoiceCustomFromProfile,
+		stepKeyProfile:    "withskills",
+		stepKeySubnet:     "172.20.0.0/24",
+		stepKeySkills:     []string{string(types.SkillAgentBrowser)},
+		stepKeySkillsMode: string(types.SkillModeManual),
+	}}
+
+	cfg, err := svc.Configure(base, tmp, prompter)
+	if err != nil {
+		t.Fatalf("Configure: %v", err)
+	}
+	if len(cfg.Skills.Skills) != 1 || cfg.Skills.Skills[0] != types.SkillAgentBrowser {
+		t.Errorf("expected the explicit answer to win, got %+v", cfg.Skills.Skills)
+	}
+	if cfg.Skills.Mode != types.SkillModeManual {
+		t.Errorf("expected the explicit mode to win, got %q", cfg.Skills.Mode)
 	}
 }
 
