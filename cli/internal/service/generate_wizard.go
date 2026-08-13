@@ -238,7 +238,7 @@ func (w wizardContext) portsStep() Step {
 		}
 		return Field{
 			Kind:    FieldInput,
-			Title:   "Puertos a publicar en el devcontainer (ej. 8080:80,5432:5432 — bind a 127.0.0.1; vacío para ninguno):",
+			Title:   "Ports to publish on the devcontainer (e.g. 8080:80,5432:5432 — bound to 127.0.0.1; empty for none):",
 			Initial: initial,
 		}
 	}}
@@ -265,7 +265,7 @@ func (w wizardContext) volumesStep() Step {
 		}
 		return Field{
 			Kind:    FieldInput,
-			Title:   "Volúmenes extra a montar en el devcontainer (ej. myvol:/data,./cache:/cache — vacío para ninguno):",
+			Title:   "Extra volumes to mount on the devcontainer (e.g. myvol:/data,./cache:/cache — empty for none):",
 			Initial: initial,
 		}
 	}}
@@ -279,7 +279,7 @@ func (w wizardContext) sharedConfigStep() Step {
 		}
 		return Field{
 			Kind:    FieldConfirm,
-			Title:   "Montar el volumen global de config compartida (logins/sesiones de Claude, gh, codex… persisten entre contenedores)?",
+			Title:   "Mount the global shared config volume (logins/sessions for Claude, gh, codex… persist across containers)?",
 			Initial: initial,
 		}
 	}}
@@ -351,7 +351,7 @@ func (w wizardContext) profileStep() (Step, bool) {
 		return Step{}, false
 	}
 	return Step{Key: stepKeyProfile, Build: func(s *State) Field {
-		choices := []Option{{Value: "", Label: "(ninguno — elegir módulos manualmente)"}}
+		choices := []Option{{Value: "", Label: "(none — choose modules manually)"}}
 		for _, p := range w.allProfiles {
 			label := p.ID
 			if len(p.Modules) > 0 {
@@ -363,7 +363,7 @@ func (w wizardContext) profileStep() (Step, bool) {
 		if s.Has(stepKeyProfile) {
 			initial = s.String(stepKeyProfile)
 		}
-		return Field{Kind: FieldSelect, Title: "Partir de qué perfil?:", Choices: choices, Initial: initial}
+		return Field{Kind: FieldSelect, Title: "Start from which profile?:", Choices: choices, Initial: initial}
 	}}, true
 }
 
@@ -408,7 +408,7 @@ func (w wizardContext) categorySteps(s *State) []Step {
 			}
 			return Field{
 				Kind:    FieldMultiselect,
-				Title:   types.UICategoryLabels[category] + " (Espacio para seleccionar, Enter para confirmar):",
+				Title:   types.UICategoryLabels[category] + " (Space to select, Enter to confirm):",
 				Choices: categoryChoices(category, currentMode(s), selectedModuleIDs(s)),
 				Initial: initial,
 			}
@@ -722,7 +722,7 @@ func (s GenerateService) SelectModules(base *types.DevcontainerConfig, prompt Pr
 				}
 				return Field{
 					Kind:    FieldMultiselect,
-					Title:   types.UICategoryLabels[category] + " (Espacio para seleccionar, Enter para confirmar):",
+					Title:   types.UICategoryLabels[category] + " (Space to select, Enter to confirm):",
 					Choices: choices,
 					Initial: initial,
 				}
@@ -793,7 +793,7 @@ func (w wizardContext) skillsStep() Step {
 		}
 		return Field{
 			Kind:    FieldMultiselect,
-			Title:   "Skills de agente para el proyecto (se instalan en el workspace):",
+			Title:   "Agent skills for the project (installed into the workspace):",
 			Choices: choices,
 			Initial: initial,
 		}
@@ -803,14 +803,14 @@ func (w wizardContext) skillsStep() Step {
 func (w wizardContext) skillsModeStep() Step {
 	return Step{Key: stepKeySkillsMode, Build: func(s *State) Field {
 		choices := []Option{
-			{Value: string(types.SkillModeAuto), Label: "auto — instalarlas en cada arranque del contenedor"},
-			{Value: string(types.SkillModeManual), Label: "manual — dejar el comando install_skills para vos"},
+			{Value: string(types.SkillModeAuto), Label: "auto — install them on every container start"},
+			{Value: string(types.SkillModeManual), Label: "manual — leave the install_skills command for you"},
 		}
 		initial := string(w.base.Skills.ResolvedMode())
 		if s.Has(stepKeySkillsMode) {
 			initial = s.String(stepKeySkillsMode)
 		}
-		return Field{Kind: FieldSelect, Title: "Cuándo se instalan las skills?", Choices: choices, Initial: initial}
+		return Field{Kind: FieldSelect, Title: "When should the skills install?", Choices: choices, Initial: initial}
 	}}
 }
 
