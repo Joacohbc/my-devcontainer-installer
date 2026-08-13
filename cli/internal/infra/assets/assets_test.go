@@ -757,12 +757,11 @@ func TestContextScriptFallsBackToLsofBanner(t *testing.T) {
 	}
 }
 
-// runSkillsInstaller runs install-project-skills.sh with a fake npx on PATH and
-// returns its combined output plus whether it exited zero. The workspace mount
-// it installs into only exists inside a container, so these cases stop at the
-// mode gate — which is what governs whether it writes into the user's own
-// repository at all.
-func runSkillsInstaller(t *testing.T, env []string, args ...string) (string, bool) {
+// runSkillsInstaller runs install-project-skills.sh with a fake npx on PATH. The
+// workspace mount it installs into only exists inside a container, so these
+// cases stop at the mode gate — which is what governs whether it writes into
+// the user's own repository at all.
+func runSkillsInstaller(t *testing.T, env []string, args ...string) (output string, exitedZero bool) {
 	t.Helper()
 	bash, err := exec.LookPath("bash")
 	if err != nil {
@@ -778,8 +777,8 @@ func runSkillsInstaller(t *testing.T, env []string, args ...string) (string, boo
 	}
 	cmd := exec.Command(bash, append([]string{script}, args...)...)
 	cmd.Env = append(append(os.Environ(), "PATH="+bin+":"+os.Getenv("PATH")), env...)
-	out, err := cmd.CombinedOutput()
-	return string(out), err == nil
+	combined, runErr := cmd.CombinedOutput()
+	return string(combined), runErr == nil
 }
 
 // The installer writes into the bind-mounted workspace — the user's own
@@ -787,32 +786,36 @@ func runSkillsInstaller(t *testing.T, env []string, args ...string) (string, boo
 // (types.DefaultSkillMode), never as permission to install on every start.
 func TestProjectSkillsInstallerDefaultsToManualOnAutoRuns(t *testing.T) {
 	const manualNoop = "Skills mode is manual"
+	const oneSkillSelected = "DEVCONTAINER_SKILLS=owner/repo"
 
-	out, ok := runSkillsInstaller(t, []string{"DEVCONTAINER_SKILLS=owner/repo"}, "--auto")
-	if !ok {
-		t.Fatalf("an automatic run with no mode set must be a no-op, got: %s", out)
+	autoRunWithNoMode, exitedZero := runSkillsInstaller(t, []string{oneSkillSelected}, "--auto")
+	if !exitedZero {
+		t.Fatalf("an automatic run with no mode set must be a no-op, got: %s", autoRunWithNoMode)
 	}
-	if !strings.Contains(out, manualNoop) {
-		t.Errorf("an absent DEVCONTAINER_SKILLS_MODE must default to manual, got: %s", out)
-	}
-
-	// An explicit auto is the opt-in, and must get past the gate.
-	out, _ = runSkillsInstaller(t, []string{"DEVCONTAINER_SKILLS=owner/repo", "DEVCONTAINER_SKILLS_MODE=auto"}, "--auto")
-	if strings.Contains(out, manualNoop) {
-		t.Errorf("mode=auto must not take the manual no-op path, got: %s", out)
+	if !strings.Contains(autoRunWithNoMode, manualNoop) {
+		t.Errorf("an absent DEVCONTAINER_SKILLS_MODE must default to manual, got: %s", autoRunWithNoMode)
 	}
 
-	// Run by hand, the mode is not consulted at all — that is the point of it.
-	out, _ = runSkillsInstaller(t, []string{"DEVCONTAINER_SKILLS=owner/repo", "DEVCONTAINER_SKILLS_MODE=manual"})
-	if strings.Contains(out, manualNoop) {
-		t.Errorf("a hand-run install must ignore the manual mode, got: %s", out)
+	autoRunWithModeAuto, _ := runSkillsInstaller(t, []string{oneSkillSelected, "DEVCONTAINER_SKILLS_MODE=auto"}, "--auto")
+	if strings.Contains(autoRunWithModeAuto, manualNoop) {
+		t.Errorf("mode=auto is the opt-in and must get past the gate, got: %s", autoRunWithModeAuto)
 	}
 
-	// Nothing selected is never an error, at either mode.
-	if out, ok := runSkillsInstaller(t, []string{"DEVCONTAINER_SKILLS="}, "--auto"); !ok {
-		t.Errorf("no skills requested must exit zero, got: %s", out)
-	} else if !strings.Contains(out, "No skills requested") {
-		t.Errorf("no skills requested must say so, got: %s", out)
+	handRunWithModeManual, _ := runSkillsInstaller(t, []string{oneSkillSelected, "DEVCONTAINER_SKILLS_MODE=manual"})
+	if strings.Contains(handRunWithModeManual, manualNoop) {
+		t.Errorf("a hand-run install must ignore the manual mode, got: %s", handRunWithModeManual)
+	}
+}
+
+// Selecting nothing is a state the installer supports, not an error, whichever
+// mode it runs in.
+func TestProjectSkillsInstallerAcceptsAnEmptySelection(t *testing.T) {
+	emptySelection, exitedZero := runSkillsInstaller(t, []string{"DEVCONTAINER_SKILLS="}, "--auto")
+	if !exitedZero {
+		t.Errorf("no skills requested must exit zero, got: %s", emptySelection)
+	}
+	if !strings.Contains(emptySelection, "No skills requested") {
+		t.Errorf("no skills requested must say so, got: %s", emptySelection)
 	}
 }
 

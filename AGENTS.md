@@ -476,17 +476,17 @@ bundle and always builds locally, for any profile. Under mode=`profiles` (and
 always for `run`, which only ever pulls), the same flag instead names the pull
 target: it skips the build and pulls `ghcr.io/devcontainer-<id>:latest`, and
 that image only exists for the ids CI actually publishes
-(`types.RemoteVariants`). `applyGenFlags` tells the roles apart via
-`effectiveMode` (`flags.mode`, falling back to the config's current mode) —
-load-bearing, because otherwise a mode=`profiles` regenerate with `--profile
-<id>` would misapply the module-bundle branch and silently clear the
-project's compose services.
+(`types.RemoteVariants`). `applyProfileBundle` tells the roles apart via
+`effectiveBuildMode` (`flags.mode`, falling back to the config's current
+mode) — load-bearing, because otherwise a mode=`profiles` regenerate with
+`--profile <id>` would misapply the module-bundle branch and silently clear
+the project's compose services.
 
 **`ssh` is the one `--profile` value with no catalog entry behind it** — the
 hand-built full image, a pull target only. It is therefore the one id that
 `parseGenFlags` does not resolve (`remoteVariantSSH`), which leaves two places
-that must agree: the module-bundle branch in `applyGenFlags` only clears the
-services for a profile that actually **resolved** (clearing them for an id that
+that must agree: `applyProfileBundle` only clears the services for a profile
+that actually **resolved** (clearing them for an id that
 contributed no modules either would drop the project's DB services for
 nothing), and `validateConfig` rejects `--profile ssh` outright once the
 effective mode turns out not to be `profiles`. Any *other* unresolvable id is
