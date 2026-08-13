@@ -81,51 +81,11 @@ var WebappTestingSkill = &Spec{
 	},
 }
 
-// The companion skill to the caveman Dockerfile module: the module installs
-// the CLI and its agent hooks, this teaches an agent to drive it. Requiring
-// the module is what keeps the pair together — a skill describing a CLI the
-// image does not have is reported by domain.MissingSkillModules.
-var CavemanSkill = &Spec{
-	ID:              types.SkillCaveman,
-	Label:           "Caveman (compressed agent output modes)",
-	Ref:             "https://github.com/juliusbrussee/caveman",
-	Skill:           "caveman",
-	RequiresModules: []types.ModuleID{types.ModuleCaveman},
-	Context: func() *types.ContextSection {
-		return &types.ContextSection{
-			Title: "Caveman skill",
-			Body: "Teaches the caveman output modes — ultra-compressed replies that keep the\n" +
-				"technical substance and drop the filler, at several intensity levels.\n" +
-				"The CLI and its agent hooks come from the `caveman` module in this image.",
-		}
-	},
-}
-
-// The companion skill to the graphify Dockerfile module, same pairing as
-// caveman above.
-var GraphifySkill = &Spec{
-	ID:              types.SkillGraphify,
-	Label:           "Graphify (codebase knowledge graphs)",
-	Ref:             "https://github.com/graphify-labs/graphify",
-	Skill:           "graphify",
-	RequiresModules: []types.ModuleID{types.ModuleGraphify},
-	Context: func() *types.ContextSection {
-		return &types.ContextSection{
-			Title: "Graphify skill",
-			Body: "Teaches driving `graphify` to build and query a knowledge graph of the\n" +
-				"codebase — what calls what, where a symbol lives — instead of grepping\n" +
-				"blind. The CLI comes from the `graphify` module in this image.",
-		}
-	},
-}
-
 // All is the ordered catalogue of installable skills.
 var All = []*Spec{
 	FirecrawlSkill,
 	AgentBrowserSkill,
 	WebappTestingSkill,
-	CavemanSkill,
-	GraphifySkill,
 }
 
 // InstallRef is the entry the installer receives: the source, with the skill

@@ -94,46 +94,6 @@ func TestAgentSkillCatalogue(t *testing.T) {
 	}
 }
 
-// caveman and graphify exist twice: a Dockerfile module installing the CLI,
-// and a skill of the same id teaching an agent to drive it. The skill must
-// require its module, or the project ships a document about a binary that is
-// not in the image.
-func TestCLIPairedSkillsRequireTheirModule(t *testing.T) {
-	pairs := map[types.SkillID]types.ModuleID{
-		types.SkillCaveman:  types.ModuleCaveman,
-		types.SkillGraphify: types.ModuleGraphify,
-	}
-	for skillID, moduleID := range pairs {
-		spec := catalog.GetAgentSkill(skillID)
-		if spec == nil {
-			t.Errorf("skill %q is not catalogued", skillID)
-			continue
-		}
-		if !slices.Contains(spec.RequiresModules, moduleID) {
-			t.Errorf("skill %q must require module %q, got %v", skillID, moduleID, spec.RequiresModules)
-		}
-	}
-}
-
-// The install entry the script splits on "#" must reproduce the command these
-// skills were added from.
-func TestCLIPairedSkillsInstallRefs(t *testing.T) {
-	want := map[types.SkillID]string{
-		types.SkillCaveman:  "https://github.com/juliusbrussee/caveman#caveman",
-		types.SkillGraphify: "https://github.com/graphify-labs/graphify#graphify",
-	}
-	for id, ref := range want {
-		spec := catalog.GetAgentSkill(id)
-		if spec == nil {
-			t.Errorf("skill %q is not catalogued", id)
-			continue
-		}
-		if got := spec.InstallRef(); got != ref {
-			t.Errorf("skill %q InstallRef = %q, want %q", id, got, ref)
-		}
-	}
-}
-
 // Selecting a skill is what puts the installer in the image, and the skills
 // module requiring nodejs is what guarantees the npx it runs on.
 func TestApplySelectedSkillsAddsTheModule(t *testing.T) {

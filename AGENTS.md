@@ -616,12 +616,11 @@ Skills CLI resolves (an `owner/repo` shorthand like `firecrawl/cli`, or a full
 repository URL), the modules its tooling needs, and a `Context` section.
 Adding one is appending to `skills.All`.
 
-**A skill that describes a CLI declares the module installing it.** `caveman`
-and `graphify` are each both a Dockerfile module (the CLI + its agent hooks)
-and a skill of the same id (teaching an agent to drive it); the skill's
-`RequiresModules` names its module, so selecting the skill without the module
-is reported by `domain.MissingSkillModules` rather than shipping a document
-about a binary that is not there.
+**A skill that describes a tool declares the modules installing it.** A skill's
+`RequiresModules` names every module its instructions depend on — `webapp-testing`
+names `python` and `chrome` — so selecting the skill without them is reported by
+`domain.MissingSkillModules` rather than shipping a document about a binary that
+is not there.
 
 Skills are **project-scoped**: the installer runs `npx skills add` inside the
 workspace mount, so they land in the project and never in the shared volume that
