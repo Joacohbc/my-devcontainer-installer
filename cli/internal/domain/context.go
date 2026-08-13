@@ -22,7 +22,7 @@ import (
 // are prebuilt elsewhere and ship the CONTEXT.md of the module set they were
 // built with, so there is nothing for this project to COPY.
 func GenerateContext(config *types.DevcontainerConfig) (string, error) {
-	if config.Mode == types.BuildModeRemote {
+	if config.Mode == types.BuildModeProfiles {
 		return "", nil
 	}
 

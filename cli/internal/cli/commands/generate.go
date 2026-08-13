@@ -20,7 +20,6 @@ import (
 // Flag names for the default generate command flow.
 const (
 	flagMode           = "mode"
-	flagVariant        = "variant"
 	flagRegistry       = "registry"
 	flagWith           = "with"
 	flagService        = "service"
@@ -47,19 +46,18 @@ const (
 
 func addGenerateFlags(cmd *cobra.Command) {
 	f := cmd.Flags()
-	f.String(flagMode, "", "Build mode: local-cached (default), remote")
-	f.String(flagVariant, "", "Remote image variant (e.g. ssh, nodejs, python)")
+	f.String(flagMode, "", "Build mode: custom (default, full local build) or profiles (pull a prebuilt image)")
 	f.String(flagRegistry, "", "Container registry prefix for remote images (overrides global)")
 	f.String(flagWith, "", "Comma-separated dockerfile modules (e.g. nodejs,golang,rust)")
 	f.String(flagService, "", "Comma-separated compose services (e.g. mongo,postgres,redis)")
 	f.String(flagServices, "", "Alias for --service")
-	f.String(flagImage, "", "Image name (default: derived from fingerprint for local-cached)")
+	f.String(flagImage, "", "Image name (default: derived from fingerprint for mode=custom)")
 	f.String(flagWorkspace, "", "Workspace name (default: current dir name)")
 	f.String(flagPorts, "", "Ports to publish on the devcontainer (e.g. 8080:80,5432:5432); bound to 127.0.0.1 unless an IP is given; 'none' clears them")
 	f.String(flagVolumes, "", "Extra volume mounts on the devcontainer (e.g. myvol:/data,./cache:/cache); 'none' clears them")
 	f.String(flagForwardPorts, "", "Ports 'port-forward' tunnels when called with no argument (e.g. 3000,8080:80); 'none' clears them")
 	f.Bool(flagSharedConfig, true, "Mount the global shared AI/dev tool config volume (devcontainer-shared-config) so logins/sessions persist across containers; --shared-config=false to opt out")
-	f.String(flagProfile, "", "Apply a profile (module bundle + custom scripts). See 'config profile list'.")
+	f.String(flagProfile, "", "Apply a profile: a module bundle for mode=custom (any profile, e.g. 'scraper'), or the pull target for mode=profiles (must be [remote]-tagged). See 'config profile list'.")
 	f.String(flagPreset, "", "Deprecated alias for --profile")
 	_ = f.MarkDeprecated(flagPreset, "use --profile instead")
 	f.StringArray(flagScript, nil, "Custom script to add, as <path>[:build|start|manual] (default build); repeatable. build bakes it into the image, start runs it once per container, manual only copies it to ~/post-script/")
@@ -74,11 +72,7 @@ func addGenerateFlags(cmd *cobra.Command) {
 	f.BoolP(flagVersion, "v", false, "Print the CLI version")
 
 	completeProfileFunc := func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		ids := make([]string, 0)
-		for _, p := range catalog.All(domain.ProfileDirs()...) {
-			ids = append(ids, p.ID)
-		}
-		return ids, cobra.ShellCompDirectiveNoFileComp
+		return profileIDs(false), cobra.ShellCompDirectiveNoFileComp
 	}
 	_ = cmd.RegisterFlagCompletionFunc(flagProfile, completeProfileFunc)
 	_ = cmd.RegisterFlagCompletionFunc(flagPreset, completeProfileFunc)
@@ -86,8 +80,7 @@ func addGenerateFlags(cmd *cobra.Command) {
 		return completeCSV(toComplete, catalog.AgentSkillIDs()), cobra.ShellCompDirectiveNoFileComp
 	})
 	_ = cmd.RegisterFlagCompletionFunc(flagSkillsMode, staticCompletion(string(types.SkillModeAuto), string(types.SkillModeManual)))
-	_ = cmd.RegisterFlagCompletionFunc(flagMode, staticCompletion(string(types.BuildModeLocalCached), string(types.BuildModeRemote)))
-	_ = cmd.RegisterFlagCompletionFunc(flagVariant, staticCompletion(types.RemoteVariants...))
+	_ = cmd.RegisterFlagCompletionFunc(flagMode, staticCompletion(string(types.BuildModeCustom), string(types.BuildModeProfiles)))
 	_ = cmd.RegisterFlagCompletionFunc(flagWith, func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return completeCSV(toComplete, catalog.ModuleIDs()), cobra.ShellCompDirectiveNoFileComp
 	})
@@ -96,6 +89,50 @@ func addGenerateFlags(cmd *cobra.Command) {
 	}
 	_ = cmd.RegisterFlagCompletionFunc(flagService, completeServiceFunc)
 	_ = cmd.RegisterFlagCompletionFunc(flagServices, completeServiceFunc)
+}
+
+// profileIDs lists profile ids for completion on the shared --profile flag.
+// remoteOnly restricts the list to profiles with a published prebuilt image —
+// its only caller for that is 'run', which always pulls, plus "ssh" (the
+// hand-built full image, not a catalog profile). Everywhere else every known
+// profile is offered, since --profile also selects a mode=custom module
+// bundle, where a local-build-only profile like 'scraper' is valid too.
+func profileIDs(remoteOnly bool) []string {
+	ids := make([]string, 0)
+	for _, p := range catalog.All(domain.ProfileDirs()...) {
+		if remoteOnly && !p.Remote {
+			continue
+		}
+		ids = append(ids, p.ID)
+	}
+	if remoteOnly {
+		ids = append(ids, "ssh")
+	}
+	return ids
+}
+
+// validRemoteVariant reports whether v is usable as --profile's pull target
+// under mode=profiles (or 'run', which is always that target): "ssh", or a
+// profile id with a published image. A profile that exists but was never
+// published (e.g. 'scraper') is rejected here — it would only fail the pull —
+// even though it remains valid for --profile under mode=custom.
+func validRemoteVariant(v string) bool {
+	if v == "ssh" {
+		return true
+	}
+	p, ok := catalog.Resolve(v, domain.ProfileDirs()...)
+	return ok && p.Remote
+}
+
+// remoteVariantError builds the mode=profiles / 'run' --profile validation
+// error. A profile that exists but has no published image (e.g. 'scraper')
+// gets a pointer to the local-build path instead of being reported as merely
+// "unknown".
+func remoteVariantError(v string) error {
+	if p, ok := catalog.Resolve(v, domain.ProfileDirs()...); ok && !p.Remote {
+		return fmt.Errorf("profile %q has no published remote image, so mode=profiles can't pull it; use --profile %s with mode=custom to build it locally instead", v, v)
+	}
+	return fmt.Errorf("unknown profile: %s. Run 'devcontainer-cli config profile list' to see available profiles", v)
 }
 
 type genFlags struct {
@@ -111,7 +148,6 @@ type genFlags struct {
 	volumes      *[]string // nil = not set (keep existing); non-nil overrides
 	sharedConfig *bool     // nil = not set (keep existing/default-on)
 	mode         string
-	variant      string
 	registry     string
 	profile      string
 	scripts      []types.CustomScript
@@ -184,15 +220,19 @@ func parseGenFlags(cmd *cobra.Command) (*genFlags, error) {
 	g.image, _ = f.GetString(flagImage)
 	g.workspace, _ = f.GetString(flagWorkspace)
 	g.mode, _ = f.GetString(flagMode)
-	g.variant, _ = f.GetString(flagVariant)
 	g.registry, _ = f.GetString(flagRegistry)
 	g.profile, _ = f.GetString(flagProfile)
 	if g.profile == "" {
-		// --preset is the deprecated spelling; it still resolves to the same thing.
+		// --preset is the deprecated spelling; it resolves to the same thing,
+		// whichever role the mode ends up giving it (a module bundle for
+		// mode=custom, a pull target for mode=profiles).
 		g.profile, _ = f.GetString(flagPreset)
 	}
 
-	if g.profile != "" {
+	// "ssh" is not a catalog profile — it is the hand-built full image, a valid
+	// pull target under mode=profiles but with no modules/scripts/ports of its
+	// own to resolve here. Any other unrecognized id is still an error.
+	if g.profile != "" && g.profile != "ssh" {
 		p, ok := catalog.Resolve(g.profile, domain.ProfileDirs()...)
 		if !ok {
 			return nil, fmt.Errorf("unknown profile: %s", g.profile)
@@ -276,15 +316,13 @@ func parseGenFlags(cmd *cobra.Command) (*genFlags, error) {
 	}
 
 	if g.mode != "" {
-		if g.mode != string(types.BuildModeLocalCached) && g.mode != string(types.BuildModeRemote) {
-			return nil, fmt.Errorf("invalid --mode: %s. Expected one of: %s", g.mode, strings.Join([]string{string(types.BuildModeLocalCached), string(types.BuildModeRemote)}, ", "))
+		if g.mode != string(types.BuildModeCustom) && g.mode != string(types.BuildModeProfiles) {
+			return nil, fmt.Errorf("invalid --mode: %s. Expected one of: %s", g.mode, strings.Join([]string{string(types.BuildModeCustom), string(types.BuildModeProfiles)}, ", "))
 		}
 	}
-	if g.variant != "" {
-		if _, err := types.ParseVariant(g.variant); err != nil {
-			return nil, err
-		}
-	}
+	// --profile is validated against the [remote] tag only once the effective
+	// mode is known (validateConfig): it is shared with mode=custom, where any
+	// profile — including a [local]-only one like 'scraper' — is valid.
 	return g, nil
 }
 
@@ -361,8 +399,10 @@ func initAndConfigure(cwd string, flags *genFlags, svc service.GenerateService) 
 	// an explicit --workspace or an already-persisted project keeps its name stable.
 	flags.keepWorkspace = flags.workspace != "" || existing != nil
 
-	// Resolve the profile early so its modules populate our flags. A profile
-	// carries no compose services, so applying one clears the DB services.
+	// Resolve the profile early so its modules populate our flags. Under
+	// mode=custom a profile carries no compose services, so applying one clears
+	// the DB services (applyGenFlags skips that under mode=profiles, where
+	// --profile instead just names the pull target).
 	if flags.profile != "" {
 		// Apply profile values to config as base/defaults early so they are pre-selected if prompts are forced
 		applyGenFlags(config, flags)
@@ -377,13 +417,13 @@ func initAndConfigure(cwd string, flags *genFlags, svc service.GenerateService) 
 		if err != nil {
 			return nil, err
 		}
-	} else if flags.interactive && flags.mode == string(types.BuildModeRemote) && flags.variant == "" &&
+	} else if flags.interactive && flags.mode == string(types.BuildModeProfiles) && flags.profile == "" &&
 		(config.Remote == nil || config.Remote.Variant == "") {
-		picked, perr := console.Select("Image variant:", service.VariantChoices(), service.Option{Value: "nodejs"})
+		picked, perr := console.Select("Profile:", service.ProfileChoices(domain.ProfileDirs()...), service.Option{Value: "nodejs"})
 		if perr != nil {
 			return nil, perr
 		}
-		flags.variant = picked.Value
+		flags.profile = picked.Value
 	}
 
 	applyGenFlags(config, flags)
@@ -423,11 +463,17 @@ func validateConfig(cwd string, config *types.DevcontainerConfig, flags *genFlag
 			strings.Join(ids, ", "))
 	}
 
-	if config.Mode == types.BuildModeRemote && config.Image == "" && config.Remote != nil && config.Remote.Variant != "" {
-		config.Image = domain.ResolveRemoteImage(config.Remote.Variant, domain.ResolveRegistry(flags.registry, config.Remote.Registry))
+	if config.Mode == types.BuildModeProfiles && config.Remote == nil {
+		return fmt.Errorf("mode=profiles requires --profile (a [remote]-tagged profile id — run 'devcontainer-cli config profile list' to see them, or 'ssh' for the full image)")
 	}
-	if config.Mode == types.BuildModeRemote && config.Remote == nil {
-		return fmt.Errorf("mode=remote requires --variant (one of: %s)", strings.Join(types.RemoteVariants, ", "))
+	// --profile is shared with mode=custom, where any profile (including a
+	// [local]-only one like 'scraper') is valid — so this can only be checked
+	// once the effective mode is known, here rather than at flag-parse time.
+	if config.Mode == types.BuildModeProfiles && config.Remote != nil && config.Remote.Variant != "" && !validRemoteVariant(config.Remote.Variant) {
+		return remoteVariantError(config.Remote.Variant)
+	}
+	if config.Mode == types.BuildModeProfiles && config.Image == "" && config.Remote != nil && config.Remote.Variant != "" {
+		config.Image = domain.ResolveRemoteImage(config.Remote.Variant, domain.ResolveRegistry(flags.registry, config.Remote.Registry))
 	}
 
 	if !flags.interactive {
@@ -507,7 +553,7 @@ func materializeCustomScripts(config *types.DevcontainerConfig, buildDir string)
 // prepareBuildDir constructs the build target filesystem structure and validates dependencies.
 func prepareBuildDir(cwd string, config *types.DevcontainerConfig, paths project.Paths) (map[string]string, []string, error) {
 	buildDir := paths.BuildDir
-	skipBuildArtifacts := config.Mode == types.BuildModeRemote
+	skipBuildArtifacts := config.Mode == types.BuildModeProfiles
 
 	if err := os.MkdirAll(buildDir, 0o755); err != nil {
 		return nil, nil, err
@@ -661,7 +707,7 @@ func saveAndPostProcess(cwd string, config *types.DevcontainerConfig, plan *serv
 
 	printLayoutMessage(config.Workspace, len(postScriptFiles) > 0)
 
-	isRemote := config.Mode == types.BuildModeRemote
+	isRemote := config.Mode == types.BuildModeProfiles
 	build := flags.build
 	if plan.CachedImageHit && build == nil {
 		skip := false
@@ -720,7 +766,17 @@ func mergeCustomScripts(existing, incoming []types.CustomScript) []types.CustomS
 }
 
 func applyGenFlags(config *types.DevcontainerConfig, flags *genFlags) {
-	if flags.profile != "" {
+	// --profile is a module bundle only under mode=custom; under mode=profiles
+	// the same flag instead names the pull target (applied to config.Remote
+	// further down) and must not touch modules/services. effectiveMode falls
+	// back to the config's current mode when --mode was not (re)passed, so a
+	// regenerate of an existing mode=profiles project with --profile <id> can't
+	// silently clear its DB services.
+	effectiveMode := flags.mode
+	if effectiveMode == "" {
+		effectiveMode = string(config.Mode)
+	}
+	if flags.profile != "" && effectiveMode != string(types.BuildModeProfiles) {
 		p, _ := catalog.Resolve(flags.profile, domain.ProfileDirs()...)
 		if flags.withModules == nil {
 			flags.withModules = p.Modules
@@ -797,8 +853,8 @@ func applyGenFlags(config *types.DevcontainerConfig, flags *genFlags) {
 	if flags.sharedConfig != nil {
 		config.Compose.SharedConfig = flags.sharedConfig
 	}
-	if flags.mode == string(types.BuildModeRemote) || config.Mode == types.BuildModeRemote {
-		variant := flags.variant
+	if flags.mode == string(types.BuildModeProfiles) || config.Mode == types.BuildModeProfiles {
+		variant := flags.profile
 		if variant == "" && config.Remote != nil {
 			variant = config.Remote.Variant
 		}
@@ -816,7 +872,7 @@ func applyGenFlags(config *types.DevcontainerConfig, flags *genFlags) {
 	}
 	if flags.image != "" {
 		config.Image = flags.image
-	} else if config.Mode == types.BuildModeRemote && config.Remote != nil {
+	} else if config.Mode == types.BuildModeProfiles && config.Remote != nil {
 		config.Image = domain.ResolveRemoteImage(config.Remote.Variant, domain.ResolveRegistry(flags.registry, config.Remote.Registry))
 	}
 

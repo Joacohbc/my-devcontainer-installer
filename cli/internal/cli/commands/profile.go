@@ -34,6 +34,14 @@ built-in that ships scripts writes them out as a normal user profile you can
 edit. Pass a profile to 'devcontainer-cli --profile <id>' (or pick
 one in the interactive wizard) to pre-select its modules and add its scripts.
 
+Every profile builds locally this way, regardless of the [remote]/[local] tag
+'config profile list' shows: [remote] means it also has a published
+ghcr.io/devcontainer-<id> image, so the same --profile <id> can instead be
+pulled with '--mode profiles --profile <id>' (or 'run --profile <id>', which
+only ever pulls) instead of built; [local] (e.g. 'scraper', and any profile
+you create yourself) has no such image, so only mode=custom applies to it —
+passing it under mode=profiles fails.
+
 Each script declares when it runs: 'build' bakes it into the image, 'start' runs
 it once per container, 'manual' only copies it to ~/post-script/.
 
@@ -71,7 +79,7 @@ func newProfileListCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:          "list",
 		Short:        "List built-in and user profiles with their modules",
-		Long:         "devcontainer-cli config profile list — show every available profile, grouped\ninto built-in and your own, with the module ids each one bundles and the custom\nscripts it carries.",
+		Long:         "devcontainer-cli config profile list — show every available profile, grouped\ninto built-in and your own, with the module ids each one bundles and the custom\nscripts it carries. Each is tagged [remote] (--profile also pulls it under\nmode=profiles) or [local] (--profile only builds it under mode=custom).",
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			profiles := (service.ConfigService{Report: console}).Profiles()
@@ -99,7 +107,7 @@ func newProfileListCommand() *cobra.Command {
 					// Pad the plain id first, then style it, so ANSI codes don't
 					// throw off column alignment.
 					id := ui.Bold(fmt.Sprintf("%-*s", width, p.ID))
-					console.Print(fmt.Sprintf("  %s  %s\n", id, ui.Subtle(strings.Join(p.Modules, ", "))))
+					console.Print(fmt.Sprintf("  %s  %s  %s\n", id, remoteTag(p), ui.Subtle(strings.Join(p.Modules, ", "))))
 					if len(p.Scripts) > 0 {
 						console.Print(fmt.Sprintf("  %s  %s\n", strings.Repeat(" ", width), ui.Subtle("scripts: "+describeScripts(p.Scripts))))
 					}
@@ -121,6 +129,17 @@ func newProfileListCommand() *cobra.Command {
 			return nil
 		},
 	}
+}
+
+// remoteTag marks whether a profile has a published prebuilt image: [remote]
+// means --profile also works as a mode=profiles pull target, [local] means
+// --profile only builds it under mode=custom (passing it under mode=profiles
+// fails). Both are the same width so the module list after it stays aligned.
+func remoteTag(p catalog.Profile) string {
+	if p.Remote {
+		return ui.Subtle("[remote]")
+	}
+	return ui.Subtle("[local] ")
 }
 
 // describeScripts renders a profile's scripts as "name (when), name (when)".

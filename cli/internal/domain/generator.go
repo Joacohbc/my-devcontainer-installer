@@ -16,7 +16,7 @@ import (
 const DefaultSubnet = "172.25.0.0/28"
 
 func GenerateDockerfile(config *types.DevcontainerConfig) (string, error) {
-	if config.Mode == types.BuildModeRemote {
+	if config.Mode == types.BuildModeProfiles {
 		return "", nil
 	}
 	resolved, err := ResolveDockerfileModules(MatchDBClientVersions(config))
@@ -234,11 +234,11 @@ func ResolveRemoteImage(variant, registry string) string {
 }
 
 func ResolveDevcontainerImageName(config *types.DevcontainerConfig) string {
-	if config.Mode == types.BuildModeRemote && config.Remote != nil {
+	if config.Mode == types.BuildModeProfiles && config.Remote != nil {
 		reg := config.Remote.Registry
 		return ResolveRemoteImage(config.Remote.Variant, reg)
 	}
-	if config.Mode == types.BuildModeLocalCached && config.Fingerprint != "" {
+	if config.Mode == types.BuildModeCustom && config.Fingerprint != "" {
 		fp := config.Fingerprint
 		if len(fp) > 12 {
 			fp = fp[:12]
@@ -517,7 +517,7 @@ func (c composeContext) configureDevcontainer(rendered *compose.ServiceDef) {
 	// declared in the top-level volumes section (see volumes()).
 	rendered.Volumes = append(rendered.Volumes, c.config.Compose.Volumes...)
 
-	if c.config.Mode == types.BuildModeRemote {
+	if c.config.Mode == types.BuildModeProfiles {
 		rendered.Build = nil
 	} else {
 		rendered.Build = devcontainerBuild(c.config)

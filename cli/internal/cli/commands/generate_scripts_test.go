@@ -26,7 +26,7 @@ func writeScript(t *testing.T, dir, name, body string) string {
 
 func scriptTestConfig(scripts ...types.CustomScript) *types.DevcontainerConfig {
 	return &types.DevcontainerConfig{
-		Mode:       types.BuildModeLocalCached,
+		Mode:       types.BuildModeCustom,
 		Image:      "devcontainer-cli/test:latest",
 		Workspace:  "scriptws",
 		Dockerfile: types.DockerfileConfig{Modules: []types.SelectedModule{}, Scripts: scripts},
@@ -138,7 +138,7 @@ func TestPrepareBuildDirFailsOnMissingCustomScript(t *testing.T) {
 func TestPrepareBuildDirSkipsCustomScriptsForRemote(t *testing.T) {
 	cwd := t.TempDir()
 	config := scriptTestConfig(types.CustomScript{File: "gone.sh"})
-	config.Mode = types.BuildModeRemote
+	config.Mode = types.BuildModeProfiles
 	paths := project.ProjectPaths(cwd, config.Workspace)
 
 	contents, _, err := prepareBuildDir(cwd, config, paths)
@@ -214,6 +214,30 @@ func TestParseGenFlags_PresetIsADeprecatedAliasOfProfile(t *testing.T) {
 	addGenerateFlags(cmd)
 	if f := cmd.Flags().Lookup(flagPreset); f == nil || f.Deprecated == "" {
 		t.Error("expected --preset to be marked deprecated")
+	}
+}
+
+// --variant was removed (folded into --profile, no alias kept).
+func TestParseGenFlags_VariantFlagDoesNotExist(t *testing.T) {
+	cmd := &cobra.Command{Use: "generate"}
+	addGenerateFlags(cmd)
+	if cmd.Flags().Lookup("variant") != nil {
+		t.Error("expected --variant to be gone, not just deprecated")
+	}
+}
+
+// "ssh" is not a catalog profile — it is the hand-built full image — so it
+// must not trip the generic "unknown profile" check that every other
+// --profile value goes through.
+func TestParseGenFlags_SSHProfileIsNotUnknown(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	flags, err := parseGenFlagsFor(t, "--profile", "ssh")
+	if err != nil {
+		t.Fatalf("parseGenFlags: %v", err)
+	}
+	if flags.profile != "ssh" {
+		t.Errorf("expected profile ssh, got %q", flags.profile)
 	}
 }
 

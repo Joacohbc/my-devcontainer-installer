@@ -47,6 +47,25 @@ func TestBaseProfile(t *testing.T) {
 	}
 }
 
+// Profile.Remote is what tells --profile's mode=profiles (pull target) role
+// apart from its mode=custom (module bundle) role: it must be set on exactly
+// the ids CI actually publishes (types.RemoteVariants), so a profile never
+// claims a pullable image that does not exist (or hides one that does).
+// 'base' is deliberately excluded — its published devcontainer-base is the
+// minimal base-cache image (no github-cli), not this profile's content.
+func TestBuiltinProfileRemoteFlagMatchesPublishedVariants(t *testing.T) {
+	remoteVariants := map[string]bool{}
+	for _, v := range types.RemoteVariants {
+		remoteVariants[v] = true
+	}
+	for _, p := range catalog.BuiltinProfiles {
+		want := remoteVariants[p.ID]
+		if p.Remote != want {
+			t.Errorf("profile %q: Remote = %v, want %v (types.RemoteVariants membership)", p.ID, p.Remote, want)
+		}
+	}
+}
+
 func TestBuiltinProfilesExcludeAITools(t *testing.T) {
 	aiModules := []string{
 		"claude-code", "opencode", "codex-cli", "antigravity-cli", "copilot-cli",

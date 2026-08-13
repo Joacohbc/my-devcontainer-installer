@@ -181,7 +181,7 @@ func TestGenerateContext_DevcontainerPorts(t *testing.T) {
 // image ships the one it was built with.
 func TestGenerateContext_RemoteModeIsEmpty(t *testing.T) {
 	config := makeConfig()
-	config.Mode = types.BuildModeRemote
+	config.Mode = types.BuildModeProfiles
 	if out := mustGenerateContext(t, config); out != "" {
 		t.Errorf("remote mode must generate no CONTEXT.md, got:\n%s", out)
 	}

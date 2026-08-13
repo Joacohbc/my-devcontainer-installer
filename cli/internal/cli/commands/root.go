@@ -34,10 +34,14 @@ For AI assistants: 'skill install' teaches an agent running on this machine to
 drive the CLI, and 'context' reports what a container has inside it.
 
 Build modes:
-  local-cached  Build the full Dockerfile/compose pipeline locally and tag the
-                image by a content fingerprint so identical setups are reused.
-  remote        Skip the Dockerfile and pull a prebuilt ghcr.io image for the
-                chosen --variant; database services are still generated.
+  custom    Build the full Dockerfile/compose pipeline locally and tag the
+            image by a content fingerprint so identical setups are reused.
+            Works for every profile, including a [local]-only one like
+            'scraper'.
+  profiles  Skip the Dockerfile and pull a prebuilt ghcr.io image for the
+            chosen --profile — a [remote]-tagged profile id (see
+            'config profile list'), or 'ssh' for the full image; database
+            services are still generated.
 
 Run 'devcontainer-cli --help' for the full flag list, or
 'devcontainer-cli <command> --help' for any subcommand.`,
@@ -48,7 +52,7 @@ Run 'devcontainer-cli --help' for the full flag list, or
   devcontainer-cli --with nodejs,golang --service postgres --no-interactive --force
 
   # Pull a prebuilt remote image instead of building locally
-  devcontainer-cli --mode remote --variant nodejs
+  devcontainer-cli --mode profiles --profile nodejs
 
   # Start from a saved profile, then publish a port
   devcontainer-cli --profile my-node --ports 3000:3000

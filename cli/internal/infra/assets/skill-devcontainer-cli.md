@@ -49,7 +49,7 @@ That generates the files, builds the image and starts the stack. Useful flags
 | Flag | Effect |
 |---|---|
 | `--with a,b,c` | Dockerfile modules (toolchains/tools) to install |
-| `--profile <id>` | Start from a profile: a module bundle plus its custom scripts; `config profile list` shows them |
+| `--profile <id>` | With mode=custom (default): start from a profile — a module bundle plus its custom scripts. With mode=profiles: the `[remote]`-tagged id to pull instead of building. `config profile list` shows them |
 | `--script <path>[:build\|start\|manual]` | Add a script of your own (repeatable): baked into the image, run once per container start, or only copied to `~/post-script/` |
 | `--skill firecrawl,agent-browser,webapp-testing` | Agent skills to install **into the project workspace** via the Skills CLI. Adds the internal `skills` module, which requires `nodejs` |
 | `--skills-mode manual\|auto` | `manual` (default) leaves the `install-skills` command (aliased `install_skills`) to the user; `auto` installs on every container start, writing into the workspace unprompted |
@@ -57,7 +57,7 @@ That generates the files, builds the image and starts the stack. Useful flags
 | `--ports 3000:3000,8080:80` | Publish container ports (bound to 127.0.0.1 unless an IP is given) |
 | `--volumes myvol:/data,./cache:/cache` | Extra mounts on the dev container |
 | `--workspace <name>` | Override the workspace name (default: directory name) |
-| `--mode remote --variant nodejs` | Skip the local build, pull a prebuilt ghcr.io image |
+| `--mode profiles --profile nodejs` | Skip the local build, pull a prebuilt ghcr.io image for a `[remote]`-tagged profile (see `config profile list`) |
 | `--force` | Overwrite existing generated files without asking |
 | `--no-build` | Generate only; build/start later with `up --build` |
 
@@ -163,7 +163,7 @@ wrong one. Run `devcontainer-cli context` to see which of these the image has.
 `destroy` is irreversible and requires `--yes` in non-interactive mode; confirm
 with the user before running it.
 
-    devcontainer-cli update            # rebuild (local-cached) or pull (remote)
+    devcontainer-cli update            # rebuild (mode=custom) or pull (mode=profiles)
     devcontainer-cli update --rebuild  # force a rebuild
 
 ## Reach services in the container
@@ -219,18 +219,23 @@ Move files with `copy` (`:` marks the container side):
 When there is no project to configure — a scratch environment, a quick
 experiment:
 
-    devcontainer-cli run --no-interactive --variant nodejs --name scratch
-    devcontainer-cli run --no-interactive --variant python --name scratch-py \
+    devcontainer-cli run --no-interactive --profile nodejs --name scratch
+    devcontainer-cli run --no-interactive --profile python --name scratch-py \
       --volumes work:/work --ports 8000:8000
 
-Variants: `nodejs`, `bun`, `python`, `go`, `java-temurin`, `node-go`,
-`node-python`, `node-java-temurin`, `bun-go`, `bun-python`, `bun-java-temurin`.
+`run`'s `--profile` only accepts a
+`[remote]`-tagged profile id (`config profile list` marks each one `[remote]`
+or `[local]`) or `ssh` for the hand-built full image — those map to a
+published `ghcr.io/devcontainer-<id>` image. A `[local]` profile (e.g.
+`scraper`, or a user-created one) is rejected here — it has nothing to pull;
+build it instead with `devcontainer-cli --profile <id>` on the default
+`--mode custom`, which works for every profile.
 Tear one down with `devcontainer-cli destroy --container <name> --yes`.
 
 ## Global config, profiles, shared logins
 
     devcontainer-cli config                       # current defaults
-    devcontainer-cli config profile list          # module bundles for --profile
+    devcontainer-cli config profile list          # bundles for --profile; [remote]/[local] tag
     devcontainer-cli config alias set ll "ls -la" # aliases for every container
     devcontainer-cli config alias sync            # apply them without a rebuild
 
@@ -269,9 +274,11 @@ managed label). Use `--dry-run` first and show the user what would go.
 - **Changing the image is a host-side action.** Adding a module, a service or a
   published port means re-running generation with `--force`, then
   `up --build` — not `apt-get install` inside the container.
-- **Prefer `--mode remote --variant <v>`** when the user just needs an
-  environment fast and the variant matches: it pulls a prebuilt image instead of
-  building one.
+- **Prefer `--mode profiles --profile <v>`** when the user just needs an
+  environment fast and a `[remote]`-tagged profile matches (`config profile
+  list`): it pulls a prebuilt image instead of building one. A `[local]`
+  profile (e.g. `scraper`) has no image to pull — use `--profile <id>` with
+  the default `--mode custom` for those.
 - Run every command from the project directory; the CLI resolves the workspace
   from the current directory unless `--workspace` says otherwise.
 - Long-running commands (`logs -f`, `port-forward`, `ssh` without a command,

@@ -105,7 +105,7 @@ func TestGenerateDockerfile_RejectsInvalidCustomScript(t *testing.T) {
 // custom scripts included.
 func TestGenerateDockerfile_RemoteModeIgnoresCustomScripts(t *testing.T) {
 	cfg := makeConfig(withScripts(types.CustomScript{File: "x.sh"}))
-	cfg.Mode = types.BuildModeRemote
+	cfg.Mode = types.BuildModeProfiles
 	df, err := domain.GenerateDockerfile(cfg)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

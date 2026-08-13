@@ -53,7 +53,15 @@ type Profile struct {
 	// ("3000:3000"), which is predictable but collides on the second project.
 	Ports        []string `yaml:"ports,omitempty"`
 	ForwardPorts []string `yaml:"forward_ports,omitempty"`
-	Source       string   `yaml:"-"`
+	// Remote marks that this profile id also has a published
+	// ghcr.io/devcontainer-<id> image, built by CI from this exact module list —
+	// so it is safe to offer for --profile under mode=profiles (a pull instead of a
+	// local build). A profile without it (e.g. 'scraper', or any user profile
+	// that has not set up its own matching publish) can still be applied with
+	// --profile in mode=custom; it is just never a pull target, since nothing
+	// is published under its id and the pull would 404/be denied.
+	Remote bool   `yaml:"remote,omitempty"`
+	Source string `yaml:"-"`
 	// Dir is the directory the profile's scripts are resolved against: the
 	// profile's own directory for a directory-shaped profile, the containing
 	// directory for a flat <id>.yml, and the path inside BuiltinProfileFS for a
@@ -83,8 +91,9 @@ var plainBuiltinProfiles = []Profile{
 		},
 	},
 	{
-		ID:    "nodejs",
-		Label: "Node.js (pnpm, GitHub CLI)",
+		ID:     "nodejs",
+		Remote: true,
+		Label:  "Node.js (pnpm, GitHub CLI)",
 		Modules: []string{
 			string(types.ModuleGithubCli),
 			string(types.ModuleNodejs),
@@ -92,40 +101,45 @@ var plainBuiltinProfiles = []Profile{
 		},
 	},
 	{
-		ID:    "bun",
-		Label: "Bun (GitHub CLI)",
+		ID:     "bun",
+		Remote: true,
+		Label:  "Bun (GitHub CLI)",
 		Modules: []string{
 			string(types.ModuleGithubCli),
 			string(types.ModuleBun),
 		},
 	},
 	{
-		ID:    "java-temurin",
-		Label: "Java Temurin (GitHub CLI)",
+		ID:     "java-temurin",
+		Remote: true,
+		Label:  "Java Temurin (GitHub CLI)",
 		Modules: []string{
 			string(types.ModuleGithubCli),
 			string(types.ModuleJavaTemurin),
 		},
 	},
 	{
-		ID:    "python",
-		Label: "Python (GitHub CLI)",
+		ID:     "python",
+		Remote: true,
+		Label:  "Python (GitHub CLI)",
 		Modules: []string{
 			string(types.ModuleGithubCli),
 			string(types.ModulePython),
 		},
 	},
 	{
-		ID:    "go",
-		Label: "Go (GitHub CLI)",
+		ID:     "go",
+		Remote: true,
+		Label:  "Go (GitHub CLI)",
 		Modules: []string{
 			string(types.ModuleGithubCli),
 			string(types.ModuleGolang),
 		},
 	},
 	{
-		ID:    "node-go",
-		Label: "Node.js + Go (pnpm, GitHub CLI)",
+		ID:     "node-go",
+		Remote: true,
+		Label:  "Node.js + Go (pnpm, GitHub CLI)",
 		Modules: []string{
 			string(types.ModuleGithubCli),
 			string(types.ModuleNodejs),
@@ -134,8 +148,9 @@ var plainBuiltinProfiles = []Profile{
 		},
 	},
 	{
-		ID:    "node-python",
-		Label: "Node.js + Python (pnpm, GitHub CLI)",
+		ID:     "node-python",
+		Remote: true,
+		Label:  "Node.js + Python (pnpm, GitHub CLI)",
 		Modules: []string{
 			string(types.ModuleGithubCli),
 			string(types.ModuleNodejs),
@@ -144,8 +159,9 @@ var plainBuiltinProfiles = []Profile{
 		},
 	},
 	{
-		ID:    "node-java-temurin",
-		Label: "Node.js + Java Temurin (pnpm, GitHub CLI)",
+		ID:     "node-java-temurin",
+		Remote: true,
+		Label:  "Node.js + Java Temurin (pnpm, GitHub CLI)",
 		Modules: []string{
 			string(types.ModuleGithubCli),
 			string(types.ModuleNodejs),
@@ -154,8 +170,9 @@ var plainBuiltinProfiles = []Profile{
 		},
 	},
 	{
-		ID:    "bun-go",
-		Label: "Bun + Go (GitHub CLI)",
+		ID:     "bun-go",
+		Remote: true,
+		Label:  "Bun + Go (GitHub CLI)",
 		Modules: []string{
 			string(types.ModuleGithubCli),
 			string(types.ModuleBun),
@@ -163,8 +180,9 @@ var plainBuiltinProfiles = []Profile{
 		},
 	},
 	{
-		ID:    "bun-python",
-		Label: "Bun + Python (GitHub CLI)",
+		ID:     "bun-python",
+		Remote: true,
+		Label:  "Bun + Python (GitHub CLI)",
 		Modules: []string{
 			string(types.ModuleGithubCli),
 			string(types.ModuleBun),
@@ -172,8 +190,9 @@ var plainBuiltinProfiles = []Profile{
 		},
 	},
 	{
-		ID:    "bun-java-temurin",
-		Label: "Bun + Java Temurin (GitHub CLI)",
+		ID:     "bun-java-temurin",
+		Remote: true,
+		Label:  "Bun + Java Temurin (GitHub CLI)",
 		Modules: []string{
 			string(types.ModuleGithubCli),
 			string(types.ModuleBun),

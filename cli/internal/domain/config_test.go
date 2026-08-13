@@ -47,8 +47,8 @@ func TestSaveAndLoadConfig_RoundTrip(t *testing.T) {
 	if got.Env["FOO"] != "bar" {
 		t.Errorf("Env not round-tripped: %+v", got.Env)
 	}
-	if got.Mode != types.BuildModeLocalCached {
-		t.Errorf("Mode = %q, want %q", got.Mode, types.BuildModeLocalCached)
+	if got.Mode != types.BuildModeCustom {
+		t.Errorf("Mode = %q, want %q", got.Mode, types.BuildModeCustom)
 	}
 	if strings.Join(got.Compose.Ports, ",") != strings.Join(want.Compose.Ports, ",") {
 		t.Errorf("Ports = %v, want %v", got.Compose.Ports, want.Compose.Ports)
@@ -56,7 +56,7 @@ func TestSaveAndLoadConfig_RoundTrip(t *testing.T) {
 }
 
 func TestLoadConfig_MigratesLegacyModes(t *testing.T) {
-	for _, legacy := range []string{"custom", "standalone", ""} {
+	for _, legacy := range []string{"custom", "standalone", "local-cached", ""} {
 		dir := t.TempDir()
 		body := `{"mode":"` + legacy + `","image":"x:local","workspace":"ws"}`
 		if err := os.WriteFile(filepath.Join(dir, types.ConfigFile), []byte(body), 0o644); err != nil {
@@ -66,9 +66,26 @@ func TestLoadConfig_MigratesLegacyModes(t *testing.T) {
 		if err != nil {
 			t.Fatalf("LoadConfig(%q): %v", legacy, err)
 		}
-		if cfg.Mode != types.BuildModeLocalCached {
-			t.Errorf("legacy mode %q migrated to %q, want %q", legacy, cfg.Mode, types.BuildModeLocalCached)
+		if cfg.Mode != types.BuildModeCustom {
+			t.Errorf("legacy mode %q migrated to %q, want %q", legacy, cfg.Mode, types.BuildModeCustom)
 		}
+	}
+}
+
+// The pre-rename spelling of the profile-pull mode must still load as its
+// current name.
+func TestLoadConfig_MigratesLegacyRemoteMode(t *testing.T) {
+	dir := t.TempDir()
+	body := `{"mode":"remote","image":"x:remote","workspace":"ws","remote":{"variant":"nodejs"}}`
+	if err := os.WriteFile(filepath.Join(dir, types.ConfigFile), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := domain.LoadConfig(dir)
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if cfg.Mode != types.BuildModeProfiles {
+		t.Errorf("legacy mode %q migrated to %q, want %q", "remote", cfg.Mode, types.BuildModeProfiles)
 	}
 }
 
@@ -212,7 +229,7 @@ func TestLoadConfig_KeepsRemoteMode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadConfig: %v", err)
 	}
-	if cfg.Mode != types.BuildModeRemote {
+	if cfg.Mode != types.BuildModeProfiles {
 		t.Errorf("Mode = %q, want remote", cfg.Mode)
 	}
 }
@@ -252,7 +269,7 @@ func TestDefaultConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := domain.DefaultConfig(dir)
-	if cfg.Mode != types.BuildModeLocalCached {
+	if cfg.Mode != types.BuildModeCustom {
 		t.Errorf("Mode = %q, want local-cached", cfg.Mode)
 	}
 	if cfg.Workspace != "proj" {

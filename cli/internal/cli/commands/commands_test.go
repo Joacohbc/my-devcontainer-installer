@@ -288,7 +288,7 @@ func TestCleanAndSubcommands_HaveAllFlag(t *testing.T) {
 
 func TestRootCommand_HasGenerateFlags(t *testing.T) {
 	root := NewRootCommand("test")
-	for _, name := range []string{"mode", "variant", "with", "service", "image", "workspace", "force", "build", "no-build", "version"} {
+	for _, name := range []string{"mode", "profile", "with", "service", "image", "workspace", "force", "build", "no-build", "version"} {
 		if root.Flags().Lookup(name) == nil {
 			t.Errorf("expected root flag --%s", name)
 		}
@@ -493,6 +493,42 @@ func TestRunCommand_HasCopyAIScriptsFlag(t *testing.T) {
 	cmd := newRunCommand()
 	if cmd.Flags().Lookup("copy-ai-scripts") == nil {
 		t.Error("expected run --copy-ai-scripts flag")
+	}
+}
+
+func TestRunCommand_HasProfileFlag(t *testing.T) {
+	cmd := newRunCommand()
+	if cmd.Flags().Lookup("profile") == nil {
+		t.Error("expected run --profile flag")
+	}
+	if cmd.Flags().Lookup("variant") != nil {
+		t.Error("--variant was removed, not just deprecated; expected no such flag")
+	}
+}
+
+// resolveRunProfile must reject a [local]-only profile (nothing published to
+// pull) but accept "ssh" (the hand-built full image, not a catalog profile).
+func TestResolveRunProfile_RejectsLocalOnlyAcceptsSSH(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	cmd := newRunCommand()
+	if err := cmd.Flags().Set("profile", "scraper"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := resolveRunProfile(cmd, true); err == nil {
+		t.Error("expected an error for a [local]-only profile")
+	}
+
+	cmd = newRunCommand()
+	if err := cmd.Flags().Set("profile", "ssh"); err != nil {
+		t.Fatal(err)
+	}
+	got, err := resolveRunProfile(cmd, true)
+	if err != nil {
+		t.Fatalf("resolveRunProfile: %v", err)
+	}
+	if got != "ssh" {
+		t.Errorf("got %q, want ssh", got)
 	}
 }
 
@@ -1633,7 +1669,7 @@ func TestContainerChoiceLabel_ContainsFields(t *testing.T) {
 func TestConfigExportImport(t *testing.T) {
 	tmpDir := t.TempDir()
 	origCfg := &types.DevcontainerConfig{
-		Mode:      types.BuildModeLocalCached,
+		Mode:      types.BuildModeCustom,
 		Image:     "devcontainer-cli/test:latest",
 		Workspace: "my-test-workspace",
 		Dockerfile: types.DockerfileConfig{
@@ -1806,6 +1842,50 @@ func TestApplyGenFlags_ProfileWithoutServices(t *testing.T) {
 	}
 }
 
+// Under mode=profiles, --profile is the pull target (config.Remote), not a
+// module bundle — applying it must not clear the project's existing DB
+// services the way it does under mode=custom.
+func TestApplyGenFlags_ProfileUnderModeProfilesKeepsServicesAndSetsRemote(t *testing.T) {
+	config := &types.DevcontainerConfig{
+		Mode: types.BuildModeProfiles,
+		Compose: types.ComposeConfig{
+			Services: []types.SelectedService{{ID: "postgres"}},
+		},
+	}
+	flags := &genFlags{profile: "nodejs"}
+
+	applyGenFlags(config, flags)
+
+	if len(config.Compose.Services) != 1 || config.Compose.Services[0].ID != "postgres" {
+		t.Errorf("expected postgres service to survive, got %v", config.Compose.Services)
+	}
+	if config.Remote == nil || config.Remote.Variant != "nodejs" {
+		t.Errorf("expected Remote.Variant = nodejs, got %+v", config.Remote)
+	}
+}
+
+// The same, but switching an existing custom-mode project to mode=profiles in
+// one invocation (flags.mode set explicitly rather than inherited from
+// config.Mode).
+func TestApplyGenFlags_ProfileWithExplicitModeProfilesKeepsServices(t *testing.T) {
+	config := &types.DevcontainerConfig{
+		Mode: types.BuildModeCustom,
+		Compose: types.ComposeConfig{
+			Services: []types.SelectedService{{ID: "postgres"}},
+		},
+	}
+	flags := &genFlags{profile: "nodejs", mode: string(types.BuildModeProfiles)}
+
+	applyGenFlags(config, flags)
+
+	if len(config.Compose.Services) != 1 || config.Compose.Services[0].ID != "postgres" {
+		t.Errorf("expected postgres service to survive, got %v", config.Compose.Services)
+	}
+	if config.Remote == nil || config.Remote.Variant != "nodejs" {
+		t.Errorf("expected Remote.Variant = nodejs, got %+v", config.Remote)
+	}
+}
+
 func TestInitAndConfigure_ProfileSkipsPrompts(t *testing.T) {
 	dir := t.TempDir()
 
@@ -1836,7 +1916,7 @@ func TestValidateConfig_DisambiguatesCollidingWorkspace(t *testing.T) {
 	if err := os.MkdirAll(cwd, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	config := &types.DevcontainerConfig{Workspace: "api", Mode: types.BuildModeLocalCached, Image: "api:local"}
+	config := &types.DevcontainerConfig{Workspace: "api", Mode: types.BuildModeCustom, Image: "api:local"}
 	flags := &genFlags{interactive: true} // keepWorkspace false → auto-uniquify
 	if err := validateConfig(cwd, config, flags, service.GenerateService{}); err != nil {
 		t.Fatalf("validateConfig: %v", err)
@@ -1855,13 +1935,48 @@ func TestValidateConfig_KeepsPinnedWorkspaceOnCollision(t *testing.T) {
 	if err := os.MkdirAll(cwd, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	config := &types.DevcontainerConfig{Workspace: "api", Mode: types.BuildModeLocalCached, Image: "api:local"}
+	config := &types.DevcontainerConfig{Workspace: "api", Mode: types.BuildModeCustom, Image: "api:local"}
 	flags := &genFlags{interactive: true, keepWorkspace: true} // pinned → warn, don't rewrite
 	if err := validateConfig(cwd, config, flags, service.GenerateService{}); err != nil {
 		t.Fatalf("validateConfig: %v", err)
 	}
 	if config.Workspace != "api" {
 		t.Errorf("pinned workspace must not be rewritten, got %q", config.Workspace)
+	}
+}
+
+// mode=profiles rejects a [local]-only --profile (e.g. 'scraper'): it has no
+// published image, so the pull would just fail — caught here instead, once
+// the effective mode is known, not eagerly at flag-parse time (where the same
+// --profile is valid for mode=custom).
+func TestValidateConfig_ModeProfilesRejectsLocalOnlyProfile(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	cwd := t.TempDir()
+	config := &types.DevcontainerConfig{
+		Workspace: "ws",
+		Mode:      types.BuildModeProfiles,
+		Remote:    &types.RemoteConfig{Variant: "scraper"},
+	}
+	flags := &genFlags{interactive: true, keepWorkspace: true}
+	err := validateConfig(cwd, config, flags, service.GenerateService{})
+	if err == nil {
+		t.Fatal("expected an error for a [local]-only profile under mode=profiles")
+	}
+}
+
+// mode=profiles accepts "ssh", the hand-built full image, even though it is
+// not itself a catalog profile.
+func TestValidateConfig_ModeProfilesAcceptsSSH(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	cwd := t.TempDir()
+	config := &types.DevcontainerConfig{
+		Workspace: "ws",
+		Mode:      types.BuildModeProfiles,
+		Remote:    &types.RemoteConfig{Variant: "ssh"},
+	}
+	flags := &genFlags{interactive: true, keepWorkspace: true}
+	if err := validateConfig(cwd, config, flags, service.GenerateService{}); err != nil {
+		t.Fatalf("validateConfig: %v", err)
 	}
 }
 

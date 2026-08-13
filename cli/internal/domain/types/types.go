@@ -2,7 +2,6 @@ package types
 
 import (
 	"encoding/json"
-	"fmt"
 	"strings"
 )
 
@@ -378,11 +377,11 @@ func (s *SelectedService) UnmarshalYAML(unmarshal func(any) error) error {
 type BuildMode string
 
 const (
-	BuildModeLocalCached BuildMode = "local-cached"
-	BuildModeRemote      BuildMode = "remote"
+	BuildModeCustom   BuildMode = "custom"
+	BuildModeProfiles BuildMode = "profiles"
 )
 
-var BuildModes = []BuildMode{BuildModeLocalCached, BuildModeRemote}
+var BuildModes = []BuildMode{BuildModeCustom, BuildModeProfiles}
 
 var RemoteVariants = []string{
 	"nodejs",
@@ -396,29 +395,6 @@ var RemoteVariants = []string{
 	"bun-go",
 	"bun-python",
 	"bun-java-temurin",
-}
-
-var VariantLabels = map[string]string{
-	"nodejs":            "nodejs — Node.js only",
-	"bun":               "bun — Bun only",
-	"java-temurin":      "java-temurin — Java Temurin only",
-	"python":            "python — Python only",
-	"go":                "go — Go only",
-	"node-go":           "node-go — Node.js + Go",
-	"node-python":       "node-python — Node.js + Python",
-	"node-java-temurin": "node-java-temurin — Node.js + Java Temurin",
-	"bun-go":            "bun-go — Bun + Go",
-	"bun-python":        "bun-python — Bun + Python",
-	"bun-java-temurin":  "bun-java-temurin — Bun + Java Temurin",
-}
-
-func ParseVariant(v string) (string, error) {
-	for _, rv := range RemoteVariants {
-		if rv == v {
-			return v, nil
-		}
-	}
-	return "", fmt.Errorf("invalid --variant: %s. Expected one of: %s", v, strings.Join(RemoteVariants, ", "))
 }
 
 type RemoteConfig struct {

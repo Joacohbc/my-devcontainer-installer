@@ -468,6 +468,40 @@ Two on-disk shapes, both valid:
 it in both shapes (the containing directory for a flat file, the profile's own
 directory otherwise).
 
+**`--profile` is one flag with two roles, told apart by mode.** There used to
+be a second flag, `--variant`, pulling double duty with `--profile`; it has
+been removed outright (not deprecated — `generate.go`/`run.go` no longer
+register it at all). Under mode=`custom`, `--profile <id>` is a module
+bundle and always builds locally, for any profile. Under mode=`profiles` (and
+always for `run`, which only ever pulls), the same flag instead names the pull
+target: it skips the build and pulls `ghcr.io/devcontainer-<id>:latest`, and
+that image only exists for the ids CI actually publishes
+(`types.RemoteVariants`). `applyGenFlags` tells the roles apart via
+`effectiveMode` (`flags.mode`, falling back to the config's current mode) —
+load-bearing, because otherwise a mode=`profiles` regenerate with `--profile
+<id>` would misapply the module-bundle branch and silently clear the
+project's compose services.
+
+**`Profile.Remote` says whether the id is also a pull target.**
+`Remote: true` on a `plainBuiltinProfiles` entry marks exactly the ids in
+`types.RemoteVariants`; `TestBuiltinProfileRemoteFlagMatchesPublishedVariants`
+keeps the two lists in lockstep so a profile can never claim a pull target
+that 404s or hide one that works. `base` is deliberately `Remote: false` even
+though `ghcr.io/devcontainer-base` exists — that image is the minimal
+base-cache build (no github-cli), not this profile's content, so pulling it
+under the `base` id would silently serve the wrong image. An embedded profile
+that ships scripts (`scraper`) or a user's own is `Remote: false` unless the
+user sets `remote: true` in its YAML themselves (for someone publishing their
+own matching image under their own registry). `ProfileChoices`
+(`service/generate_wizard.go`, backing the `run`/generate "Profile:" pickers)
+and `validRemoteVariant`/`profileIDs(remoteOnly)` (`commands/generate.go`)
+filter on this flag — `profileIDs(false)`, offering every profile, only backs
+`--profile`'s own completion, since mode=`custom` accepts any of them; `run`'s
+completion and the mode=`profiles` pull-target validation both use
+`profileIDs(true)`/`validRemoteVariant`, remote-only. `config profile list`
+renders it as a `[remote]`/`[local]` tag so the choice is visible before the
+pull is attempted.
+
 ### A repo-shipped profile is data, not a Go literal
 
 The CLI ships profiles from **two** places, and which one a profile belongs in
@@ -840,7 +874,7 @@ is Cobra-native.
 | `compose` (alias `dc`) | `compose.go` | Passthrough to `docker compose` scoped to the current project (`LifecycleService.Passthrough`): forwards every argument verbatim after `-f .dc_<ws>/build/docker-compose.yml --env-file .dc_<ws>/build/.env`. The escape hatch for compose verbs the curated wrappers don't cover (`exec`, `ps`, `top`, `config`, `kill`, `run`, `port`, …), reaching every service in the stack — database services included. Uses `DisableFlagParsing` so flags like `-it` reach compose instead of cobra; a bare invocation or lone `-h`/`--help` prints the command's own help, everything else (including `<verb> --help`) is forwarded. The `--env-file` flag is included only when the generated `.env` exists, otherwise compose falls back to its own autoload. Completion (`completeComposeArgs`, which still fires under `DisableFlagParsing`) offers compose verbs on the first token and the project's compose **service** keys (`ReadComposeServices`) on later tokens — service names, since that's what `docker compose <verb> <service>` takes, not container names |
 | `update` | `update.go` | Pull/rebuild images; `--all`; per-mode dispatch |
 | `upgrade-cli` | `upgrade_cli.go` | Binary self-update from a GitHub release |
-| `config` | `config.go` | Read/write global config (subcommands `registry`, `db-user`, `db-password`, `ssh-key`, `ssh-config-file`, `alias`, `profile`, `shared`); `config ssh-config-file` sets where managed SSH Host blocks live (default `~/.ssh/devcontainer-cli.config`) — it is global rather than a per-command flag on purpose, so `ssh`, `destroy` and `clean ssh` can never disagree about which file to read. `config alias` (`config_alias.go`) manages the user's own shell aliases, stored in the CLI config (`GlobalConfig.Aliases`), not a host file: `config alias set <name> <command>` / `config alias unset <name>` edit the map, bare `config alias` lists it, and `config alias sync` renders it into the `alias.sh` shared-config volume entry (`SharedConfigService.SyncAliases`) so every container picks it up without an image rebuild; `config profile` (`profile.go`, aliased `preset`) lists/creates/copies/removes reusable **profiles** (module ids + custom scripts + agent skills) saved under `~/.devcontainer-cli/profiles/` (`remove <id...>` deletes user profiles only — built-ins are not removable; tab-completed, `-y` to skip confirmation). A profile is a list of module ids plus optional custom scripts and agent skills (no services/ports/volumes/mode); `create` prompts for the id, runs a modules-only wizard (`GenerateService.SelectModules`), collects scripts, then picks skills and their mode (`GenerateService.SelectSkills`). The interactive `generate` wizard also offers an optional "start from a user profile" step (local-cached only) that pre-selects the profile's modules and carries its scripts before the user continues with services/ports/volumes. `config shared` (`config_shared.go`) groups the shared tool-config volume ops — `config shared sync` (`sync_config.go`, seed from host configs `~/.claude`, `~/.config/gh`, …; `--force` replaces), `config shared backup` (`backup_config.go`, zip the volume; `-o` sets the destination, default a timestamped file in cwd), `config shared restore` (`restore_config.go`, load a zip made by `config shared backup`; `--force` replaces existing entries) |
+| `config` | `config.go` | Read/write global config (subcommands `registry`, `db-user`, `db-password`, `ssh-key`, `ssh-config-file`, `alias`, `profile`, `shared`); `config ssh-config-file` sets where managed SSH Host blocks live (default `~/.ssh/devcontainer-cli.config`) — it is global rather than a per-command flag on purpose, so `ssh`, `destroy` and `clean ssh` can never disagree about which file to read. `config alias` (`config_alias.go`) manages the user's own shell aliases, stored in the CLI config (`GlobalConfig.Aliases`), not a host file: `config alias set <name> <command>` / `config alias unset <name>` edit the map, bare `config alias` lists it, and `config alias sync` renders it into the `alias.sh` shared-config volume entry (`SharedConfigService.SyncAliases`) so every container picks it up without an image rebuild; `config profile` (`profile.go`, aliased `preset`) lists/creates/copies/removes reusable **profiles** (module ids + custom scripts + agent skills) saved under `~/.devcontainer-cli/profiles/` (`remove <id...>` deletes user profiles only — built-ins are not removable; tab-completed, `-y` to skip confirmation). A profile is a list of module ids plus optional custom scripts and agent skills (no services/ports/volumes/mode); `create` prompts for the id, runs a modules-only wizard (`GenerateService.SelectModules`), collects scripts, then picks skills and their mode (`GenerateService.SelectSkills`). The interactive `generate` wizard's first question offers 3 starting points, not 2: plain `custom` (pick modules by hand), `custom` from a profile (built-in or the user's own — pre-selects its modules and carries its scripts before the user continues with services/ports/volumes), or `profiles` (pull target, see below). The middle one is `modeChoiceCustomFromProfile` in `generate_wizard.go` — still `types.BuildModeCustom` once normalized (`currentMode`), it just also triggers `profileStep`, which plain `custom` skips. `config shared` (`config_shared.go`) groups the shared tool-config volume ops — `config shared sync` (`sync_config.go`, seed from host configs `~/.claude`, `~/.config/gh`, …; `--force` replaces), `config shared backup` (`backup_config.go`, zip the volume; `-o` sets the destination, default a timestamped file in cwd), `config shared restore` (`restore_config.go`, load a zip made by `config shared backup`; `--force` replaces existing entries) |
 | `cleanup-tips` | `cleanup_tips.go` | Print docker cleanup commands |
 | `context` | `context.go` | Print the container's own context and installed tools: runs `get-devcontainer-context` inside it via `InspectService.Context` and streams the output (`--json` for structured output). Falls back to `copy --asset get-devcontainer-context` when the image predates the `aliases` module. Complements `info` (Docker metadata) by reporting what is *inside* the container |
 | `skill` | `skill.go` | Install the **host-side** agent skill (`skill-devcontainer-cli.md`) into the host's agent skill dirs, so an assistant running on the user's machine knows how to drive this CLI. Subcommands `skill install` / `skill remove` (alias `uninstall`) / `skill show`; bare `skill` lists every target with its state (`absent`/`current`/`outdated`/`foreign`). `--agent` narrows to one agent (default: all), `--scope global\|project` picks the base dir (home vs cwd). A target holding a file the CLI did not write (no managed marker) is reported `foreign` and never overwritten or deleted without `--force`; `remove` needs `-y` in non-interactive mode. Pure file I/O — no Docker, unlike every other command |
@@ -909,30 +943,41 @@ if !yesFlag(cmd) {
 Two `mode` values in `DevcontainerConfig` (constant `BuildModes` in
 `core/types.go`):
 
-- `local-cached` (default) — full Dockerfile + compose pipeline. Computes a
-  fingerprint and sets `config.Image` to `devcontainer-cli/<fp12>:latest`.
-  Identical Dockerfiles share one daemon-level image; an existing image skips
-  the build.
-- `remote` — skips Dockerfile generation (returns nil) and rewrites the
-  devcontainer compose service to `image: ghcr.io/<owner>/devcontainer-<variant>:latest`
-  with no `build:` key. DB services are still emitted.
+- `custom` (`types.BuildModeCustom`, default) — full Dockerfile + compose
+  pipeline. Computes a fingerprint and sets `config.Image` to
+  `devcontainer-cli/<fp12>:latest`. Identical Dockerfiles share one
+  daemon-level image; an existing image skips the build.
+- `profiles` (`types.BuildModeProfiles`) — skips Dockerfile generation
+  (returns nil) and rewrites the devcontainer compose service to
+  `image: ghcr.io/<owner>/devcontainer-<variant>:latest` with no `build:` key.
+  `--profile` (see "one flag with two roles" below) is a `catalog.Profile`
+  with `Remote: true` (`config profile list` tags it `[remote]`) or `ssh` for
+  the hand-built full image — not every profile qualifies. DB services are
+  still emitted.
 
-Compat shim: `config.go` upgrades legacy `mode: custom`/`standalone` →
-`local-cached` on load.
+Compat shim: `config.go` upgrades legacy `mode: custom`/`standalone`/
+`local-cached` → `custom`, and legacy `mode: remote` → `profiles`, on load.
+(The pre-rename spellings were literally `local-cached`/`remote`; `custom` was
+already an even older synonym for the same full-build mode, so it collides
+with nothing.)
 
 Mode is read in `domain/generator.go`, the generate flow in `root.go`
 (preflight/conflict skip + fingerprint fast-path), and `commands/update.go`
-(`local-cached` → build, `remote` → pull). Adding a mode means updating all
-three plus `BuildModes` and tests.
+(`custom` → build, `profiles` → pull). Adding a mode means updating all three
+plus `BuildModes` and tests.
 
 ---
 
 ## Contracts that MUST stay in sync
 
-1. **Remote variants** — `core/types.go` `RemoteVariants`/`VariantLabels` ↔
-   `.github/workflows/docker-image.yml` `build-variants` matrix. Adding a variant
-   = both sides + a `generator_test.go` assertion. `ssh` is the full image from
-   `build-base` → `devcontainer-ssh:latest` (not a `build-variants` entry).
+1. **Remote variants** — `core/types.go` `RemoteVariants` ↔
+   `.github/workflows/docker-image.yml` `build-variants` matrix ↔ `Remote: true`
+   on the matching `plainBuiltinProfiles` entry in `catalog/profiles.go`. Adding
+   a variant = all three sides + a `generator_test.go` assertion (the
+   `RemoteVariants`/CI pair) and `TestBuiltinProfileRemoteFlagMatchesPublishedVariants`
+   (the `RemoteVariants`/`Remote` pair). `ssh` is the full image from
+   `build-base` → `devcontainer-ssh:latest` (not a `build-variants` entry, and
+   not a catalog profile — `commands.validRemoteVariant` special-cases it).
 2. **Full-image `--with` list** — `docker-image.yml` job `build-base` passes one
    id per Dockerfile module **except** `base`/`aliases`/`cleanup` (auto-applied) and
    `java-openjdk` (mutually exclusive with `java-temurin`; the full image uses
@@ -951,7 +996,7 @@ three plus `BuildModes` and tests.
    (`amd64`→`x64`; `arm64` stays `arm64`, including native `darwin-arm64` —
    there is no Rosetta fallback.)
 4. **Build modes** — see above.
-5. **Fingerprint** (`local-cached`) — SHA-256 of normalized Dockerfile +
+5. **Fingerprint** (`custom` mode) — SHA-256 of normalized Dockerfile +
    copyFile contents + sorted module ids + sorted build args (the resolved host
    `USER_UID`/`USER_GID`), first 12 chars → `image =
    devcontainer-cli/<fp12>:latest`. Derived from the **Dockerfile**, not the
