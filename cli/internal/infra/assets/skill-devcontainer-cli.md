@@ -226,10 +226,12 @@ experiment:
 `run`'s `--profile` only accepts a
 `[remote]`-tagged profile id (`config profile list` marks each one `[remote]`
 or `[local]`) or `ssh` for the hand-built full image — those map to a
-published `ghcr.io/devcontainer-<id>` image. A `[local]` profile (e.g.
-`scraper`, or a user-created one) is rejected here — it has nothing to pull;
-build it instead with `devcontainer-cli --profile <id>` on the default
-`--mode custom`, which works for every profile.
+published `ghcr.io/devcontainer-<id>` image. The published ids are `nodejs`,
+`bun`, `python`, `go`, `java-temurin`, `node-go`, `node-python`,
+`node-java-temurin`, `bun-go`, `bun-python`, `bun-java-temurin`. A `[local]`
+profile (e.g. `scraper`, or a user-created one) is rejected here — it has
+nothing to pull; build it instead with `devcontainer-cli --profile <id>` on
+the default `--mode custom`, which works for every profile.
 Tear one down with `devcontainer-cli destroy --container <name> --yes`.
 
 ## Global config, profiles, shared logins

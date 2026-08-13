@@ -91,6 +91,11 @@ func addGenerateFlags(cmd *cobra.Command) {
 	_ = cmd.RegisterFlagCompletionFunc(flagServices, completeServiceFunc)
 }
 
+// remoteVariantSSH is the one --profile value that is not a catalog profile:
+// the hand-built full image, publishable and pullable but with no modules,
+// scripts or ports of its own to resolve.
+const remoteVariantSSH = "ssh"
+
 // profileIDs lists profile ids for completion on the shared --profile flag.
 // remoteOnly restricts the list to profiles with a published prebuilt image —
 // its only caller for that is 'run', which always pulls, plus "ssh" (the
@@ -106,7 +111,7 @@ func profileIDs(remoteOnly bool) []string {
 		ids = append(ids, p.ID)
 	}
 	if remoteOnly {
-		ids = append(ids, "ssh")
+		ids = append(ids, remoteVariantSSH)
 	}
 	return ids
 }
@@ -117,7 +122,7 @@ func profileIDs(remoteOnly bool) []string {
 // published (e.g. 'scraper') is rejected here — it would only fail the pull —
 // even though it remains valid for --profile under mode=custom.
 func validRemoteVariant(v string) bool {
-	if v == "ssh" {
+	if v == remoteVariantSSH {
 		return true
 	}
 	p, ok := catalog.Resolve(v, domain.ProfileDirs()...)
@@ -232,7 +237,7 @@ func parseGenFlags(cmd *cobra.Command) (*genFlags, error) {
 	// "ssh" is not a catalog profile — it is the hand-built full image, a valid
 	// pull target under mode=profiles but with no modules/scripts/ports of its
 	// own to resolve here. Any other unrecognized id is still an error.
-	if g.profile != "" && g.profile != "ssh" {
+	if g.profile != "" && g.profile != remoteVariantSSH {
 		p, ok := catalog.Resolve(g.profile, domain.ProfileDirs()...)
 		if !ok {
 			return nil, fmt.Errorf("unknown profile: %s", g.profile)
@@ -437,11 +442,7 @@ func initAndConfigure(cwd string, flags *genFlags, svc service.GenerateService) 
 	// config.Skills.Skills when flags.skills/profileSkills is non-empty, so it
 	// leaves this alone.
 	if !needsPrompts && flags.interactive && flags.profile == "" && len(flags.skills) == 0 {
-		mode := flags.mode
-		if mode == "" {
-			mode = string(config.Mode)
-		}
-		if mode == string(types.BuildModeCustom) && len(catalog.AllAgentSkills(domain.SkillDirs()...)) > 0 {
+		if effectiveBuildMode(config, flags) == types.BuildModeCustom && len(catalog.AllAgentSkills(domain.SkillDirs()...)) > 0 {
 			selected, serr := svc.SelectSkills(config.Skills, console)
 			if serr != nil {
 				return nil, serr
@@ -489,6 +490,11 @@ func validateConfig(cwd string, config *types.DevcontainerConfig, flags *genFlag
 
 	if config.Mode == types.BuildModeProfiles && config.Remote == nil {
 		return fmt.Errorf("mode=profiles requires --profile (a [remote]-tagged profile id — run 'devcontainer-cli config profile list' to see them, or 'ssh' for the full image)")
+	}
+	// "ssh" names the hand-built full image rather than a catalog profile, so
+	// outside mode=profiles there is no bundle behind it to build from.
+	if config.Mode != types.BuildModeProfiles && flags.profile == remoteVariantSSH {
+		return fmt.Errorf("profile %q is a pull target only (the hand-built full image); use --mode %s to pull it, or pick a profile that carries modules", remoteVariantSSH, types.BuildModeProfiles)
 	}
 	// --profile is shared with mode=custom, where any profile (including a
 	// [local]-only one like 'scraper') is valid — so this can only be checked
@@ -789,26 +795,41 @@ func mergeCustomScripts(existing, incoming []types.CustomScript) []types.CustomS
 	return out
 }
 
+// effectiveBuildMode is the mode this invocation ends up in: --mode when it was
+// passed, and otherwise the one the project is already persisted with — so a
+// regenerate that does not re-pass the flag still reads as the mode it is in.
+func effectiveBuildMode(config *types.DevcontainerConfig, flags *genFlags) types.BuildMode {
+	if flags.mode != "" {
+		return types.BuildMode(flags.mode)
+	}
+	return config.Mode
+}
+
+// applyProfileBundle pre-fills the flags a mode=custom --profile stands for: its
+// modules, and the empty service list every profile means (a profile carries
+// none). Under mode=profiles the same flag names the pull target instead and
+// must touch neither — nor may an id with nothing behind it in the catalog
+// ("ssh", which validateConfig rejects under this mode), since clearing the
+// services for a bundle that contributed no modules either would drop the
+// project's databases for nothing.
+func applyProfileBundle(config *types.DevcontainerConfig, flags *genFlags) {
+	if flags.profile == "" || effectiveBuildMode(config, flags) == types.BuildModeProfiles {
+		return
+	}
+	profile, isKnownProfile := catalog.Resolve(flags.profile, domain.ProfileDirs()...)
+	if !isKnownProfile {
+		return
+	}
+	if flags.withModules == nil {
+		flags.withModules = profile.Modules
+	}
+	if flags.services == nil {
+		flags.services = []string{}
+	}
+}
+
 func applyGenFlags(config *types.DevcontainerConfig, flags *genFlags) {
-	// --profile is a module bundle only under mode=custom; under mode=profiles
-	// the same flag instead names the pull target (applied to config.Remote
-	// further down) and must not touch modules/services. effectiveMode falls
-	// back to the config's current mode when --mode was not (re)passed, so a
-	// regenerate of an existing mode=profiles project with --profile <id> can't
-	// silently clear its DB services.
-	effectiveMode := flags.mode
-	if effectiveMode == "" {
-		effectiveMode = string(config.Mode)
-	}
-	if flags.profile != "" && effectiveMode != string(types.BuildModeProfiles) {
-		p, _ := catalog.Resolve(flags.profile, domain.ProfileDirs()...)
-		if flags.withModules == nil {
-			flags.withModules = p.Modules
-		}
-		if flags.services == nil {
-			flags.services = []string{}
-		}
-	}
+	applyProfileBundle(config, flags)
 
 	// Scripts come from the profile and from --script; they are persisted in the
 	// config so a regenerated project no longer depends on either.
