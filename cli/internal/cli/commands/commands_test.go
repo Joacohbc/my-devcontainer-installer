@@ -1740,6 +1740,93 @@ func TestConfigProfileCommand_Exists(t *testing.T) {
 	}
 }
 
+func TestConfigSkillCommand_Exists(t *testing.T) {
+	root := NewRootCommand("test")
+	configCmd := findSubcommand(root, "config")
+	if configCmd == nil {
+		t.Fatal("expected 'config' command to be registered")
+	}
+	skillCmd := findSubcommand(configCmd, "skill")
+	if skillCmd == nil {
+		t.Fatal("expected 'config skill' command to be registered")
+	}
+	if findSubcommand(skillCmd, "list") == nil {
+		t.Error("expected 'config skill list' subcommand")
+	}
+	if findSubcommand(skillCmd, "info") == nil {
+		t.Error("expected 'config skill info' subcommand")
+	}
+	if findSubcommand(skillCmd, "add") == nil {
+		t.Error("expected 'config skill add' subcommand")
+	}
+	if findSubcommand(skillCmd, "remove") == nil {
+		t.Error("expected 'config skill remove' subcommand")
+	}
+}
+
+func TestConfigProfileInfoCommand_Exists(t *testing.T) {
+	root := NewRootCommand("test")
+	configCmd := findSubcommand(root, "config")
+	profileCmd := findSubcommand(configCmd, "profile")
+	if profileCmd == nil {
+		t.Fatal("expected 'config profile' command to be registered")
+	}
+	if findSubcommand(profileCmd, "info") == nil {
+		t.Error("expected 'config profile info' subcommand")
+	}
+}
+
+func TestRunProfileInfo_UnknownProfileFails(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	cmd := &cobra.Command{}
+	if err := runProfileInfo(cmd, []string{"no-such-profile"}); err == nil {
+		t.Fatal("expected an error for an unknown profile")
+	}
+}
+
+func TestRunProfileInfo_KnownProfileSucceeds(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	cmd := &cobra.Command{}
+	if err := runProfileInfo(cmd, []string{"nodejs"}); err != nil {
+		t.Fatalf("runProfileInfo: %v", err)
+	}
+}
+
+func TestRunConfigSkillInfo_UnknownSkillFails(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	cmd := &cobra.Command{}
+	if err := runConfigSkillInfo(cmd, []string{"no-such-skill"}); err == nil {
+		t.Fatal("expected an error for an unknown skill")
+	}
+}
+
+func TestRunConfigSkillInfo_KnownSkillSucceeds(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	cmd := &cobra.Command{}
+	if err := runConfigSkillInfo(cmd, []string{"firecrawl"}); err != nil {
+		t.Fatalf("runConfigSkillInfo: %v", err)
+	}
+}
+
+// A user-defined skill must resolve through 'config skill info' the same way
+// a built-in does.
+func TestRunConfigSkillInfo_UserDefinedSkill(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	dir := domain.SkillDir()
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	manifest := "id: my-skill\nlabel: My Skill\nref: me/my-skill\ncontext:\n  title: My Skill\n  body: Teaches X.\n"
+	if err := os.WriteFile(filepath.Join(dir, "my-skill.yml"), []byte(manifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := &cobra.Command{}
+	if err := runConfigSkillInfo(cmd, []string{"my-skill"}); err != nil {
+		t.Fatalf("runConfigSkillInfo: %v", err)
+	}
+}
+
 // 'preset' was the old name of the group and stays as an alias, so an existing
 // script or muscle-memory invocation keeps working.
 func TestConfigProfileCommand_PresetAlias(t *testing.T) {
@@ -1886,6 +1973,14 @@ func TestApplyGenFlags_ProfileWithExplicitModeProfilesKeepsServices(t *testing.T
 	}
 }
 
+// --profile is also what keeps this test safe to run headless: initAndConfigure
+// asks about skills outside the full wizard too (see the block guarded by
+// `flags.profile == ""` there), and that prompt goes through the real,
+// non-injectable package-level `console` — there is no fake Prompter to hand
+// it in a test. --profile short-circuits that question the same way it
+// already short-circuits the build-mode/variant one, so this must keep
+// setting profile whenever it exercises the !needsPrompts path with
+// interactive: true.
 func TestInitAndConfigure_ProfileSkipsPrompts(t *testing.T) {
 	dir := t.TempDir()
 
@@ -1903,6 +1998,28 @@ func TestInitAndConfigure_ProfileSkipsPrompts(t *testing.T) {
 
 	if len(config.Dockerfile.Modules) != 3 {
 		t.Errorf("expected 3 modules from early-resolved profile, got %d", len(config.Dockerfile.Modules))
+	}
+}
+
+// Supplying --skill must skip the interactive skills question even outside
+// the full wizard — like --profile, it is one more way to avoid the real,
+// non-injectable `console` prompt that block would otherwise trigger in a
+// test binary.
+func TestInitAndConfigure_ExplicitSkillsSkipsPrompt(t *testing.T) {
+	dir := t.TempDir()
+	flags := &genFlags{
+		interactive: true,
+		withModules: []string{"nodejs"},
+		skills:      []types.SkillID{types.SkillFirecrawl},
+	}
+	svc := service.GenerateService{}
+
+	config, err := initAndConfigure(dir, flags, svc)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(config.Skills.Skills) != 1 || config.Skills.Skills[0] != types.SkillFirecrawl {
+		t.Errorf("expected the explicit skill to be applied, got %+v", config.Skills.Skills)
 	}
 }
 

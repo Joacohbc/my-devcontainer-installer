@@ -1,6 +1,8 @@
 package domain_test
 
 import (
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -9,6 +11,20 @@ import (
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/catalog"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 )
+
+// writeUserSkill drops a minimal user-defined skill manifest under
+// domain.SkillDir(), creating the directory if needed.
+func writeUserSkill(t *testing.T, id, ref string) {
+	t.Helper()
+	dir := domain.SkillDir()
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	body := "id: " + id + "\nref: " + ref + "\n"
+	if err := os.WriteFile(filepath.Join(dir, id+".yml"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
 
 func TestValidateSkills(t *testing.T) {
 	cases := []struct {
@@ -74,6 +90,46 @@ func TestAgentSkillCatalogue(t *testing.T) {
 			if catalog.GetDockerfileModule(id) == nil {
 				t.Errorf("skill %q requires unknown module %q", spec.ID, id)
 			}
+		}
+	}
+}
+
+// caveman and graphify exist twice: a Dockerfile module installing the CLI,
+// and a skill of the same id teaching an agent to drive it. The skill must
+// require its module, or the project ships a document about a binary that is
+// not in the image.
+func TestCLIPairedSkillsRequireTheirModule(t *testing.T) {
+	pairs := map[types.SkillID]types.ModuleID{
+		types.SkillCaveman:  types.ModuleCaveman,
+		types.SkillGraphify: types.ModuleGraphify,
+	}
+	for skillID, moduleID := range pairs {
+		spec := catalog.GetAgentSkill(skillID)
+		if spec == nil {
+			t.Errorf("skill %q is not catalogued", skillID)
+			continue
+		}
+		if !slices.Contains(spec.RequiresModules, moduleID) {
+			t.Errorf("skill %q must require module %q, got %v", skillID, moduleID, spec.RequiresModules)
+		}
+	}
+}
+
+// The install entry the script splits on "#" must reproduce the command these
+// skills were added from.
+func TestCLIPairedSkillsInstallRefs(t *testing.T) {
+	want := map[types.SkillID]string{
+		types.SkillCaveman:  "https://github.com/juliusbrussee/caveman#caveman",
+		types.SkillGraphify: "https://github.com/graphify-labs/graphify#graphify",
+	}
+	for id, ref := range want {
+		spec := catalog.GetAgentSkill(id)
+		if spec == nil {
+			t.Errorf("skill %q is not catalogued", id)
+			continue
+		}
+		if got := spec.InstallRef(); got != ref {
+			t.Errorf("skill %q InstallRef = %q, want %q", id, got, ref)
 		}
 	}
 }
@@ -188,5 +244,101 @@ func TestMissingSkillModules(t *testing.T) {
 	config.Dockerfile.Modules = []types.SelectedModule{{ID: types.ModuleNodejs}}
 	if missing := domain.MissingSkillModules(config); len(missing) != 0 {
 		t.Errorf("expected nothing missing once nodejs is selected, got %v", missing)
+	}
+}
+
+// A user-defined skill under SkillDirs must flow through the same functions a
+// built-in one does: valid, resolvable, and its ref installed.
+func TestUserDefinedSkill_ValidatesAndResolves(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	writeUserSkill(t, "my-skill", "me/my-skill")
+
+	config := types.SkillsConfig{Skills: []types.SkillID{"my-skill"}}
+	if err := domain.ValidateSkills(config); err != nil {
+		t.Fatalf("ValidateSkills: %v", err)
+	}
+
+	refs := domain.SkillRefs(config)
+	if !slices.Equal(refs, []string{"me/my-skill"}) {
+		t.Errorf("expected the user-defined ref, got %v", refs)
+	}
+
+	env := domain.SkillsEnv(config)
+	if !strings.Contains(strings.Join(env, "\n"), types.SkillsEnvVar+"=me/my-skill") {
+		t.Errorf("expected the user-defined ref in the env, got %v", env)
+	}
+}
+
+// An id that names neither a built-in nor a user-defined skill is still
+// rejected.
+func TestValidateSkills_UnknownStaysUnknownWithUserDirPresent(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	writeUserSkill(t, "my-skill", "me/my-skill")
+
+	if err := domain.ValidateSkills(types.SkillsConfig{Skills: []types.SkillID{"nope"}}); err == nil {
+		t.Fatal("expected an error for an id that is neither built-in nor user-defined")
+	}
+}
+
+// A user-defined skill's own requires_modules is enforced exactly like a
+// built-in's.
+func TestMissingSkillModules_UserDefinedSkill(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	dir := domain.SkillDir()
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	manifest := "id: my-skill\nref: me/my-skill\nrequires_modules: [python]\n"
+	if err := os.WriteFile(filepath.Join(dir, "my-skill.yml"), []byte(manifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	config := &types.DevcontainerConfig{Skills: types.SkillsConfig{Skills: []types.SkillID{"my-skill"}}}
+	if missing := domain.MissingSkillModules(config); !slices.Contains(missing, types.ModulePython) {
+		t.Errorf("expected python to be reported missing, got %v", missing)
+	}
+
+	config.Dockerfile.Modules = []types.SelectedModule{{ID: types.ModulePython}}
+	if missing := domain.MissingSkillModules(config); len(missing) != 0 {
+		t.Errorf("expected nothing missing once python is selected, got %v", missing)
+	}
+}
+
+func TestValidateSkillID(t *testing.T) {
+	cases := []struct {
+		id      string
+		wantErr bool
+	}{
+		{"my-skill", false},
+		{"my_skill_2", false},
+		{"", true},
+		{"bad id", true},
+		{"bad/id", true},
+		{"bad!id", true},
+	}
+	for _, c := range cases {
+		err := domain.ValidateSkillID(c.id)
+		if (err != nil) != c.wantErr {
+			t.Errorf("ValidateSkillID(%q) error = %v, wantErr %v", c.id, err, c.wantErr)
+		}
+	}
+}
+
+func TestSkillDirs(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	dirs := domain.SkillDirs()
+	if len(dirs) != 1 || dirs[0] != domain.SkillDir() {
+		t.Errorf("SkillDirs() = %v, want [%s]", dirs, domain.SkillDir())
+	}
+	if filepath.Base(domain.SkillDir()) != domain.SkillDirName {
+		t.Errorf("SkillDir() = %q, want basename %q", domain.SkillDir(), domain.SkillDirName)
+	}
+}
+
+// catalog.All (profiles) also lives on GlobalConfigDir()'s "profiles" sibling,
+// so SkillDir and ProfileDir must not collide.
+func TestSkillDirDoesNotCollideWithProfileDir(t *testing.T) {
+	if domain.SkillDir() == domain.ProfileDir() {
+		t.Error("SkillDir must not equal ProfileDir")
 	}
 }

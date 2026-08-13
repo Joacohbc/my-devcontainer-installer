@@ -61,7 +61,7 @@ func addGenerateFlags(cmd *cobra.Command) {
 	f.String(flagPreset, "", "Deprecated alias for --profile")
 	_ = f.MarkDeprecated(flagPreset, "use --profile instead")
 	f.StringArray(flagScript, nil, "Custom script to add, as <path>[:build|start|manual] (default build); repeatable. build bakes it into the image, start runs it once per container, manual only copies it to ~/post-script/")
-	f.String(flagSkill, "", "Comma-separated agent skills installed into the project workspace (firecrawl, agent-browser, webapp-testing); implies the nodejs module")
+	f.String(flagSkill, "", "Comma-separated agent skills installed into the project workspace; implies the nodejs module. See 'config skill list' (built-in + your own)")
 	f.String(flagSkillsMode, "", "How the project's agent skills get installed: manual (default — you run 'install-skills') or auto (on every container start, writing into the workspace unprompted)")
 	f.Bool(flagNoInteractive, false, "Fail if any value is missing instead of prompting")
 	f.Bool(flagNonInteractive, false, "Alias for --no-interactive")
@@ -77,7 +77,7 @@ func addGenerateFlags(cmd *cobra.Command) {
 	_ = cmd.RegisterFlagCompletionFunc(flagProfile, completeProfileFunc)
 	_ = cmd.RegisterFlagCompletionFunc(flagPreset, completeProfileFunc)
 	_ = cmd.RegisterFlagCompletionFunc(flagSkill, func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		return completeCSV(toComplete, catalog.AgentSkillIDs()), cobra.ShellCompDirectiveNoFileComp
+		return completeCSV(toComplete, catalog.AgentSkillIDs(domain.SkillDirs()...)), cobra.ShellCompDirectiveNoFileComp
 	})
 	_ = cmd.RegisterFlagCompletionFunc(flagSkillsMode, staticCompletion(string(types.SkillModeAuto), string(types.SkillModeManual)))
 	_ = cmd.RegisterFlagCompletionFunc(flagMode, staticCompletion(string(types.BuildModeCustom), string(types.BuildModeProfiles)))
@@ -424,6 +424,30 @@ func initAndConfigure(cwd string, flags *genFlags, svc service.GenerateService) 
 			return nil, perr
 		}
 		flags.profile = picked.Value
+	}
+
+	// The full wizard already asks about skills via skillsStep; outside it,
+	// still ask when nothing already decided them — no --skill, and no
+	// --profile (which is its own quick shortcut and already skips the
+	// build-mode/variant prompts the same way; a profile's own skills, if any,
+	// stand as the answer) — so a bare 'devcontainer-cli --with nodejs' does
+	// not silently skip the question the wizard would have asked. Setting
+	// config.Skills directly (not flags.skills) is what lets an explicit
+	// "none" answer clear an existing selection: applyGenFlags only overrides
+	// config.Skills.Skills when flags.skills/profileSkills is non-empty, so it
+	// leaves this alone.
+	if !needsPrompts && flags.interactive && flags.profile == "" && len(flags.skills) == 0 {
+		mode := flags.mode
+		if mode == "" {
+			mode = string(config.Mode)
+		}
+		if mode == string(types.BuildModeCustom) && len(catalog.AllAgentSkills(domain.SkillDirs()...)) > 0 {
+			selected, serr := svc.SelectSkills(config.Skills, console)
+			if serr != nil {
+				return nil, serr
+			}
+			config.Skills = selected
+		}
 	}
 
 	applyGenFlags(config, flags)

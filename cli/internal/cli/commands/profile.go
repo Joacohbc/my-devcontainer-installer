@@ -58,17 +58,20 @@ either one pulls in the nodejs module.
 
 Subcommands:
   list                List built-in and user profiles with their modules.
+  info <id>           Print one profile's full resolved definition.
   create              Create a user profile via an interactive picker.
   copy <from> <to>    Copy any profile into a new user profile.
   remove <id...>      Delete user profiles (built-ins cannot be removed).
 
 'preset' is accepted as a deprecated alias for this command.`,
 		Example: `  devcontainer-cli config profile list
+  devcontainer-cli config profile info nodejs
   devcontainer-cli config profile create
   devcontainer-cli config profile copy nodejs my-node
   devcontainer-cli --profile my-node`,
 	}
 	cmd.AddCommand(newProfileListCommand())
+	cmd.AddCommand(newProfileInfoCommand())
 	cmd.AddCommand(newProfileCreateCommand())
 	cmd.AddCommand(newProfileCopyCommand())
 	cmd.AddCommand(newProfileRemoveCommand())
@@ -140,6 +143,52 @@ func remoteTag(p catalog.Profile) string {
 		return ui.Subtle("[remote]")
 	}
 	return ui.Subtle("[local] ")
+}
+
+func newProfileInfoCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "info <profile-id>",
+		Short: "Show one profile's full resolved definition",
+		Long: `devcontainer-cli config profile info — print one profile's full definition:
+where it comes from (built-in or user, and its directory when it carries
+scripts), whether it is [remote]-pullable, and the resolved yaml (modules,
+scripts, skills, ports).`,
+		Example:           "  devcontainer-cli config profile info nodejs",
+		Args:              cobra.ExactArgs(1),
+		SilenceUsage:      true,
+		RunE:              runProfileInfo,
+		ValidArgsFunction: completeProfileCopyArgs,
+	}
+}
+
+func runProfileInfo(cmd *cobra.Command, args []string) error {
+	id := args[0]
+	p, ok := catalog.Resolve(id, domain.ProfileDirs()...)
+	if !ok {
+		return fmt.Errorf("profile %q not found", id)
+	}
+
+	console.Header("%s  %s", p.ID, remoteTag(p))
+	console.NewLine()
+	console.Info("  Source: %s", p.Source)
+	if p.Dir != "" {
+		dir := p.Dir
+		if p.Embedded {
+			dir = "embedded:" + dir
+		}
+		console.Info("  Dir:    %s", dir)
+	}
+	console.NewLine()
+
+	// p.Source/Dir/Embedded are all tagged yaml:"-", so this reproduces exactly
+	// the manifest a project resolving this profile would read (or that
+	// 'config profile copy'/'create' would write).
+	data, err := yaml.Marshal(p)
+	if err != nil {
+		return err
+	}
+	console.Print(string(data))
+	return nil
 }
 
 // describeScripts renders a profile's scripts as "name (when), name (when)".

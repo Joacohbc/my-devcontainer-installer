@@ -8,6 +8,7 @@ import (
 	"github.com/goccy/go-yaml"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/catalog"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/modules/skills"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 )
 
@@ -230,4 +231,9 @@ func (s ConfigService) SaveProjectConfig(cwd string, cfg *types.DevcontainerConf
 // Profiles returns the builtin and user-defined profiles.
 func (s ConfigService) Profiles() []catalog.Profile {
 	return catalog.All(domain.ProfileDirs()...)
+}
+
+// AgentSkills returns the built-in and user-defined agent skills.
+func (s ConfigService) AgentSkills() []*skills.Spec {
+	return catalog.AllAgentSkills(domain.SkillDirs()...)
 }

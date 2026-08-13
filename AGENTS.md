@@ -612,8 +612,16 @@ profiles from regressing to a script.
 
 `internal/domain/modules/skills/` is the third catalogue next to Dockerfile
 modules and compose services. A `skills.Spec` is an id, a label, the `Ref` the
-Skills CLI resolves (`firecrawl/cli`), the modules its tooling needs, and a
-`Context` section. Adding one is appending to `skills.All`.
+Skills CLI resolves (an `owner/repo` shorthand like `firecrawl/cli`, or a full
+repository URL), the modules its tooling needs, and a `Context` section.
+Adding one is appending to `skills.All`.
+
+**A skill that describes a CLI declares the module installing it.** `caveman`
+and `graphify` are each both a Dockerfile module (the CLI + its agent hooks)
+and a skill of the same id (teaching an agent to drive it); the skill's
+`RequiresModules` names its module, so selecting the skill without the module
+is reported by `domain.MissingSkillModules` rather than shipping a document
+about a binary that is not there.
 
 Skills are **project-scoped**: the installer runs `npx skills add` inside the
 workspace mount, so they land in the project and never in the shared volume that
@@ -621,10 +629,28 @@ made the script approach wrong.
 
 | piece | where |
 |---|---|
-| Catalogue | `internal/domain/modules/skills/skills.go`, re-exported as `catalog.AgentSkills` |
+| Catalogue | `internal/domain/modules/skills/skills.go`, re-exported as `catalog.AgentSkills` (built-in only) |
+| User-defined skills | `catalog/user_skills.go` (`LoadUserSkills`), merged in by `catalog.AllAgentSkills(dirs...)`/`GetAgentSkill(id, dirs...)`/`AgentSkillIDs(dirs...)` |
 | Selection + mode | `types.SkillsConfig` on `DevcontainerConfig` (`--skill`, `--skills-mode`, the wizard, a profile's `skills:`/`skills_mode:`) |
 | Plumbing | `dockerfile.SkillsModule` — the installer on PATH, the `install_skills` alias, the entrypoint hook |
 | Installer | `internal/infra/assets/install-project-skills.sh` (+ `autostart-project-skills.sh`) |
+
+**A skill can be user-defined**, the same idea as a user profile: a flat
+`~/.devcontainer-cli/skills/<id>.yml` (`domain.SkillDirs()`/`SkillDir()`,
+loaded by `catalog.LoadUserSkills`) carrying `id`/`label`/`ref`/`skill`/
+`requires_modules`/an optional `context: {title, body}` in place of the
+Go-only `Context func()`. No scripts, no directory shape — a skill's install
+source is already a git ref the Skills CLI resolves, unlike a profile there
+are no files of the user's own to carry alongside it. `config skill
+list`/`info`/`add`/`remove` (`domain.ValidateSkillID` guards the id — same
+charset as `ValidateProfileID`, it becomes a file name) manage them; `list`
+shows built-in vs your own, tagged by group like `config profile list`. Every
+site that used to read the package-level `catalog.AgentSkills` var directly
+(the wizard's skill picker, `--skill` completion/validation,
+`domain.SkillRefs`/`MissingSkillModules`/CONTEXT.md's skill sections) now goes
+through the `dirs`-aware functions, passing `domain.SkillDirs()` — mirroring
+exactly how `catalog.Resolve`/`catalog.All` take `domain.ProfileDirs()`. A
+user-defined id shadows a built-in of the same id.
 
 Four properties are load-bearing:
 
@@ -647,6 +673,16 @@ Four properties are load-bearing:
   not infer intent from how it was launched. The default is `manual` because the
   installer writes into the bind-mounted workspace, which is the user's own
   repository.
+- **Skills and their mode are asked outside the full wizard too.** The full
+  wizard (`needsPrompts` in `initAndConfigure`) already asks via `skillsStep`;
+  a quick `--with`/no-flags interactive `generate` used to skip the question
+  entirely unless `--skill` was passed. `initAndConfigure` now calls
+  `GenerateService.SelectSkills` there as well, whenever mode ends up `custom`
+  and nothing already decided skills (`--skill`, or the applied profile's
+  own). It sets `config.Skills` directly rather than `flags.skills` — that is
+  what lets an explicit "none" answer clear an existing selection, since
+  `applyGenFlags` only overwrites `config.Skills.Skills` when
+  `flags.skills`/`profileSkills` is non-empty, and both stay empty here.
 - **An entry is one token, and never names a branch.** A repo holding several
   skills is selected with `--skill <name>` (`Spec.Skill`), not by pointing `Ref`
   at the skill's directory URL: that URL carries a branch name, and
@@ -874,7 +910,7 @@ is Cobra-native.
 | `compose` (alias `dc`) | `compose.go` | Passthrough to `docker compose` scoped to the current project (`LifecycleService.Passthrough`): forwards every argument verbatim after `-f .dc_<ws>/build/docker-compose.yml --env-file .dc_<ws>/build/.env`. The escape hatch for compose verbs the curated wrappers don't cover (`exec`, `ps`, `top`, `config`, `kill`, `run`, `port`, …), reaching every service in the stack — database services included. Uses `DisableFlagParsing` so flags like `-it` reach compose instead of cobra; a bare invocation or lone `-h`/`--help` prints the command's own help, everything else (including `<verb> --help`) is forwarded. The `--env-file` flag is included only when the generated `.env` exists, otherwise compose falls back to its own autoload. Completion (`completeComposeArgs`, which still fires under `DisableFlagParsing`) offers compose verbs on the first token and the project's compose **service** keys (`ReadComposeServices`) on later tokens — service names, since that's what `docker compose <verb> <service>` takes, not container names |
 | `update` | `update.go` | Pull/rebuild images; `--all`; per-mode dispatch |
 | `upgrade-cli` | `upgrade_cli.go` | Binary self-update from a GitHub release |
-| `config` | `config.go` | Read/write global config (subcommands `registry`, `db-user`, `db-password`, `ssh-key`, `ssh-config-file`, `alias`, `profile`, `shared`); `config ssh-config-file` sets where managed SSH Host blocks live (default `~/.ssh/devcontainer-cli.config`) — it is global rather than a per-command flag on purpose, so `ssh`, `destroy` and `clean ssh` can never disagree about which file to read. `config alias` (`config_alias.go`) manages the user's own shell aliases, stored in the CLI config (`GlobalConfig.Aliases`), not a host file: `config alias set <name> <command>` / `config alias unset <name>` edit the map, bare `config alias` lists it, and `config alias sync` renders it into the `alias.sh` shared-config volume entry (`SharedConfigService.SyncAliases`) so every container picks it up without an image rebuild; `config profile` (`profile.go`, aliased `preset`) lists/creates/copies/removes reusable **profiles** (module ids + custom scripts + agent skills) saved under `~/.devcontainer-cli/profiles/` (`remove <id...>` deletes user profiles only — built-ins are not removable; tab-completed, `-y` to skip confirmation). A profile is a list of module ids plus optional custom scripts and agent skills (no services/ports/volumes/mode); `create` prompts for the id, runs a modules-only wizard (`GenerateService.SelectModules`), collects scripts, then picks skills and their mode (`GenerateService.SelectSkills`). The interactive `generate` wizard's first question offers 3 starting points, not 2: plain `custom` (pick modules by hand), `custom` from a profile (built-in or the user's own — pre-selects its modules and carries its scripts before the user continues with services/ports/volumes), or `profiles` (pull target, see below). The middle one is `modeChoiceCustomFromProfile` in `generate_wizard.go` — still `types.BuildModeCustom` once normalized (`currentMode`), it just also triggers `profileStep`, which plain `custom` skips. `config shared` (`config_shared.go`) groups the shared tool-config volume ops — `config shared sync` (`sync_config.go`, seed from host configs `~/.claude`, `~/.config/gh`, …; `--force` replaces), `config shared backup` (`backup_config.go`, zip the volume; `-o` sets the destination, default a timestamped file in cwd), `config shared restore` (`restore_config.go`, load a zip made by `config shared backup`; `--force` replaces existing entries) |
+| `config` | `config.go` | Read/write global config (subcommands `registry`, `db-user`, `db-password`, `ssh-key`, `ssh-config-file`, `alias`, `profile`, `skill`, `shared`); `config ssh-config-file` sets where managed SSH Host blocks live (default `~/.ssh/devcontainer-cli.config`) — it is global rather than a per-command flag on purpose, so `ssh`, `destroy` and `clean ssh` can never disagree about which file to read. `config alias` (`config_alias.go`) manages the user's own shell aliases, stored in the CLI config (`GlobalConfig.Aliases`), not a host file: `config alias set <name> <command>` / `config alias unset <name>` edit the map, bare `config alias` lists it, and `config alias sync` renders it into the `alias.sh` shared-config volume entry (`SharedConfigService.SyncAliases`) so every container picks it up without an image rebuild; `config profile` (`profile.go`, aliased `preset`) lists/creates/copies/removes reusable **profiles** (module ids + custom scripts + agent skills) saved under `~/.devcontainer-cli/profiles/` (`remove <id...>` deletes user profiles only — built-ins are not removable; tab-completed, `-y` to skip confirmation); `config profile info <id>` prints one profile's full resolved definition — source/dir, then `yaml.Marshal` of the resolved `catalog.Profile` (`Source`/`Dir`/`Embedded` are `yaml:"-"`, so this is exactly the manifest a project resolving it would read). A profile is a list of module ids plus optional custom scripts and agent skills (no services/ports/volumes/mode); `create` prompts for the id, runs a modules-only wizard (`GenerateService.SelectModules`), collects scripts, then picks skills and their mode (`GenerateService.SelectSkills`). The interactive `generate` wizard's first question offers 3 starting points, not 2: plain `custom` (pick modules by hand), `custom` from a profile (built-in or the user's own — pre-selects its modules and carries its scripts before the user continues with services/ports/volumes), or `profiles` (pull target, see below). The middle one is `modeChoiceCustomFromProfile` in `generate_wizard.go` — still `types.BuildModeCustom` once normalized (`currentMode`), it just also triggers `profileStep`, which plain `custom` skips. `config skill` (`config_skill.go`) lists built-in and user-defined agent skills (`config skill list`, grouped like `config profile list`) — a user one is a flat `~/.devcontainer-cli/skills/<id>.yml`, no scripts/directory shape, since a skill's install source is already a git ref; `config skill info <id>` prints one skill's full definition (source, install ref, required modules, its `~/CONTEXT.md` entry if any) via the local `skillInfoView` — a plain yaml-shaped mirror of `catalog`'s unexported `userSkillManifest`, since `skills.Spec.Context` is a Go func and cannot be marshaled directly, so a built-in and a user-defined skill render identically either way; `config skill add <id> --ref <source>` writes `~/.devcontainer-cli/skills/<id>.yml` from flags (`--ref` required, prompted for when interactive and missing; everything else optional), refusing to clobber an existing *user* file without `--force` — but never refusing to shadow a built-in id, which is the documented, expected way to override one; `config skill remove <id...>` deletes user-defined skills only (same built-ins-are-not-removable rule as `config profile remove`). `config shared` (`config_shared.go`) groups the shared tool-config volume ops — `config shared sync` (`sync_config.go`, seed from host configs `~/.claude`, `~/.config/gh`, …; `--force` replaces), `config shared backup` (`backup_config.go`, zip the volume; `-o` sets the destination, default a timestamped file in cwd), `config shared restore` (`restore_config.go`, load a zip made by `config shared backup`; `--force` replaces existing entries) |
 | `cleanup-tips` | `cleanup_tips.go` | Print docker cleanup commands |
 | `context` | `context.go` | Print the container's own context and installed tools: runs `get-devcontainer-context` inside it via `InspectService.Context` and streams the output (`--json` for structured output). Falls back to `copy --asset get-devcontainer-context` when the image predates the `aliases` module. Complements `info` (Docker metadata) by reporting what is *inside* the container |
 | `skill` | `skill.go` | Install the **host-side** agent skill (`skill-devcontainer-cli.md`) into the host's agent skill dirs, so an assistant running on the user's machine knows how to drive this CLI. Subcommands `skill install` / `skill remove` (alias `uninstall`) / `skill show`; bare `skill` lists every target with its state (`absent`/`current`/`outdated`/`foreign`). `--agent` narrows to one agent (default: all), `--scope global\|project` picks the base dir (home vs cwd). A target holding a file the CLI did not write (no managed marker) is reported `foreign` and never overwritten or deleted without `--force`; `remove` needs `-y` in non-interactive mode. Pure file I/O — no Docker, unlike every other command |

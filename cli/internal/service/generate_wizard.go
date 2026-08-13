@@ -376,6 +376,18 @@ func (w wizardContext) profileByID(id string) (catalog.Profile, bool) {
 	return catalog.Profile{}, false
 }
 
+// pickedProfile is the profile chosen in profileStep, if any. Every step that
+// comes after it seeds from it through this one accessor — modules, scripts,
+// skills and skills mode alike — so "start from this profile" means the same
+// thing for all of them instead of each step deciding for itself.
+func (w wizardContext) pickedProfile(s *State) (catalog.Profile, bool) {
+	pid := s.String(stepKeyProfile)
+	if pid == "" {
+		return catalog.Profile{}, false
+	}
+	return w.profileByID(pid)
+}
+
 // profileCategoryIDs returns the profile's module ids that belong to UI category c.
 func profileCategoryIDs(p catalog.Profile, c types.UICategory) []string {
 	var ids []string
@@ -398,10 +410,8 @@ func (w wizardContext) categorySteps(s *State) []Step {
 			// Seed from base, or from the chosen profile's modules in this
 			// category. An explicit answer for this category always wins.
 			initial := baseCategoryIDs(w.base, category)
-			if pid := s.String(stepKeyProfile); pid != "" {
-				if p, ok := w.profileByID(pid); ok {
-					initial = profileCategoryIDs(p, category)
-				}
+			if p, ok := w.pickedProfile(s); ok {
+				initial = profileCategoryIDs(p, category)
 			}
 			if s.Has(categoryStepKey(category)) {
 				initial = s.Strings(categoryStepKey(category))
@@ -617,11 +627,7 @@ func (w wizardContext) selectedScripts(s *State) []types.CustomScript {
 	if currentMode(s) != types.BuildModeCustom {
 		return nil
 	}
-	pid := s.String(stepKeyProfile)
-	if pid == "" {
-		return w.base.Dockerfile.Scripts
-	}
-	p, ok := w.profileByID(pid)
+	p, ok := w.pickedProfile(s)
 	if !ok {
 		return w.base.Dockerfile.Scripts
 	}
@@ -771,7 +777,7 @@ func ProfileChoices(dirs ...string) []Option {
 // govern otherwise. Profiles mode is skipped: the installer and its alias come
 // from a Dockerfile module, and a prebuilt image was not built with it.
 func (w wizardContext) skillSteps(s *State) []Step {
-	if currentMode(s) != types.BuildModeCustom || len(catalog.AgentSkills) == 0 {
+	if currentMode(s) != types.BuildModeCustom || len(catalog.AllAgentSkills(domain.SkillDirs()...)) == 0 {
 		return nil
 	}
 	steps := []Step{w.skillsStep()}
@@ -783,11 +789,19 @@ func (w wizardContext) skillSteps(s *State) []Step {
 
 func (w wizardContext) skillsStep() Step {
 	return Step{Key: stepKeySkills, Build: func(s *State) Field {
-		choices := make([]Option, 0, len(catalog.AgentSkills))
-		for _, spec := range catalog.AgentSkills {
+		all := catalog.AllAgentSkills(domain.SkillDirs()...)
+		choices := make([]Option, 0, len(all))
+		for _, spec := range all {
 			choices = append(choices, Option{Value: string(spec.ID), Label: spec.Label})
 		}
+		// Seeded like the category steps: base, then the chosen profile's own
+		// skills, then an explicit answer. A profile that declares skills means
+		// them the same way it means its modules, so they arrive pre-checked
+		// rather than as something to re-pick by hand.
 		initial := skillIDStrings(w.base.Skills.Skills)
+		if p, ok := w.pickedProfile(s); ok {
+			initial = skillIDStrings(p.Skills)
+		}
 		if s.Has(stepKeySkills) {
 			initial = s.Strings(stepKeySkills)
 		}
@@ -807,6 +821,11 @@ func (w wizardContext) skillsModeStep() Step {
 			{Value: string(types.SkillModeManual), Label: "manual — leave the install_skills command for you"},
 		}
 		initial := string(w.base.Skills.ResolvedMode())
+		// A profile that pinned a mode carries it too — its skills and the way
+		// they install are one decision, not two.
+		if p, ok := w.pickedProfile(s); ok && p.SkillsMode != "" {
+			initial = string(p.SkillsMode)
+		}
 		if s.Has(stepKeySkillsMode) {
 			initial = s.String(stepKeySkillsMode)
 		}
@@ -818,7 +837,13 @@ func (w wizardContext) selectedSkills(s *State) types.SkillsConfig {
 	if currentMode(s) != types.BuildModeCustom {
 		return types.SkillsConfig{}
 	}
+	// The skills step normally always runs in custom mode; when it did not,
+	// fall back the same way selectedScripts does — to the chosen profile's
+	// own skills, or the project's existing ones.
 	if !s.Has(stepKeySkills) {
+		if p, ok := w.pickedProfile(s); ok {
+			return types.SkillsConfig{Mode: p.SkillsMode, Skills: p.Skills}
+		}
 		return w.base.Skills
 	}
 	selected := s.Strings(stepKeySkills)
@@ -830,6 +855,9 @@ func (w wizardContext) selectedSkills(s *State) types.SkillsConfig {
 		return types.SkillsConfig{}
 	}
 	mode := w.base.Skills.Mode
+	if p, ok := w.pickedProfile(s); ok && p.SkillsMode != "" {
+		mode = p.SkillsMode
+	}
 	if s.Has(stepKeySkillsMode) {
 		mode = types.SkillMode(s.String(stepKeySkillsMode))
 	}
@@ -848,7 +876,7 @@ func skillIDStrings(ids []types.SkillID) []string {
 // and how a project using it installs them. It backs `config profile create`,
 // where skills are part of the bundle just like modules.
 func (s GenerateService) SelectSkills(base types.SkillsConfig, prompt Prompter) (types.SkillsConfig, error) {
-	if len(catalog.AgentSkills) == 0 {
+	if len(catalog.AllAgentSkills(domain.SkillDirs()...)) == 0 {
 		return types.SkillsConfig{}, nil
 	}
 

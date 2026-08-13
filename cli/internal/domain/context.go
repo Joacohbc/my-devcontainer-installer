@@ -197,7 +197,7 @@ func writeContextSection(b *strings.Builder, sec *types.ContextSection) {
 func skillContextSections(config *types.DevcontainerConfig) []*types.ContextSection {
 	var sections []*types.ContextSection
 	for _, id := range config.Skills.Skills {
-		spec := catalog.GetAgentSkill(id)
+		spec := catalog.GetAgentSkill(id, SkillDirs()...)
 		if spec == nil || spec.Context == nil {
 			continue
 		}

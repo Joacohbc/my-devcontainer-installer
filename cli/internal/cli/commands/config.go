@@ -35,6 +35,8 @@ Subcommands:
   alias               Your own shell aliases, applied to every container.
   profile             List/create/copy/remove reusable profiles (module
                       bundles + custom scripts). Aliased as 'preset'.
+  skill               List built-in and user-defined agent skills, selectable
+                      with --skill.
   shared              Sync/backup/restore the shared tool-config volume.
   export / import     Export the project config to YAML / import it back.
 
@@ -58,6 +60,7 @@ Config file: ` + domain.GlobalConfigPath(),
 	cmd.AddCommand(newConfigExportCommand())
 	cmd.AddCommand(newConfigImportCommand())
 	cmd.AddCommand(newProfileCommand())
+	cmd.AddCommand(newConfigSkillCommand())
 	cmd.AddCommand(newConfigSharedCommand())
 	return cmd
 }

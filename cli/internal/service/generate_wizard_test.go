@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/catalog"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 )
@@ -481,6 +482,112 @@ func TestConfigurePromptsModuleEnvVars(t *testing.T) {
 	}
 	if !selected {
 		t.Errorf("cloudflared must stay selected without a token, got %v", cfg.Dockerfile.Modules)
+	}
+}
+
+// The skills picker must offer a user-defined skill alongside the built-ins —
+// it used to read the static catalog.AgentSkills only.
+func TestSkillsStepOffersUserDefinedSkill(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	dir := domain.SkillDir()
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "my-skill.yml"), []byte("id: my-skill\nlabel: My Skill\nref: me/my-skill\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx := wizardContext{base: &types.DevcontainerConfig{}}
+	field := ctx.skillsStep().Build(NewState())
+
+	found := false
+	for _, c := range field.Choices {
+		if c.Value == "my-skill" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected 'my-skill' among the choices, got %+v", field.Choices)
+	}
+}
+
+// A profile that declares skills means them the same way it means its
+// modules, so picking it in the wizard must pre-check them (and pre-select
+// its skills mode) rather than leave them to be re-picked by hand.
+func TestConfigureProfileSkillsArePreSelected(t *testing.T) {
+	defer useFakeDocker(&fakeRunner{status: 0})()
+
+	tmp := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmp)
+	profilesDir := filepath.Join(tmp, "devcontainer-cli", "profiles")
+	if err := os.MkdirAll(profilesDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	manifest := "id: withskills\nmodules: [nodejs]\nskills: [firecrawl]\nskills_mode: auto\n"
+	if err := os.WriteFile(filepath.Join(profilesDir, "withskills.yml"), []byte(manifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Answer only the profile choice: every other step falls back to the
+	// default the wizard seeds it with, which is exactly what this asserts.
+	svc := GenerateService{Report: nopReporter{}}
+	base := &types.DevcontainerConfig{Env: map[string]string{}}
+	prompter := scriptedPrompter{answers: map[string]any{
+		stepKeyWorkspace: "ws",
+		stepKeyMode:      modeChoiceCustomFromProfile,
+		stepKeyProfile:   "withskills",
+		stepKeySubnet:    "172.20.0.0/24",
+	}}
+
+	cfg, err := svc.Configure(base, tmp, prompter)
+	if err != nil {
+		t.Fatalf("Configure: %v", err)
+	}
+
+	if len(cfg.Skills.Skills) != 1 || cfg.Skills.Skills[0] != types.SkillFirecrawl {
+		t.Errorf("expected the profile's skill to be pre-selected, got %+v", cfg.Skills.Skills)
+	}
+	if cfg.Skills.Mode != types.SkillModeAuto {
+		t.Errorf("expected the profile's skills mode to be pre-selected, got %q", cfg.Skills.Mode)
+	}
+}
+
+// Seeding from a profile must not stop the user overriding it: an explicit
+// answer for the skills step still wins.
+func TestConfigureExplicitSkillsBeatProfile(t *testing.T) {
+	defer useFakeDocker(&fakeRunner{status: 0})()
+
+	tmp := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmp)
+	profilesDir := filepath.Join(tmp, "devcontainer-cli", "profiles")
+	if err := os.MkdirAll(profilesDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	manifest := "id: withskills\nmodules: [nodejs]\nskills: [firecrawl]\nskills_mode: auto\n"
+	if err := os.WriteFile(filepath.Join(profilesDir, "withskills.yml"), []byte(manifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	svc := GenerateService{Report: nopReporter{}}
+	base := &types.DevcontainerConfig{Env: map[string]string{}}
+	prompter := scriptedPrompter{answers: map[string]any{
+		stepKeyWorkspace:  "ws",
+		stepKeyMode:       modeChoiceCustomFromProfile,
+		stepKeyProfile:    "withskills",
+		stepKeySubnet:     "172.20.0.0/24",
+		stepKeySkills:     []string{string(types.SkillAgentBrowser)},
+		stepKeySkillsMode: string(types.SkillModeManual),
+	}}
+
+	cfg, err := svc.Configure(base, tmp, prompter)
+	if err != nil {
+		t.Fatalf("Configure: %v", err)
+	}
+	if len(cfg.Skills.Skills) != 1 || cfg.Skills.Skills[0] != types.SkillAgentBrowser {
+		t.Errorf("expected the explicit answer to win, got %+v", cfg.Skills.Skills)
+	}
+	if cfg.Skills.Mode != types.SkillModeManual {
+		t.Errorf("expected the explicit mode to win, got %q", cfg.Skills.Mode)
 	}
 }
 

@@ -2,6 +2,7 @@ package domain
 
 import (
 	"fmt"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -9,14 +10,45 @@ import (
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 )
 
+// SkillDirName is where user-defined agent skills are written and read from.
+const SkillDirName = "skills"
+
+// SkillDir is the directory a new user-defined skill is written to.
+func SkillDir() string {
+	return filepath.Join(GlobalConfigDir(), SkillDirName)
+}
+
+// SkillDirs is every directory user-defined skills are read from. Unlike
+// ProfileDirs there is no legacy predecessor to also read — skills are new.
+func SkillDirs() []string {
+	return []string{SkillDir()}
+}
+
+// ValidateSkillID rejects empty ids and ids with characters outside the
+// [a-zA-Z0-9_-] set used for the on-disk skill manifest name — the same
+// charset ValidateProfileID enforces, for the same reason (it becomes a file
+// name).
+func ValidateSkillID(id string) error {
+	if id == "" {
+		return fmt.Errorf("skill ID cannot be empty")
+	}
+	for _, r := range id {
+		if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_') {
+			return fmt.Errorf("invalid skill ID: %s. Use only alphanumeric characters, dashes, and underscores", id)
+		}
+	}
+	return nil
+}
+
 // ValidateSkills rejects unknown skill ids and an unknown mode, before either
-// can reach a compose file that would then install nothing.
+// can reach a compose file that would then install nothing. "Unknown" checks
+// both the built-in catalogue and the user's own skills under SkillDirs.
 func ValidateSkills(config types.SkillsConfig) error {
 	if config.Mode != "" && !slices.Contains(types.SkillModes, config.Mode) {
 		return fmt.Errorf("invalid skills mode %q: expected one of %s", config.Mode, skillModeList())
 	}
 	for _, id := range config.Skills {
-		if catalog.GetAgentSkill(id) == nil {
+		if catalog.GetAgentSkill(id, SkillDirs()...) == nil {
 			return fmt.Errorf("unknown skill: %s", id)
 		}
 	}
@@ -53,7 +85,7 @@ func ApplySelectedSkills(config *types.DevcontainerConfig) {
 func SkillRefs(config types.SkillsConfig) []string {
 	seen := map[types.SkillID]bool{}
 	refs := make([]string, 0, len(config.Skills))
-	for _, spec := range catalog.AgentSkills {
+	for _, spec := range catalog.AllAgentSkills(SkillDirs()...) {
 		if !slices.Contains(config.Skills, spec.ID) || seen[spec.ID] {
 			continue
 		}
@@ -87,7 +119,7 @@ func MissingSkillModules(config *types.DevcontainerConfig) []types.ModuleID {
 	}
 	var missing []types.ModuleID
 	for _, id := range config.Skills.Skills {
-		spec := catalog.GetAgentSkill(id)
+		spec := catalog.GetAgentSkill(id, SkillDirs()...)
 		if spec == nil {
 			continue
 		}
