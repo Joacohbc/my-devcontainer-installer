@@ -204,6 +204,9 @@ const (
 	SkillFirecrawl     SkillID = "firecrawl"
 	SkillAgentBrowser  SkillID = "agent-browser"
 	SkillWebappTesting SkillID = "webapp-testing"
+	SkillDataScience   SkillID = "data-science"
+	SkillRemotion      SkillID = "remotion"
+	SkillN8nWorkflows  SkillID = "n8n-workflows"
 )
 
 // SkillMode says who installs the project's agent skills.

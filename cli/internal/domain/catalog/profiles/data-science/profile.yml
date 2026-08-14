@@ -1,0 +1,25 @@
+# A repo-shipped profile. Unlike the plain module bundles in profiles.go, it
+# ships a script, so it lives here as data next to the file it references.
+#
+# github-cli is listed first for the same reason every other built-in does it:
+# its Dockerfile layer is shared with the cached devcontainer-base image.
+id: data-science
+label: Data Science & Analysis (Python+uv, JupyterLab, pandas/numpy/scikit-learn)
+modules:
+  - github-cli
+  - python
+  - sqlite
+# JupyterLab's default port, so the notebook server is reachable from the host
+# without a manual --publish.
+ports:
+  - "8888:8888"
+scripts:
+  # Only the toolchain, which is baked into the image. Agent skills are not a
+  # script's job — see `skills` below.
+  - file: install-datascience-tools.sh
+    when: build
+# Project-scoped agent skill, installed into the workspace by the skills module
+# (which is what pulls nodejs in). The mode is left at the default, manual: the
+# installer writes into the project, so the first write is the user's call.
+skills:
+  - data-science

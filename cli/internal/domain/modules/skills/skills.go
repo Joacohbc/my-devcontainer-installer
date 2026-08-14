@@ -81,11 +81,71 @@ var WebappTestingSkill = &Spec{
 	},
 }
 
+// probabl-ai/skills (Probabl, the company behind commercial scikit-learn
+// support) holds ~14 skills; the selector pins the index one, the same way
+// firecrawl/cli's selector pins its own CLI skill among ten.
+var DataScienceSkill = &Spec{
+	ID:              types.SkillDataScience,
+	Label:           "Data Science Python Stack (pandas/numpy/scikit-learn conventions)",
+	Ref:             "probabl-ai/skills",
+	Skill:           "data-science-python-stack",
+	RequiresModules: []types.ModuleID{types.ModulePython},
+	Context: func() *types.ContextSection {
+		return &types.ContextSection{
+			Title: "Data science skill",
+			Body: "Teaches the opinionated Python data-science/ML stack this image ships:\n" +
+				"which library to reach for at each step (pandas/polars, numpy, scikit-learn,\n" +
+				"duckdb, …) and how to keep a project organized around them.",
+		}
+	},
+}
+
+// remotion-dev/skills is Remotion's own repo; the selector pins its general
+// best-practices skill rather than one of the ~12 narrower ones (render,
+// captions, upgrade, …).
+var RemotionSkill = &Spec{
+	ID:              types.SkillRemotion,
+	Label:           "Remotion (programmatic video with React, official best practices)",
+	Ref:             "remotion-dev/skills",
+	Skill:           "remotion-best-practices",
+	RequiresModules: []types.ModuleID{types.ModuleNodejs},
+	Context: func() *types.ContextSection {
+		return &types.ContextSection{
+			Title: "Remotion skill",
+			Body: "Teaches Remotion conventions for creating and rendering video\n" +
+				"programmatically with React. `chrome` and `ffmpeg` are the modules the\n" +
+				"render step needs; this image already ships both.",
+		}
+	},
+}
+
+// n8n-io/skills is n8n's own repo; the selector pins its router meta-skill,
+// which is the documented entry point that then routes to the 13 capability
+// skills (workflow-lifecycle, error-handling, expressions, …).
+var N8nWorkflowsSkill = &Spec{
+	ID:              types.SkillN8nWorkflows,
+	Label:           "n8n Workflows (official router into n8n's capability skills)",
+	Ref:             "n8n-io/skills",
+	Skill:           "using-n8n-skills-official",
+	RequiresModules: []types.ModuleID{types.ModuleNodejs},
+	Context: func() *types.ContextSection {
+		return &types.ContextSection{
+			Title: "n8n workflows skill",
+			Body: "Teaches building n8n automation workflows: this is the router skill n8n\n" +
+				"ships, which then points at its own capability skills (expressions, error\n" +
+				"handling, sub-workflows, …) as the task needs them.",
+		}
+	},
+}
+
 // All is the ordered catalogue of installable skills.
 var All = []*Spec{
 	FirecrawlSkill,
 	AgentBrowserSkill,
 	WebappTestingSkill,
+	DataScienceSkill,
+	RemotionSkill,
+	N8nWorkflowsSkill,
 }
 
 // InstallRef is the entry the installer receives: the source, with the skill

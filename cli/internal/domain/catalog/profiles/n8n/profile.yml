@@ -1,0 +1,28 @@
+# A repo-shipped profile. Unlike the plain module bundles in profiles.go, it
+# ships a script, so it lives here as data next to the file it references.
+#
+# github-cli is listed first for the same reason every other built-in does it:
+# its Dockerfile layer is shared with the cached devcontainer-base image.
+id: n8n
+label: n8n Automation (n8n local + Playwright/Chrome UI automation)
+modules:
+  - github-cli
+  - nodejs
+  - pnpm
+  - chrome
+# n8n's default UI/webhook port, so the editor is reachable from the host
+# without a manual --publish.
+ports:
+  - "5678:5678"
+scripts:
+  # Only the toolchain, which is baked into the image. Agent skills are not a
+  # script's job — see `skills` below.
+  - file: install-n8n-automation-tools.sh
+    when: build
+# Project-scoped agent skills, installed into the workspace by the skills
+# module (which is what pulls nodejs in). The mode is left at the default,
+# manual: the installer writes into the project, so the first write is the
+# user's call.
+skills:
+  - n8n-workflows
+  - agent-browser
