@@ -320,7 +320,7 @@ func buildTunnelsInteractive(flagAlias string, interactive bool) ([]service.Tunn
 	// down to running ones here.
 	containers := runningContainers(pick.ListAll())
 	if len(containers) == 0 {
-		return nil, fmt.Errorf("no running containers found. Start a container with 'devcontainer-cli' first")
+		return nil, fmt.Errorf("no running containers found. Start one with 'devcontainer-cli up', or create a project first with 'devcontainer-cli agent create'")
 	}
 	aliases := getSSHAliases()
 	var tunnels []service.Tunnel

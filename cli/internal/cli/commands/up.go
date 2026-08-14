@@ -17,7 +17,7 @@ current project in the background.
 
 Wraps 'docker compose -f .dc_<workspace>/build/docker-compose.yml up -d', so it
 creates missing containers, applies any compose changes and leaves everything
-running detached. Generate the project first (run 'devcontainer-cli') so the
+running detached. Generate the project first (run 'devcontainer-cli agent create') so the
 compose file exists.`,
 		Example: `  # Start the current project's containers
   devcontainer-cli up

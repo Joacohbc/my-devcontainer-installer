@@ -757,9 +757,14 @@ func saveAndPostProcess(cwd string, config *types.DevcontainerConfig, plan *serv
 	}
 
 	if build != nil && *build {
+		// A failed build is a failed command. It used to be reported as a
+		// warning with a zero exit, which reads as success to anything that is
+		// not a human watching the scroll — a script, or 'agent create' — and
+		// sends it on to use an image that was never produced. The generated
+		// files and the saved config above survive either way, so returning the
+		// error costs nothing and loses no work.
 		if berr := svc.Build(paths.ComposeFile, isRemote); berr != nil {
-			console.Warn("%s", berr.Error())
-			return nil
+			return berr
 		}
 	}
 	domain.RecordProject(cwd, config, "")

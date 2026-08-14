@@ -873,9 +873,19 @@ Four properties are load-bearing:
   has no idea it is being called by the facade. `agent create` flips
   `force` and `build` the same way, because a create that stops to ask about
   overwriting or building is a create that hangs.
-- **`agent exec` requires a command.** `shell` with no command opens a login
-  shell; for an unattended caller that is not a session but a hang, so the
-  facade rejects it in `Args` rather than discovering it at runtime.
+- **`agent exec` requires a command, and runs as devuser.** `shell` with no
+  command opens a login shell; for an unattended caller that is not a session
+  but a hang, so the facade rejects it in `Args`. The user default is the same
+  kind of call, and it deliberately **inverts** `shell`'s: `shell` leaves
+  `--user` unset with an explicit command so it keeps working against a
+  container that has no devuser (a database), and the container itself runs as
+  root — so a command that writes into the workspace leaves **root-owned files
+  in the user's real checkout on the host**, which they then cannot edit
+  without sudo. The facade takes the other trade: devuser by default, and a
+  database container now fails loudly with `unable to find user devuser` until
+  `--user` names the one it has. A loud failure beats a silently corrupted
+  checkout. `shell` itself is untouched — `TestShell_KeepsItsOwnUserSemantics`
+  pins that the two stay different on purpose.
 - **`agent create` reuses `runGenerate`, then ups.** It registers the whole
   `addGenerateFlags` set (one source of truth; `parseGenFlags` reads all of it)
   and only hides what does not apply — `--version`, `--preset`,
@@ -1016,6 +1026,27 @@ func TestParsePortMapping(t *testing.T) {
 - **SIGINT / SIGTERM:** handled by `installSignalHandlers()` in `main.go` → exit `130`.
 - Do **not** call `os.Exit()` inside command handlers — return an error so
   `main()` applies consistent formatting.
+- **A failed step is a failed command.** `saveAndPostProcess` used to downgrade
+  a failed `docker compose build` to a warning and return nil, so generation
+  exited `0` with no image. A human watching the scroll sees the warning; a
+  script and `agent create` see success and go on to use an image that was never
+  produced. It returns the error now. Anything similar — a step whose failure
+  leaves the command's promise unmet — belongs in the exit code, not only in the
+  output.
+
+### Recovery hints must name a command that does not prompt
+
+A message that tells the caller what to run next is the highest-signal
+documentation in the tree: it arrives exactly when they are stuck. Eight of them
+used to say `Run 'devcontainer-cli'` — the interactive wizard, i.e. the one
+command that **hangs a non-interactive caller with no way to answer**. They now
+name `up`, `start` or `agent create`, all of which work for a human and a script
+alike.
+
+`TestErrorMessagesDoNotPointAtTheWizard` (`commands/recovery_hints_test.go`)
+walks the source of `internal/cli/commands` and `internal/service` and fails on
+any `fmt.Errorf`/`Report.Warn` line quoting the bare binary name. Write the hint
+for the caller who cannot see a prompt.
 
 ## Interactive vs non-interactive mode
 

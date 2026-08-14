@@ -80,7 +80,7 @@ func (s PasswordService) ensureRunning(container string) error {
 		return fmt.Errorf("container '%s' not found. Ensure it is running", container)
 	}
 	if state != StateRunning {
-		return fmt.Errorf("container '%s' is not running. Run 'devcontainer-cli' or 'devcontainer-cli start' first", container)
+		return fmt.Errorf("container '%s' is not running. Start it with 'devcontainer-cli up', or create the project first with 'devcontainer-cli agent create'", container)
 	}
 	return nil
 }

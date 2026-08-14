@@ -106,12 +106,18 @@ with `agent create --profile <id>` on the default mode.
 ## Run commands inside
 
     devcontainer-cli agent exec -- go test ./...        # exit code propagated
-    devcontainer-cli agent exec --user devuser -- bash -lc 'uv pip install requests'
-    devcontainer-cli agent exec --user devuser -- bash -lc 'cd /workspaces/myapp && pnpm install'
-    devcontainer-cli agent exec -c myapp-postgres -T -- pg_dump -U devuser devdb > dump.sql
+    devcontainer-cli agent exec -- bash -lc 'uv pip install requests'
+    devcontainer-cli agent exec -- bash -lc 'cd /workspaces/myapp && pnpm install'
+    devcontainer-cli agent exec -c myapp-postgres --user postgres -T -- pg_dump devdb > dump.sql
 
 `agent exec` is a `docker exec` wrapper and the normal way to do work in the
 container. It requires a command — there is no interactive mode to fall into.
+
+It runs as **devuser**, who owns the workspace files. That matters more than it
+looks: the container itself runs as root, so a command run as root that writes
+into the project creates root-owned files on the **host**, in the user's real
+checkout, which they then cannot edit without sudo. Do not pass `--user root`
+unless the command genuinely needs it (`apt-get`, writing outside the home).
 
 **Wrap the command in `bash -lc '…'` when it needs a shell.** `docker exec` runs
 your argv directly — it is not a shell — so without the wrapper there are no
@@ -133,16 +139,14 @@ rebuild with `devcontainer-cli update --rebuild`.
 
 Other notes that matter:
 
-- It does **not** default to `devuser`; pass `--user devuser` when the command
-  must run as that user (it is who owns the workspace files, and whose rc files
-  carry the PATH).
 - Redirections you write on the host line (`> dump.sql`) are handled by *your*
   shell, so they need no `bash -lc` — but pass `-T` for them, so no TTY mangles
   the stream.
 - `-c/--container <name>` targets another container in the stack. Database
-  containers are plain images with no devuser and often no bash: run those
-  commands bare (`-c <ws>-postgres -- psql -U devuser -l`), not through
-  `bash -lc`.
+  containers are plain images with **no devuser** and often no bash, so the
+  devuser default does not apply to them: name the user they do have and run the
+  command bare (`-c <ws>-postgres --user postgres -- psql -l`), not through
+  `bash -lc`. Without `--user` they fail with `unable to find user devuser`.
 
 The project is mounted at `/workspaces/<workspace>` inside the container
 (short alias `/workspace/<workspace>`), which is also the shell's working
@@ -167,8 +171,8 @@ wrong one. Run `devcontainer-cli context` to see which of these the image has.
   non-interactive shell does not expand aliases — so `bash -lc 'npm install'`
   really runs npm, not pnpm.
 
-      devcontainer-cli agent exec --user devuser -- bash -lc 'uv pip install requests'
-      devcontainer-cli agent exec --user devuser -- bash -lc 'pnpm add -D vitest'
+      devcontainer-cli agent exec -- bash -lc 'uv pip install requests'
+      devcontainer-cli agent exec -- bash -lc 'pnpm add -D vitest'
 
 ## Lifecycle
 

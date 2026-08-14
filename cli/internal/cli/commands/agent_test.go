@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/sshdefaults"
 	"github.com/spf13/cobra"
 )
 
@@ -150,6 +151,54 @@ func TestAgentExec_RequiresACommand(t *testing.T) {
 	}
 	if err := cmd.Args(cmd, []string{"go", "version"}); err != nil {
 		t.Errorf("a command must be accepted: %v", err)
+	}
+}
+
+// A command run through the facade must land as devuser: root would leave
+// root-owned files in the bind-mounted project directory on the host.
+func TestAgentExec_RunsAsDevuser(t *testing.T) {
+	cmd := findCommand(t, agentCommand(t), "exec")
+	if err := cmd.PreRunE(cmd, []string{"go", "version"}); err != nil {
+		t.Fatalf("PreRunE: %v", err)
+	}
+	user, _ := cmd.Flags().GetString("user")
+	if user != sshdefaults.User {
+		t.Errorf("agent exec user = %q, want %q", user, sshdefaults.User)
+	}
+}
+
+// Containers without a devuser (a database) and anything genuinely needing root
+// stay reachable by naming the user explicitly.
+func TestAgentExec_ExplicitUserWins(t *testing.T) {
+	for _, want := range []string{"root", "postgres"} {
+		t.Run(want, func(t *testing.T) {
+			cmd := findCommand(t, agentCommand(t), "exec")
+			if err := cmd.Flags().Set("user", want); err != nil {
+				t.Fatal(err)
+			}
+			if err := cmd.PreRunE(cmd, []string{"psql"}); err != nil {
+				t.Fatalf("PreRunE: %v", err)
+			}
+			if got, _ := cmd.Flags().GetString("user"); got != want {
+				t.Errorf("agent exec user = %q, want the explicit %q", got, want)
+			}
+		})
+	}
+}
+
+// The facade takes the devuser trade; the human command keeps its own, where an
+// explicit command leaves --user alone so it still works against a container
+// that has no devuser.
+func TestShell_KeepsItsOwnUserSemantics(t *testing.T) {
+	cmd := findCommand(t, NewRootCommand("test"), "shell")
+	if cmd.PreRunE != nil {
+		t.Error("shell must not inherit the agent facade's defaults")
+	}
+	if user, _ := cmd.Flags().GetString("user"); user != "" {
+		t.Errorf("shell --user default = %q, want empty", user)
+	}
+	if got, _ := shellInteractiveDefaults("", "", false, false, true); got != "" {
+		t.Errorf("shell with a command must not default the user, got %q", got)
 	}
 }
 

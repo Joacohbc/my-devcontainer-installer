@@ -184,7 +184,7 @@ func (s InspectService) ContainerDetails(name string) (*ContainerInfo, error) {
 func (s InspectService) ensureRunning(name string) error {
 	state, err := s.ContainerState(name)
 	if err != nil || state != StateRunning {
-		return fmt.Errorf("container '%s' is not running. Run 'devcontainer-cli' or 'devcontainer-cli start' first", name)
+		return fmt.Errorf("container '%s' is not running. Start it with 'devcontainer-cli up', or create the project first with 'devcontainer-cli agent create'", name)
 	}
 	return nil
 }

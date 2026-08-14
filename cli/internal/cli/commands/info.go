@@ -62,7 +62,7 @@ func runInfo(cmd *cobra.Command, _ []string) error {
 	paths := project.ProjectPaths(cwd, workspace)
 	services := service.ReadComposeServices(paths.ComposeFile)
 	if services == nil {
-		return fmt.Errorf("no active project compose file found at %s. Run 'devcontainer-cli' to generate one first, or target a specific container via --container", paths.ComposeFile)
+		return fmt.Errorf("no active project compose file found at %s. Run 'devcontainer-cli agent create' to generate one first, or target a specific container via --container", paths.ComposeFile)
 	}
 
 	console.NewLine()

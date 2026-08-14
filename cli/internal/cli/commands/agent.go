@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/sshdefaults"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/service"
 	"github.com/spf13/cobra"
 )
@@ -110,26 +111,47 @@ func newAgentExecCommand() *cobra.Command {
 devcontainer and propagate its exit code. This is the normal way to do work
 inside a container.
 
-Same as 'shell --', except a command is required: 'shell' with no command opens
-a login shell, which for an unattended agent is a hang rather than a session.
+Same as 'shell --', with two differences. A command is required: 'shell' with no
+command opens a login shell, which for an unattended agent is a hang rather than
+a session. And it runs as devuser, who owns the workspace files — 'shell' with a
+command runs as root, which silently leaves root-owned files behind in the bind
+mount, on the real project directory.
+
+That default is for the project's own devcontainer. Another container in the
+stack (a database) has no devuser, so those need an explicit --user.
 
 The command is exec'd directly, NOT through a shell. Wrap it in a login bash —
-'agent exec --user devuser -- bash -lc "uv pip install x"' — whenever it needs
-pipes, '&&', globs, 'cd', or the container's pip/npm indirections.`,
-		Example: `  # A plain command
+'agent exec -- bash -lc "uv pip install x"' — whenever it needs pipes, '&&',
+globs, 'cd', or the container's pip/npm indirections.`,
+		Example: `  # A plain command, as devuser
   devcontainer-cli agent exec -- go test ./...
 
   # Shell syntax and the container's package managers need a login bash
-  devcontainer-cli agent exec --user devuser -- bash -lc 'cd /workspaces/app && pnpm install'
+  devcontainer-cli agent exec -- bash -lc 'cd /workspaces/app && pnpm install'
 
-  # Pipe output out without a TTY mangling it
-  devcontainer-cli agent exec -c myapp-postgres -T -- pg_dump -U devuser devdb > dump.sql`,
+  # Something that genuinely needs root
+  devcontainer-cli agent exec --user root -- apt-get install -y tree
+
+  # A database container has no devuser: name the one it does have
+  devcontainer-cli agent exec -c myapp-postgres --user postgres -T -- pg_dump devdb > dump.sql`,
 		Args:         agentExecArgs,
 		SilenceUsage: true,
+		PreRunE:      agentExecDefaults,
 		RunE:         runShell,
 	}
 	addShellFlags(cmd)
 	return cmd
+}
+
+// agentExecDefaults runs the command as devuser unless the caller named another
+// user. 'shell' deliberately leaves --user unset with an explicit command so it
+// keeps working against containers with no devuser; the facade takes the
+// opposite trade, because the caller it serves is a program that would
+// otherwise litter the user's own project directory with root-owned files. A
+// container without devuser now fails loudly, which beats corrupting a
+// checkout quietly.
+func agentExecDefaults(cmd *cobra.Command, _ []string) error {
+	return agentDefaults(cmd, map[string]string{"user": sshdefaults.User})
 }
 
 // agentExecArgs requires the command 'shell' treats as optional.

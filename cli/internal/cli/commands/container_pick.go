@@ -66,7 +66,7 @@ func pickContainer(containers []pick.Container, message string, opts pickContain
 func pickManagedContainer(message string, opts pickContainerOptions) (pick.Container, error) {
 	containers := pick.ListManaged()
 	if len(containers) == 0 {
-		return pick.Container{}, fmt.Errorf("no devcontainer-cli managed containers found. Run 'devcontainer-cli' first to create one")
+		return pick.Container{}, fmt.Errorf("no devcontainer-cli managed containers found. Run 'devcontainer-cli agent create' first to create one")
 	}
 	return pickContainer(containers, message, opts)
 }

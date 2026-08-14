@@ -71,7 +71,7 @@ func runUpdateImages(cmd *cobra.Command, _ []string) error {
 	}
 	config, _ := domain.LoadConfig(cwd)
 	if config == nil {
-		return fmt.Errorf("no devcontainer.config.json found in %s. Run 'devcontainer-cli' to generate one first, or pass --all to update every recorded project", cwd)
+		return fmt.Errorf("no devcontainer.config.json found in %s. Run 'devcontainer-cli agent create' to generate one first, or pass --all to update every recorded project", cwd)
 	}
 	image, ok := svc.UpdateOne(cwd, config, pull, rebuild)
 	if !ok {
