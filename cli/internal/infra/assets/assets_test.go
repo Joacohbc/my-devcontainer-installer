@@ -360,6 +360,8 @@ func TestAliasScriptShipsDefaults(t *testing.T) {
 		"alias npx='pnpm dlx'",
 		"pip() { uv pip",
 		"UV_SYSTEM_PYTHON=1",
+		// Both halves, or `uv pip` hits PEP 668 on Ubuntu's interpreter.
+		"UV_BREAK_SYSTEM_PACKAGES=1",
 	} {
 		if !strings.Contains(script, frag) {
 			t.Errorf("alias.sh must contain %q", frag)

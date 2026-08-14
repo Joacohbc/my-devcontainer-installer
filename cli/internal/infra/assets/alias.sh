@@ -47,7 +47,13 @@ if command -v uv >/dev/null 2>&1; then
     # Let `uv pip` operate on the container's system Python without requiring a
     # virtualenv or an explicit --system on every call. The container IS the
     # isolation boundary, so a venv buys nothing here.
+    #
+    # UV_BREAK_SYSTEM_PACKAGES is the other half: Ubuntu marks its interpreter
+    # externally managed (PEP 668), so --system alone is refused. Both are also
+    # declared in the image environment; the exports here cover shells in images
+    # built before that declaration existed.
     export UV_SYSTEM_PYTHON=1
+    export UV_BREAK_SYSTEM_PACKAGES=1
     pip() { uv pip "$@"; }
     pip3() { uv pip "$@"; }
 fi

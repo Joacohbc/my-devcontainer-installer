@@ -37,7 +37,7 @@ func defaultComposeFile(cwd string) string {
 func resolveProjectComposeFile(cwd string) (string, error) {
 	paths := project.ProjectPaths(cwd, resolveWorkspace(cwd))
 	if _, statErr := os.Stat(paths.ComposeFile); os.IsNotExist(statErr) {
-		return "", fmt.Errorf("no compose file found at %s. Run 'devcontainer-cli' to generate one first", paths.ComposeFile)
+		return "", fmt.Errorf("no compose file found at %s. Run 'devcontainer-cli agent create' to generate one first", paths.ComposeFile)
 	}
 	return paths.ComposeFile, nil
 }

@@ -46,9 +46,15 @@ executable; the single optional positional arg then overrides the destination.`,
 		ValidArgsFunction: runCopyCompletion,
 		RunE:              runCopy,
 	}
+	addCopyFlags(cmd)
+	return cmd
+}
+
+// addCopyFlags registers the flags runCopy reads. It is shared with the
+// 'agent copy' facade, which reuses runCopy verbatim.
+func addCopyFlags(cmd *cobra.Command) {
 	addContainerFlag(cmd)
 	addAssetFlag(cmd)
-	return cmd
 }
 
 // addAssetFlag registers the --asset/-a flag and its completion.

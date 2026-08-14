@@ -23,7 +23,13 @@ func contextBodyFor(t *testing.T, m *ModuleSpec, opts map[string]any) string {
 // told to stop calling pip, without it pip is the real thing.
 func TestPythonContextFollowsUvOption(t *testing.T) {
 	withUv := contextBodyFor(t, PythonModule, map[string]any{"uv": true})
-	for _, frag := range []string{"uv pip install X", "UV_SYSTEM_PYTHON=1", "Do not create a virtualenv"} {
+	// All three commands, because they are not interchangeable: a document that
+	// names only `uv pip install` steers project work at the system interpreter
+	// and hides `uv add`, which is the one that belongs in a project.
+	for _, frag := range []string{
+		"uv add X", "uv tool install X", "uv pip install X",
+		"UV_SYSTEM_PYTHON=1", "UV_BREAK_SYSTEM_PACKAGES=1",
+	} {
 		if !strings.Contains(withUv, frag) {
 			t.Errorf("python+uv context must mention %q:\n%s", frag, withUv)
 		}
@@ -33,8 +39,15 @@ func TestPythonContextFollowsUvOption(t *testing.T) {
 	if strings.Contains(withoutUv, "uv pip install") {
 		t.Errorf("python without uv must not tell the agent to run uv:\n%s", withoutUv)
 	}
-	if !strings.Contains(withoutUv, "pip install --user X") {
-		t.Errorf("python without uv must point at plain pip:\n%s", withoutUv)
+	// PEP 668 applies whether or not uv is installed, so the no-uv branch has to
+	// name a destination pip can actually write to. It used to say
+	// `pip install --user X`, which Debian's pip refuses on an externally
+	// managed interpreter just like a plain install.
+	if !strings.Contains(withoutUv, "python3 -m venv") {
+		t.Errorf("python without uv must point at a venv, the one place pip can write:\n%s", withoutUv)
+	}
+	if strings.Contains(withoutUv, "pip install --user") {
+		t.Errorf("--user is refused on an externally managed interpreter too:\n%s", withoutUv)
 	}
 
 	// The module default is uv=true, so nil options must match the uv branch.

@@ -380,7 +380,8 @@ without a volume.
 
 Defaults in `alias.sh`: `kill_port <port>` (needs `lsof`, installed by
 `BaseModule`), `npm`→`pnpm` / `npx`→`pnpm dlx`, `pip`/`pip3`→`uv pip` with
-`UV_SYSTEM_PYTHON=1`, and the agent launchers
+`UV_SYSTEM_PYTHON=1` **and** `UV_BREAK_SYSTEM_PACKAGES=1` (both halves are
+needed — see the Python note below), and the agent launchers
 (`claude_yolo`/`codex_yolo`/`copilot_yolo`/`agy_yolo`, each running its CLI with
 that CLI's skip-permission flag). Every block is `command -v`-guarded so one
 file is valid in every image variant. The agent aliases **never shadow the tool
@@ -388,6 +389,48 @@ itself** — plain `claude` stays the unmodified CLI, the `_yolo` name is the
 opt-in — and they are **unconditional** (no build-time gate, no module option):
 a tool that is not installed simply never gets its alias, so the shipped script
 is identical in every image.
+
+### Python: `uv pip install` needs two env vars and a `chown`
+
+`uv pip install X` inside the container is a three-part contract, and dropping
+any one of them brings back an error that looks like something else entirely.
+All three live in `modules/dockerfile/python.go`:
+
+- **`UV_SYSTEM_PYTHON=1`** picks the target: the container's own interpreter
+  rather than a venv. The container is already the isolation boundary.
+- **`UV_BREAK_SYSTEM_PACKAGES=1`** makes that target usable. Ubuntu 24.04 marks
+  its interpreter externally managed (PEP 668), so `--system` **alone** is
+  refused with `The interpreter at /usr is externally managed`. This half was
+  missing for a long time, which meant `uv pip install` never worked in any
+  image — while `install-scraper-tools.sh` carried the workaround
+  (`sudo uv pip install --system --break-system-packages`) for its own use.
+- **The `chown` in `Render`** is what removes the `sudo`. Past PEP 668 the
+  install still has to write into root-owned directories. The paths are asked
+  of the interpreter (`sysconfig.get_path("purelib")` / `("scripts")`) instead
+  of hardcoded, because Debian uses the `posix_local` scheme — the answer is
+  under `/usr/local` and carries the Python version, so it moves with the
+  Ubuntu release. It is deliberately **not** recursive: it grants devuser the
+  right to create entries there without rewriting the ownership of what other
+  modules already put in the scripts dir (zellij drops a binary there).
+
+**`VIRTUAL_ENV` must never be declared image-wide.** It looks like the tidier
+fix — a venv in `~/.venv` owned by devuser sidesteps both PEP 668 and the
+permissions — but uv does not read `VIRTUAL_ENV` for *project* commands, so
+every `uv add`/`uv sync`/`uv run` in every project would print
+`VIRTUAL_ENV=… does not match the project environment path … and will be
+ignored`. That is permanent noise on the most common workflow, and for an agent
+a warning it does not understand is an invitation to "fix" something that works.
+`TestGenerateDockerfile_PythonDeclaresNoImageWideVirtualenv` pins it.
+
+The three uv commands are **not** interchangeable, and `~/CONTEXT.md` names all
+three (`dockerfile/context_test.go` enforces it) because a document that
+mentions only `uv pip install` steers project work at the system interpreter:
+
+| Case | Command | Lands in |
+|---|---|---|
+| A dependency of one project | `uv add X` / `uv run` | `.venv/` in the project dir |
+| A command-line tool | `uv tool install X` | its own env, on PATH via `~/.local/bin` |
+| A library importable container-wide | `uv pip install X` | the system interpreter |
 
 ### Every project path is per-project — there is no bare `/workspace`
 
@@ -848,6 +891,71 @@ Load-bearing details:
   new module that never reaches the skill leaves the host agent guessing. Add
   the id to the `--with` list in the markdown when you add a module.
 
+### The `agent` group is a facade, not a second CLI
+
+`internal/cli/commands/agent.go` adds one command group aimed at an AI agent
+driving this CLI: `agent cli-info | create | connect | exec | forward | copy |
+list | clean`. It is **additive** — every command it wraps stays top-level and
+unchanged, and the host skill teaches the group first with those as the escape
+hatch (`TestAgentGroup_DoesNotReplaceTheHumanCommands` pins that).
+
+Five of the eight are the same handler under a different name: `connect` →
+`runSsh`, `exec` → `runShell`, `forward` → `runPortForward`, `copy` → `runCopy`,
+`list` → `runLs`. The flags come from helpers extracted out of the human
+commands' constructors (`addSshFlags`, `addShellFlags`, `addPortForwardFlags`,
+`addCopyFlags`, `addLsFlags`), so each flag — description and completion — is
+still registered exactly once. A new flag on `ssh` reaches `agent connect` for
+free; adding it to only one of the two is the bug the helpers prevent, and
+`TestExtractedFlagHelpers_KeepTheOriginalFlags` guards the extraction.
+
+Four properties are load-bearing:
+
+- **The defaults are the feature.** `agentDefaults` sets a flag only when
+  `!Changed(name)`, from a `PreRunE`. That is what makes `--no-interactive=false`
+  still win, and what keeps the inversion out of the shared handlers — `runSsh`
+  has no idea it is being called by the facade. `agent create` flips
+  `force` and `build` the same way, because a create that stops to ask about
+  overwriting or building is a create that hangs.
+- **`agent exec` requires a command, and runs as devuser.** `shell` with no
+  command opens a login shell; for an unattended caller that is not a session
+  but a hang, so the facade rejects it in `Args`. The user default is the same
+  kind of call, and it deliberately **inverts** `shell`'s: `shell` leaves
+  `--user` unset with an explicit command so it keeps working against a
+  container that has no devuser (a database), and the container itself runs as
+  root — so a command that writes into the workspace leaves **root-owned files
+  in the user's real checkout on the host**, which they then cannot edit
+  without sudo. The facade takes the other trade: devuser by default, and a
+  database container now fails loudly with `unable to find user devuser` until
+  `--user` names the one it has. A loud failure beats a silently corrupted
+  checkout. `shell` itself is untouched — `TestShell_KeepsItsOwnUserSemantics`
+  pins that the two stay different on purpose.
+- **`agent create` reuses `runGenerate`, then ups.** It registers the whole
+  `addGenerateFlags` set (one source of truth; `parseGenFlags` reads all of it)
+  and only hides what does not apply — `--version`, `--preset`,
+  `--non-interactive`, `--force-prompt` stay registered but out of `--help`.
+  The `up` afterwards passes `build=false`: the image was already built by the
+  generate.
+- **`agent clean` is project-scoped by default.** `AgentService.Clean` composes
+  `DestroyService.Run` (which already takes the containers, network and volumes
+  with its `compose down -v`) with `PruneService.CleanImages` for the one thing
+  destroy leaves behind: the image built for this project. It is resolved
+  *before* the destroy — which drops the catalog entry — and only when
+  `domain.IsLocalImage` says it is ours (a pulled image backs every project on
+  the same profile) and it is still present locally (`CleanImages` treats an
+  unknown ref as an error, and an already-deleted image must not fail the
+  cleanup). `--all` adds `CleanAll` on top.
+
+**`agent cli-info` is why the catalogue no longer has to be duplicated in
+prose.** `AgentService.Info` reads `catalog.DockerfileModules`,
+`catalog.ComposeServices`, `catalog.All(domain.ProfileDirs()...)`,
+`catalog.AllAgentSkills(domain.SkillDirs()...)`, `types.ScriptWhens` and
+`assets.CopyableAssets()`, so it describes this binary — including the user's
+own profiles and skills, which no shipped document can. The service returns
+data and the command renders it (text or `--json`), the same split as
+`config profile list`. `Selectable` (`!Always && !Internal`) is the field that
+matters: it is what an agent may pass to `--with`/`--service`, and it is why
+adding an always-on module needs no doc edit here.
+
 ### `internal/domain/types/labels.go` — Docker label constants
 
 `LabelNamespace`, `LabelManaged`, `LabelProject`, `LabelVersion`,
@@ -924,6 +1032,7 @@ is Cobra-native.
 | `context` | `context.go` | Print the container's own context and installed tools: runs `get-devcontainer-context` inside it via `InspectService.Context` and streams the output (`--json` for structured output). Falls back to `copy --asset get-devcontainer-context` when the image predates the `aliases` module. Complements `info` (Docker metadata) by reporting what is *inside* the container |
 | `skill` | `skill.go` | Install the **host-side** agent skill (`skill-devcontainer-cli.md`) into the host's agent skill dirs, so an assistant running on the user's machine knows how to drive this CLI. Subcommands `skill install` / `skill remove` (alias `uninstall`) / `skill show`; bare `skill` lists every target with its state (`absent`/`current`/`outdated`/`foreign`). `--agent` narrows to one agent (default: all), `--scope global\|project` picks the base dir (home vs cwd). A target holding a file the CLI did not write (no managed marker) is reported `foreign` and never overwritten or deleted without `--force`; `remove` needs `-y` in non-interactive mode. Pure file I/O — no Docker, unlike every other command |
 | `network` | `network.go` | Attach/detach any container to the workspace network; subcommands `network connect`/`network disconnect <container...>` (tab-completed); `connect` takes `--alias` (extra DNS names; prompted when interactive) |
+| `agent` | `agent.go` (+ `agent_create.go`, `agent_info.go`) | The agent-facing facade: `agent cli-info` (the live catalogue as text or `--json`), `agent create` (generate + build + up), `agent connect`/`exec`/`forward`/`copy`/`list`/`clean`. Additive — every command it wraps stays top-level. See the section below |
 | `completion` | _(Cobra built-in)_ | Print shell completion script |
 
 ---
@@ -960,6 +1069,27 @@ func TestParsePortMapping(t *testing.T) {
 - **SIGINT / SIGTERM:** handled by `installSignalHandlers()` in `main.go` → exit `130`.
 - Do **not** call `os.Exit()` inside command handlers — return an error so
   `main()` applies consistent formatting.
+- **A failed step is a failed command.** `saveAndPostProcess` used to downgrade
+  a failed `docker compose build` to a warning and return nil, so generation
+  exited `0` with no image. A human watching the scroll sees the warning; a
+  script and `agent create` see success and go on to use an image that was never
+  produced. It returns the error now. Anything similar — a step whose failure
+  leaves the command's promise unmet — belongs in the exit code, not only in the
+  output.
+
+### Recovery hints must name a command that does not prompt
+
+A message that tells the caller what to run next is the highest-signal
+documentation in the tree: it arrives exactly when they are stuck. Eight of them
+used to say `Run 'devcontainer-cli'` — the interactive wizard, i.e. the one
+command that **hangs a non-interactive caller with no way to answer**. They now
+name `up`, `start` or `agent create`, all of which work for a human and a script
+alike.
+
+`TestErrorMessagesDoNotPointAtTheWizard` (`commands/recovery_hints_test.go`)
+walks the source of `internal/cli/commands` and `internal/service` and fails on
+any `fmt.Errorf`/`Report.Warn` line quoting the bare binary name. Write the hint
+for the caller who cannot see a prompt.
 
 ## Interactive vs non-interactive mode
 

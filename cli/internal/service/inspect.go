@@ -184,7 +184,7 @@ func (s InspectService) ContainerDetails(name string) (*ContainerInfo, error) {
 func (s InspectService) ensureRunning(name string) error {
 	state, err := s.ContainerState(name)
 	if err != nil || state != StateRunning {
-		return fmt.Errorf("container '%s' is not running. Run 'devcontainer-cli' or 'devcontainer-cli start' first", name)
+		return fmt.Errorf("container '%s' is not running. Start it with 'devcontainer-cli up', or create the project first with 'devcontainer-cli agent create'", name)
 	}
 	return nil
 }
@@ -196,12 +196,21 @@ func (s InspectService) ensureRunning(name string) error {
 // interactive login session, not a bare shell. HOME is re-exported from the
 // live passwd entry because docker exec delivers a stale HOME=/ after the
 // entrypoint's runtime UID remap, which made the shell look for its rc files
-// under / and start bare. The session also cd's into that home so the shell
-// opens in the user's home directory (devuser's for the interactive default).
-func shellLauncher(shellType string) string {
+// under / and start bare.
+//
+// The session then cd's somewhere: the user's home by default, or workdir when
+// one was asked for. The cd has to happen here even though `docker exec -w`
+// already set the working directory, because otherwise the home cd below would
+// immediately undo it. HOME stays re-exported either way — it is about finding
+// rc files, not about where the shell opens.
+func shellLauncher(shellType, workdir string) string {
 	resolve := `SH="$(printf %s "$P" | cut -d: -f7)"; `
 	if shellType != "" {
 		resolve = `SH="$(command -v ` + shellType + `)"; `
+	}
+	cd := `[ -d "$H" ] && cd "$H"; `
+	if workdir != "" {
+		cd = `[ -d ` + shellQuote(workdir) + ` ] && cd ` + shellQuote(workdir) + `; `
 	}
 	return `P="$(getent passwd "$(id -u)" 2>/dev/null)"; ` +
 		`H="$(printf %s "$P" | cut -d: -f6)"; [ -d "$H" ] && export HOME="$H"; ` +
@@ -209,8 +218,15 @@ func shellLauncher(shellType string) string {
 		`[ -x "$SH" ] || SH="$SHELL"; ` +
 		`[ -x "$SH" ] || SH="$(command -v bash)"; ` +
 		`[ -x "$SH" ] || SH="$(command -v sh)"; ` +
-		`[ -d "$H" ] && cd "$H"; ` +
+		cd +
 		`exec "$SH" -l`
+}
+
+// shellQuote wraps s in single quotes for the launcher script, escaping any
+// single quote it contains. The workdir is a resolved path rather than user
+// prose, but it is interpolated into a script, so it is quoted like one.
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 // Shell opens an interactive login shell (or runs command) in the running
@@ -222,7 +238,11 @@ func shellLauncher(shellType string) string {
 // command's output to a file or another process, since a TTY mangles the stream
 // (e.g. injecting `\r`, corrupting a redirected pg_dump). It only makes sense
 // with an explicit command — a bare login shell needs the TTY to be usable.
-func (s InspectService) Shell(name, user, shellType string, command []string, noTTY bool) error {
+//
+// workdir is the directory to run in. Empty keeps Docker's own default, which
+// for these images is `/` — nothing declares a WORKDIR — so a caller that wants
+// the project passes its mount path.
+func (s InspectService) Shell(name, user, shellType, workdir string, command []string, noTTY bool) error {
 	if err := s.ensureRunning(name); err != nil {
 		return err
 	}
@@ -233,11 +253,14 @@ func (s InspectService) Shell(name, user, shellType string, command []string, no
 	if user != "" {
 		execArgs = append(execArgs, "-u", user)
 	}
+	if workdir != "" {
+		execArgs = append(execArgs, "-w", workdir)
+	}
 	execArgs = append(execArgs, name)
 	if len(command) > 0 {
 		execArgs = append(execArgs, command...)
 	} else {
-		execArgs = append(execArgs, "sh", "-c", shellLauncher(shellType))
+		execArgs = append(execArgs, "sh", "-c", shellLauncher(shellType, workdir))
 	}
 	exitCode, err := docker.DockerInherit(execArgs)
 	if err != nil {

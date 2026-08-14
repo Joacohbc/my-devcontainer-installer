@@ -28,6 +28,7 @@ func TestNewRootCommand_RegistersAllSubcommands(t *testing.T) {
 		"start", "stop", "restart", "update",
 		"upgrade-cli", "config", "cleanup-tips", "shell", "logs", "copy",
 		"up", "status", "ls", "info", "network", "context", "compose", "skill",
+		"agent",
 	}
 	have := map[string]bool{}
 	for _, c := range root.Commands() {
@@ -1589,7 +1590,7 @@ func TestOperationalCommands_HaveNoWorkspaceFlag(t *testing.T) {
 		byName[c.Name()] = c
 	}
 	// Operational commands act only on the current directory's project; none of
-	// them expose a -w/--workspace flag to target another one.
+	// them expose a --workspace flag to target another one.
 	for _, name := range []string{"up", "down", "start", "stop", "restart", "shell", "ssh", "copy", "info", "status", "logs", "ls"} {
 		cmd := byName[name]
 		if cmd == nil {
@@ -1598,9 +1599,21 @@ func TestOperationalCommands_HaveNoWorkspaceFlag(t *testing.T) {
 		if cmd.Flags().Lookup("workspace") != nil {
 			t.Errorf("command %q must not have a --workspace flag", name)
 		}
-		if cmd.Flags().ShorthandLookup("w") != nil {
-			t.Errorf("command %q must not have a -w shorthand", name)
+		// -w is reserved so it can never read as a workspace selector. 'shell'
+		// is the one holder, where it is --workdir: it changes the directory
+		// *inside* the current project's container, which is the opposite of
+		// targeting another project.
+		if sh := cmd.Flags().ShorthandLookup("w"); sh != nil && sh.Name != "workdir" {
+			t.Errorf("command %q binds -w to %q; -w must only ever be --workdir", name, sh.Name)
 		}
+	}
+
+	// And pin that the one -w in the tree really is the workdir flag, so it
+	// cannot quietly turn into a workspace selector later.
+	shell := byName["shell"]
+	sh := shell.Flags().ShorthandLookup("w")
+	if sh == nil || sh.Name != "workdir" {
+		t.Errorf("shell -w should be --workdir, got %v", sh)
 	}
 }
 

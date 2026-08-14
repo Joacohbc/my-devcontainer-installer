@@ -78,6 +78,13 @@ when the session ends.`,
   devcontainer-cli ssh -- go version`,
 		RunE: runSsh,
 	}
+	addSshFlags(cmd)
+	return cmd
+}
+
+// addSshFlags registers the flags runSsh reads. It is shared with the
+// 'agent connect' facade, which reuses runSsh with agent-safe defaults.
+func addSshFlags(cmd *cobra.Command) {
 	addYesFlag(cmd)
 	addInteractiveFlag(cmd)
 	addContainerFlag(cmd)
@@ -96,8 +103,6 @@ when the session ends.`,
 		return listSshHosts(), cobra.ShellCompDirectiveNoFileComp
 	})
 	_ = cmd.MarkFlagFilename("key")
-
-	return cmd
 }
 
 func runSsh(cmd *cobra.Command, args []string) error {

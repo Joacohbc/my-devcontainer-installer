@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/ui"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/service"
 	"github.com/spf13/cobra"
 )
@@ -26,12 +27,21 @@ with zsh. With an explicit command those defaults are left alone, so commands
 work against containers that have no devuser/zsh (e.g. a database container).
 Pass -T when piping a command's output to a file so the stream isn't mangled.
 
-An explicit command is exec'd directly, NOT through a shell: it sees the image's
-PATH, while the version-managed toolchains (uv, fnm/node, pnpm, cargo, bun,
-~/.local/bin) are exported from devuser's rc files. Wrap those in a login bash —
-'shell --user devuser -- bash -lc "uv pip install x"' — which also buys you
-pipes, '&&', globs and 'cd'. Use bash, not zsh: a non-interactive 'zsh -lc'
-skips ~/.zshrc and would miss the same PATH.
+An explicit command is exec'd directly, NOT through a shell. That is enough for
+most of them: the image declares its toolchain PATH as environment (uv, node,
+pnpm, cargo, bun, go, ~/.local/bin), which a bare 'docker exec' inherits. Wrap a
+command in a login bash — 'shell -- bash -lc "cd /srv && ./build.sh | tee log"' —
+when it needs pipes, '&&', globs or 'cd', or the container's pip/npm shell
+indirections. Use bash, not zsh: a non-interactive 'zsh -lc' skips ~/.zshrc.
+
+The exception is an image built before that declaration existed, which carries
+the PATH only in devuser's rc files; there a login bash is also how a toolchain
+is found, and 'update --rebuild' fixes it for good.
+
+Nothing in these images declares a WORKDIR, so a command lands in '/' and an
+interactive shell in devuser's home — never in the project. Pass -w to run in
+the project's workspace mount instead, which is what a build or a test command
+almost always wants and what saves wrapping one in a login bash just to 'cd'.
 
 Pass --via USER@HOST (with --container) to reach a container on a different
 Docker host through an existing SSH connection to it — unlike 'ssh --via' this
@@ -40,11 +50,17 @@ entirely on the 'docker exec' channel (no ssh-into-container step).`,
 		Example: `  # Interactive shell as devuser
   devcontainer-cli shell
 
-  # Run a one-off command
+  # Run a one-off command (in '/', the container default)
   devcontainer-cli shell -- go version
 
-  # A toolchain from a version manager needs a login shell for its PATH
-  devcontainer-cli shell --user devuser -- bash -lc 'uv pip install requests'
+  # Run it in the project instead
+  devcontainer-cli shell -w --user devuser -- go test ./...
+
+  # The image PATH is inherited, so a plain command needs no login shell
+  devcontainer-cli shell --user devuser -- uv pip install requests
+
+  # Shell syntax still needs one — but -w already did the cd
+  devcontainer-cli shell -w --user devuser -- bash -lc 'pnpm install && pnpm build'
 
   # Pipe a DB dump out without a TTY
   devcontainer-cli shell -c <ws>-postgres -T -- pg_dump -U devuser devdb > dump.sql
@@ -53,9 +69,17 @@ entirely on the 'docker exec' channel (no ssh-into-container step).`,
   devcontainer-cli shell --via me@docker-host -c dc-ssh`,
 		RunE: runShell,
 	}
+	addShellFlags(cmd)
+	return cmd
+}
+
+// addShellFlags registers the flags runShell reads. It is shared with the
+// 'agent exec' facade, which reuses runShell but requires a command.
+func addShellFlags(cmd *cobra.Command) {
 	cmd.Flags().String("user", "", "User to run the command as; always honoured, but only an interactive shell defaults it to devuser")
 	cmd.Flags().String("type", "", "Shell to open: bash, zsh or sh (interactive shell defaults to zsh)")
 	cmd.Flags().BoolP("no-tty", "T", false, "Disable pseudo-TTY allocation (use when piping output to a file, e.g. a DB dump)")
+	cmd.Flags().BoolP("workdir", "w", false, "Run in the project's workspace mount instead of the container default; only the devcontainer has that directory, so a database container needs it left off")
 	cmd.Flags().String("via", "", "Reach the container through an existing SSH connection to its Docker host (requires --container): USER@HOST or an ssh-config alias")
 	addContainerFlag(cmd)
 
@@ -71,8 +95,6 @@ entirely on the 'docker exec' channel (no ssh-into-container step).`,
 	_ = cmd.RegisterFlagCompletionFunc("via", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return listSshHosts(), cobra.ShellCompDirectiveNoFileComp
 	})
-
-	return cmd
 }
 
 // shellInteractiveDefaults applies the interactive-shell defaults: when no
@@ -121,8 +143,28 @@ func runShell(cmd *cobra.Command, args []string) error {
 		command = append([]string{shellType}, args...)
 	}
 
+	workdir, err := shellWorkdir(cmd)
+	if err != nil {
+		return err
+	}
+
 	svc := service.InspectService{Report: ui.Console{}}
 	return service.WithHostOverride(via, func() error {
-		return svc.Shell(containerName, userFlag, shellType, command, noTTY)
+		return svc.Shell(containerName, userFlag, shellType, workdir, command, noTTY)
 	})
+}
+
+// shellWorkdir resolves --workdir to the project's in-container mount path, or
+// "" when the flag is off. The path comes from the workspace the current
+// directory resolves to, not from the target container, so pointing --container
+// at something without that mount is the caller's call to make.
+func shellWorkdir(cmd *cobra.Command) (string, error) {
+	if w, _ := cmd.Flags().GetBool("workdir"); !w {
+		return "", nil
+	}
+	cwd, err := currentDir()
+	if err != nil {
+		return "", err
+	}
+	return types.WorkspaceDir(resolveWorkspace(cwd)), nil
 }
