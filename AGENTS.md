@@ -380,7 +380,8 @@ without a volume.
 
 Defaults in `alias.sh`: `kill_port <port>` (needs `lsof`, installed by
 `BaseModule`), `npm`→`pnpm` / `npx`→`pnpm dlx`, `pip`/`pip3`→`uv pip` with
-`UV_SYSTEM_PYTHON=1`, and the agent launchers
+`UV_SYSTEM_PYTHON=1` **and** `UV_BREAK_SYSTEM_PACKAGES=1` (both halves are
+needed — see the Python note below), and the agent launchers
 (`claude_yolo`/`codex_yolo`/`copilot_yolo`/`agy_yolo`, each running its CLI with
 that CLI's skip-permission flag). Every block is `command -v`-guarded so one
 file is valid in every image variant. The agent aliases **never shadow the tool
@@ -388,6 +389,48 @@ itself** — plain `claude` stays the unmodified CLI, the `_yolo` name is the
 opt-in — and they are **unconditional** (no build-time gate, no module option):
 a tool that is not installed simply never gets its alias, so the shipped script
 is identical in every image.
+
+### Python: `uv pip install` needs two env vars and a `chown`
+
+`uv pip install X` inside the container is a three-part contract, and dropping
+any one of them brings back an error that looks like something else entirely.
+All three live in `modules/dockerfile/python.go`:
+
+- **`UV_SYSTEM_PYTHON=1`** picks the target: the container's own interpreter
+  rather than a venv. The container is already the isolation boundary.
+- **`UV_BREAK_SYSTEM_PACKAGES=1`** makes that target usable. Ubuntu 24.04 marks
+  its interpreter externally managed (PEP 668), so `--system` **alone** is
+  refused with `The interpreter at /usr is externally managed`. This half was
+  missing for a long time, which meant `uv pip install` never worked in any
+  image — while `install-scraper-tools.sh` carried the workaround
+  (`sudo uv pip install --system --break-system-packages`) for its own use.
+- **The `chown` in `Render`** is what removes the `sudo`. Past PEP 668 the
+  install still has to write into root-owned directories. The paths are asked
+  of the interpreter (`sysconfig.get_path("purelib")` / `("scripts")`) instead
+  of hardcoded, because Debian uses the `posix_local` scheme — the answer is
+  under `/usr/local` and carries the Python version, so it moves with the
+  Ubuntu release. It is deliberately **not** recursive: it grants devuser the
+  right to create entries there without rewriting the ownership of what other
+  modules already put in the scripts dir (zellij drops a binary there).
+
+**`VIRTUAL_ENV` must never be declared image-wide.** It looks like the tidier
+fix — a venv in `~/.venv` owned by devuser sidesteps both PEP 668 and the
+permissions — but uv does not read `VIRTUAL_ENV` for *project* commands, so
+every `uv add`/`uv sync`/`uv run` in every project would print
+`VIRTUAL_ENV=… does not match the project environment path … and will be
+ignored`. That is permanent noise on the most common workflow, and for an agent
+a warning it does not understand is an invitation to "fix" something that works.
+`TestGenerateDockerfile_PythonDeclaresNoImageWideVirtualenv` pins it.
+
+The three uv commands are **not** interchangeable, and `~/CONTEXT.md` names all
+three (`dockerfile/context_test.go` enforces it) because a document that
+mentions only `uv pip install` steers project work at the system interpreter:
+
+| Case | Command | Lands in |
+|---|---|---|
+| A dependency of one project | `uv add X` / `uv run` | `.venv/` in the project dir |
+| A command-line tool | `uv tool install X` | its own env, on PATH via `~/.local/bin` |
+| A library importable container-wide | `uv pip install X` | the system interpreter |
 
 ### Every project path is per-project — there is no bare `/workspace`
 

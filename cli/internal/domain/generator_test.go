@@ -221,7 +221,28 @@ func TestGenerateDockerfile_PythonWithUvByDefault(t *testing.T) {
 	df := mustGenerateDockerfile(t, cfg)
 	assertContainsStr(t, df, "astral.sh/uv/install.sh", "python default")
 	assertContainsStr(t, df, `ENV UV_SYSTEM_PYTHON="1"`, "python default")
+	// Without this uv refuses the system interpreter Ubuntu marks externally
+	// managed (PEP 668), so `uv pip install X` fails in every image.
+	assertContainsStr(t, df, `ENV UV_BREAK_SYSTEM_PACKAGES="1"`, "python default")
 	assertContainsStr(t, df, "/home/devuser/.local/bin", "python default")
+	// And past PEP 668 it still needs somewhere writable: the system install
+	// directories are root-owned, and the paths are asked of the interpreter
+	// rather than hardcoded so they follow the Ubuntu release.
+	assertContainsStr(t, df, `sysconfig.get_path("purelib")`, "python default")
+	assertContainsStr(t, df, `sysconfig.get_path("scripts")`, "python default")
+	assertContainsStr(t, df, `chown devuser:devuser "$PY_PURELIB" "$PY_SCRIPTS"`, "python default")
+}
+
+// A venv declared image-wide would make every `uv add`/`uv sync`/`uv run` in a
+// project warn that VIRTUAL_ENV does not match the project environment and is
+// being ignored — uv does not read it for project commands. The image-wide
+// target has to stay the system interpreter so the per-project flow is clean.
+func TestGenerateDockerfile_PythonDeclaresNoImageWideVirtualenv(t *testing.T) {
+	cfg := makeConfig(func(c *types.DevcontainerConfig) {
+		c.Dockerfile.Modules = []types.SelectedModule{{ID: "python"}}
+	})
+	df := mustGenerateDockerfile(t, cfg)
+	assertNotContainsStr(t, df, "VIRTUAL_ENV", "python default")
 }
 
 func TestGenerateDockerfile_PythonWithoutUv(t *testing.T) {

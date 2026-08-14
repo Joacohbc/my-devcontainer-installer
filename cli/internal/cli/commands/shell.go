@@ -26,12 +26,16 @@ with zsh. With an explicit command those defaults are left alone, so commands
 work against containers that have no devuser/zsh (e.g. a database container).
 Pass -T when piping a command's output to a file so the stream isn't mangled.
 
-An explicit command is exec'd directly, NOT through a shell: it sees the image's
-PATH, while the version-managed toolchains (uv, fnm/node, pnpm, cargo, bun,
-~/.local/bin) are exported from devuser's rc files. Wrap those in a login bash —
-'shell --user devuser -- bash -lc "uv pip install x"' — which also buys you
-pipes, '&&', globs and 'cd'. Use bash, not zsh: a non-interactive 'zsh -lc'
-skips ~/.zshrc and would miss the same PATH.
+An explicit command is exec'd directly, NOT through a shell. That is enough for
+most of them: the image declares its toolchain PATH as environment (uv, node,
+pnpm, cargo, bun, go, ~/.local/bin), which a bare 'docker exec' inherits. Wrap a
+command in a login bash — 'shell -- bash -lc "cd /srv && ./build.sh | tee log"' —
+when it needs pipes, '&&', globs or 'cd', or the container's pip/npm shell
+indirections. Use bash, not zsh: a non-interactive 'zsh -lc' skips ~/.zshrc.
+
+The exception is an image built before that declaration existed, which carries
+the PATH only in devuser's rc files; there a login bash is also how a toolchain
+is found, and 'update --rebuild' fixes it for good.
 
 Pass --via USER@HOST (with --container) to reach a container on a different
 Docker host through an existing SSH connection to it — unlike 'ssh --via' this
@@ -43,8 +47,11 @@ entirely on the 'docker exec' channel (no ssh-into-container step).`,
   # Run a one-off command
   devcontainer-cli shell -- go version
 
-  # A toolchain from a version manager needs a login shell for its PATH
-  devcontainer-cli shell --user devuser -- bash -lc 'uv pip install requests'
+  # The image PATH is inherited, so a plain command needs no login shell
+  devcontainer-cli shell --user devuser -- uv pip install requests
+
+  # Shell syntax does need one
+  devcontainer-cli shell --user devuser -- bash -lc 'cd /workspaces/app && pnpm install'
 
   # Pipe a DB dump out without a TTY
   devcontainer-cli shell -c <ws>-postgres -T -- pg_dump -U devuser devdb > dump.sql

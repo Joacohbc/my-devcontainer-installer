@@ -106,7 +106,7 @@ with `agent create --profile <id>` on the default mode.
 ## Run commands inside
 
     devcontainer-cli agent exec -- go test ./...        # exit code propagated
-    devcontainer-cli agent exec -- bash -lc 'uv pip install requests'
+    devcontainer-cli agent exec -- uv pip install requests
     devcontainer-cli agent exec -- bash -lc 'cd /workspaces/myapp && pnpm install'
     devcontainer-cli agent exec -c myapp-postgres --user postgres -T -- pg_dump devdb > dump.sql
 
@@ -119,18 +119,21 @@ into the project creates root-owned files on the **host**, in the user's real
 checkout, which they then cannot edit without sudo. Do not pass `--user root`
 unless the command genuinely needs it (`apt-get`, writing outside the home).
 
-**Wrap the command in `bash -lc '…'` when it needs a shell.** `docker exec` runs
-your argv directly — it is not a shell — so without the wrapper there are no
-pipes, no `&&`, no globs, no `$VAR` expansion and no `cd`, and the container's
-`pip`→`uv pip` and `npm`→`pnpm` indirections (shell functions and aliases) do
-not exist either. Use `bash`, not `zsh`: a non-interactive `zsh -lc` skips
-`~/.zshrc`.
+**Wrap the command in `bash -lc '…'` only when it needs a shell** — which is
+narrower than it looks. `docker exec` runs your argv directly, so the wrapper is
+what buys you pipes, `&&`, globs, `$VAR` expansion and `cd`, plus the container's
+`pip`→`uv pip` and `npm`→`pnpm` indirections, which are shell functions and
+aliases that no process inherits. Use `bash`, not `zsh`: a non-interactive
+`zsh -lc` skips `~/.zshrc`.
 
-Finding a binary is a separate matter. The image declares its toolchain PATH in
-the image environment, so `node`, `uv`, `pnpm`, `cargo`, `bun`, `go` and
-anything in `~/.local/bin` are found by a bare `agent exec -- <cmd>`. Node
-resolves to the version the image was built with; a shell still picks whatever
-`fnm`/`nvm` selects for that session, so switching versions works as usual.
+**Finding a binary is not one of those reasons.** The image declares its
+toolchain PATH in the image environment, so `node`, `uv`, `pnpm`, `cargo`,
+`bun`, `go` and anything in `~/.local/bin` are found by a bare
+`agent exec -- <cmd>`. Wrapping a plain command adds a login shell for nothing:
+`agent exec -- uv pip install requests` is right, `bash -lc 'uv pip install
+requests'` just does the same thing slower. Node resolves to the version the
+image was built with; a shell still picks whatever `fnm`/`nvm` selects for that
+session, so switching versions works as usual.
 
 The exception is **an image built before this was in place**, which carries the
 PATH only in its rc files. If a tool you know is installed comes back as
@@ -158,21 +161,37 @@ The image replaces the usual tools, and the replacements live in shell
 functions and aliases — so the tool you reach for from `agent exec` is often the
 wrong one. Run `devcontainer-cli context` to see which of these the image has.
 
-- **Python: `uv pip install X`.** Not `pip install`, and never
-  `python3 -m pip install` — the base is Ubuntu 24.04, whose system Python is
-  PEP 668 "externally managed", so plain pip refuses with
-  `error: externally-managed-environment`. Inside a login shell `pip`/`pip3`
-  are *functions* forwarding to `uv pip` (with `UV_SYSTEM_PYTHON=1`), but
-  `python3 -m pip` bypasses them and hits the same wall. **Do not create a
-  virtualenv and do not pass `--break-system-packages`**: the container is the
-  isolation boundary. If the image was built without uv, `pip install --user X`
-  is the fallback.
+- **Python: `uv`, never `pip`.** uv has one command per case, and they are not
+  interchangeable:
+
+  | What you want | Command |
+  |---|---|
+  | A dependency of **one project** | `uv add X`, then `uv run …` |
+  | A **command-line tool** | `uv tool install X` |
+  | A library importable **anywhere in the container** | `uv pip install X` |
+
+  `uv add` is the one for project work; the `.venv/` it creates in the project
+  directory is expected and you never activate it by hand. `uv pip install X`
+  writes to the system interpreter and needs no venv and no sudo — the image
+  sets `UV_SYSTEM_PYTHON=1` and `UV_BREAK_SYSTEM_PACKAGES=1` and gives devuser
+  write access to the install directories, so **do not pass
+  `--break-system-packages` yourself and do not build a venv to work around an
+  install error**.
+
+  Never `pip install` or `python3 -m pip install`: the base is Ubuntu 24.04,
+  whose system Python is PEP 668 "externally managed", so plain pip refuses
+  with `error: externally-managed-environment`. `pip`/`pip3` are shell
+  *functions* forwarding to `uv pip`, so they work in a shell but not from a
+  bare `agent exec` — call `uv pip` directly. If the image was built without uv
+  (`--with python` sets the `uv` option, which can be turned off), you are on
+  plain pip and a venv is then the honest answer.
 - **Node: call `pnpm` directly.** `npm`/`npx` are *aliases*, and a
   non-interactive shell does not expand aliases — so `bash -lc 'npm install'`
   really runs npm, not pnpm.
 
-      devcontainer-cli agent exec -- bash -lc 'uv pip install requests'
-      devcontainer-cli agent exec -- bash -lc 'pnpm add -D vitest'
+      devcontainer-cli agent exec -- uv pip install requests
+      devcontainer-cli agent exec -- pnpm add -D vitest
+      devcontainer-cli agent exec -- bash -lc 'cd /workspaces/myapp && uv add rich'
 
 ## Lifecycle
 
@@ -311,14 +330,17 @@ managed label). Use `--dry-run` first and show the user what would go.
 - **Read `agent cli-info` before composing a create.** It is generated from the
   live catalogue, so it never names a module this binary does not have — and it
   includes the user's own profiles and skills, which no document can.
-- **`bash -lc '…'` around anything using shell syntax** (`&&`, `|`, `*`, `cd`,
-  `$VAR`) or the container's `pip`/`npm` indirections. `command not found` from
-  `agent exec` usually means the tool is there but the PATH is not — re-run it
-  wrapped before concluding anything is missing, and check with `context`.
-- **Install packages with the container's package manager** (`uv pip`, `pnpm`),
-  not the one the project's docs assume. An error telling you to create a venv,
-  pass `--break-system-packages` or `apt install python3-xyz` means you used the
-  wrong one — switch, don't force it.
+- **`bash -lc '…'` only for shell syntax** (`&&`, `|`, `*`, `cd`, `$VAR`) or the
+  container's `pip`/`npm` indirections — not to find a binary, which the image
+  PATH already handles. `command not found` from `agent exec` on an image built
+  before that was in place means the PATH lives only in the rc files: re-run it
+  wrapped, check with `context`, and rebuild with `update --rebuild`.
+- **Install packages with the container's package manager**, and with the right
+  one for the job: `uv add` for a project dependency, `uv tool install` for a
+  CLI, `uv pip install` for something importable container-wide, `pnpm` for
+  Node. An error telling you to create a venv, pass `--break-system-packages` or
+  `apt install python3-xyz` means you used the wrong tool — switch, don't force
+  it; the image already sets what `uv pip` needs.
 - **Nothing outside the workspace mount and `/home/devuser` survives** a
   recreate. Install-and-forget inside the container is fine for a one-off; a
   toolchain that must persist belongs in `--with` and a re-run of `agent create`.

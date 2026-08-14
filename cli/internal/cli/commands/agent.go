@@ -121,8 +121,10 @@ That default is for the project's own devcontainer. Another container in the
 stack (a database) has no devuser, so those need an explicit --user.
 
 The command is exec'd directly, NOT through a shell. Wrap it in a login bash —
-'agent exec -- bash -lc "uv pip install x"' — whenever it needs pipes, '&&',
-globs, 'cd', or the container's pip/npm indirections.`,
+'agent exec -- bash -lc "cd /workspaces/app && pnpm install"' — whenever it needs
+pipes, '&&', globs, 'cd', or the container's pip/npm indirections. Finding a
+binary is not one of those reasons: the image declares its toolchain PATH, so
+'agent exec -- uv pip install x' works as it stands.`,
 		Example: `  # A plain command, as devuser
   devcontainer-cli agent exec -- go test ./...
 
