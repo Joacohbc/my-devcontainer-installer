@@ -167,6 +167,14 @@ func FingerprintTag(fp string) string {
 	return types.ImageNamespace + "/" + fp[:12] + ":latest"
 }
 
+// IsLocalImage reports whether an image reference is one this CLI built
+// locally (the fingerprint-tagged namespace) rather than one pulled from a
+// registry. A pulled image is shared by every project on the same profile, so
+// removing it as part of one project's cleanup would be wrong.
+func IsLocalImage(image string) bool {
+	return strings.HasPrefix(image, types.ImageNamespace+"/")
+}
+
 // LocalImageExists reports whether a Docker image with the given reference is
 // present locally, using the injected capture func.
 func LocalImageExists(image string, capture CaptureFunc) bool {

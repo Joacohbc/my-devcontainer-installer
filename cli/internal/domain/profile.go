@@ -17,8 +17,13 @@ import (
 // ProfileDirName is where user profiles are written and read from.
 const ProfileDirName = "profiles"
 
+// CustomScriptNamePattern is the accepted shape of a custom script's file name.
+// It is exported so the catalogue dump an agent reads can state the rule rather
+// than restate it in prose that could drift from the check below.
+const CustomScriptNamePattern = `^[A-Za-z0-9][A-Za-z0-9._-]*\.sh$`
+
 // customScriptFileRe is the accepted shape of a custom script's file name.
-var customScriptFileRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*\.sh$`)
+var customScriptFileRe = regexp.MustCompile(CustomScriptNamePattern)
 
 // LegacyProfileDirName is the directory profiles were called presets in. It is
 // still read so an existing installation keeps working, but nothing is written

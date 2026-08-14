@@ -27,10 +27,16 @@ and -l switches to a long listing.`,
 		ValidArgsFunction: runLsCompletion,
 		RunE:              runLs,
 	}
+	addLsFlags(cmd)
+	return cmd
+}
+
+// addLsFlags registers the flags runLs reads. It is shared with the
+// 'agent list' facade, which reuses runLs and adds --json.
+func addLsFlags(cmd *cobra.Command) {
 	cmd.Flags().BoolP("all", "a", false, "Show hidden files (ls -a)")
 	cmd.Flags().BoolP("long", "l", false, "Use a long listing format (ls -l)")
 	addContainerFlag(cmd)
-	return cmd
 }
 
 func runLs(cmd *cobra.Command, args []string) error {

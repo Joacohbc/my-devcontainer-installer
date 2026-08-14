@@ -5,6 +5,7 @@ import (
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/ui"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/project"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/service"
 	"github.com/spf13/cobra"
@@ -66,17 +67,14 @@ func runDestroy(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
-	cfg, _ := domain.LoadConfig(cwd)
-	workspace := domain.ResolveWorkspace(cwd, cfg)
-	paths := project.ProjectPaths(cwd, workspace)
-	cfgPath := domain.ConfigPath(cwd)
+	target, _ := destroyTargetFor(cwd)
 
 	if !yesFlag(cmd) {
 		if !interactiveFlag(cmd) {
 			return fmt.Errorf("destroy is irreversible; pass --yes to confirm in non-interactive mode")
 		}
 		proceed, err := console.ConfirmDefault(
-			fmt.Sprintf("Destroy '%s'? Removes containers, volumes, .dc_%s/ and devcontainer.config.json.", workspace, workspace),
+			fmt.Sprintf("Destroy '%s'? Removes containers, volumes, .dc_%s/ and devcontainer.config.json.", target.Workspace, target.Workspace),
 			false,
 		)
 		if err != nil {
@@ -89,13 +87,24 @@ func runDestroy(cmd *cobra.Command, _ []string) error {
 	}
 
 	svc := service.DestroyService{Report: console}
-	return svc.Run(service.DestroyTarget{
+	return svc.Run(target)
+}
+
+// destroyTargetFor resolves everything a destroy removes for the project in
+// cwd, alongside its persisted config (nil when the project has none yet — the
+// workspace then falls back to the directory name). 'agent clean' reuses it so
+// both commands can never disagree about what a project owns.
+func destroyTargetFor(cwd string) (service.DestroyTarget, *types.DevcontainerConfig) {
+	cfg, _ := domain.LoadConfig(cwd)
+	workspace := domain.ResolveWorkspace(cwd, cfg)
+	paths := project.ProjectPaths(cwd, workspace)
+	return service.DestroyTarget{
 		Workspace:   workspace,
 		ComposeFile: paths.ComposeFile,
 		ProjectDir:  paths.ProjectDir,
-		ConfigPath:  cfgPath,
+		ConfigPath:  domain.ConfigPath(cwd),
 		ProjectKey:  cwd,
-	})
+	}, cfg
 }
 
 // runDestroyContainer handles the --container path: no workspace, compose file,

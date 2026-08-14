@@ -99,6 +99,29 @@ func TestFingerprintTag_shortFingerprintUsedWhole(t *testing.T) {
 	}
 }
 
+func TestIsLocalImage(t *testing.T) {
+	cases := []struct {
+		name  string
+		image string
+		want  bool
+	}{
+		{"fingerprint-tagged build", domain.FingerprintTag("abcdef123456789012"), true},
+		{"namespace with any tag", "devcontainer-cli/abc:dev", true},
+		{"pulled variant", "ghcr.io/joacohbc/devcontainer-nodejs:latest", false},
+		{"plain upstream image", "postgres:16", false},
+		// A repository merely ending in the namespace is somebody else's image.
+		{"namespace as a suffix", "ghcr.io/other/devcontainer-cli/abc:latest", false},
+		{"empty", "", false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := domain.IsLocalImage(c.image); got != c.want {
+				t.Errorf("IsLocalImage(%q) = %v, want %v", c.image, got, c.want)
+			}
+		})
+	}
+}
+
 func TestRecordEntry_addsNewEntry(t *testing.T) {
 	withTempXDGDir(t, func() {
 		entry := domain.ImageEntry{

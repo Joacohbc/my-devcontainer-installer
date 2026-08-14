@@ -53,6 +53,13 @@ entirely on the 'docker exec' channel (no ssh-into-container step).`,
   devcontainer-cli shell --via me@docker-host -c dc-ssh`,
 		RunE: runShell,
 	}
+	addShellFlags(cmd)
+	return cmd
+}
+
+// addShellFlags registers the flags runShell reads. It is shared with the
+// 'agent exec' facade, which reuses runShell but requires a command.
+func addShellFlags(cmd *cobra.Command) {
 	cmd.Flags().String("user", "", "User to run the command as; always honoured, but only an interactive shell defaults it to devuser")
 	cmd.Flags().String("type", "", "Shell to open: bash, zsh or sh (interactive shell defaults to zsh)")
 	cmd.Flags().BoolP("no-tty", "T", false, "Disable pseudo-TTY allocation (use when piping output to a file, e.g. a DB dump)")
@@ -71,8 +78,6 @@ entirely on the 'docker exec' channel (no ssh-into-container step).`,
 	_ = cmd.RegisterFlagCompletionFunc("via", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return listSshHosts(), cobra.ShellCompDirectiveNoFileComp
 	})
-
-	return cmd
 }
 
 // shellInteractiveDefaults applies the interactive-shell defaults: when no

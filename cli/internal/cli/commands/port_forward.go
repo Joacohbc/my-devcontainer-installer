@@ -58,6 +58,14 @@ are opened in parallel after you confirm.`,
 		SilenceUsage: true,
 		RunE:         runPortForward,
 	}
+	addPortForwardFlags(cmd)
+	return cmd
+}
+
+// addPortForwardFlags registers the flags runPortForward reads. It is shared
+// with the 'agent forward' facade, which reuses runPortForward with agent-safe
+// defaults.
+func addPortForwardFlags(cmd *cobra.Command) {
 	cmd.Flags().String("alias", "", "SSH host alias to use (bypasses auto-discovery)")
 	cmd.Flags().String("service", "", "Compose service to map port to (default: localhost)")
 	cmd.Flags().Bool("no-interactive", false, "Disable interactive prompts (fail on missing config)")
@@ -73,8 +81,6 @@ are opened in parallel after you confirm.`,
 		}
 		return listComposeServices(defaultComposeFile(cwd)), cobra.ShellCompDirectiveNoFileComp
 	})
-
-	return cmd
 }
 
 type parsedMapping struct {
