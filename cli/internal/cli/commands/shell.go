@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/ui"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/service"
 	"github.com/spf13/cobra"
 )
@@ -37,6 +38,11 @@ The exception is an image built before that declaration existed, which carries
 the PATH only in devuser's rc files; there a login bash is also how a toolchain
 is found, and 'update --rebuild' fixes it for good.
 
+Nothing in these images declares a WORKDIR, so a command lands in '/' and an
+interactive shell in devuser's home — never in the project. Pass -w to run in
+the project's workspace mount instead, which is what a build or a test command
+almost always wants and what saves wrapping one in a login bash just to 'cd'.
+
 Pass --via USER@HOST (with --container) to reach a container on a different
 Docker host through an existing SSH connection to it — unlike 'ssh --via' this
 needs nothing installed or configured in the container itself, since it rides
@@ -44,14 +50,17 @@ entirely on the 'docker exec' channel (no ssh-into-container step).`,
 		Example: `  # Interactive shell as devuser
   devcontainer-cli shell
 
-  # Run a one-off command
+  # Run a one-off command (in '/', the container default)
   devcontainer-cli shell -- go version
+
+  # Run it in the project instead
+  devcontainer-cli shell -w --user devuser -- go test ./...
 
   # The image PATH is inherited, so a plain command needs no login shell
   devcontainer-cli shell --user devuser -- uv pip install requests
 
-  # Shell syntax does need one
-  devcontainer-cli shell --user devuser -- bash -lc 'cd /workspaces/app && pnpm install'
+  # Shell syntax still needs one — but -w already did the cd
+  devcontainer-cli shell -w --user devuser -- bash -lc 'pnpm install && pnpm build'
 
   # Pipe a DB dump out without a TTY
   devcontainer-cli shell -c <ws>-postgres -T -- pg_dump -U devuser devdb > dump.sql
@@ -70,6 +79,7 @@ func addShellFlags(cmd *cobra.Command) {
 	cmd.Flags().String("user", "", "User to run the command as; always honoured, but only an interactive shell defaults it to devuser")
 	cmd.Flags().String("type", "", "Shell to open: bash, zsh or sh (interactive shell defaults to zsh)")
 	cmd.Flags().BoolP("no-tty", "T", false, "Disable pseudo-TTY allocation (use when piping output to a file, e.g. a DB dump)")
+	cmd.Flags().BoolP("workdir", "w", false, "Run in the project's workspace mount instead of the container default; only the devcontainer has that directory, so a database container needs it left off")
 	cmd.Flags().String("via", "", "Reach the container through an existing SSH connection to its Docker host (requires --container): USER@HOST or an ssh-config alias")
 	addContainerFlag(cmd)
 
@@ -133,8 +143,28 @@ func runShell(cmd *cobra.Command, args []string) error {
 		command = append([]string{shellType}, args...)
 	}
 
+	workdir, err := shellWorkdir(cmd)
+	if err != nil {
+		return err
+	}
+
 	svc := service.InspectService{Report: ui.Console{}}
 	return service.WithHostOverride(via, func() error {
-		return svc.Shell(containerName, userFlag, shellType, command, noTTY)
+		return svc.Shell(containerName, userFlag, shellType, workdir, command, noTTY)
 	})
+}
+
+// shellWorkdir resolves --workdir to the project's in-container mount path, or
+// "" when the flag is off. The path comes from the workspace the current
+// directory resolves to, not from the target container, so pointing --container
+// at something without that mount is the caller's call to make.
+func shellWorkdir(cmd *cobra.Command) (string, error) {
+	if w, _ := cmd.Flags().GetBool("workdir"); !w {
+		return "", nil
+	}
+	cwd, err := currentDir()
+	if err != nil {
+		return "", err
+	}
+	return types.WorkspaceDir(resolveWorkspace(cwd)), nil
 }

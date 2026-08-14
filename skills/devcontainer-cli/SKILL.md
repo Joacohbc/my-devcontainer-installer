@@ -107,7 +107,7 @@ with `agent create --profile <id>` on the default mode.
 
     devcontainer-cli agent exec -- go test ./...        # exit code propagated
     devcontainer-cli agent exec -- uv pip install requests
-    devcontainer-cli agent exec -- bash -lc 'cd /workspaces/myapp && pnpm install'
+    devcontainer-cli agent exec -w -- pnpm install
     devcontainer-cli agent exec -c myapp-postgres --user postgres -T -- pg_dump devdb > dump.sql
 
 `agent exec` is a `docker exec` wrapper and the normal way to do work in the
@@ -151,9 +151,19 @@ Other notes that matter:
   command bare (`-c <ws>-postgres --user postgres -- psql -l`), not through
   `bash -lc`. Without `--user` they fail with `unable to find user devuser`.
 
-The project is mounted at `/workspaces/<workspace>` inside the container
-(short alias `/workspace/<workspace>`), which is also the shell's working
-directory. Never assume a bare `/workspace`.
+The project is mounted at `/workspaces/<workspace>` inside the container (short
+alias `/workspace/<workspace>`). Never assume a bare `/workspace`.
+
+**You do not start there.** Nothing in the image declares a `WORKDIR`, so a
+command lands in `/` and an interactive shell in `/home/devuser`. Pass `-w` to
+run in the project instead — that is what a build or a test almost always means,
+and it is why most commands do not need a `bash -lc 'cd … && …'` wrapper:
+
+    devcontainer-cli agent exec -w -- go test ./...
+    devcontainer-cli agent exec -w -- bash -lc 'pnpm install && pnpm build'
+
+`-w` targets the project's own mount, so leave it off for a database container,
+which has no such directory.
 
 ### Package managers are not the ones you expect
 
@@ -191,7 +201,7 @@ wrong one. Run `devcontainer-cli context` to see which of these the image has.
 
       devcontainer-cli agent exec -- uv pip install requests
       devcontainer-cli agent exec -- pnpm add -D vitest
-      devcontainer-cli agent exec -- bash -lc 'cd /workspaces/myapp && uv add rich'
+      devcontainer-cli agent exec -w -- uv add rich
 
 ## Lifecycle
 

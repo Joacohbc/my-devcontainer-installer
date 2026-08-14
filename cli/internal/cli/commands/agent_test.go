@@ -1,10 +1,13 @@
 package commands
 
 import (
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/sshdefaults"
 	"github.com/spf13/cobra"
 )
@@ -202,6 +205,54 @@ func TestShell_KeepsItsOwnUserSemantics(t *testing.T) {
 	}
 }
 
+// -w is registered in addShellFlags, so the facade inherits it: an agent gets
+// `agent exec -w -- pnpm install` instead of wrapping a cd in a login bash.
+func TestAgentExec_InheritsWorkdir(t *testing.T) {
+	cmd := findCommand(t, agentCommand(t), "exec")
+
+	f := cmd.Flags().Lookup("workdir")
+	if f == nil {
+		t.Fatal("agent exec is missing --workdir")
+	}
+	if f.Shorthand != "w" {
+		t.Errorf("--workdir shorthand = %q, want %q", f.Shorthand, "w")
+	}
+	if f.Value.Type() != "bool" {
+		t.Errorf("--workdir is %s, want bool", f.Value.Type())
+	}
+}
+
+// The flag is a boolean, so the path it resolves to is the piece that has to be
+// right: the current project's in-container mount, never a bare /workspace.
+func TestShellWorkdir_ResolvesTheProjectMount(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "my-proj")
+	if err := os.Mkdir(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(dir)
+
+	cmd := findCommand(t, NewRootCommand("test"), "shell")
+
+	got, err := shellWorkdir(cmd)
+	if err != nil {
+		t.Fatalf("shellWorkdir: %v", err)
+	}
+	if got != "" {
+		t.Errorf("workdir with the flag off = %q, want empty (Docker's own default)", got)
+	}
+
+	if err := cmd.Flags().Set("workdir", "true"); err != nil {
+		t.Fatal(err)
+	}
+	got, err = shellWorkdir(cmd)
+	if err != nil {
+		t.Fatalf("shellWorkdir: %v", err)
+	}
+	if want := types.WorkspaceDir("my-proj"); got != want {
+		t.Errorf("workdir = %q, want %q", got, want)
+	}
+}
+
 func TestAgentJSONFlags(t *testing.T) {
 	agent := agentCommand(t)
 	for _, name := range []string{"cli-info", "list"} {
@@ -230,7 +281,7 @@ func TestExtractedFlagHelpers_KeepTheOriginalFlags(t *testing.T) {
 		flags   []string
 	}{
 		{"ssh", []string{"yes", flagNoInteractive, "container", "setup", "setup-external", "via", "key", "user", "forward", "ports"}},
-		{"shell", []string{"user", "type", "no-tty", "via", "container"}},
+		{"shell", []string{"user", "type", "no-tty", "workdir", "via", "container"}},
 		{"port-forward", []string{"alias", "service", flagNoInteractive, flagNonInteractive}},
 		{"copy", []string{"container", "asset"}},
 		{"ls", []string{"all", "long", "container"}},

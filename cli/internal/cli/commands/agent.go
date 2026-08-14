@@ -120,21 +120,26 @@ mount, on the real project directory.
 That default is for the project's own devcontainer. Another container in the
 stack (a database) has no devuser, so those need an explicit --user.
 
-The command is exec'd directly, NOT through a shell. Wrap it in a login bash —
-'agent exec -- bash -lc "cd /workspaces/app && pnpm install"' — whenever it needs
-pipes, '&&', globs, 'cd', or the container's pip/npm indirections. Finding a
-binary is not one of those reasons: the image declares its toolchain PATH, so
-'agent exec -- uv pip install x' works as it stands.`,
-		Example: `  # A plain command, as devuser
-  devcontainer-cli agent exec -- go test ./...
+A command lands in '/' by default — nothing in the image declares a WORKDIR — so
+pass -w to run it in the project's workspace mount, which is what a build or a
+test almost always means.
 
-  # Shell syntax and the container's package managers need a login bash
-  devcontainer-cli agent exec -- bash -lc 'cd /workspaces/app && pnpm install'
+The command is exec'd directly, NOT through a shell. Wrap it in a login bash —
+'agent exec -- bash -lc "pnpm install | tee log"' — whenever it needs pipes,
+'&&', globs, or the container's pip/npm indirections. Finding a binary is not one
+of those reasons: the image declares its toolchain PATH, so
+'agent exec -- uv pip install x' works as it stands. Neither is changing
+directory, once -w is doing it.`,
+		Example: `  # A plain command, as devuser, in the project
+  devcontainer-cli agent exec -w -- go test ./...
+
+  # Shell syntax still needs a login bash; -w already did the cd
+  devcontainer-cli agent exec -w -- bash -lc 'pnpm install && pnpm build'
 
   # Something that genuinely needs root
   devcontainer-cli agent exec --user root -- apt-get install -y tree
 
-  # A database container has no devuser: name the one it does have
+  # A database container has no devuser (and no workspace): name the user it has
   devcontainer-cli agent exec -c myapp-postgres --user postgres -T -- pg_dump devdb > dump.sql`,
 		Args:         agentExecArgs,
 		SilenceUsage: true,

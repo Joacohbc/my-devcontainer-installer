@@ -28,14 +28,17 @@ func TestInspectShellBuildsExecArgs(t *testing.T) {
 		name      string
 		user      string
 		shellType string
+		workdir   string
 		command   []string
 		noTTY     bool
 		wantUser  bool
 	}{
-		{"default shell", "", "", nil, false, false},
-		{"typed shell", "devuser", "zsh", nil, false, true},
-		{"as root with cmd", "root", "", []string{"echo", "hi"}, false, true},
-		{"no-tty with cmd", "", "", []string{"pg_dump", "devdb"}, true, false},
+		{"default shell", "", "", "", nil, false, false},
+		{"typed shell", "devuser", "zsh", "", nil, false, true},
+		{"as root with cmd", "root", "", "", []string{"echo", "hi"}, false, true},
+		{"no-tty with cmd", "", "", "", []string{"pg_dump", "devdb"}, true, false},
+		{"workdir with cmd", "", "", "/workspaces/ws", []string{"pwd"}, false, false},
+		{"workdir shell", "devuser", "zsh", "/workspaces/ws", nil, false, true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -43,7 +46,7 @@ func TestInspectShellBuildsExecArgs(t *testing.T) {
 			defer useFakeDocker(runner)()
 
 			svc := InspectService{Report: nopReporter{}}
-			if err := svc.Shell("c1", c.user, c.shellType, c.command, c.noTTY); err != nil {
+			if err := svc.Shell("c1", c.user, c.shellType, c.workdir, c.command, c.noTTY); err != nil {
 				t.Fatalf("Shell: %v", err)
 			}
 			call := runner.callContaining("exec")
@@ -61,6 +64,14 @@ func TestInspectShellBuildsExecArgs(t *testing.T) {
 			if slices.Contains(call, "-u") != c.wantUser {
 				t.Errorf("-u presence = %v, want %v (call %v)", !c.wantUser, c.wantUser, call)
 			}
+			// Nothing in these images declares a WORKDIR, so Docker's default is
+			// "/". -w is the only thing that puts a command in the project.
+			if hasWorkdir := slices.Contains(call, "-w"); hasWorkdir != (c.workdir != "") {
+				t.Errorf("-w presence = %v, want %v (call %v)", hasWorkdir, c.workdir != "", call)
+			}
+			if c.workdir != "" && !slices.Contains(call, c.workdir) {
+				t.Errorf("expected workdir %q in exec call: %v", c.workdir, call)
+			}
 			// With no command, launch a login shell so profiles/rc files load.
 			// HOME must be re-exported from the live passwd entry: docker exec
 			// delivers a stale HOME=/ after the entrypoint's runtime UID remap.
@@ -72,10 +83,20 @@ func TestInspectShellBuildsExecArgs(t *testing.T) {
 				if !strings.Contains(joined, `export HOME="$H"`) {
 					t.Errorf("launcher must re-export HOME from passwd, got %v", call)
 				}
-				// The session must cd into the user's home so the interactive
-				// shell opens there (devuser's home for the interactive default).
-				if !strings.Contains(joined, `cd "$H"`) {
+				// The session cd's into the user's home, or into the workdir when
+				// one was asked for — docker's -w alone is not enough, the home cd
+				// would undo it. HOME stays re-exported either way (asserted above):
+				// it is about finding rc files, not about where the shell opens.
+				if c.workdir == "" && !strings.Contains(joined, `cd "$H"`) {
 					t.Errorf("launcher must cd into the user's home, got %v", call)
+				}
+				if c.workdir != "" {
+					if !strings.Contains(joined, "cd '"+c.workdir+"'") {
+						t.Errorf("launcher must cd into the workdir %q, got %v", c.workdir, call)
+					}
+					if strings.Contains(joined, `cd "$H"`) {
+						t.Errorf("launcher must not also cd home when a workdir is set, got %v", call)
+					}
 				}
 				if c.shellType != "" && !strings.Contains(joined, "command -v "+c.shellType) {
 					t.Errorf("launcher must resolve the typed shell %q, got %v", c.shellType, call)
@@ -90,7 +111,7 @@ func TestInspectShellFailsWhenNotRunning(t *testing.T) {
 	defer useFakeDocker(runner)()
 
 	svc := InspectService{Report: nopReporter{}}
-	if err := svc.Shell("c1", "", "", nil, false); err == nil {
+	if err := svc.Shell("c1", "", "", "", nil, false); err == nil {
 		t.Error("expected error when container is not running")
 	}
 }
