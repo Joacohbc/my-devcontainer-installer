@@ -346,6 +346,10 @@ func (s AgentService) Clean(target DestroyTarget, image string, opts AgentCleanO
 		Yes:         opts.Yes,
 		Interactive: opts.Interactive,
 	}
+	if opts.DryRun {
+		s.Report.Info("Dry run — nothing is removed.")
+	}
+
 	prune := PruneService{Report: s.Report, Prompt: s.Prompt}
 	// The image is resolved before the destroy, so a dry run and a real run
 	// report the same target: destroy drops the project's catalog entry, and a
@@ -353,7 +357,6 @@ func (s AgentService) Clean(target DestroyTarget, image string, opts AgentCleanO
 	projectImage := s.resolvableProjectImage(prune, image)
 
 	if opts.DryRun {
-		s.Report.Info("Dry run — nothing is removed.")
 		s.Report.Info("Would destroy '%s': the containers, network and volumes of its stack, plus %s and %s.",
 			target.Workspace, target.ProjectDir, target.ConfigPath)
 		s.Report.Info("Would remove its managed SSH host block and the host keys pinned for it.")

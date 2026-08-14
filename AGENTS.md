@@ -848,6 +848,61 @@ Load-bearing details:
   new module that never reaches the skill leaves the host agent guessing. Add
   the id to the `--with` list in the markdown when you add a module.
 
+### The `agent` group is a facade, not a second CLI
+
+`internal/cli/commands/agent.go` adds one command group aimed at an AI agent
+driving this CLI: `agent cli-info | create | connect | exec | forward | copy |
+list | clean`. It is **additive** — every command it wraps stays top-level and
+unchanged, and the host skill teaches the group first with those as the escape
+hatch (`TestAgentGroup_DoesNotReplaceTheHumanCommands` pins that).
+
+Five of the eight are the same handler under a different name: `connect` →
+`runSsh`, `exec` → `runShell`, `forward` → `runPortForward`, `copy` → `runCopy`,
+`list` → `runLs`. The flags come from helpers extracted out of the human
+commands' constructors (`addSshFlags`, `addShellFlags`, `addPortForwardFlags`,
+`addCopyFlags`, `addLsFlags`), so each flag — description and completion — is
+still registered exactly once. A new flag on `ssh` reaches `agent connect` for
+free; adding it to only one of the two is the bug the helpers prevent, and
+`TestExtractedFlagHelpers_KeepTheOriginalFlags` guards the extraction.
+
+Four properties are load-bearing:
+
+- **The defaults are the feature.** `agentDefaults` sets a flag only when
+  `!Changed(name)`, from a `PreRunE`. That is what makes `--no-interactive=false`
+  still win, and what keeps the inversion out of the shared handlers — `runSsh`
+  has no idea it is being called by the facade. `agent create` flips
+  `force` and `build` the same way, because a create that stops to ask about
+  overwriting or building is a create that hangs.
+- **`agent exec` requires a command.** `shell` with no command opens a login
+  shell; for an unattended caller that is not a session but a hang, so the
+  facade rejects it in `Args` rather than discovering it at runtime.
+- **`agent create` reuses `runGenerate`, then ups.** It registers the whole
+  `addGenerateFlags` set (one source of truth; `parseGenFlags` reads all of it)
+  and only hides what does not apply — `--version`, `--preset`,
+  `--non-interactive`, `--force-prompt` stay registered but out of `--help`.
+  The `up` afterwards passes `build=false`: the image was already built by the
+  generate.
+- **`agent clean` is project-scoped by default.** `AgentService.Clean` composes
+  `DestroyService.Run` (which already takes the containers, network and volumes
+  with its `compose down -v`) with `PruneService.CleanImages` for the one thing
+  destroy leaves behind: the image built for this project. It is resolved
+  *before* the destroy — which drops the catalog entry — and only when
+  `domain.IsLocalImage` says it is ours (a pulled image backs every project on
+  the same profile) and it is still present locally (`CleanImages` treats an
+  unknown ref as an error, and an already-deleted image must not fail the
+  cleanup). `--all` adds `CleanAll` on top.
+
+**`agent cli-info` is why the catalogue no longer has to be duplicated in
+prose.** `AgentService.Info` reads `catalog.DockerfileModules`,
+`catalog.ComposeServices`, `catalog.All(domain.ProfileDirs()...)`,
+`catalog.AllAgentSkills(domain.SkillDirs()...)`, `types.ScriptWhens` and
+`assets.CopyableAssets()`, so it describes this binary — including the user's
+own profiles and skills, which no shipped document can. The service returns
+data and the command renders it (text or `--json`), the same split as
+`config profile list`. `Selectable` (`!Always && !Internal`) is the field that
+matters: it is what an agent may pass to `--with`/`--service`, and it is why
+adding an always-on module needs no doc edit here.
+
 ### `internal/domain/types/labels.go` — Docker label constants
 
 `LabelNamespace`, `LabelManaged`, `LabelProject`, `LabelVersion`,
@@ -924,6 +979,7 @@ is Cobra-native.
 | `context` | `context.go` | Print the container's own context and installed tools: runs `get-devcontainer-context` inside it via `InspectService.Context` and streams the output (`--json` for structured output). Falls back to `copy --asset get-devcontainer-context` when the image predates the `aliases` module. Complements `info` (Docker metadata) by reporting what is *inside* the container |
 | `skill` | `skill.go` | Install the **host-side** agent skill (`skill-devcontainer-cli.md`) into the host's agent skill dirs, so an assistant running on the user's machine knows how to drive this CLI. Subcommands `skill install` / `skill remove` (alias `uninstall`) / `skill show`; bare `skill` lists every target with its state (`absent`/`current`/`outdated`/`foreign`). `--agent` narrows to one agent (default: all), `--scope global\|project` picks the base dir (home vs cwd). A target holding a file the CLI did not write (no managed marker) is reported `foreign` and never overwritten or deleted without `--force`; `remove` needs `-y` in non-interactive mode. Pure file I/O — no Docker, unlike every other command |
 | `network` | `network.go` | Attach/detach any container to the workspace network; subcommands `network connect`/`network disconnect <container...>` (tab-completed); `connect` takes `--alias` (extra DNS names; prompted when interactive) |
+| `agent` | `agent.go` (+ `agent_create.go`, `agent_info.go`) | The agent-facing facade: `agent cli-info` (the live catalogue as text or `--json`), `agent create` (generate + build + up), `agent connect`/`exec`/`forward`/`copy`/`list`/`clean`. Additive — every command it wraps stays top-level. See the section below |
 | `completion` | _(Cobra built-in)_ | Print shell completion script |
 
 ---

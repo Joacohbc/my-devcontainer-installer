@@ -195,7 +195,21 @@ npx skills add Joacohbc/my-devcontainer-installer@devcontainer-cli -g
 ```
 Las dos vías escriben el mismo archivo, así que `devcontainer-cli skill` reconoce como propia una copia instalada por `npx`.
 
-### 7. Aliases en todos los contenedores (`config alias`)
+### 7. Comandos pensados para agentes (`agent`)
+La skill le enseña al agente a manejar la CLI, y `devcontainer-cli agent` es la cara de la CLI hecha para que la maneje: un puñado de comandos de alto nivel que **nunca abren un wizard ni esperan una respuesta**, así que una sesión desatendida no se queda colgada en un prompt que el agente no puede contestar.
+
+`agent cli-info` es el punto de partida: imprime el catálogo vivo —módulos, servicios, perfiles, skills, cómo agregar scripts propios, qué assets se pueden copiar y las rutas que sigue todo proyecto—. Como sale del catálogo real del binario, incluye también los perfiles y skills que hayas definido vos en `~/.devcontainer-cli/`, que ningún documento puede saber de antemano.
+```bash
+devcontainer-cli agent cli-info --json                    # Catálogo estructurado
+devcontainer-cli agent create --with nodejs,pnpm --service postgres  # Generar + build + up
+devcontainer-cli agent exec -- go test ./...              # Correr algo adentro
+devcontainer-cli agent forward 3000                       # Túnel a 127.0.0.1:3000
+devcontainer-cli agent list /home/devuser --json          # Listar archivos del contenedor
+devcontainer-cli agent clean --dry-run                    # Ver qué se borraría
+```
+Es una capa **aditiva**: cada comando que envuelve (`shell`, `ssh`, `port-forward`, `copy`, `ls`, `destroy`, `clean`) sigue existiendo igual que antes, y son la salida de emergencia para lo que el grupo no cubre (`compose`, `ssh --via`, `run`, `config`). `agent clean` alcanza sólo al proyecto del directorio actual —incluida la imagen que se construyó para él, pero no una imagen bajada de un registry, que comparten todos los proyectos del mismo perfil—; `--all` barre además todo lo demás que la CLI gestiona en la máquina.
+
+### 8. Aliases en todos los contenedores (`config alias`)
 La imagen trae aliases por defecto: `kill_port <puerto>`, `npm`→`pnpm`, `npx`→`pnpm dlx`, `pip`/`pip3`→`uv pip`, y un lanzador `<tool>_yolo` por agente (`claude_yolo`, `codex_yolo`, `copilot_yolo`, `agy_yolo`) que corre el CLI sin prompts de permisos —el contenedor ya es el sandbox—. Los comandos `claude`, `codex`, `copilot` y `agy` quedan intactos: saltear los permisos es opt-in.
 
 Tus propios aliases los definís **por comandos** y se guardan en la configuración de la CLI (`config.json`), no en un archivo suelto de tu home. `config alias sync` los renderiza dentro del volumen compartido, así que se aplican a **todos** los contenedores sin reconstruir ninguna imagen y sin reiniciar nada (toman efecto en la próxima shell):
@@ -207,13 +221,13 @@ devcontainer-cli config alias sync               # Aplicarlos a todos los conten
 ```
 Como se sourcean después de los defaults de la imagen, lo que definas ahí siempre gana.
 
-### 8. Conectar otros servicios a la red (`network`)
+### 9. Conectar otros servicios a la red (`network`)
 Conecta cualquier otro contenedor Docker a la red privada del workspace actual:
 ```bash
 devcontainer-cli network connect mi-servicio-extra --alias db-extra
 ```
 
-### 9. Limpieza del sistema (`clean`)
+### 10. Limpieza del sistema (`clean`)
 ```bash
 devcontainer-cli clean ssh              # Elimina bloques SSH y known_hosts obsoletos
 devcontainer-cli clean all              # Menú interactivo de limpieza de imágenes/volúmenes/redes
