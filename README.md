@@ -117,7 +117,10 @@ graph LR
 # Instalación rápida (Linux / macOS)
 curl -fsSL https://raw.githubusercontent.com/Joacohbc/my-devcontainer-installer/main/cli/install.sh | sh
 
-# Actualizar la CLI a la última versión
+# Enseñarle a tu agente de IA a manejar la CLI (opcional, recomendado)
+devcontainer-cli skill install
+
+# Actualizar la CLI a la última versión (volvé a correr 'skill install' después)
 devcontainer-cli upgrade-cli
 
 # Desinstalar la CLI
@@ -125,6 +128,8 @@ curl -fsSL https://raw.githubusercontent.com/Joacohbc/my-devcontainer-installer/
 ```
 
 > **Descargas manuales:** Disponibles en los [Releases de GitHub](https://github.com/Joacohbc/my-devcontainer-installer/releases/latest) (binarios standalone para `linux-x64`, `linux-arm64`, `darwin-x64` y `darwin-arm64`). El autocompletado en Zsh y Bash se configura automáticamente tras instalar.
+
+> **Sobre `skill install`:** escribe la skill del host en `~/.claude/skills/` y `~/.agents/skills/` (todos los agentes y scope global por defecto), y con eso un agente que corre en tu máquina aprende a manejar esta CLI: crear el devcontainer de un proyecto, correr los builds y tests adentro y no ensuciar tu host. `upgrade-cli` no la actualiza, así que volvé a correrlo después de actualizar el binario. Ver [§6](#6-skill-para-el-agente-del-host-skill) para el resto (`skill show`/`remove`, archivos ajenos, y la instalación con `npx` en una máquina sin el binario).
 
 ## Uso Rápido y Flujo de Trabajo
 
