@@ -34,7 +34,7 @@ log "Installing image/PDF/doc CLI tools (apt)"
 # pandoc        -> convert between markdown/html/docx and friends
 sudo apt-get update
 sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-    imagemagick poppler-utils ghostscript qpdf pandoc
+    imagemagick poppler-utils ghostscript qpdf pandoc yt-dlp
 sudo rm -rf /var/lib/apt/lists/*
 
 log "Installing the Remotion CLI (pnpm, global)"

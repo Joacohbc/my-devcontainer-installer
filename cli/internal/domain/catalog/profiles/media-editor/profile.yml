@@ -21,3 +21,4 @@ scripts:
 # installer writes into the project, so the first write is the user's call.
 skills:
   - remotion
+  - claude-video

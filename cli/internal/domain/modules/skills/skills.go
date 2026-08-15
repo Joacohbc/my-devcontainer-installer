@@ -138,6 +138,21 @@ var N8nWorkflowsSkill = &Spec{
 	},
 }
 
+// ClaudeVideoSkill provides video inspection and analysis using yt-dlp & FFmpeg.
+var ClaudeVideoSkill = &Spec{
+	ID:              types.SkillClaudeVideo,
+	Label:           "Claude Video (video analysis via yt-dlp & FFmpeg)",
+	Ref:             "bradautomates/claude-video",
+	RequiresModules: []types.ModuleID{types.ModuleNodejs, types.ModuleFfmpeg},
+	Context: func() *types.ContextSection {
+		return &types.ContextSection{
+			Title: "Claude Video skill",
+			Body: "Teaches how to analyze video content from a URL or local file.\n" +
+				"Extracts frames via FFmpeg and transcripts/captions via yt-dlp.",
+		}
+	},
+}
+
 // All is the ordered catalogue of installable skills.
 var All = []*Spec{
 	FirecrawlSkill,
@@ -145,6 +160,7 @@ var All = []*Spec{
 	WebappTestingSkill,
 	DataScienceSkill,
 	RemotionSkill,
+	ClaudeVideoSkill,
 	N8nWorkflowsSkill,
 }
 

@@ -273,8 +273,8 @@ func TestMediaEditorProfile(t *testing.T) {
 	if got := byFile["install-media-tools.sh"]; got != types.ScriptWhenBuild {
 		t.Errorf("the toolchain must be baked into the image, got when=%q", got)
 	}
-	if !slices.Equal(p.Skills, []types.SkillID{types.SkillRemotion}) {
-		t.Errorf("expected the remotion skill, got %v", p.Skills)
+	if !slices.Equal(p.Skills, []types.SkillID{types.SkillRemotion, types.SkillClaudeVideo}) {
+		t.Errorf("expected the remotion and claude-video skills, got %v", p.Skills)
 	}
 	if p.SkillsMode != "" {
 		t.Errorf("expected the media-editor profile to leave the mode at its default, got %q", p.SkillsMode)

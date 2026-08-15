@@ -206,6 +206,7 @@ const (
 	SkillWebappTesting SkillID = "webapp-testing"
 	SkillDataScience   SkillID = "data-science"
 	SkillRemotion      SkillID = "remotion"
+	SkillClaudeVideo   SkillID = "claude-video"
 	SkillN8nWorkflows  SkillID = "n8n-workflows"
 	SkillN8nAll        SkillID = "n8n-all"
 )
