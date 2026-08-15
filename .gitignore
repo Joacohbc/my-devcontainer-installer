@@ -18,3 +18,4 @@ testing-dir/
 # devcontainer-cli
 .dc_*/
 devcontainer.config.json
+temp-dir/

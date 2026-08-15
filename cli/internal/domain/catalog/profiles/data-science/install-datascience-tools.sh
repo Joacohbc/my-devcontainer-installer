@@ -31,7 +31,8 @@ uv tool install jupyterlab
 
 log "Installing the Python data-science/analysis stack (system interpreter)"
 uv pip install --system --break-system-packages \
-    pandas numpy scipy matplotlib seaborn scikit-learn polars duckdb pyarrow openpyxl
+    pandas numpy scipy matplotlib seaborn scikit-learn polars duckdb pyarrow openpyxl \
+    cleanlab ydata-profiling missingno rapidfuzz pydantic
 
 log "Data-science toolchain installed:"
 for tool in jupyter jupyter-lab; do
@@ -41,6 +42,6 @@ for tool in jupyter jupyter-lab; do
         echo "    WARNING: $tool is not on PATH after install" >&2
     fi
 done
-python3 -c 'import pandas, numpy, scipy, matplotlib, sklearn, polars, duckdb; print("    pandas/numpy/scipy/matplotlib/scikit-learn/polars/duckdb importable from system python")'
+python3 -c 'import pandas, numpy, scipy, matplotlib, sklearn, polars, duckdb, cleanlab, ydata_profiling, missingno, rapidfuzz, pydantic; print("    pandas/numpy/scipy/matplotlib/scikit-learn/polars/duckdb/cleanlab/ydata-profiling/missingno/rapidfuzz/pydantic importable from system python")'
 
 echo "==> Start JupyterLab with: jupyter lab --ip=0.0.0.0 --no-browser (published on :8888)"
