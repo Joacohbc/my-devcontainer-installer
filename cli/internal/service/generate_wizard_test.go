@@ -91,9 +91,9 @@ func TestConfigureReducesVolumes(t *testing.T) {
 	}
 }
 
-// The wizard prompts for shared-config (defaulting to the base's current value),
-// but when the step is left at its seeded default Configure must carry the base
-// value through: a nil base stays enabled-by-default and an explicit opt-out survives.
+// The wizard's yes/no steps all start at no, so a project that never chose gets
+// no shared-config volume; a project that did chose keeps its answer in either
+// direction when the step is left at its seeded default.
 func TestConfigureKeepsBaseSharedConfig(t *testing.T) {
 	defer useFakeDocker(&fakeRunner{status: 0})()
 
@@ -109,8 +109,18 @@ func TestConfigureKeepsBaseSharedConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Configure: %v", err)
 	}
+	if types.SharedConfigEnabled(cfg) {
+		t.Errorf("an unset base must default to no, got %v", cfg.Compose.SharedConfig)
+	}
+
+	on := true
+	optedIn := &types.DevcontainerConfig{Env: map[string]string{}, Compose: types.ComposeConfig{SharedConfig: &on}}
+	cfg, err = svc.Configure(optedIn, "/home/user/proj", scriptedPrompter{answers: answers})
+	if err != nil {
+		t.Fatalf("Configure: %v", err)
+	}
 	if !types.SharedConfigEnabled(cfg) {
-		t.Errorf("nil base should stay enabled by default, got %v", cfg.Compose.SharedConfig)
+		t.Errorf("explicit opt-in must survive the wizard, got %v", cfg.Compose.SharedConfig)
 	}
 
 	off := false
@@ -124,9 +134,8 @@ func TestConfigureKeepsBaseSharedConfig(t *testing.T) {
 	}
 }
 
-// The shared-config prompt defaults to on, but an explicit answer must win in
-// either direction: opting out from an enabled base, and opting in from an
-// opted-out base.
+// An explicit answer must win in either direction: opting out from an enabled
+// base, and opting in from an opted-out base.
 func TestConfigureHonorsSharedConfigAnswer(t *testing.T) {
 	defer useFakeDocker(&fakeRunner{status: 0})()
 
@@ -137,7 +146,7 @@ func TestConfigureHonorsSharedConfigAnswer(t *testing.T) {
 	}
 	svc := GenerateService{Report: nopReporter{}}
 
-	// Answering false on an enabled (nil) base opts out.
+	// Answering false on an unset base opts out explicitly.
 	answers := map[string]any{stepKeySharedConfig: false}
 	for k, v := range base {
 		answers[k] = v

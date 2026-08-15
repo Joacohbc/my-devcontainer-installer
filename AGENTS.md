@@ -687,6 +687,15 @@ made the script approach wrong.
 | Plumbing | `dockerfile.SkillsModule` — the installer on PATH, the `install_skills` alias, the entrypoint hook |
 | Installer | `internal/infra/assets/install-project-skills.sh` (+ `autostart-project-skills.sh`) |
 
+**Every wizard yes/no starts at no.** `optionField`'s `FieldConfirm` branch, the
+shared-config step and the skills gate all seed `false` unless something already
+said otherwise — the module option's own `Default`, or the project's stored
+value. Pressing enter through the wizard therefore opts into nothing, and the
+non-wizard defaults are untouched (`types.SharedConfigEnabled` still reads an
+absent field as on, so a config written by hand or by flags keeps mounting the
+volume; only the wizard's seeded answer changed, and `reduce` records it
+explicitly).
+
 **The picker opens with one yes/no, then asks one category at a time, in pages
 of ten.** The gate (`stepKeySkillsEnabled`) comes before any listing: a project
 that wants no skills answers it once instead of paging through every category to

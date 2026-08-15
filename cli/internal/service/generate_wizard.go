@@ -102,10 +102,9 @@ func optionField(o types.ModuleOption, initial any) Field {
 	case types.ModuleOptionMultiselect:
 		return Field{Kind: FieldMultiselect, Title: "  " + o.Label + ":", Choices: choicesFromOption(o), Initial: defaultStrings(initial)}
 	case types.ModuleOptionConfirm:
-		enabled := true
-		if v, ok := initial.(bool); ok {
-			enabled = v
-		}
+		// No is the wizard's answer to a yes/no it was told nothing about; an
+		// option that wants otherwise says so in its Default.
+		enabled, _ := initial.(bool)
 		return Field{Kind: FieldConfirm, Title: "  " + o.Label + "?", Initial: enabled}
 	case types.ModuleOptionSelect:
 		s, _ := initial.(string)
@@ -288,7 +287,9 @@ func (w wizardContext) volumesStep() Step {
 
 func (w wizardContext) sharedConfigStep() Step {
 	return Step{Key: stepKeySharedConfig, Build: func(s *State) Field {
-		initial := types.SharedConfigEnabled(w.base)
+		// Every wizard yes/no starts at no, so an unset project (a fresh one)
+		// defaults to not mounting it; one that already chose keeps its choice.
+		initial := w.base.Compose.SharedConfig != nil && *w.base.Compose.SharedConfig
 		if s.Has(stepKeySharedConfig) {
 			initial = s.Bool(stepKeySharedConfig)
 		}
