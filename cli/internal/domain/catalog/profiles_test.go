@@ -45,39 +45,24 @@ func TestBaseProfile(t *testing.T) {
 	if slices.Contains(p.Modules, "zellij") {
 		t.Errorf("zellij is always-on and must not be listed in the base profile, got %v", p.Modules)
 	}
-	for _, wantSkill := range []types.SkillID{
-		types.SkillImpeccable,
-		types.SkillMattPocockSkills,
-		types.SkillAnthropicSkills,
-		types.SkillUIUXProMax,
-		types.SkillFindSkills,
-	} {
-		if !slices.Contains(p.Skills, wantSkill) {
-			t.Errorf("expected base profile to contain skill %q, got %v", wantSkill, p.Skills)
-		}
+	if len(p.Skills) != 0 {
+		t.Errorf("base profile must have no default skills, got %v", p.Skills)
 	}
 }
 
-func TestPlainBuiltinProfilesSkills(t *testing.T) {
+func TestPlainBuiltinProfilesHaveNoDefaultSkills(t *testing.T) {
 	plainIDs := []string{
 		"base", "nodejs", "bun", "java-temurin", "python", "go",
 		"node-go", "node-python", "node-java-temurin",
 		"bun-go", "bun-python", "bun-java-temurin",
-	}
-	wantSkills := []types.SkillID{
-		types.SkillImpeccable,
-		types.SkillMattPocockSkills,
-		types.SkillAnthropicSkills,
-		types.SkillUIUXProMax,
-		types.SkillFindSkills,
 	}
 	for _, id := range plainIDs {
 		p, ok := catalog.Resolve(id, "")
 		if !ok {
 			t.Fatalf("expected to resolve profile %s", id)
 		}
-		if !slices.Equal(p.Skills, wantSkills) {
-			t.Errorf("profile %q skills = %v, want %v", id, p.Skills, wantSkills)
+		if len(p.Skills) != 0 {
+			t.Errorf("profile %q must have no default skills, got %v", id, p.Skills)
 		}
 	}
 }
@@ -339,7 +324,7 @@ func TestN8nProfile(t *testing.T) {
 	if got := byFile["install-n8n-automation-tools.sh"]; got != types.ScriptWhenBuild {
 		t.Errorf("the toolchain must be baked into the image, got when=%q", got)
 	}
-	for _, want := range []types.SkillID{types.SkillN8nAll, types.SkillAgentBrowser} {
+	for _, want := range []types.SkillID{types.SkillCategoryAutomationN8n, types.SkillAgentBrowser} {
 		if !slices.Contains(p.Skills, want) {
 			t.Errorf("expected the %q skill, got %v", want, p.Skills)
 		}

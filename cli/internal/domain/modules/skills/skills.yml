@@ -1,0 +1,657 @@
+categories:
+  - id: core-agents
+    label: "Core Agent Tools (orientation, compression, discovery, knowledge graph)"
+    skills:
+      - wayfinder
+      - caveman
+      - find-skills
+      - graphify
+      - firecrawl
+      - agent-browser
+
+  - id: frontend-ux-design
+    label: "Frontend & UI/UX Design (components, design tokens, styling)"
+    skills:
+      - frontend-design
+      - ui-ux-pro-max
+      - impeccable
+      - canvas-design
+      - web-artifacts-builder
+      - theme-factory
+      - algorithmic-art
+      - remotion-create
+
+  - id: architecture-planning
+    label: "Architecture & Planning (domain modeling, specifications, PRDs)"
+    skills:
+      - codebase-design
+      - improve-codebase-architecture
+      - to-spec
+      - to-tickets
+      - domain-modeling
+      - grill-me
+      - grill-with-docs
+      - setup-ts-deep-modules
+      - migrate-to-shoehorn
+      - prototype
+      - teach
+      - grilling
+      - ask-matt
+      - implement
+      - handoff
+      - triage
+      - data-science
+
+  - id: quality-testing
+    label: "Quality & Testing (TDD, QA, code review, bug diagnostics)"
+    skills:
+      - tdd
+      - webapp-testing
+      - code-review
+      - diagnosing-bugs
+      - resolving-merge-conflicts
+      - git-guardrails-claude-code
+      - setup-pre-commit
+
+  - id: docs-content
+    label: "Docs & Content Creation (office formats, skill writing, editing)"
+    skills:
+      - skill-creator
+      - doc-coauthoring
+      - brand-guidelines
+      - internal-comms
+      - slack-gif-creator
+      - docx
+      - pdf
+      - pptx
+      - xlsx
+      - writing-for-agents
+      - writing-shape
+      - writing-fragments
+      - writing-beats
+      - scaffold-exercises
+      - to-questionnaire
+      - wizard
+      - loop-me
+      - claude-handoff
+      - wait-what
+      - mcp-builder
+      - setup-matt-pocock-skills
+      - research
+      - claude-video
+
+  - id: automation-n8n
+    label: "n8n Automation Suite (agents, workflows, expressions, debugging)"
+    skills:
+      - n8n-agents-official
+      - n8n-binary-and-data-official
+      - n8n-code-nodes-official
+      - n8n-credentials-and-security-official
+      - n8n-data-tables-official
+      - n8n-debugging-official
+      - n8n-error-handling-official
+      - n8n-expressions-official
+      - n8n-extending-mcp-official
+      - n8n-loops-official
+      - n8n-node-configuration-official
+      - n8n-subworkflows-official
+      - n8n-workflow-lifecycle-official
+      - using-n8n-skills-official
+
+skills:
+  # Core Agents
+  - id: wayfinder
+    label: "Wayfinder (codebase navigation and deep orientation)"
+    ref: "mattpocock/skills"
+    skill: "wayfinder"
+    requires_modules: ["nodejs"]
+    category: "core-agents"
+    description: |
+      Codebase navigation, orientation, structure mapping, and architecture navigation.
+
+  - id: caveman
+    label: "Caveman (AI agent output compression + hooks)"
+    ref: "JuliusBrussee/caveman"
+    requires_modules: ["nodejs"]
+    category: "core-agents"
+    description: |
+      Compresses AI agent output and installs token-saving communication hooks and skills.
+
+  - id: find-skills
+    label: "Find Skills (agent skill discovery & installer)"
+    ref: "vercel-labs/skills"
+    skill: "find-skills"
+    requires_modules: ["nodejs"]
+    category: "core-agents"
+    description: |
+      Discover, search, and install agent skills on demand.
+
+  - id: graphify
+    label: "Graphify (codebase knowledge graphs for AI agents)"
+    ref: "safishamsi/graphify"
+    requires_modules: ["python"]
+    category: "core-agents"
+    description: |
+      Transforms codebases, documentation, and schemas into queryable knowledge graphs.
+
+  - id: firecrawl
+    label: "Firecrawl (web scraping & search CLI for AI agents)"
+    ref: "firecrawl/cli"
+    skill: "firecrawl-cli"
+    requires_modules: ["nodejs"]
+    category: "core-agents"
+    description: |
+      Web search and web scraping CLI for deep documentation crawl and extraction.
+
+  - id: agent-browser
+    label: "Agent Browser (browser automation CLI for AI agents)"
+    ref: "vercel-labs/agent-browser"
+    requires_modules: ["nodejs"]
+    category: "core-agents"
+    description: |
+      Browser automation CLI for AI agents to navigate pages, fill forms, and take screenshots.
+
+  # Frontend Design
+  - id: frontend-design
+    label: "Frontend Design (production-grade distinctive UI generation)"
+    ref: "anthropics/skills"
+    skill: "frontend-design"
+    requires_modules: ["nodejs"]
+    category: "frontend-ux-design"
+    description: |
+      Create distinctive, production-grade frontend interfaces with high design quality.
+
+  - id: ui-ux-pro-max
+    label: "UI/UX Pro Max (design intelligence, 84 styles, 192 palettes)"
+    ref: "nextlevelbuilder/ui-ux-pro-max-skill"
+    skill: "ui-ux-pro-max"
+    requires_modules: ["nodejs"]
+    category: "frontend-ux-design"
+    description: |
+      Design intelligence database covering 84 UI styles, 192 color palettes, and UX guidelines.
+
+  - id: impeccable
+    label: "Impeccable (frontend craft, design tokens & UI audit)"
+    ref: "pbakaus/impeccable"
+    requires_modules: ["nodejs"]
+    category: "frontend-ux-design"
+    description: |
+      Polish, critique, audit, and harden web UI with design token systems.
+
+  - id: canvas-design
+    label: "Canvas Design (visual art and graphics generation)"
+    ref: "anthropics/skills"
+    skill: "canvas-design"
+    requires_modules: ["nodejs"]
+    category: "frontend-ux-design"
+    description: |
+      Generate static visual art, posters, and canvas-based graphics.
+
+  - id: web-artifacts-builder
+    label: "Web Artifacts Builder (interactive web artifact suites)"
+    ref: "anthropics/skills"
+    skill: "web-artifacts-builder"
+    requires_modules: ["nodejs"]
+    category: "frontend-ux-design"
+    description: |
+      Build interactive, standalone web artifacts and components.
+
+  - id: theme-factory
+    label: "Theme Factory (color palettes & UI theme system generator)"
+    ref: "anthropics/skills"
+    skill: "theme-factory"
+    requires_modules: ["nodejs"]
+    category: "frontend-ux-design"
+    description: |
+      Theme system generator and harmonious color palette synthesizer.
+
+  - id: algorithmic-art
+    label: "Algorithmic Art (generative procedural SVG & Canvas art)"
+    ref: "anthropics/skills"
+    skill: "algorithmic-art"
+    requires_modules: ["nodejs"]
+    category: "frontend-ux-design"
+    description: |
+      Procedural and generative art algorithms for interactive graphics.
+
+  - id: remotion-create
+    label: "Remotion (programmatic video creation in React)"
+    ref: "remotion-dev/skills"
+    skill: "remotion-create"
+    requires_modules: ["nodejs"]
+    category: "frontend-ux-design"
+    description: |
+      Programmatic video creation in React.
+
+  # Architecture & Planning
+  - id: codebase-design
+    label: "Codebase Design (deep module design vocabulary)"
+    ref: "mattpocock/skills"
+    skill: "codebase-design"
+    requires_modules: ["nodejs"]
+    category: "architecture-planning"
+    description: |
+      Shared vocabulary for designing deep modules, shallow nesting, and clean seams.
+
+  - id: improve-codebase-architecture
+    label: "Improve Codebase Architecture"
+    ref: "mattpocock/skills"
+    skill: "improve-codebase-architecture"
+    requires_modules: ["nodejs"]
+    category: "architecture-planning"
+
+  - id: to-spec
+    label: "To Spec (technical specification writer)"
+    ref: "mattpocock/skills"
+    skill: "to-spec"
+    requires_modules: ["nodejs"]
+    category: "architecture-planning"
+
+  - id: to-tickets
+    label: "To Tickets (breakdown into actionable tickets)"
+    ref: "mattpocock/skills"
+    skill: "to-tickets"
+    requires_modules: ["nodejs"]
+    category: "architecture-planning"
+
+  - id: domain-modeling
+    label: "Domain Modeling (DDD ontology & entity modeling)"
+    ref: "mattpocock/skills"
+    skill: "domain-modeling"
+    requires_modules: ["nodejs"]
+    category: "architecture-planning"
+
+  - id: grill-me
+    label: "Grill Me (decision clarifying interview)"
+    ref: "mattpocock/skills"
+    skill: "grill-me"
+    requires_modules: ["nodejs"]
+    category: "architecture-planning"
+
+  - id: grill-with-docs
+    label: "Grill With Docs (documentation-grounded interview)"
+    ref: "mattpocock/skills"
+    skill: "grill-with-docs"
+    requires_modules: ["nodejs"]
+    category: "architecture-planning"
+
+  - id: setup-ts-deep-modules
+    label: "Setup TS Deep Modules"
+    ref: "mattpocock/skills"
+    skill: "setup-ts-deep-modules"
+    requires_modules: ["nodejs"]
+    category: "architecture-planning"
+
+  - id: migrate-to-shoehorn
+    label: "Migrate To Shoehorn"
+    ref: "mattpocock/skills"
+    skill: "migrate-to-shoehorn"
+    requires_modules: ["nodejs"]
+    category: "architecture-planning"
+
+  - id: prototype
+    label: "Prototype (rapid functional prototyping)"
+    ref: "mattpocock/skills"
+    skill: "prototype"
+    requires_modules: ["nodejs"]
+    category: "architecture-planning"
+
+  - id: teach
+    label: "Teach (codebase onboarding & explanation)"
+    ref: "mattpocock/skills"
+    skill: "teach"
+    requires_modules: ["nodejs"]
+    category: "architecture-planning"
+
+  - id: grilling
+    label: "Grilling (deep technical interviewing)"
+    ref: "mattpocock/skills"
+    skill: "grilling"
+    requires_modules: ["nodejs"]
+    category: "architecture-planning"
+
+  - id: ask-matt
+    label: "Ask Matt (TypeScript & architecture questions)"
+    ref: "mattpocock/skills"
+    skill: "ask-matt"
+    requires_modules: ["nodejs"]
+    category: "architecture-planning"
+
+  - id: implement
+    label: "Implement (focused feature implementation)"
+    ref: "mattpocock/skills"
+    skill: "implement"
+    requires_modules: ["nodejs"]
+    category: "architecture-planning"
+
+  - id: handoff
+    label: "Handoff (session context packaging & handover)"
+    ref: "mattpocock/skills"
+    skill: "handoff"
+    requires_modules: ["nodejs"]
+    category: "architecture-planning"
+
+  - id: triage
+    label: "Triage (issue and bug prioritization)"
+    ref: "mattpocock/skills"
+    skill: "triage"
+    requires_modules: ["nodejs"]
+    category: "architecture-planning"
+
+  - id: data-science
+    label: "Data Science (Python / Jupyter toolchain & analysis)"
+    ref: "probabl-ai/skills"
+    skill: "data-science-python-stack"
+    requires_modules: ["python"]
+    category: "architecture-planning"
+
+  # Quality & Testing
+  - id: tdd
+    label: "TDD (Test-Driven Development workflow)"
+    ref: "mattpocock/skills"
+    skill: "tdd"
+    requires_modules: ["nodejs"]
+    category: "quality-testing"
+
+  - id: webapp-testing
+    label: "Webapp Testing (Playwright / browser automated testing)"
+    ref: "anthropics/skills"
+    skill: "webapp-testing"
+    requires_modules: ["nodejs"]
+    category: "quality-testing"
+
+  - id: code-review
+    label: "Code Review (PR & diff review against best practices)"
+    ref: "mattpocock/skills"
+    skill: "code-review"
+    requires_modules: ["nodejs"]
+    category: "quality-testing"
+
+  - id: diagnosing-bugs
+    label: "Diagnosing Bugs (root cause debugging & traces)"
+    ref: "mattpocock/skills"
+    skill: "diagnosing-bugs"
+    requires_modules: ["nodejs"]
+    category: "quality-testing"
+
+  - id: resolving-merge-conflicts
+    label: "Resolving Merge Conflicts (git merge conflict resolution)"
+    ref: "mattpocock/skills"
+    skill: "resolving-merge-conflicts"
+    requires_modules: ["nodejs"]
+    category: "quality-testing"
+
+  - id: git-guardrails-claude-code
+    label: "Git Guardrails (safe git commands and branch safety)"
+    ref: "mattpocock/skills"
+    skill: "git-guardrails-claude-code"
+    requires_modules: ["nodejs"]
+    category: "quality-testing"
+
+  - id: setup-pre-commit
+    label: "Setup Pre-Commit (pre-commit hooks & linters setup)"
+    ref: "mattpocock/skills"
+    skill: "setup-pre-commit"
+    requires_modules: ["nodejs"]
+    category: "quality-testing"
+
+  # Docs & Content Creation
+  - id: skill-creator
+    label: "Skill Creator (author and package new AI agent skills)"
+    ref: "anthropics/skills"
+    skill: "skill-creator"
+    requires_modules: ["nodejs"]
+    category: "docs-content"
+
+  - id: doc-coauthoring
+    label: "Doc Co-Authoring (collaborative document writing)"
+    ref: "anthropics/skills"
+    skill: "doc-coauthoring"
+    requires_modules: ["nodejs"]
+    category: "docs-content"
+
+  - id: brand-guidelines
+    label: "Brand Guidelines (brand voice, tone and style guide enforcer)"
+    ref: "anthropics/skills"
+    skill: "brand-guidelines"
+    requires_modules: ["nodejs"]
+    category: "docs-content"
+
+  - id: internal-comms
+    label: "Internal Comms (executive memos, company updates and announcements)"
+    ref: "anthropics/skills"
+    skill: "internal-comms"
+    requires_modules: ["nodejs"]
+    category: "docs-content"
+
+  - id: slack-gif-creator
+    label: "Slack GIF Creator (GIF animation generator)"
+    ref: "anthropics/skills"
+    skill: "slack-gif-creator"
+    requires_modules: ["nodejs"]
+    category: "docs-content"
+
+  - id: docx
+    label: "DOCX (Word document generator and editor)"
+    ref: "anthropics/skills"
+    skill: "docx"
+    requires_modules: ["nodejs"]
+    category: "docs-content"
+
+  - id: pdf
+    label: "PDF (PDF document generation and extraction)"
+    ref: "anthropics/skills"
+    skill: "pdf"
+    requires_modules: ["nodejs"]
+    category: "docs-content"
+
+  - id: pptx
+    label: "PPTX (PowerPoint slide presentation builder)"
+    ref: "anthropics/skills"
+    skill: "pptx"
+    requires_modules: ["nodejs"]
+    category: "docs-content"
+
+  - id: xlsx
+    label: "XLSX (Excel spreadsheet creator and data processor)"
+    ref: "anthropics/skills"
+    skill: "xlsx"
+    requires_modules: ["nodejs"]
+    category: "docs-content"
+
+  - id: writing-for-agents
+    label: "Writing For Agents (prompt & instruction crafting)"
+    ref: "mattpocock/skills"
+    skill: "writing-for-agents"
+    requires_modules: ["nodejs"]
+    category: "docs-content"
+
+  - id: writing-shape
+    label: "Writing Shape (narrative arc and article shaping)"
+    ref: "mattpocock/skills"
+    skill: "writing-shape"
+    requires_modules: ["nodejs"]
+    category: "docs-content"
+
+  - id: writing-fragments
+    label: "Writing Fragments (micro-content and snippet crafting)"
+    ref: "mattpocock/skills"
+    skill: "writing-fragments"
+    requires_modules: ["nodejs"]
+    category: "docs-content"
+
+  - id: writing-beats
+    label: "Writing Beats (pacing and outline beats for longform)"
+    ref: "mattpocock/skills"
+    skill: "writing-beats"
+    requires_modules: ["nodejs"]
+    category: "docs-content"
+
+  - id: scaffold-exercises
+    label: "Scaffold Exercises (interactive coding exercise generator)"
+    ref: "mattpocock/skills"
+    skill: "scaffold-exercises"
+    requires_modules: ["nodejs"]
+    category: "docs-content"
+
+  - id: to-questionnaire
+    label: "To Questionnaire (interview questionnaire builder)"
+    ref: "mattpocock/skills"
+    skill: "to-questionnaire"
+    requires_modules: ["nodejs"]
+    category: "docs-content"
+
+  - id: wizard
+    label: "Wizard (interactive step-by-step assistant flow)"
+    ref: "mattpocock/skills"
+    skill: "wizard"
+    requires_modules: ["nodejs"]
+    category: "docs-content"
+
+  - id: loop-me
+    label: "Loop Me (autonomous feedback loops)"
+    ref: "mattpocock/skills"
+    skill: "loop-me"
+    requires_modules: ["nodejs"]
+    category: "docs-content"
+
+  - id: claude-handoff
+    label: "Claude Handoff (conversation state summary & handoff)"
+    ref: "mattpocock/skills"
+    skill: "claude-handoff"
+    requires_modules: ["nodejs"]
+    category: "docs-content"
+
+  - id: wait-what
+    label: "Wait What (confusion resolution & clarification)"
+    ref: "mattpocock/skills"
+    skill: "wait-what"
+    requires_modules: ["nodejs"]
+    category: "docs-content"
+
+  - id: mcp-builder
+    label: "MCP Builder (Model Context Protocol server development)"
+    ref: "anthropics/skills"
+    skill: "mcp-builder"
+    requires_modules: ["nodejs"]
+    category: "docs-content"
+
+  - id: setup-matt-pocock-skills
+    label: "Setup Matt Pocock Skills"
+    ref: "mattpocock/skills"
+    skill: "setup-matt-pocock-skills"
+    requires_modules: ["nodejs"]
+    category: "docs-content"
+
+  - id: research
+    label: "Research (codebase and external docs researcher)"
+    ref: "mattpocock/skills"
+    skill: "research"
+    requires_modules: ["nodejs"]
+    category: "docs-content"
+
+  - id: claude-video
+    label: "Claude Video (video analysis and transcript processing)"
+    ref: "bradautomates/claude-video"
+    skill: "watch"
+    requires_modules: ["nodejs"]
+    category: "docs-content"
+
+  # Automation n8n
+  - id: n8n-agents-official
+    label: "n8n Agents Official (AI Agent nodes and LangChain providers in n8n)"
+    ref: "n8n-io/skills"
+    skill: "n8n-agents-official"
+    requires_modules: ["nodejs"]
+    category: "automation-n8n"
+
+  - id: n8n-binary-and-data-official
+    label: "n8n Binary and Data Official (file, image & attachment processing in n8n)"
+    ref: "n8n-io/skills"
+    skill: "n8n-binary-and-data-official"
+    requires_modules: ["nodejs"]
+    category: "automation-n8n"
+
+  - id: n8n-code-nodes-official
+    label: "n8n Code Nodes Official (JavaScript & Python code nodes in n8n)"
+    ref: "n8n-io/skills"
+    skill: "n8n-code-nodes-official"
+    requires_modules: ["nodejs"]
+    category: "automation-n8n"
+
+  - id: n8n-credentials-and-security-official
+    label: "n8n Credentials and Security Official (API keys, OAuth & credentials in n8n)"
+    ref: "n8n-io/skills"
+    skill: "n8n-credentials-and-security-official"
+    requires_modules: ["nodejs"]
+    category: "automation-n8n"
+
+  - id: n8n-data-tables-official
+    label: "n8n Data Tables Official (n8n built-in Data Tables & schemas)"
+    ref: "n8n-io/skills"
+    skill: "n8n-data-tables-official"
+    requires_modules: ["nodejs"]
+    category: "automation-n8n"
+
+  - id: n8n-debugging-official
+    label: "n8n Debugging Official (troubleshooting and failure investigation in n8n)"
+    ref: "n8n-io/skills"
+    skill: "n8n-debugging-official"
+    requires_modules: ["nodejs"]
+    category: "automation-n8n"
+
+  - id: n8n-error-handling-official
+    label: "n8n Error Handling Official (error branches and failure recovery in n8n)"
+    ref: "n8n-io/skills"
+    skill: "n8n-error-handling-official"
+    requires_modules: ["nodejs"]
+    category: "automation-n8n"
+
+  - id: n8n-expressions-official
+    label: "n8n Expressions Official (syntax expressions, $json references & Luxon in n8n)"
+    ref: "n8n-io/skills"
+    skill: "n8n-expressions-official"
+    requires_modules: ["nodejs"]
+    category: "automation-n8n"
+
+  - id: n8n-extending-mcp-official
+    label: "n8n Extending MCP Official (expose n8n workflows as AI MCP tools)"
+    ref: "n8n-io/skills"
+    skill: "n8n-extending-mcp-official"
+    requires_modules: ["nodejs"]
+    category: "automation-n8n"
+
+  - id: n8n-loops-official
+    label: "n8n Loops Official (batching, iteration and pagination in n8n)"
+    ref: "n8n-io/skills"
+    skill: "n8n-loops-official"
+    requires_modules: ["nodejs"]
+    category: "automation-n8n"
+
+  - id: n8n-node-configuration-official
+    label: "n8n Node Configuration Official (configuring HTTP, webhook & DB nodes in n8n)"
+    ref: "n8n-io/skills"
+    skill: "n8n-node-configuration-official"
+    requires_modules: ["nodejs"]
+    category: "automation-n8n"
+
+  - id: n8n-subworkflows-official
+    label: "n8n Subworkflows Official (modular and reusable workflows in n8n)"
+    ref: "n8n-io/skills"
+    skill: "n8n-subworkflows-official"
+    requires_modules: ["nodejs"]
+    category: "automation-n8n"
+
+  - id: n8n-workflow-lifecycle-official
+    label: "n8n Workflow Lifecycle Official (design, layout, testing and shipping n8n)"
+    ref: "n8n-io/skills"
+    skill: "n8n-workflow-lifecycle-official"
+    requires_modules: ["nodejs"]
+    category: "automation-n8n"
+
+  - id: using-n8n-skills-official
+    label: "Using n8n Skills Official (routing and cross-cutting rules for n8n)"
+    ref: "n8n-io/skills"
+    skill: "using-n8n-skills-official"
+    requires_modules: ["nodejs"]
+    category: "automation-n8n"

@@ -199,26 +199,27 @@ type SelectedModule struct {
 type SkillID string
 
 const (
-	SkillFirecrawl        SkillID = "firecrawl"
-	SkillAgentBrowser     SkillID = "agent-browser"
-	SkillWebappTesting    SkillID = "webapp-testing"
-	SkillDataScience      SkillID = "data-science"
-	SkillRemotion         SkillID = "remotion"
-	SkillClaudeVideo      SkillID = "claude-video"
-	SkillN8nWorkflows     SkillID = "n8n-workflows"
-	SkillN8nAll           SkillID = "n8n-all"
-	SkillImpeccable       SkillID = "impeccable"
-	SkillWayfinder        SkillID = "wayfinder"
-	SkillFrontendDesign   SkillID = "frontend-design"
-	SkillUIUXProMax       SkillID = "ui-ux-pro-max"
-	SkillFindSkills       SkillID = "find-skills"
-	SkillMattPocockAll    SkillID = "mattpocock-all"
-	SkillMattPocockSkills SkillID = "mattpocock-skills"
-	SkillAnthropicAll     SkillID = "anthropic-all"
-	SkillAnthropicSkills  SkillID = "anthropic-skills"
-	SkillAnthropicsSkills SkillID = "anthropics-skills"
-	SkillGraphify         SkillID = "graphify"
-	SkillCaveman          SkillID = "caveman"
+	SkillFirecrawl      SkillID = "firecrawl"
+	SkillAgentBrowser   SkillID = "agent-browser"
+	SkillWebappTesting  SkillID = "webapp-testing"
+	SkillDataScience    SkillID = "data-science"
+	SkillRemotion       SkillID = "remotion-create"
+	SkillClaudeVideo    SkillID = "claude-video"
+	SkillImpeccable     SkillID = "impeccable"
+	SkillWayfinder      SkillID = "wayfinder"
+	SkillFrontendDesign SkillID = "frontend-design"
+	SkillUIUXProMax     SkillID = "ui-ux-pro-max"
+	SkillFindSkills     SkillID = "find-skills"
+	SkillGraphify       SkillID = "graphify"
+	SkillCaveman        SkillID = "caveman"
+
+	// Functional Category IDs (expandable via ExpandSkillGroups)
+	SkillCategoryCoreAgents           SkillID = "core-agents"
+	SkillCategoryFrontendDesign       SkillID = "frontend-ux-design"
+	SkillCategoryArchitecturePlanning SkillID = "architecture-planning"
+	SkillCategoryQualityTesting       SkillID = "quality-testing"
+	SkillCategoryDocsContent          SkillID = "docs-content"
+	SkillCategoryAutomationN8n        SkillID = "automation-n8n"
 )
 
 // SkillMode says who installs the project's agent skills.

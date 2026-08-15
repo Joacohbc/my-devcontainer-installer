@@ -1,0 +1,105 @@
+name: Skill References
+
+# Every catalogued agent skill (internal/domain/modules/skills/skills.yml,
+# plus anything a user could add under ~/.devcontainer-cli/skills/) names a
+# `ref` (a GitHub source) and, for multi-skill repos, a `skill` selector. Both
+# are free text pointing at someone else's repository — a rename, a deleted
+# branch, or a restructured `skills/` tree upstream breaks the entry with no
+# change on our side. This installs every one for real, with the exact
+# command install-project-skills.sh runs in a container
+# (`npx skills add <source> [--skill <name>]`), so a broken ref fails loudly
+# here instead of inside a user's first `install_skills`.
+#
+# `agent cli-info --json` is the single source of truth for the enumeration:
+# its `.skills[].installRef` is the very token the installer script splits on
+# `#`, so this never re-parses skills.yml by hand and automatically covers any
+# new entry the catalogue gains.
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - 'cli/internal/domain/modules/skills/**'
+      - 'cli/internal/domain/catalog/**'
+      - '.github/workflows/skills-refs.yml'
+  pull_request:
+    branches: [ "main" ]
+    paths:
+      - 'cli/internal/domain/modules/skills/**'
+      - 'cli/internal/domain/catalog/**'
+      - '.github/workflows/skills-refs.yml'
+  schedule:
+    # Catches upstream drift a repo owner introduces with no change on our
+    # side (a rename, a restructured skills/ tree, a deleted branch).
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # Build the CLI once and ask it for the live catalogue, rather than
+  # re-parsing skills.yml here — the binary is the only place that already
+  # merges built-in and user-defined skills and folds ref+skill into one
+  # installRef token.
+  enumerate:
+    runs-on: ubuntu-latest
+    outputs:
+      refs: ${{ steps.list.outputs.refs }}
+    defaults:
+      run:
+        working-directory: cli
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          cache-dependency-path: cli/go.sum
+
+      - name: Build
+        run: go build -o /tmp/devcontainer-cli ./cmd/devcontainer-cli
+
+      - name: List every skill installRef
+        id: list
+        run: |
+          refs=$(/tmp/devcontainer-cli agent cli-info --json \
+            | jq -c '[.skills[].installRef] | unique')
+          echo "Found $(echo "$refs" | jq 'length') skill refs"
+          echo "refs=$refs" >> "$GITHUB_OUTPUT"
+
+  # One job per skill ref so a broken one fails loudly and individually in the
+  # Actions UI, instead of one giant log where a single failure is easy to
+  # miss among ~70 clones.
+  verify:
+    needs: enumerate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        ref: ${{ fromJson(needs.enumerate.outputs.refs) }}
+    steps:
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 'lts/*'
+
+      - name: npx skills add ${{ matrix.ref }}
+        run: |
+          source="${{ matrix.ref }}"
+          skill="${source#*#}"
+          repo="${source%%#*}"
+
+          workdir=$(mktemp -d)
+          cd "$workdir"
+          git init -q .
+
+          if [ "$skill" = "$source" ]; then
+            # A bare ref: the repo itself is the skill, no --skill flag.
+            npx --yes skills add "$repo" --agent claude-code --yes < /dev/null
+          else
+            npx --yes skills add "$repo" --skill "$skill" --agent claude-code --yes < /dev/null
+          fi

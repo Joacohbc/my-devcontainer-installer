@@ -20,5 +20,5 @@ scripts:
 # (which is what pulls nodejs in). The mode is left at the default, manual: the
 # installer writes into the project, so the first write is the user's call.
 skills:
-  - remotion
+  - remotion-create
   - claude-video

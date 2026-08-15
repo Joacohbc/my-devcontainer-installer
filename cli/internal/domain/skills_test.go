@@ -9,6 +9,7 @@ import (
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/catalog"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/modules/skills"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 )
 
@@ -305,24 +306,64 @@ func TestSkillDirDoesNotCollideWithProfileDir(t *testing.T) {
 
 func TestExpandSkillGroups(t *testing.T) {
 	expanded := catalog.ExpandSkillGroups([]types.SkillID{
-		types.SkillMattPocockSkills,
-		types.SkillAnthropicSkills,
-		types.SkillN8nAll,
+		types.SkillCategoryCoreAgents,
+		types.SkillCategoryFrontendDesign,
+		types.SkillCategoryArchitecturePlanning,
+		types.SkillCategoryQualityTesting,
+		types.SkillCategoryDocsContent,
+		types.SkillCategoryAutomationN8n,
 	})
-	if !slices.Contains(expanded, types.SkillID("grill-me")) {
-		t.Error("expected mattpocock group to expand grill-me")
-	}
 	if !slices.Contains(expanded, types.SkillID("wayfinder")) {
-		t.Error("expected mattpocock group to expand wayfinder")
+		t.Error("expected core-agents to expand wayfinder")
 	}
-	if !slices.Contains(expanded, types.SkillID("frontend-design")) {
-		t.Error("expected anthropic group to expand frontend-design")
+	if !slices.Contains(expanded, types.SkillID("caveman")) {
+		t.Error("expected core-agents to expand caveman")
+	}
+	if !slices.Contains(expanded, types.SkillID("impeccable")) {
+		t.Error("expected frontend-design to expand impeccable")
+	}
+	if !slices.Contains(expanded, types.SkillID("ui-ux-pro-max")) {
+		t.Error("expected frontend-design to expand ui-ux-pro-max")
+	}
+	if !slices.Contains(expanded, types.SkillID("codebase-design")) {
+		t.Error("expected architecture-planning to expand codebase-design")
+	}
+	if !slices.Contains(expanded, types.SkillID("tdd")) {
+		t.Error("expected quality-testing to expand tdd")
 	}
 	if !slices.Contains(expanded, types.SkillID("skill-creator")) {
-		t.Error("expected anthropic group to expand skill-creator")
+		t.Error("expected docs-content to expand skill-creator")
 	}
 	if !slices.Contains(expanded, types.SkillID("n8n-agents-official")) {
-		t.Error("expected n8n group to expand n8n-agents-official")
+		t.Error("expected automation-n8n to expand n8n-agents-official")
+	}
+}
+
+func TestSkillsManifestIntegrity(t *testing.T) {
+	if len(skills.All) == 0 {
+		t.Fatal("expected skills.All to be populated from skills.yml")
+	}
+	if len(skills.Categories) != 6 {
+		t.Fatalf("expected exactly 6 functional categories, got %d", len(skills.Categories))
+	}
+	seenIDs := make(map[types.SkillID]bool, len(skills.All))
+	for _, s := range skills.All {
+		if s.ID == "" {
+			t.Error("found skill with empty ID")
+		}
+		if seenIDs[s.ID] {
+			t.Errorf("duplicate skill ID found: %s", s.ID)
+		}
+		seenIDs[s.ID] = true
+		if s.Ref == "" {
+			t.Errorf("skill %s has empty Ref", s.ID)
+		}
+		if len(s.RequiresModules) == 0 {
+			t.Errorf("skill %s has empty RequiresModules", s.ID)
+		}
+		if s.Category == "" {
+			t.Errorf("skill %s has empty Category", s.ID)
+		}
 	}
 }
 

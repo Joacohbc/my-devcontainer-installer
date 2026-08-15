@@ -78,14 +78,6 @@ type Profile struct {
 // what keeps the ids the CI variant matrix depends on in one readable table.
 var BuiltinProfiles = slices.Concat(plainBuiltinProfiles, embeddedProfiles())
 
-var defaultPlainProfileSkills = []types.SkillID{
-	types.SkillImpeccable,
-	types.SkillMattPocockSkills,
-	types.SkillAnthropicSkills,
-	types.SkillUIUXProMax,
-	types.SkillFindSkills,
-}
-
 // github-cli is listed first in every profile so its Dockerfile layer is shared
 // with the base cache image (devcontainer-base), maximising Docker layer cache
 // hits across all variant builds in CI. Zellij is no longer listed: it ships in
@@ -97,7 +89,6 @@ var plainBuiltinProfiles = []Profile{
 		Modules: []string{
 			string(types.ModuleGithubCli),
 		},
-		Skills: defaultPlainProfileSkills,
 	},
 	{
 		ID:     "nodejs",
@@ -108,7 +99,6 @@ var plainBuiltinProfiles = []Profile{
 			string(types.ModuleNodejs),
 			string(types.ModulePnpm),
 		},
-		Skills: defaultPlainProfileSkills,
 	},
 	{
 		ID:     "bun",
@@ -118,7 +108,6 @@ var plainBuiltinProfiles = []Profile{
 			string(types.ModuleGithubCli),
 			string(types.ModuleBun),
 		},
-		Skills: defaultPlainProfileSkills,
 	},
 	{
 		ID:     "java-temurin",
@@ -128,7 +117,6 @@ var plainBuiltinProfiles = []Profile{
 			string(types.ModuleGithubCli),
 			string(types.ModuleJavaTemurin),
 		},
-		Skills: defaultPlainProfileSkills,
 	},
 	{
 		ID:     "python",
@@ -138,7 +126,6 @@ var plainBuiltinProfiles = []Profile{
 			string(types.ModuleGithubCli),
 			string(types.ModulePython),
 		},
-		Skills: defaultPlainProfileSkills,
 	},
 	{
 		ID:     "go",
@@ -148,7 +135,6 @@ var plainBuiltinProfiles = []Profile{
 			string(types.ModuleGithubCli),
 			string(types.ModuleGolang),
 		},
-		Skills: defaultPlainProfileSkills,
 	},
 	{
 		ID:     "node-go",
@@ -160,7 +146,6 @@ var plainBuiltinProfiles = []Profile{
 			string(types.ModulePnpm),
 			string(types.ModuleGolang),
 		},
-		Skills: defaultPlainProfileSkills,
 	},
 	{
 		ID:     "node-python",
@@ -172,7 +157,6 @@ var plainBuiltinProfiles = []Profile{
 			string(types.ModulePnpm),
 			string(types.ModulePython),
 		},
-		Skills: defaultPlainProfileSkills,
 	},
 	{
 		ID:     "node-java-temurin",
@@ -184,7 +168,6 @@ var plainBuiltinProfiles = []Profile{
 			string(types.ModulePnpm),
 			string(types.ModuleJavaTemurin),
 		},
-		Skills: defaultPlainProfileSkills,
 	},
 	{
 		ID:     "bun-go",
@@ -195,7 +178,6 @@ var plainBuiltinProfiles = []Profile{
 			string(types.ModuleBun),
 			string(types.ModuleGolang),
 		},
-		Skills: defaultPlainProfileSkills,
 	},
 	{
 		ID:     "bun-python",
@@ -206,7 +188,6 @@ var plainBuiltinProfiles = []Profile{
 			string(types.ModuleBun),
 			string(types.ModulePython),
 		},
-		Skills: defaultPlainProfileSkills,
 	},
 	{
 		ID:     "bun-java-temurin",
@@ -217,7 +198,6 @@ var plainBuiltinProfiles = []Profile{
 			string(types.ModuleBun),
 			string(types.ModuleJavaTemurin),
 		},
-		Skills: defaultPlainProfileSkills,
 	},
 }
 

@@ -166,15 +166,7 @@ func CategoriesInOrder() []types.UICategory {
 }
 
 // AgentSkills is the built-in catalogue of installable agent skills.
-var AgentSkills = append(skills.All, flattenedGroupSpecs()...)
-
-func flattenedGroupSpecs() []*skills.Spec {
-	var out []*skills.Spec
-	for _, g := range skills.Groups {
-		out = append(out, g.Specs...)
-	}
-	return out
-}
+var AgentSkills = skills.All
 
 // AllAgentSkills is every known skill: the user's own, loaded from dirs, then
 // the built-ins not shadowed by one of the same id — the same precedence
@@ -196,6 +188,7 @@ func AllAgentSkills(dirs ...string) []*skills.Spec {
 		if seen[s.ID] {
 			continue
 		}
+		seen[s.ID] = true
 		out = append(out, s)
 	}
 	return out
@@ -212,37 +205,29 @@ func GetAgentSkill(id types.SkillID, dirs ...string) *skills.Spec {
 	return nil
 }
 
-// ExpandSkillGroups replaces any Group ID in the list with the IDs of its constituent Specs.
+// ExpandSkillGroups replaces any Category ID or alias in the list with the IDs of its constituent Skills.
 func ExpandSkillGroups(ids []types.SkillID) []types.SkillID {
 	var expanded []types.SkillID
 	for _, id := range ids {
-		foundGroup := false
-		for _, g := range skills.Groups {
-			if g.ID == id {
-				for _, s := range g.Specs {
-					expanded = append(expanded, s.ID)
-				}
-				foundGroup = true
-				break
-			}
+		if cat := skills.GetCategory(id); cat != nil {
+			expanded = append(expanded, cat.Skills...)
+			continue
 		}
-		if !foundGroup {
-			expanded = append(expanded, id)
-		}
+		expanded = append(expanded, id)
 	}
 	return expanded
 }
 
 // AgentSkillIDs returns every known skill id — built-in and user-defined
-// under dirs — in catalogue order. It also includes Group IDs.
+// under dirs — in catalogue order. It also includes Category IDs.
 func AgentSkillIDs(dirs ...string) []string {
 	all := AllAgentSkills(dirs...)
-	ids := make([]string, 0, len(all)+len(skills.Groups))
+	ids := make([]string, 0, len(all)+len(skills.Categories))
 	for _, s := range all {
 		ids = append(ids, string(s.ID))
 	}
-	for _, g := range skills.Groups {
-		ids = append(ids, string(g.ID))
+	for _, c := range skills.Categories {
+		ids = append(ids, string(c.ID))
 	}
 	return ids
 }
