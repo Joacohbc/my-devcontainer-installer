@@ -153,7 +153,7 @@ func TestSkillRefs(t *testing.T) {
 	refs := domain.SkillRefs(config)
 	// firecrawl/cli holds ten skills, so the entry carries a selector for the one
 	// we want: an unattended install must not take the other nine.
-	if !slices.Equal(refs, []string{"firecrawl/cli#firecrawl-cli"}) {
+	if !slices.Equal(refs, []string{"firecrawl/cli#firecrawl"}) {
 		t.Errorf("expected the selector entry, got %v", refs)
 	}
 
@@ -316,8 +316,8 @@ func TestExpandSkillGroups(t *testing.T) {
 	if !slices.Contains(expanded, types.SkillID("wayfinder")) {
 		t.Error("expected core-agents to expand wayfinder")
 	}
-	if !slices.Contains(expanded, types.SkillID("caveman")) {
-		t.Error("expected core-agents to expand caveman")
+	if !slices.Contains(expanded, types.SkillID("firecrawl")) {
+		t.Error("expected core-agents to expand firecrawl")
 	}
 	if !slices.Contains(expanded, types.SkillID("impeccable")) {
 		t.Error("expected frontend-design to expand impeccable")
@@ -367,25 +367,25 @@ func TestSkillsManifestIntegrity(t *testing.T) {
 	}
 }
 
-func TestGraphifyAndCavemanSkills(t *testing.T) {
+func TestDataScienceAndWayfinderSkills(t *testing.T) {
 	config := &types.DevcontainerConfig{
 		Skills: types.SkillsConfig{
-			Skills: []types.SkillID{types.SkillGraphify, types.SkillCaveman},
+			Skills: []types.SkillID{types.SkillDataScience, types.SkillWayfinder},
 		},
 	}
 	missing := domain.MissingSkillModules(config)
 	if !slices.Contains(missing, types.ModulePython) {
-		t.Errorf("expected graphify to require python, got missing=%v", missing)
+		t.Errorf("expected data-science to require python, got missing=%v", missing)
 	}
 	if !slices.Contains(missing, types.ModuleNodejs) {
-		t.Errorf("expected caveman to require nodejs, got missing=%v", missing)
+		t.Errorf("expected wayfinder to require nodejs, got missing=%v", missing)
 	}
 
 	refs := domain.SkillRefs(config.Skills)
-	if !slices.Contains(refs, "safishamsi/graphify") {
-		t.Errorf("expected graphify ref 'safishamsi/graphify', got %v", refs)
+	if !slices.Contains(refs, "probabl-ai/skills#data-science-python-stack") {
+		t.Errorf("expected data-science ref 'probabl-ai/skills#data-science-python-stack', got %v", refs)
 	}
-	if !slices.Contains(refs, "JuliusBrussee/caveman") {
-		t.Errorf("expected caveman ref 'JuliusBrussee/caveman', got %v", refs)
+	if !slices.Contains(refs, "mattpocock/skills#wayfinder") {
+		t.Errorf("expected wayfinder ref 'mattpocock/skills#wayfinder', got %v", refs)
 	}
 }

@@ -31,6 +31,10 @@ const (
 	ModuleCodexCli       ModuleID = "codex-cli"
 	ModuleAntigravityCli ModuleID = "antigravity-cli"
 	ModuleCopilotCli     ModuleID = "copilot-cli"
+	ModuleGraphify       ModuleID = "graphify"
+	ModuleCaveman        ModuleID = "caveman"
+	ModuleClaudeMem      ModuleID = "claude-mem"
+	ModuleContextMode    ModuleID = "context-mode"
 	ModuleZellij         ModuleID = "zellij"
 	ModuleChrome         ModuleID = "chrome"
 	ModuleFfmpeg         ModuleID = "ffmpeg"
@@ -210,8 +214,6 @@ const (
 	SkillFrontendDesign SkillID = "frontend-design"
 	SkillUIUXProMax     SkillID = "ui-ux-pro-max"
 	SkillFindSkills     SkillID = "find-skills"
-	SkillGraphify       SkillID = "graphify"
-	SkillCaveman        SkillID = "caveman"
 
 	// Functional Category IDs (expandable via ExpandSkillGroups)
 	SkillCategoryCoreAgents           SkillID = "core-agents"

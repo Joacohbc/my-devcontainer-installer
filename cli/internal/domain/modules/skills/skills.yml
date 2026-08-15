@@ -3,9 +3,7 @@ categories:
     label: "Core Agent Tools (orientation, compression, discovery, knowledge graph)"
     skills:
       - wayfinder
-      - caveman
       - find-skills
-      - graphify
       - firecrawl
       - agent-browser
 
@@ -109,14 +107,6 @@ skills:
     description: |
       Codebase navigation, orientation, structure mapping, and architecture navigation.
 
-  - id: caveman
-    label: "Caveman (AI agent output compression + hooks)"
-    ref: "JuliusBrussee/caveman"
-    requires_modules: ["nodejs"]
-    category: "core-agents"
-    description: |
-      Compresses AI agent output and installs token-saving communication hooks and skills.
-
   - id: find-skills
     label: "Find Skills (agent skill discovery & installer)"
     ref: "vercel-labs/skills"
@@ -126,18 +116,10 @@ skills:
     description: |
       Discover, search, and install agent skills on demand.
 
-  - id: graphify
-    label: "Graphify (codebase knowledge graphs for AI agents)"
-    ref: "safishamsi/graphify"
-    requires_modules: ["python"]
-    category: "core-agents"
-    description: |
-      Transforms codebases, documentation, and schemas into queryable knowledge graphs.
-
   - id: firecrawl
     label: "Firecrawl (web scraping & search CLI for AI agents)"
     ref: "firecrawl/cli"
-    skill: "firecrawl-cli"
+    skill: "firecrawl"
     requires_modules: ["nodejs"]
     category: "core-agents"
     description: |

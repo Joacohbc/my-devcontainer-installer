@@ -200,7 +200,7 @@ func TestScraperProfile(t *testing.T) {
 	// The agent skill is declared, not scripted: a script cannot install one
 	// correctly, since the agent config dirs are symlinks into the shared-config
 	// volume that only exists at runtime.
-	for _, want := range []types.SkillID{types.SkillFirecrawl, types.SkillAgentBrowser, types.SkillWebappTesting, types.SkillGraphify} {
+	for _, want := range []types.SkillID{types.SkillFirecrawl, types.SkillAgentBrowser, types.SkillWebappTesting} {
 		if !slices.Contains(p.Skills, want) {
 			t.Errorf("expected the %q skill, got %v", want, p.Skills)
 		}

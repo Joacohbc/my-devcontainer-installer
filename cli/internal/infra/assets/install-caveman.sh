@@ -22,23 +22,28 @@ if command -v claude >/dev/null 2>&1; then
 fi
 
 # Codex — npx skills profile. Codex leaves no binary; ~/.codex is the marker.
+# The trailing --yes is the `skills` CLI's own flag (distinct from npx's
+# leading --yes, which only confirms downloading the `skills` package itself):
+# without it, a repo with no --skill filter drops into an interactive
+# multi-select picker, which hangs forever with no TTY attached — exactly
+# where every start.d script runs.
 if command -v codex >/dev/null 2>&1 || [ -d "$HOME/.codex" ]; then
   echo "==> Caveman -> Codex (npx skills --only codex)"
-  npx --yes skills add "$REPO" --only codex || echo "   (skipped: codex wiring failed)"
+  npx --yes skills add "$REPO" --only codex --yes || echo "   (skipped: codex wiring failed)"
   wired=1
 fi
 
-# Antigravity — npx skills profile.
-if command -v antigravity >/dev/null 2>&1; then
+# Antigravity — npx skills profile. Its binary on PATH is `agy`, not `antigravity`.
+if command -v agy >/dev/null 2>&1; then
   echo "==> Caveman -> Antigravity (npx skills --only antigravity)"
-  npx --yes skills add "$REPO" --only antigravity || echo "   (skipped: antigravity wiring failed)"
+  npx --yes skills add "$REPO" --only antigravity --yes || echo "   (skipped: antigravity wiring failed)"
   wired=1
 fi
 
 # GitHub Copilot — skills profile with always-on rule files.
 if command -v copilot >/dev/null 2>&1; then
   echo "==> Caveman -> GitHub Copilot (npx skills --only copilot --with-init)"
-  npx --yes skills add "$REPO" --only copilot --with-init || echo "   (skipped: copilot wiring failed)"
+  npx --yes skills add "$REPO" --only copilot --with-init --yes || echo "   (skipped: copilot wiring failed)"
   wired=1
 fi
 

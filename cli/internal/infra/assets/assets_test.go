@@ -588,7 +588,7 @@ func TestGraphifyInstallWiresAllPlatforms(t *testing.T) {
 		"command -v claude",
 		"command -v codex",
 		`[ -d "$HOME/.codex" ]`, // Codex leaves no binary; dir is the marker.
-		"command -v antigravity",
+		"command -v agy",
 		"command -v copilot",
 	}
 	for _, g := range wantGuards {
@@ -629,12 +629,79 @@ func TestCavemanInstallWiresAllPlatforms(t *testing.T) {
 		"command -v claude",
 		"command -v codex",
 		`[ -d "$HOME/.codex" ]`,
-		"command -v antigravity",
+		"command -v agy",
 		"command -v copilot",
 	}
 	for _, g := range wantGuards {
 		if !strings.Contains(script, g) {
 			t.Errorf("install-caveman.sh must guard a platform with %q", g)
+		}
+	}
+}
+
+// install-claude-mem.sh must wire claude-mem into every supported agent
+// present in the container and detect/skip absent ones. Antigravity's binary
+// on PATH is `agy`, not `antigravity` — a real bug this pins against
+// regressing.
+func TestClaudeMemInstallWiresAllPlatforms(t *testing.T) {
+	body, err := os.ReadFile("install-claude-mem.sh")
+	if err != nil {
+		t.Fatalf("reading install-claude-mem.sh: %v", err)
+	}
+	script := string(body)
+
+	wantWires := []string{
+		"claude plugin install claude-mem", // Claude Code (plugin marketplace)
+		"--ide opencode",
+		"--ide antigravity",
+	}
+	for _, w := range wantWires {
+		if !strings.Contains(script, w) {
+			t.Errorf("install-claude-mem.sh must wire %q", w)
+		}
+	}
+
+	wantGuards := []string{
+		"command -v claude",
+		"command -v opencode",
+		"command -v agy",
+	}
+	for _, g := range wantGuards {
+		if !strings.Contains(script, g) {
+			t.Errorf("install-claude-mem.sh must guard a platform with %q", g)
+		}
+	}
+	if strings.Contains(script, "command -v antigravity") {
+		t.Error("install-claude-mem.sh must detect Antigravity via its real binary `agy`, not `antigravity`")
+	}
+}
+
+// install-context-mode.sh only scripts the two platforms with a real
+// unattended plugin-manager command (Claude Code, GitHub Copilot CLI) — every
+// other supported platform needs a hand-edited config file this installer
+// must not touch blindly.
+func TestContextModeInstallWiresScriptablePlatforms(t *testing.T) {
+	body, err := os.ReadFile("install-context-mode.sh")
+	if err != nil {
+		t.Fatalf("reading install-context-mode.sh: %v", err)
+	}
+	script := string(body)
+
+	wantWires := []string{
+		"npm install -g context-mode",
+		"claude plugin install context-mode@context-mode", // Claude Code (plugin marketplace)
+		"copilot plugin install",
+	}
+	for _, w := range wantWires {
+		if !strings.Contains(script, w) {
+			t.Errorf("install-context-mode.sh must wire %q", w)
+		}
+	}
+
+	wantGuards := []string{"command -v claude", "command -v copilot"}
+	for _, g := range wantGuards {
+		if !strings.Contains(script, g) {
+			t.Errorf("install-context-mode.sh must guard a platform with %q", g)
 		}
 	}
 }
