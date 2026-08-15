@@ -982,25 +982,26 @@ func TestGenerateDockerfile_ClaudeCode(t *testing.T) {
 	assertContainsStr(t, df, "ln -sfn start.d/50-install-claude-code.sh /home/devuser/post-script/install-claude-code.sh", "claude-code manual symlink")
 }
 
-// Auto-start installers go to start.d/ with an order prefix; the agent-wiring
-// tools (graphify/caveman) carry order 90 so they run after the agents.
+// Auto-start installers go to start.d/ with an order prefix; the skills module
+// carries order 95 so it runs after the agents.
 func TestGenerateDockerfile_AutoStartOrdering(t *testing.T) {
 	cfg := makeConfig(func(c *types.DevcontainerConfig) {
 		c.Dockerfile.Modules = []types.SelectedModule{
 			{ID: "python"}, {ID: "nodejs"},
-			{ID: "claude-code"}, {ID: "graphify"}, {ID: "caveman"},
+			{ID: "claude-code"},
 		}
+		c.Skills = types.SkillsConfig{Skills: []types.SkillID{types.SkillFirecrawl}}
 	})
+	domain.ApplySelectedSkills(cfg)
 	df := mustGenerateDockerfile(t, cfg)
 	assertContainsStr(t, df, "/home/devuser/post-script/start.d/50-install-claude-code.sh", "claude order 50")
-	assertContainsStr(t, df, "/home/devuser/post-script/start.d/90-install-graphify.sh", "graphify order 90")
-	assertContainsStr(t, df, "/home/devuser/post-script/start.d/90-install-caveman.sh", "caveman order 90")
-	// The agent (50-) must be COPYed before the wiring tools (90-) so the sorted
+	assertContainsStr(t, df, "/home/devuser/post-script/start.d/95-autostart-project-skills.sh", "skills order 95")
+	// The agent (50-) must be COPYed before skills (95-) so the sorted
 	// glob in the entrypoint runs them in that order.
 	claudeIdx := strings.Index(df, "50-install-claude-code.sh")
-	graphifyIdx := strings.Index(df, "90-install-graphify.sh")
-	if claudeIdx < 0 || graphifyIdx < 0 || claudeIdx > graphifyIdx {
-		t.Errorf("agent installer must be ordered before the wiring tools:\nclaude=%d graphify=%d", claudeIdx, graphifyIdx)
+	skillsIdx := strings.Index(df, "95-autostart-project-skills.sh")
+	if claudeIdx < 0 || skillsIdx < 0 || claudeIdx > skillsIdx {
+		t.Errorf("agent installer must be ordered before skills:\nclaude=%d skills=%d", claudeIdx, skillsIdx)
 	}
 }
 
@@ -1050,26 +1051,6 @@ func TestGenerateDockerfile_CopilotCli(t *testing.T) {
 	})
 	df := mustGenerateDockerfile(t, cfg)
 	assertContainsStr(t, df, "install-copilot.sh", "copilot-cli script")
-}
-
-func TestGenerateDockerfile_Graphify(t *testing.T) {
-	cfg := makeConfig(func(c *types.DevcontainerConfig) {
-		c.Dockerfile.Modules = []types.SelectedModule{{ID: "graphify"}}
-	})
-	df := mustGenerateDockerfile(t, cfg)
-	assertContainsStr(t, df, "install-graphify.sh", "graphify script")
-	// graphify requires python
-	assertContainsStr(t, df, "python3", "graphify requires python")
-}
-
-func TestGenerateDockerfile_Caveman(t *testing.T) {
-	cfg := makeConfig(func(c *types.DevcontainerConfig) {
-		c.Dockerfile.Modules = []types.SelectedModule{{ID: "caveman"}}
-	})
-	df := mustGenerateDockerfile(t, cfg)
-	assertContainsStr(t, df, "install-caveman.sh", "caveman script")
-	// caveman requires nodejs
-	assertContainsStr(t, df, "fnm install --lts", "caveman requires nodejs")
 }
 
 func TestGenerateCompose_DependsOnSortedRegardlessOfInputOrder(t *testing.T) {

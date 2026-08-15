@@ -45,6 +45,41 @@ func TestBaseProfile(t *testing.T) {
 	if slices.Contains(p.Modules, "zellij") {
 		t.Errorf("zellij is always-on and must not be listed in the base profile, got %v", p.Modules)
 	}
+	for _, wantSkill := range []types.SkillID{
+		types.SkillImpeccable,
+		types.SkillMattPocockSkills,
+		types.SkillAnthropicSkills,
+		types.SkillUIUXProMax,
+		types.SkillFindSkills,
+	} {
+		if !slices.Contains(p.Skills, wantSkill) {
+			t.Errorf("expected base profile to contain skill %q, got %v", wantSkill, p.Skills)
+		}
+	}
+}
+
+func TestPlainBuiltinProfilesSkills(t *testing.T) {
+	plainIDs := []string{
+		"base", "nodejs", "bun", "java-temurin", "python", "go",
+		"node-go", "node-python", "node-java-temurin",
+		"bun-go", "bun-python", "bun-java-temurin",
+	}
+	wantSkills := []types.SkillID{
+		types.SkillImpeccable,
+		types.SkillMattPocockSkills,
+		types.SkillAnthropicSkills,
+		types.SkillUIUXProMax,
+		types.SkillFindSkills,
+	}
+	for _, id := range plainIDs {
+		p, ok := catalog.Resolve(id, "")
+		if !ok {
+			t.Fatalf("expected to resolve profile %s", id)
+		}
+		if !slices.Equal(p.Skills, wantSkills) {
+			t.Errorf("profile %q skills = %v, want %v", id, p.Skills, wantSkills)
+		}
+	}
 }
 
 // Profile.Remote is what tells --profile's mode=profiles (pull target) role
@@ -160,7 +195,7 @@ func TestScraperProfile(t *testing.T) {
 	if p.Source != "builtin" {
 		t.Errorf("expected source builtin, got %s", p.Source)
 	}
-	for _, want := range []string{"chrome", "python", "nodejs", "pnpm", "sqlite", "ffmpeg", "graphify"} {
+	for _, want := range []string{"chrome", "python", "nodejs", "pnpm", "sqlite", "ffmpeg"} {
 		if !slices.Contains(p.Modules, want) {
 			t.Errorf("expected the scraper profile to include %q, got %v", want, p.Modules)
 		}
@@ -180,7 +215,7 @@ func TestScraperProfile(t *testing.T) {
 	// The agent skill is declared, not scripted: a script cannot install one
 	// correctly, since the agent config dirs are symlinks into the shared-config
 	// volume that only exists at runtime.
-	for _, want := range []types.SkillID{types.SkillFirecrawl, types.SkillAgentBrowser, types.SkillWebappTesting} {
+	for _, want := range []types.SkillID{types.SkillFirecrawl, types.SkillAgentBrowser, types.SkillWebappTesting, types.SkillGraphify} {
 		if !slices.Contains(p.Skills, want) {
 			t.Errorf("expected the %q skill, got %v", want, p.Skills)
 		}

@@ -153,6 +153,115 @@ var ClaudeVideoSkill = &Spec{
 	},
 }
 
+// ImpeccableSkill provides design critique, UX polish, and frontend craftsmanship.
+var ImpeccableSkill = &Spec{
+	ID:              types.SkillImpeccable,
+	Label:           "Impeccable (design and frontend polish)",
+	Ref:             "pbakaus/impeccable",
+	RequiresModules: []types.ModuleID{types.ModuleNodejs},
+	Context: func() *types.ContextSection {
+		return &types.ContextSection{
+			Title: "Impeccable skill",
+			Body: "Teaches frontend design critique, UX polish, typography, layout,\n" +
+				"and modern web craft to create distinctive, production-grade interfaces.",
+		}
+	},
+}
+
+// WayfinderSkill provides codebase navigation, orientation, and structure analysis.
+var WayfinderSkill = &Spec{
+	ID:              types.SkillWayfinder,
+	Label:           "Wayfinder (codebase navigation and deep orientation)",
+	Ref:             "mattpocock/skills",
+	Skill:           "wayfinder",
+	RequiresModules: []types.ModuleID{types.ModuleNodejs},
+	Context: func() *types.ContextSection {
+		return &types.ContextSection{
+			Title: "Wayfinder skill",
+			Body: "Teaches codebase navigation, orientation, and architectural guidance\n" +
+				"for coding agents working in complex codebases.",
+		}
+	},
+}
+
+// FrontendDesignSkill creates distinctive, production-grade frontend interfaces.
+var FrontendDesignSkill = &Spec{
+	ID:              types.SkillFrontendDesign,
+	Label:           "Frontend Design (distinctive, production-grade frontend interfaces)",
+	Ref:             "anthropics/skills",
+	Skill:           "frontend-design",
+	RequiresModules: []types.ModuleID{types.ModuleNodejs},
+	Context: func() *types.ContextSection {
+		return &types.ContextSection{
+			Title: "Frontend design skill",
+			Body: "Teaches building distinctive, high-quality, production-grade web\n" +
+				"interfaces and frontend components.",
+		}
+	},
+}
+
+// UIUXProMaxSkill provides UI/UX design intelligence, color palettes, and component patterns.
+var UIUXProMaxSkill = &Spec{
+	ID:              types.SkillUIUXProMax,
+	Label:           "UI/UX Pro Max (design intelligence, color palettes, typography, UX patterns)",
+	Ref:             "nextlevelbuilder/ui-ux-pro-max-skill",
+	Skill:           "ui-ux-pro-max",
+	RequiresModules: []types.ModuleID{types.ModuleNodejs},
+	Context: func() *types.ContextSection {
+		return &types.ContextSection{
+			Title: "UI/UX Pro Max skill",
+			Body: "Comprehensive UI/UX design intelligence database with palettes, styles,\n" +
+				"fonts, UX guidelines, motion presets, and components.",
+		}
+	},
+}
+
+// FindSkillsSkill assists in discovering and installing agent skills on demand.
+var FindSkillsSkill = &Spec{
+	ID:              types.SkillFindSkills,
+	Label:           "Find Skills (discover and install agent skills on demand)",
+	Ref:             "vercel-labs/skills",
+	Skill:           "find-skills",
+	RequiresModules: []types.ModuleID{types.ModuleNodejs},
+	Context: func() *types.ContextSection {
+		return &types.ContextSection{
+			Title: "Find Skills skill",
+			Body: "Teaches how to discover, search, and install agent skills from the Skills\n" +
+				"ecosystem on demand.",
+		}
+	},
+}
+
+// GraphifySkill builds queryable codebase knowledge graphs for AI agents.
+var GraphifySkill = &Spec{
+	ID:              types.SkillGraphify,
+	Label:           "Graphify (codebase knowledge graphs for AI agents)",
+	Ref:             "safishamsi/graphify",
+	RequiresModules: []types.ModuleID{types.ModulePython},
+	Context: func() *types.ContextSection {
+		return &types.ContextSection{
+			Title: "Graphify skill",
+			Body: "Transforms codebases, documentation, schemas and files into a\n" +
+				"queryable knowledge graph for AI coding agents.",
+		}
+	},
+}
+
+// CavemanSkill compresses AI agent output and provides token-saving communication hooks.
+var CavemanSkill = &Spec{
+	ID:              types.SkillCaveman,
+	Label:           "Caveman (AI agent output compression + hooks)",
+	Ref:             "JuliusBrussee/caveman",
+	RequiresModules: []types.ModuleID{types.ModuleNodejs},
+	Context: func() *types.ContextSection {
+		return &types.ContextSection{
+			Title: "Caveman skill",
+			Body: "Compresses AI agent output and installs token-saving communication\n" +
+				"hooks and skills for AI agents in this workspace.",
+		}
+	},
+}
+
 // All is the ordered catalogue of installable skills.
 var All = []*Spec{
 	FirecrawlSkill,
@@ -162,6 +271,13 @@ var All = []*Spec{
 	RemotionSkill,
 	ClaudeVideoSkill,
 	N8nWorkflowsSkill,
+	ImpeccableSkill,
+	WayfinderSkill,
+	FrontendDesignSkill,
+	UIUXProMaxSkill,
+	FindSkillsSkill,
+	GraphifySkill,
+	CavemanSkill,
 }
 
 // InstallRef is the entry the installer receives: the source, with the skill
@@ -283,18 +399,156 @@ var N8nSkillGroup = &Group{
 	},
 }
 
+var MattPocockSkillGroup = &Group{
+	ID:    types.SkillMattPocockSkills,
+	Label: "Matt Pocock skills suite (all 51 developer & architecture skills)",
+	Specs: []*Spec{
+		{ID: types.SkillID("grill-me"), Label: "grill-me", Ref: "mattpocock/skills", Skill: "grill-me"},
+		{ID: types.SkillID("grill-with-docs"), Label: "grill-with-docs", Ref: "mattpocock/skills", Skill: "grill-with-docs"},
+		{ID: types.SkillID("improve-codebase-architecture"), Label: "improve-codebase-architecture", Ref: "mattpocock/skills", Skill: "improve-codebase-architecture"},
+		{ID: types.SkillID("tdd"), Label: "tdd", Ref: "mattpocock/skills", Skill: "tdd"},
+		{ID: types.SkillID("setup-matt-pocock-skills"), Label: "setup-matt-pocock-skills", Ref: "mattpocock/skills", Skill: "setup-matt-pocock-skills"},
+		{ID: types.SkillID("handoff"), Label: "handoff", Ref: "mattpocock/skills", Skill: "handoff"},
+		{ID: types.SkillID("triage"), Label: "triage", Ref: "mattpocock/skills", Skill: "triage"},
+		{ID: types.SkillID("prototype"), Label: "prototype", Ref: "mattpocock/skills", Skill: "prototype"},
+		{ID: types.SkillID("teach"), Label: "teach", Ref: "mattpocock/skills", Skill: "teach"},
+		{ID: types.SkillID("grilling"), Label: "grilling", Ref: "mattpocock/skills", Skill: "grilling"},
+		{ID: types.SkillID("domain-modeling"), Label: "domain-modeling", Ref: "mattpocock/skills", Skill: "domain-modeling"},
+		{ID: types.SkillID("codebase-design"), Label: "codebase-design", Ref: "mattpocock/skills", Skill: "codebase-design"},
+		{ID: types.SkillID("diagnosing-bugs"), Label: "diagnosing-bugs", Ref: "mattpocock/skills", Skill: "diagnosing-bugs"},
+		{ID: types.SkillID("ask-matt"), Label: "ask-matt", Ref: "mattpocock/skills", Skill: "ask-matt"},
+		{ID: types.SkillID("to-prd"), Label: "to-prd", Ref: "mattpocock/skills", Skill: "to-prd"},
+		{ID: types.SkillID("implement"), Label: "implement", Ref: "mattpocock/skills", Skill: "implement"},
+		{ID: types.SkillID("to-issues"), Label: "to-issues", Ref: "mattpocock/skills", Skill: "to-issues"},
+		{ID: types.SkillID("code-review"), Label: "code-review", Ref: "mattpocock/skills", Skill: "code-review"},
+		{ID: types.SkillID("writing-great-skills"), Label: "writing-great-skills", Ref: "mattpocock/skills", Skill: "writing-great-skills"},
+		WayfinderSkill,
+		{ID: types.SkillID("research"), Label: "research", Ref: "mattpocock/skills", Skill: "research"},
+		{ID: types.SkillID("resolving-merge-conflicts"), Label: "resolving-merge-conflicts", Ref: "mattpocock/skills", Skill: "resolving-merge-conflicts"},
+		{ID: types.SkillID("to-spec"), Label: "to-spec", Ref: "mattpocock/skills", Skill: "to-spec"},
+		{ID: types.SkillID("to-tickets"), Label: "to-tickets", Ref: "mattpocock/skills", Skill: "to-tickets"},
+		{ID: types.SkillID("diagnose"), Label: "diagnose", Ref: "mattpocock/skills", Skill: "diagnose"},
+		{ID: types.SkillID("write-a-skill"), Label: "write-a-skill", Ref: "mattpocock/skills", Skill: "write-a-skill"},
+		{ID: types.SkillID("git-guardrails-claude-code"), Label: "git-guardrails-claude-code", Ref: "mattpocock/skills", Skill: "git-guardrails-claude-code"},
+		{ID: types.SkillID("zoom-out"), Label: "zoom-out", Ref: "mattpocock/skills", Skill: "zoom-out"},
+		{ID: types.SkillID("mattpocock-caveman"), Label: "caveman (Matt Pocock)", Ref: "mattpocock/skills", Skill: "caveman"},
+		{ID: types.SkillID("setup-pre-commit"), Label: "setup-pre-commit", Ref: "mattpocock/skills", Skill: "setup-pre-commit"},
+		{ID: types.SkillID("scaffold-exercises"), Label: "scaffold-exercises", Ref: "mattpocock/skills", Skill: "scaffold-exercises"},
+		{ID: types.SkillID("writing-shape"), Label: "writing-shape", Ref: "mattpocock/skills", Skill: "writing-shape"},
+		{ID: types.SkillID("writing-fragments"), Label: "writing-fragments", Ref: "mattpocock/skills", Skill: "writing-fragments"},
+		{ID: types.SkillID("writing-beats"), Label: "writing-beats", Ref: "mattpocock/skills", Skill: "writing-beats"},
+		{ID: types.SkillID("migrate-to-shoehorn"), Label: "migrate-to-shoehorn", Ref: "mattpocock/skills", Skill: "migrate-to-shoehorn"},
+		{ID: types.SkillID("design-an-interface"), Label: "design-an-interface", Ref: "mattpocock/skills", Skill: "design-an-interface"},
+		{ID: types.SkillID("request-refactor-plan"), Label: "request-refactor-plan", Ref: "mattpocock/skills", Skill: "request-refactor-plan"},
+		{ID: types.SkillID("qa"), Label: "qa", Ref: "mattpocock/skills", Skill: "qa"},
+		{ID: types.SkillID("ubiquitous-language"), Label: "ubiquitous-language", Ref: "mattpocock/skills", Skill: "ubiquitous-language"},
+		{ID: types.SkillID("obsidian-vault"), Label: "obsidian-vault", Ref: "mattpocock/skills", Skill: "obsidian-vault"},
+		{ID: types.SkillID("edit-article"), Label: "edit-article", Ref: "mattpocock/skills", Skill: "edit-article"},
+		{ID: types.SkillID("wizard"), Label: "wizard", Ref: "mattpocock/skills", Skill: "wizard"},
+		{ID: types.SkillID("loop-me"), Label: "loop-me", Ref: "mattpocock/skills", Skill: "loop-me"},
+		{ID: types.SkillID("claude-handoff"), Label: "claude-handoff", Ref: "mattpocock/skills", Skill: "claude-handoff"},
+		{ID: types.SkillID("to-questionnaire"), Label: "to-questionnaire", Ref: "mattpocock/skills", Skill: "to-questionnaire"},
+		{ID: types.SkillID("setup-ts-deep-modules"), Label: "setup-ts-deep-modules", Ref: "mattpocock/skills", Skill: "setup-ts-deep-modules"},
+		{ID: types.SkillID("review"), Label: "review", Ref: "mattpocock/skills", Skill: "review"},
+		{ID: types.SkillID("writing-for-agents"), Label: "writing-for-agents", Ref: "mattpocock/skills", Skill: "writing-for-agents"},
+		{ID: types.SkillID("wait-what"), Label: "wait-what", Ref: "mattpocock/skills", Skill: "wait-what"},
+		{ID: types.SkillID("batch-grill-me"), Label: "batch-grill-me", Ref: "mattpocock/skills", Skill: "batch-grill-me"},
+		{ID: types.SkillID("decision-mapping"), Label: "decision-mapping", Ref: "mattpocock/skills", Skill: "decision-mapping"},
+	},
+}
+
+var MattPocockAllSkillGroup = &Group{
+	ID:    types.SkillMattPocockAll,
+	Label: "Matt Pocock skills suite (all 51 developer & architecture skills)",
+	Specs: MattPocockSkillGroup.Specs,
+}
+
+var AnthropicSkillGroup = &Group{
+	ID:    types.SkillAnthropicSkills,
+	Label: "Anthropic skills suite (all official Anthropic skills)",
+	Specs: []*Spec{
+		FrontendDesignSkill,
+		{ID: types.SkillID("skill-creator"), Label: "skill-creator", Ref: "anthropics/skills", Skill: "skill-creator"},
+		{ID: types.SkillID("pptx"), Label: "pptx", Ref: "anthropics/skills", Skill: "pptx"},
+		{ID: types.SkillID("pdf"), Label: "pdf", Ref: "anthropics/skills", Skill: "pdf"},
+		{ID: types.SkillID("docx"), Label: "docx", Ref: "anthropics/skills", Skill: "docx"},
+		{ID: types.SkillID("xlsx"), Label: "xlsx", Ref: "anthropics/skills", Skill: "xlsx"},
+		WebappTestingSkill,
+		{ID: types.SkillID("mcp-builder"), Label: "mcp-builder", Ref: "anthropics/skills", Skill: "mcp-builder"},
+		{ID: types.SkillID("canvas-design"), Label: "canvas-design", Ref: "anthropics/skills", Skill: "canvas-design"},
+		{ID: types.SkillID("web-artifacts-builder"), Label: "web-artifacts-builder", Ref: "anthropics/skills", Skill: "web-artifacts-builder"},
+		{ID: types.SkillID("theme-factory"), Label: "theme-factory", Ref: "anthropics/skills", Skill: "theme-factory"},
+		{ID: types.SkillID("doc-coauthoring"), Label: "doc-coauthoring", Ref: "anthropics/skills", Skill: "doc-coauthoring"},
+		{ID: types.SkillID("brand-guidelines"), Label: "brand-guidelines", Ref: "anthropics/skills", Skill: "brand-guidelines"},
+		{ID: types.SkillID("algorithmic-art"), Label: "algorithmic-art", Ref: "anthropics/skills", Skill: "algorithmic-art"},
+		{ID: types.SkillID("internal-comms"), Label: "internal-comms", Ref: "anthropics/skills", Skill: "internal-comms"},
+		{ID: types.SkillID("slack-gif-creator"), Label: "slack-gif-creator", Ref: "anthropics/skills", Skill: "slack-gif-creator"},
+		{ID: types.SkillID("template-skill"), Label: "template-skill", Ref: "anthropics/skills", Skill: "template-skill"},
+	},
+}
+
+var AnthropicAllSkillGroup = &Group{
+	ID:    types.SkillAnthropicAll,
+	Label: "Anthropic skills suite (all official Anthropic skills)",
+	Specs: AnthropicSkillGroup.Specs,
+}
+
+var AnthropicsSkillGroup = &Group{
+	ID:    types.SkillAnthropicsSkills,
+	Label: "Anthropic skills suite (all official Anthropic skills)",
+	Specs: AnthropicSkillGroup.Specs,
+}
+
 var Groups = []*Group{
 	N8nSkillGroup,
+	MattPocockSkillGroup,
+	MattPocockAllSkillGroup,
+	AnthropicSkillGroup,
+	AnthropicAllSkillGroup,
+	AnthropicsSkillGroup,
 }
 
 func init() {
 	for _, spec := range N8nSkillGroup.Specs {
 		spec := spec // capture loop variable
-		spec.Context = func() *types.ContextSection {
-			return &types.ContextSection{
-				Title: "n8n skill: " + spec.Skill,
-				Body:  "An n8n automation skill (" + spec.Skill + ") installed via the n8n profile.",
+		if spec.Context == nil {
+			spec.Context = func() *types.ContextSection {
+				return &types.ContextSection{
+					Title: "n8n skill: " + spec.Skill,
+					Body:  "An n8n automation skill (" + spec.Skill + ") installed via the n8n profile.",
+				}
 			}
+		}
+		if len(spec.RequiresModules) == 0 {
+			spec.RequiresModules = []types.ModuleID{types.ModuleNodejs}
+		}
+	}
+	for _, spec := range MattPocockSkillGroup.Specs {
+		spec := spec // capture loop variable
+		if spec.Context == nil {
+			spec.Context = func() *types.ContextSection {
+				return &types.ContextSection{
+					Title: "Matt Pocock skill: " + spec.Skill,
+					Body:  "A developer productivity and coding skill (" + spec.Skill + ") from mattpocock/skills.",
+				}
+			}
+		}
+		if len(spec.RequiresModules) == 0 {
+			spec.RequiresModules = []types.ModuleID{types.ModuleNodejs}
+		}
+	}
+	for _, spec := range AnthropicSkillGroup.Specs {
+		spec := spec // capture loop variable
+		if spec.Context == nil {
+			spec.Context = func() *types.ContextSection {
+				return &types.ContextSection{
+					Title: "Anthropic skill: " + spec.Skill,
+					Body:  "An official agent skill (" + spec.Skill + ") from anthropics/skills.",
+				}
+			}
+		}
+		if len(spec.RequiresModules) == 0 {
+			spec.RequiresModules = []types.ModuleID{types.ModuleNodejs}
 		}
 	}
 }

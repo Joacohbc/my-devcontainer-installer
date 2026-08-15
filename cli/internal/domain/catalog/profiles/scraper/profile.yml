@@ -13,7 +13,6 @@ modules:
   - chrome
   - sqlite
   - ffmpeg
-  - graphify
 scripts:
   # Only the toolchain, which is baked into the image. Agent skills are not a
   # script's job — see `skills` below.
@@ -26,3 +25,4 @@ skills:
   - firecrawl
   - agent-browser
   - webapp-testing
+  - graphify

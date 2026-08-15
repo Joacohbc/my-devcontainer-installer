@@ -302,3 +302,49 @@ func TestSkillDirDoesNotCollideWithProfileDir(t *testing.T) {
 		t.Error("SkillDir must not equal ProfileDir")
 	}
 }
+
+func TestExpandSkillGroups(t *testing.T) {
+	expanded := catalog.ExpandSkillGroups([]types.SkillID{
+		types.SkillMattPocockSkills,
+		types.SkillAnthropicSkills,
+		types.SkillN8nAll,
+	})
+	if !slices.Contains(expanded, types.SkillID("grill-me")) {
+		t.Error("expected mattpocock group to expand grill-me")
+	}
+	if !slices.Contains(expanded, types.SkillID("wayfinder")) {
+		t.Error("expected mattpocock group to expand wayfinder")
+	}
+	if !slices.Contains(expanded, types.SkillID("frontend-design")) {
+		t.Error("expected anthropic group to expand frontend-design")
+	}
+	if !slices.Contains(expanded, types.SkillID("skill-creator")) {
+		t.Error("expected anthropic group to expand skill-creator")
+	}
+	if !slices.Contains(expanded, types.SkillID("n8n-agents-official")) {
+		t.Error("expected n8n group to expand n8n-agents-official")
+	}
+}
+
+func TestGraphifyAndCavemanSkills(t *testing.T) {
+	config := &types.DevcontainerConfig{
+		Skills: types.SkillsConfig{
+			Skills: []types.SkillID{types.SkillGraphify, types.SkillCaveman},
+		},
+	}
+	missing := domain.MissingSkillModules(config)
+	if !slices.Contains(missing, types.ModulePython) {
+		t.Errorf("expected graphify to require python, got missing=%v", missing)
+	}
+	if !slices.Contains(missing, types.ModuleNodejs) {
+		t.Errorf("expected caveman to require nodejs, got missing=%v", missing)
+	}
+
+	refs := domain.SkillRefs(config.Skills)
+	if !slices.Contains(refs, "safishamsi/graphify") {
+		t.Errorf("expected graphify ref 'safishamsi/graphify', got %v", refs)
+	}
+	if !slices.Contains(refs, "JuliusBrussee/caveman") {
+		t.Errorf("expected caveman ref 'JuliusBrussee/caveman', got %v", refs)
+	}
+}

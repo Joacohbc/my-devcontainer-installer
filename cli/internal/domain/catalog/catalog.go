@@ -35,8 +35,6 @@ var DockerfileModules = []*dockerfile.ModuleSpec{
 	dockerfile.CodexCliModule,
 	dockerfile.AntigravityCliModule,
 	dockerfile.CopilotCliModule,
-	dockerfile.GraphifyModule,
-	dockerfile.CavemanModule,
 	dockerfile.ZellijModule,
 	dockerfile.ChromeModule,
 	dockerfile.FfmpegModule,
