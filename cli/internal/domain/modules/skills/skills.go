@@ -167,3 +167,118 @@ func Get(id types.SkillID) *Spec {
 	}
 	return nil
 }
+
+// Group describes a logical collection of agent skills. When a project includes
+// a Group's ID, it is expanded into the group's constituent Specs.
+type Group struct {
+	ID    types.SkillID
+	Label string
+	Specs []*Spec
+}
+
+var N8nSkillGroup = &Group{
+	ID:    types.SkillN8nAll,
+	Label: "n8n full suite (all official and internal n8n skills)",
+	Specs: []*Spec{
+		{
+			ID:    types.SkillID("n8n-agents-official"),
+			Label: "n8n-agents-official",
+			Ref:   "n8n-io/skills",
+			Skill: "n8n-agents-official",
+		},
+		{
+			ID:    types.SkillID("n8n-binary-and-data-official"),
+			Label: "n8n-binary-and-data-official",
+			Ref:   "n8n-io/skills",
+			Skill: "n8n-binary-and-data-official",
+		},
+		{
+			ID:    types.SkillID("n8n-code-nodes-official"),
+			Label: "n8n-code-nodes-official",
+			Ref:   "n8n-io/skills",
+			Skill: "n8n-code-nodes-official",
+		},
+		{
+			ID:    types.SkillID("n8n-credentials-and-security-official"),
+			Label: "n8n-credentials-and-security-official",
+			Ref:   "n8n-io/skills",
+			Skill: "n8n-credentials-and-security-official",
+		},
+		{
+			ID:    types.SkillID("n8n-data-tables-official"),
+			Label: "n8n-data-tables-official",
+			Ref:   "n8n-io/skills",
+			Skill: "n8n-data-tables-official",
+		},
+		{
+			ID:    types.SkillID("n8n-debugging-official"),
+			Label: "n8n-debugging-official",
+			Ref:   "n8n-io/skills",
+			Skill: "n8n-debugging-official",
+		},
+		{
+			ID:    types.SkillID("n8n-error-handling-official"),
+			Label: "n8n-error-handling-official",
+			Ref:   "n8n-io/skills",
+			Skill: "n8n-error-handling-official",
+		},
+		{
+			ID:    types.SkillID("n8n-expressions-official"),
+			Label: "n8n-expressions-official",
+			Ref:   "n8n-io/skills",
+			Skill: "n8n-expressions-official",
+		},
+		{
+			ID:    types.SkillID("n8n-extending-mcp-official"),
+			Label: "n8n-extending-mcp-official",
+			Ref:   "n8n-io/skills",
+			Skill: "n8n-extending-mcp-official",
+		},
+		{
+			ID:    types.SkillID("n8n-loops-official"),
+			Label: "n8n-loops-official",
+			Ref:   "n8n-io/skills",
+			Skill: "n8n-loops-official",
+		},
+		{
+			ID:    types.SkillID("n8n-node-configuration-official"),
+			Label: "n8n-node-configuration-official",
+			Ref:   "n8n-io/skills",
+			Skill: "n8n-node-configuration-official",
+		},
+		{
+			ID:    types.SkillID("n8n-subworkflows-official"),
+			Label: "n8n-subworkflows-official",
+			Ref:   "n8n-io/skills",
+			Skill: "n8n-subworkflows-official",
+		},
+		{
+			ID:    types.SkillID("n8n-workflow-lifecycle-official"),
+			Label: "n8n-workflow-lifecycle-official",
+			Ref:   "n8n-io/skills",
+			Skill: "n8n-workflow-lifecycle-official",
+		},
+		{
+			ID:    types.SkillID("using-n8n-skills-official"),
+			Label: "using-n8n-skills-official",
+			Ref:   "n8n-io/skills",
+			Skill: "using-n8n-skills-official",
+		},
+	},
+}
+
+var Groups = []*Group{
+	N8nSkillGroup,
+}
+
+func init() {
+	for _, spec := range N8nSkillGroup.Specs {
+		spec := spec // capture loop variable
+		spec.Context = func() *types.ContextSection {
+			return &types.ContextSection{
+				Title: "n8n skill: " + spec.Skill,
+				Body:  "An n8n automation skill (" + spec.Skill + ") installed via the n8n profile.",
+			}
+		}
+	}
+}

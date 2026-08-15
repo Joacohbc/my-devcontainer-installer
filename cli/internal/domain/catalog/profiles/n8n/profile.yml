@@ -13,7 +13,7 @@ modules:
 # n8n's default UI/webhook port, so the editor is reachable from the host
 # without a manual --publish.
 ports:
-  - "5678:5678"
+  - "127.0.0.1:5678:5678"
 scripts:
   # Only the toolchain, which is baked into the image. Agent skills are not a
   # script's job — see `skills` below.
@@ -24,5 +24,5 @@ scripts:
 # manual: the installer writes into the project, so the first write is the
 # user's call.
 skills:
-  - n8n-workflows
+  - n8n-all
   - agent-browser

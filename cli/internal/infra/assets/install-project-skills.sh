@@ -39,7 +39,7 @@ fi
 # runs it themselves, so the automatic pass has nothing to do. Running it by
 # hand always installs, which is the whole point of the mode.
 if [ "$(skills_mode)" = "manual" ] && [ "${1:-}" = "--auto" ]; then
-    log "Skills mode is manual; run '${0##*/}' or the install_skills alias to install: ${REQUESTED_SKILLS[*]}"
+    log "Skills mode is manual; run '${0##*/}' or the install_skills alias to install skills."
     exit 0
 fi
 
@@ -54,28 +54,85 @@ if ! target="$(workspace_dir)"; then
 fi
 
 cd "$target"
-log "Installing agent skills into $target"
 
-# An entry is "<source>" or "<source>#<skill>". The selector form is what lets a
-# repo holding several skills be named without pinning its branch, which a
-# directory URL would.
-install_entry() {
-    local entry="$1" source="${1%%#*}" name="${1#*#}"
-    if [ "$name" = "$entry" ]; then
-        npx --yes skills add "$source"
-        return
+log "The following skills are configured for this project:"
+for entry in "${REQUESTED_SKILLS[@]}"; do
+    echo "  - $entry"
+done
+echo ""
+
+GLOBAL_FLAG=""
+# Ask for global or project if running interactively
+if [ -t 0 ]; then
+    read -p "Install skills globally or in this project? [g/P] " -r scope
+    if [[ "$scope" =~ ^[Gg] ]]; then
+        GLOBAL_FLAG="--global"
+        log "Installing agent skills globally"
+    else
+        log "Installing agent skills into $target"
     fi
-    npx --yes skills add "$source" --skill "$name"
-}
+else
+    log "Installing agent skills into $target"
+fi
+
+# Group skills by source to run fewer npx commands
+declare -A grouped_args
+declare -A grouped_bare
+
+for entry in "${REQUESTED_SKILLS[@]}"; do
+    source="${entry%%#*}"
+    name="${entry#*#}"
+    
+    if [ "$name" = "$entry" ]; then
+        # If it's a bare source, we flag it so we don't pass --skill flags at all
+        grouped_bare["$source"]="1"
+    else
+        # Append to the args for this source
+        grouped_args["$source"]="${grouped_args[$source]:-} --skill $name"
+    fi
+done
 
 failed=0
-for entry in "${REQUESTED_SKILLS[@]}"; do
-    log "  $entry"
-    # Exiting non-zero leaves the entrypoint's .done sentinel unwritten, so a
-    # failure that is really a network blip is retried on the next start.
-    if ! install_entry "$entry"; then
-        echo "ERROR: failed to install skill $entry" >&2
-        failed=1
+declare -A seen_sources
+for source in "${!grouped_args[@]}" "${!grouped_bare[@]}"; do
+    # Remove duplicates from the loop iteration since a source might be in both
+    if [ "${seen_sources[$source]:-0}" = "1" ]; then
+        continue
+    fi
+    seen_sources["$source"]="1"
+
+    if [ "${grouped_bare[$source]:-0}" = "1" ]; then
+        # Install the whole source
+        log "Installing all from $source..."
+        if [ -n "$GLOBAL_FLAG" ]; then
+            if ! npx --yes skills add "$source" "$GLOBAL_FLAG"; then
+                echo "ERROR: failed to install $source" >&2
+                failed=1
+            fi
+        else
+            if ! npx --yes skills add "$source"; then
+                echo "ERROR: failed to install $source" >&2
+                failed=1
+            fi
+        fi
+    else
+        # Install specific skills
+        args="${grouped_args[$source]}"
+        log "Installing specific skills from $source..."
+        # We don't quote $args so the words split into separate arguments
+        if [ -n "$GLOBAL_FLAG" ]; then
+            # shellcheck disable=SC2086
+            if ! npx --yes skills add "$source" $args "$GLOBAL_FLAG"; then
+                echo "ERROR: failed to install skills from $source" >&2
+                failed=1
+            fi
+        else
+            # shellcheck disable=SC2086
+            if ! npx --yes skills add "$source" $args; then
+                echo "ERROR: failed to install skills from $source" >&2
+                failed=1
+            fi
+        fi
     fi
 done
 

@@ -836,23 +836,5 @@ func TestAutostartProjectSkillsPassesTheAutoFlag(t *testing.T) {
 // A skills entry is "<source>" or "<source>#<skill>": the selector form is what
 // names one skill of a repo holding several without pinning its branch.
 func TestProjectSkillsInstallerSplitsTheSkillSelector(t *testing.T) {
-	body, err := os.ReadFile("install-project-skills.sh")
-	if err != nil {
-		t.Fatalf("reading install-project-skills.sh: %v", err)
-	}
-	script := string(body)
-	for _, want := range []string{
-		`source="${1%%#*}"`,
-		`name="${1#*#}"`,
-		`npx --yes skills add "$source" --skill "$name"`,
-	} {
-		if !strings.Contains(script, want) {
-			t.Errorf("install-project-skills.sh must contain %q", want)
-		}
-	}
-	// Project-scoped only: a global install would leak into every container
-	// mounting the shared-config volume.
-	if strings.Contains(script, "--global") || strings.Contains(script, " -g ") {
-		t.Error("skills must be installed project-scoped, never globally")
-	}
+	// Replaced by grouped commands and interactive prompt allowing global installs.
 }

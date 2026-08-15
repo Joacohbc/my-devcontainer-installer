@@ -47,7 +47,7 @@ func ValidateSkills(config types.SkillsConfig) error {
 	if config.Mode != "" && !slices.Contains(types.SkillModes, config.Mode) {
 		return fmt.Errorf("invalid skills mode %q: expected one of %s", config.Mode, skillModeList())
 	}
-	for _, id := range config.Skills {
+	for _, id := range catalog.ExpandSkillGroups(config.Skills) {
 		if catalog.GetAgentSkill(id, SkillDirs()...) == nil {
 			return fmt.Errorf("unknown skill: %s", id)
 		}
@@ -84,9 +84,10 @@ func ApplySelectedSkills(config *types.DevcontainerConfig) {
 // turns them into an error.
 func SkillRefs(config types.SkillsConfig) []string {
 	seen := map[types.SkillID]bool{}
-	refs := make([]string, 0, len(config.Skills))
+	expanded := catalog.ExpandSkillGroups(config.Skills)
+	refs := make([]string, 0, len(expanded))
 	for _, spec := range catalog.AllAgentSkills(SkillDirs()...) {
-		if !slices.Contains(config.Skills, spec.ID) || seen[spec.ID] {
+		if !slices.Contains(expanded, spec.ID) || seen[spec.ID] {
 			continue
 		}
 		seen[spec.ID] = true
@@ -118,7 +119,8 @@ func MissingSkillModules(config *types.DevcontainerConfig) []types.ModuleID {
 		selected[m.ID] = true
 	}
 	var missing []types.ModuleID
-	for _, id := range config.Skills.Skills {
+	expanded := catalog.ExpandSkillGroups(config.Skills.Skills)
+	for _, id := range expanded {
 		spec := catalog.GetAgentSkill(id, SkillDirs()...)
 		if spec == nil {
 			continue

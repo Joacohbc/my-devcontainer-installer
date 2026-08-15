@@ -214,7 +214,7 @@ func TestEmbeddedProfileSkillsAreCatalogued(t *testing.T) {
 		if p.SkillsMode != "" && !slices.Contains(types.SkillModes, p.SkillsMode) {
 			t.Errorf("profile %q has an unknown skills mode %q", p.ID, p.SkillsMode)
 		}
-		for _, id := range p.Skills {
+		for _, id := range catalog.ExpandSkillGroups(p.Skills) {
 			if catalog.GetAgentSkill(id) == nil {
 				t.Errorf("profile %q names unknown skill %q", p.ID, id)
 			}
@@ -294,7 +294,7 @@ func TestN8nProfile(t *testing.T) {
 	if !slices.Equal(p.Modules, []string{"github-cli", "nodejs", "pnpm", "chrome"}) {
 		t.Errorf("unexpected modules, got %v", p.Modules)
 	}
-	if !slices.Contains(p.Ports, "5678:5678") {
+	if !slices.Contains(p.Ports, "127.0.0.1:5678:5678") {
 		t.Errorf("expected n8n's editor port to be published, got %v", p.Ports)
 	}
 	byFile := map[string]types.ScriptWhen{}
@@ -304,7 +304,7 @@ func TestN8nProfile(t *testing.T) {
 	if got := byFile["install-n8n-automation-tools.sh"]; got != types.ScriptWhenBuild {
 		t.Errorf("the toolchain must be baked into the image, got when=%q", got)
 	}
-	for _, want := range []types.SkillID{types.SkillN8nWorkflows, types.SkillAgentBrowser} {
+	for _, want := range []types.SkillID{types.SkillN8nAll, types.SkillAgentBrowser} {
 		if !slices.Contains(p.Skills, want) {
 			t.Errorf("expected the %q skill, got %v", want, p.Skills)
 		}
