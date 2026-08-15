@@ -3,6 +3,7 @@ package service
 import (
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
@@ -24,22 +25,36 @@ var modeChoiceLabels = map[string]string{
 }
 
 const (
-	stepKeyWorkspace    = "workspace"
-	stepKeyMode         = "mode"
-	stepKeyProfile      = "profile"
-	stepKeyVariant      = "variant"
-	stepKeyImage        = "image"
-	stepKeySubnet       = "subnet"
-	stepKeyPorts        = "ports"
-	stepKeyVolumes      = "volumes"
-	stepKeySharedConfig = "sharedConfig"
-	stepKeySkills       = "skills"
-	stepKeySkillsMode   = "skillsMode"
+	stepKeyWorkspace     = "workspace"
+	stepKeyMode          = "mode"
+	stepKeyProfile       = "profile"
+	stepKeyVariant       = "variant"
+	stepKeyImage         = "image"
+	stepKeySubnet        = "subnet"
+	stepKeyPorts         = "ports"
+	stepKeyVolumes       = "volumes"
+	stepKeySharedConfig  = "sharedConfig"
+	stepKeySkillsEnabled = "skillsEnabled"
+	stepKeySkillsMode    = "skillsMode"
+)
+
+const (
+	// skillsPerPage caps one screen's worth of skills, so a category with dozens
+	// of them is asked page by page instead of as one unreadable multiselect.
+	skillsPerPage = 10
+	// skipSkillCategory is the first choice of every skill page: it drops the
+	// whole category, not just the page. ':' is outside the charset
+	// domain.ValidateSkillID accepts, so it can never collide with a skill id.
+	skipSkillCategory = "skip:category"
 )
 
 func categoryStepKey(c types.UICategory) string  { return "cat:" + string(c) }
 func optionStepKey(entryID, optID string) string { return "opt:" + entryID + ":" + optID }
 func envStepKey(name string) string              { return "env:" + name }
+
+func skillStepKey(category types.SkillID, page int) string {
+	return fmt.Sprintf("skills:%s:%d", category, page)
+}
 
 func choicesFromOption(o types.ModuleOption) []Option {
 	choices := make([]Option, len(o.Choices))
@@ -772,46 +787,142 @@ func ProfileChoices(dirs ...string) []Option {
 	return choices
 }
 
-// skillSteps let the project pick agent skills and how they get installed. The
+// skillSteps let the project pick agent skills and how they get installed. A
+// yes/no gate comes first, and past it they are asked one category at a time in
+// pages of skillsPerPage: the catalogue runs to dozens of entries, and one
+// multiselect that long is unreadable. The
 // mode step only appears once a skill is selected, since it has nothing to
 // govern otherwise. Profiles mode is skipped: the installer and its alias come
 // from a Dockerfile module, and a prebuilt image was not built with it.
 func (w wizardContext) skillSteps(s *State) []Step {
-	if currentMode(s) != types.BuildModeCustom || len(catalog.AllAgentSkills(domain.SkillDirs()...)) == 0 {
+	groups := catalog.AgentSkillsByCategory(domain.SkillDirs()...)
+	if currentMode(s) != types.BuildModeCustom || len(groups) == 0 {
 		return nil
 	}
-	steps := []Step{w.skillsStep()}
-	if len(s.Strings(stepKeySkills)) > 0 {
+	// One yes/no before any listing: a project that wants no skills answers it
+	// once instead of paging through every category to select nothing.
+	steps := []Step{w.skillsEnabledStep()}
+	if !s.Bool(stepKeySkillsEnabled) {
+		return steps
+	}
+	for _, group := range groups {
+		steps = append(steps, w.skillCategorySteps(s, group)...)
+	}
+	if len(pickedSkillIDs(s)) > 0 {
 		steps = append(steps, w.skillsModeStep())
 	}
 	return steps
 }
 
-func (w wizardContext) skillsStep() Step {
-	return Step{Key: stepKeySkills, Build: func(s *State) Field {
-		all := catalog.AllAgentSkills(domain.SkillDirs()...)
-		choices := make([]Option, 0, len(all))
-		for _, spec := range all {
-			choices = append(choices, Option{Value: string(spec.ID), Label: spec.Label})
-		}
-		// Seeded like the category steps: base, then the chosen profile's own
-		// skills, then an explicit answer. A profile that declares skills means
-		// them the same way it means its modules, so they arrive pre-checked
-		// rather than as something to re-pick by hand.
-		initial := skillIDStrings(w.base.Skills.Skills)
-		if p, ok := w.pickedProfile(s); ok {
-			initial = skillIDStrings(p.Skills)
-		}
-		if s.Has(stepKeySkills) {
-			initial = s.Strings(stepKeySkills)
+func (w wizardContext) skillsEnabledStep() Step {
+	return Step{Key: stepKeySkillsEnabled, Build: func(s *State) Field {
+		initial := len(w.initialSkillIDs(s)) > 0
+		if s.Has(stepKeySkillsEnabled) {
+			initial = s.Bool(stepKeySkillsEnabled)
 		}
 		return Field{
-			Kind:    FieldMultiselect,
-			Title:   "Agent skills for the project (installed into the workspace):",
-			Choices: choices,
+			Kind:    FieldConfirm,
+			Title:   "Install agent skills into this project?",
 			Initial: initial,
 		}
 	}}
+}
+
+// skillCategorySteps is one step per page of a category. Answering the skip
+// sentinel drops the pages after it: the sentinel means the whole category, so
+// there is nothing left to ask about it.
+func (w wizardContext) skillCategorySteps(s *State, group catalog.SkillGroup) []Step {
+	var steps []Step
+	for page, key := range skillStepKeys(group) {
+		steps = append(steps, Step{Key: key, Build: w.skillPageField(group, page)})
+		if slices.Contains(s.Strings(key), skipSkillCategory) {
+			break
+		}
+	}
+	return steps
+}
+
+func (w wizardContext) skillPageField(group catalog.SkillGroup, page int) func(*State) Field {
+	from := page * skillsPerPage
+	to := min(from+skillsPerPage, len(group.Skills))
+	return func(s *State) Field {
+		choices := []Option{{Value: skipSkillCategory, Label: "Skip this category — install none of its skills"}}
+		pageIDs := make([]string, 0, to-from)
+		for _, spec := range group.Skills[from:to] {
+			choices = append(choices, Option{Value: string(spec.ID), Label: spec.Label})
+			pageIDs = append(pageIDs, string(spec.ID))
+		}
+		initial := intersectStrings(pageIDs, w.initialSkillIDs(s))
+		if key := skillStepKey(group.ID, page); s.Has(key) {
+			initial = s.Strings(key)
+		}
+		return Field{
+			Kind:    FieldMultiselect,
+			Title:   skillPageTitle(group, from, to),
+			Choices: choices,
+			Initial: initial,
+		}
+	}
+}
+
+func skillPageTitle(group catalog.SkillGroup, from, to int) string {
+	if len(group.Skills) <= skillsPerPage {
+		return fmt.Sprintf("%s (Space to select, Enter to confirm):", group.Label)
+	}
+	return fmt.Sprintf("%s — %d-%d of %d (Space to select, Enter to confirm):", group.Label, from+1, to, len(group.Skills))
+}
+
+func skillStepKeys(group catalog.SkillGroup) []string {
+	pages := (len(group.Skills) + skillsPerPage - 1) / skillsPerPage
+	keys := make([]string, 0, pages)
+	for page := 0; page < pages; page++ {
+		keys = append(keys, skillStepKey(group.ID, page))
+	}
+	return keys
+}
+
+// initialSkillIDs is what the pages arrive pre-checked with: the chosen
+// profile's own skills, or the project's existing ones. A profile that declares
+// skills means them the same way it means its modules, so they are not
+// something to re-pick by hand.
+func (w wizardContext) initialSkillIDs(s *State) []string {
+	if p, ok := w.pickedProfile(s); ok {
+		return skillIDStrings(p.Skills)
+	}
+	return skillIDStrings(w.base.Skills.Skills)
+}
+
+func intersectStrings(ids, want []string) []string {
+	var out []string
+	for _, id := range ids {
+		if slices.Contains(want, id) {
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
+// pickedSkillIDs is every skill the category pages selected. A category whose
+// pages carry the skip sentinel contributes nothing, including what earlier
+// pages of it had selected before the user went back and skipped it.
+func pickedSkillIDs(s *State) []string {
+	var out []string
+	for _, group := range catalog.AgentSkillsByCategory(domain.SkillDirs()...) {
+		out = append(out, categorySkillIDs(s, group)...)
+	}
+	return out
+}
+
+func categorySkillIDs(s *State, group catalog.SkillGroup) []string {
+	var out []string
+	for _, key := range skillStepKeys(group) {
+		answered := s.Strings(key)
+		if slices.Contains(answered, skipSkillCategory) {
+			return nil
+		}
+		out = append(out, answered...)
+	}
+	return out
 }
 
 func (w wizardContext) skillsModeStep() Step {
@@ -837,22 +948,27 @@ func (w wizardContext) selectedSkills(s *State) types.SkillsConfig {
 	if currentMode(s) != types.BuildModeCustom {
 		return types.SkillsConfig{}
 	}
-	// The skills step normally always runs in custom mode; when it did not,
+	// The skills steps normally always run in custom mode; when they did not,
 	// fall back the same way selectedScripts does — to the chosen profile's
 	// own skills, or the project's existing ones.
-	if !s.Has(stepKeySkills) {
+	if !s.Has(stepKeySkillsEnabled) {
 		if p, ok := w.pickedProfile(s); ok {
 			return types.SkillsConfig{Mode: p.SkillsMode, Skills: p.Skills}
 		}
 		return w.base.Skills
 	}
-	selected := s.Strings(stepKeySkills)
-	skills := make([]types.SkillID, 0, len(selected))
-	for _, id := range selected {
-		skills = append(skills, types.SkillID(id))
-	}
-	if len(skills) == 0 {
+	// Answering the gate with "no" is an answer, not a missing one: it clears
+	// what the project or the profile brought rather than falling back to it.
+	if !s.Bool(stepKeySkillsEnabled) {
 		return types.SkillsConfig{}
+	}
+	picked := pickedSkillIDs(s)
+	if len(picked) == 0 {
+		return types.SkillsConfig{}
+	}
+	selected := make([]types.SkillID, 0, len(picked))
+	for _, id := range picked {
+		selected = append(selected, types.SkillID(id))
 	}
 	mode := w.base.Skills.Mode
 	if p, ok := w.pickedProfile(s); ok && p.SkillsMode != "" {
@@ -861,7 +977,7 @@ func (w wizardContext) selectedSkills(s *State) types.SkillsConfig {
 	if s.Has(stepKeySkillsMode) {
 		mode = types.SkillMode(s.String(stepKeySkillsMode))
 	}
-	return types.SkillsConfig{Mode: mode, Skills: skills}
+	return types.SkillsConfig{Mode: mode, Skills: selected}
 }
 
 func skillIDStrings(ids []types.SkillID) []string {
@@ -881,15 +997,7 @@ func (s GenerateService) SelectSkills(base types.SkillsConfig, prompt Prompter) 
 	}
 
 	ctx := wizardContext{base: &types.DevcontainerConfig{Skills: base}}
-	build := func(st *State) []Step {
-		steps := []Step{ctx.skillsStep()}
-		if len(st.Strings(stepKeySkills)) > 0 {
-			steps = append(steps, ctx.skillsModeStep())
-		}
-		return steps
-	}
-
-	state, err := prompt.Wizard(build)
+	state, err := prompt.Wizard(ctx.skillSteps)
 	if err != nil {
 		return types.SkillsConfig{}, err
 	}
