@@ -1,21 +1,14 @@
-.env
-Projects/*
-.dev-enviroment/*
-
-node_modules/
-
 cli/node_modules/
-cli/Dockerfile
-cli/Dockerfile.*
-cli/docker-compose.*
-cli/devcontainer.config.*
 cli/dist/
 
 .antigravitycli/
 graphify-out/
-testing-dir/
+.agents/
+.claude/
+.wayfinder/
 
 # devcontainer-cli
 .dc_*/
 devcontainer.config.json
 temp-dir/
+testing-dir/
