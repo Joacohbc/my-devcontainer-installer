@@ -33,7 +33,7 @@ wired=0
 if command -v claude >/dev/null 2>&1; then wire "Claude Code" claude; wired=1; fi
 # Codex is npx-based and leaves no binary; ~/.codex is the best-effort marker.
 if command -v codex >/dev/null 2>&1 || [ -d "$HOME/.codex" ]; then wire "Codex" codex; wired=1; fi
-if command -v antigravity >/dev/null 2>&1; then wire "Antigravity" antigravity; wired=1; fi
+if command -v agy >/dev/null 2>&1; then wire "Antigravity" antigravity; wired=1; fi
 if command -v copilot >/dev/null 2>&1; then wire "GitHub Copilot" copilot; wired=1; fi
 
 # Fallback: if no known agent was detected, let graphify auto-detect.

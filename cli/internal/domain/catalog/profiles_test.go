@@ -45,6 +45,26 @@ func TestBaseProfile(t *testing.T) {
 	if slices.Contains(p.Modules, "zellij") {
 		t.Errorf("zellij is always-on and must not be listed in the base profile, got %v", p.Modules)
 	}
+	if len(p.Skills) != 0 {
+		t.Errorf("base profile must have no default skills, got %v", p.Skills)
+	}
+}
+
+func TestPlainBuiltinProfilesHaveNoDefaultSkills(t *testing.T) {
+	plainIDs := []string{
+		"base", "nodejs", "bun", "java-temurin", "python", "go",
+		"node-go", "node-python", "node-java-temurin",
+		"bun-go", "bun-python", "bun-java-temurin",
+	}
+	for _, id := range plainIDs {
+		p, ok := catalog.Resolve(id, "")
+		if !ok {
+			t.Fatalf("expected to resolve profile %s", id)
+		}
+		if len(p.Skills) != 0 {
+			t.Errorf("profile %q must have no default skills, got %v", id, p.Skills)
+		}
+	}
 }
 
 // Profile.Remote is what tells --profile's mode=profiles (pull target) role
@@ -160,7 +180,7 @@ func TestScraperProfile(t *testing.T) {
 	if p.Source != "builtin" {
 		t.Errorf("expected source builtin, got %s", p.Source)
 	}
-	for _, want := range []string{"chrome", "python", "nodejs", "pnpm", "sqlite", "ffmpeg", "graphify"} {
+	for _, want := range []string{"chrome", "python", "nodejs", "pnpm", "sqlite", "ffmpeg"} {
 		if !slices.Contains(p.Modules, want) {
 			t.Errorf("expected the scraper profile to include %q, got %v", want, p.Modules)
 		}
@@ -214,11 +234,103 @@ func TestEmbeddedProfileSkillsAreCatalogued(t *testing.T) {
 		if p.SkillsMode != "" && !slices.Contains(types.SkillModes, p.SkillsMode) {
 			t.Errorf("profile %q has an unknown skills mode %q", p.ID, p.SkillsMode)
 		}
-		for _, id := range p.Skills {
+		for _, id := range catalog.ExpandSkillGroups(p.Skills) {
 			if catalog.GetAgentSkill(id) == nil {
 				t.Errorf("profile %q names unknown skill %q", p.ID, id)
 			}
 		}
+	}
+}
+
+// The data-science profile bundles Python's data-analysis stack (JupyterLab,
+// pandas, scikit-learn, …) via its script, and JupyterLab's port.
+func TestDataScienceProfile(t *testing.T) {
+	p, ok := catalog.Resolve("data-science", "")
+	if !ok {
+		t.Fatal("expected to resolve the data-science profile")
+	}
+	if p.Source != "builtin" {
+		t.Errorf("expected source builtin, got %s", p.Source)
+	}
+	if !slices.Equal(p.Modules, []string{"github-cli", "python", "sqlite"}) {
+		t.Errorf("unexpected modules, got %v", p.Modules)
+	}
+	if !slices.Contains(p.Ports, "8888:8888") {
+		t.Errorf("expected the JupyterLab port to be published, got %v", p.Ports)
+	}
+	byFile := map[string]types.ScriptWhen{}
+	for _, s := range p.Scripts {
+		byFile[s.File] = s.ResolvedWhen()
+	}
+	if got := byFile["install-datascience-tools.sh"]; got != types.ScriptWhenBuild {
+		t.Errorf("the toolchain must be baked into the image, got when=%q", got)
+	}
+	if !slices.Equal(p.Skills, []types.SkillID{types.SkillDataScience}) {
+		t.Errorf("expected the data-science skill, got %v", p.Skills)
+	}
+	if p.SkillsMode != "" {
+		t.Errorf("expected the data-science profile to leave the mode at its default, got %q", p.SkillsMode)
+	}
+}
+
+// The media-editor profile bundles image/audio/video/PDF/doc tooling around
+// FFmpeg and Remotion, all script-installed except ffmpeg/chrome themselves.
+func TestMediaEditorProfile(t *testing.T) {
+	p, ok := catalog.Resolve("media-editor", "")
+	if !ok {
+		t.Fatal("expected to resolve the media-editor profile")
+	}
+	if p.Source != "builtin" {
+		t.Errorf("expected source builtin, got %s", p.Source)
+	}
+	if !slices.Equal(p.Modules, []string{"github-cli", "nodejs", "pnpm", "chrome", "ffmpeg"}) {
+		t.Errorf("unexpected modules, got %v", p.Modules)
+	}
+	byFile := map[string]types.ScriptWhen{}
+	for _, s := range p.Scripts {
+		byFile[s.File] = s.ResolvedWhen()
+	}
+	if got := byFile["install-media-tools.sh"]; got != types.ScriptWhenBuild {
+		t.Errorf("the toolchain must be baked into the image, got when=%q", got)
+	}
+	if !slices.Equal(p.Skills, []types.SkillID{types.SkillRemotion, types.SkillClaudeVideo}) {
+		t.Errorf("expected the remotion and claude-video skills, got %v", p.Skills)
+	}
+	if p.SkillsMode != "" {
+		t.Errorf("expected the media-editor profile to leave the mode at its default, got %q", p.SkillsMode)
+	}
+}
+
+// The n8n profile installs n8n itself inside the devcontainer (not as a
+// compose service) plus Playwright/Chrome for UI automation.
+func TestN8nProfile(t *testing.T) {
+	p, ok := catalog.Resolve("n8n", "")
+	if !ok {
+		t.Fatal("expected to resolve the n8n profile")
+	}
+	if p.Source != "builtin" {
+		t.Errorf("expected source builtin, got %s", p.Source)
+	}
+	if !slices.Equal(p.Modules, []string{"github-cli", "nodejs", "pnpm", "chrome"}) {
+		t.Errorf("unexpected modules, got %v", p.Modules)
+	}
+	if !slices.Contains(p.Ports, "127.0.0.1:5678:5678") {
+		t.Errorf("expected n8n's editor port to be published, got %v", p.Ports)
+	}
+	byFile := map[string]types.ScriptWhen{}
+	for _, s := range p.Scripts {
+		byFile[s.File] = s.ResolvedWhen()
+	}
+	if got := byFile["install-n8n-automation-tools.sh"]; got != types.ScriptWhenBuild {
+		t.Errorf("the toolchain must be baked into the image, got when=%q", got)
+	}
+	for _, want := range []types.SkillID{types.SkillCategoryAutomationN8n, types.SkillAgentBrowser} {
+		if !slices.Contains(p.Skills, want) {
+			t.Errorf("expected the %q skill, got %v", want, p.Skills)
+		}
+	}
+	if p.SkillsMode != "" {
+		t.Errorf("expected the n8n profile to leave the mode at its default, got %q", p.SkillsMode)
 	}
 }
 

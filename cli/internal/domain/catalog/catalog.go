@@ -37,6 +37,8 @@ var DockerfileModules = []*dockerfile.ModuleSpec{
 	dockerfile.CopilotCliModule,
 	dockerfile.GraphifyModule,
 	dockerfile.CavemanModule,
+	dockerfile.ClaudeMemModule,
+	dockerfile.ContextModeModule,
 	dockerfile.ZellijModule,
 	dockerfile.ChromeModule,
 	dockerfile.FfmpegModule,
@@ -190,6 +192,7 @@ func AllAgentSkills(dirs ...string) []*skills.Spec {
 		if seen[s.ID] {
 			continue
 		}
+		seen[s.ID] = true
 		out = append(out, s)
 	}
 	return out
@@ -206,13 +209,73 @@ func GetAgentSkill(id types.SkillID, dirs ...string) *skills.Spec {
 	return nil
 }
 
+// UncategorizedSkillGroupID names the trailing group AgentSkillsByCategory puts
+// every skill in whose category is missing or unknown — every user-defined one,
+// since a user skill manifest has no category field.
+const UncategorizedSkillGroupID = types.SkillID("other")
+
+// SkillGroup is one skill category with the skills that belong to it, in
+// catalogue order.
+type SkillGroup struct {
+	ID     types.SkillID
+	Label  string
+	Skills []*skills.Spec
+}
+
+// AgentSkillsByCategory groups every known skill — built-in and user-defined
+// under dirs — by its category, in the catalogue's category order, with the
+// uncategorized ones last. Empty groups are dropped, so a caller can ask one
+// question per returned group.
+func AgentSkillsByCategory(dirs ...string) []SkillGroup {
+	index := make(map[types.SkillID]int, len(skills.Categories))
+	groups := make([]SkillGroup, 0, len(skills.Categories)+1)
+	for _, c := range skills.Categories {
+		index[c.ID] = len(groups)
+		groups = append(groups, SkillGroup{ID: c.ID, Label: c.Label})
+	}
+	groups = append(groups, SkillGroup{ID: UncategorizedSkillGroupID, Label: "Other skills"})
+	other := len(groups) - 1
+
+	for _, s := range AllAgentSkills(dirs...) {
+		at := other
+		if cat := skills.GetCategory(types.SkillID(s.Category)); cat != nil {
+			at = index[cat.ID]
+		}
+		groups[at].Skills = append(groups[at].Skills, s)
+	}
+
+	var out []SkillGroup
+	for _, g := range groups {
+		if len(g.Skills) > 0 {
+			out = append(out, g)
+		}
+	}
+	return out
+}
+
+// ExpandSkillGroups replaces any Category ID or alias in the list with the IDs of its constituent Skills.
+func ExpandSkillGroups(ids []types.SkillID) []types.SkillID {
+	var expanded []types.SkillID
+	for _, id := range ids {
+		if cat := skills.GetCategory(id); cat != nil {
+			expanded = append(expanded, cat.Skills...)
+			continue
+		}
+		expanded = append(expanded, id)
+	}
+	return expanded
+}
+
 // AgentSkillIDs returns every known skill id — built-in and user-defined
-// under dirs — in catalogue order.
+// under dirs — in catalogue order. It also includes Category IDs.
 func AgentSkillIDs(dirs ...string) []string {
 	all := AllAgentSkills(dirs...)
-	ids := make([]string, 0, len(all))
+	ids := make([]string, 0, len(all)+len(skills.Categories))
 	for _, s := range all {
 		ids = append(ids, string(s.ID))
+	}
+	for _, c := range skills.Categories {
+		ids = append(ids, string(c.ID))
 	}
 	return ids
 }

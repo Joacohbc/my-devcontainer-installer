@@ -687,6 +687,36 @@ made the script approach wrong.
 | Plumbing | `dockerfile.SkillsModule` — the installer on PATH, the `install_skills` alias, the entrypoint hook |
 | Installer | `internal/infra/assets/install-project-skills.sh` (+ `autostart-project-skills.sh`) |
 
+**Every wizard yes/no starts at no.** `optionField`'s `FieldConfirm` branch, the
+shared-config step and the skills gate all seed `false` unless something already
+said otherwise — the module option's own `Default`, or the project's stored
+value. Pressing enter through the wizard therefore opts into nothing, and the
+non-wizard defaults are untouched (`types.SharedConfigEnabled` still reads an
+absent field as on, so a config written by hand or by flags keeps mounting the
+volume; only the wizard's seeded answer changed, and `reduce` records it
+explicitly).
+
+**The picker opens with one yes/no, then asks one category at a time, in pages
+of ten.** The gate (`stepKeySkillsEnabled`) comes before any listing: a project
+that wants no skills answers it once instead of paging through every category to
+select nothing, and declining it is an *answer* — `selectedSkills` returns an
+empty config rather than falling back to the profile's or the project's own
+skills, which is what lets a regenerate clear them. It defaults to yes only when
+something already seeded skills. Past the gate, the catalogue runs to dozens of
+entries and a single multiselect that long is unreadable, so
+`skillSteps` (`service/generate_wizard.go`) emits one step per page of one
+`catalog.SkillGroup` — the skills grouped by their `category:`, in the order
+`skills.yml` declares them, with the uncategorized ones (every user-defined
+skill, which has no category field) in a trailing `other` group. Three details
+carry weight: every page leads with the `skipSkillCategory` sentinel, which
+drops **the whole category** rather than the page — so answering it also removes
+the category's remaining pages from the wizard and discards what an earlier page
+of it had selected; the sentinel is `skip:category`, whose `:` is outside the
+charset `domain.ValidateSkillID` accepts, so it can never collide with a skill
+id; and the answers live under one key per page (`skillStepKey`), so
+`selectedSkills` reads them back through `pickedSkillIDs` instead of a single
+step key. Adding a category is a `skills.yml` edit — the wizard needs no change.
+
 **A skill can be user-defined**, the same idea as a user profile: a flat
 `~/.devcontainer-cli/skills/<id>.yml` (`domain.SkillDirs()`/`SkillDir()`,
 loaded by `catalog.LoadUserSkills`) carrying `id`/`label`/`ref`/`skill`/

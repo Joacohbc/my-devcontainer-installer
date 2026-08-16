@@ -983,24 +983,31 @@ func TestGenerateDockerfile_ClaudeCode(t *testing.T) {
 }
 
 // Auto-start installers go to start.d/ with an order prefix; the agent-wiring
-// tools (graphify/caveman) carry order 90 so they run after the agents.
+// tools (graphify/caveman/claude-mem/context-mode) carry order 90 so they run
+// after the agents, and the skills module carries order 95 so it runs after
+// those.
 func TestGenerateDockerfile_AutoStartOrdering(t *testing.T) {
 	cfg := makeConfig(func(c *types.DevcontainerConfig) {
 		c.Dockerfile.Modules = []types.SelectedModule{
 			{ID: "python"}, {ID: "nodejs"},
 			{ID: "claude-code"}, {ID: "graphify"}, {ID: "caveman"},
 		}
+		c.Skills = types.SkillsConfig{Skills: []types.SkillID{types.SkillFirecrawl}}
 	})
+	domain.ApplySelectedSkills(cfg)
 	df := mustGenerateDockerfile(t, cfg)
 	assertContainsStr(t, df, "/home/devuser/post-script/start.d/50-install-claude-code.sh", "claude order 50")
 	assertContainsStr(t, df, "/home/devuser/post-script/start.d/90-install-graphify.sh", "graphify order 90")
 	assertContainsStr(t, df, "/home/devuser/post-script/start.d/90-install-caveman.sh", "caveman order 90")
-	// The agent (50-) must be COPYed before the wiring tools (90-) so the sorted
-	// glob in the entrypoint runs them in that order.
+	assertContainsStr(t, df, "/home/devuser/post-script/start.d/95-autostart-project-skills.sh", "skills order 95")
+	// The agent (50-) must be COPYed before the wiring tools (90-), which must
+	// be COPYed before skills (95-), so the sorted glob in the entrypoint runs
+	// them in that order.
 	claudeIdx := strings.Index(df, "50-install-claude-code.sh")
 	graphifyIdx := strings.Index(df, "90-install-graphify.sh")
-	if claudeIdx < 0 || graphifyIdx < 0 || claudeIdx > graphifyIdx {
-		t.Errorf("agent installer must be ordered before the wiring tools:\nclaude=%d graphify=%d", claudeIdx, graphifyIdx)
+	skillsIdx := strings.Index(df, "95-autostart-project-skills.sh")
+	if claudeIdx < 0 || graphifyIdx < 0 || skillsIdx < 0 || claudeIdx > graphifyIdx || graphifyIdx > skillsIdx {
+		t.Errorf("agent installer must be ordered before the wiring tools, before skills:\nclaude=%d graphify=%d skills=%d", claudeIdx, graphifyIdx, skillsIdx)
 	}
 }
 
@@ -1070,6 +1077,26 @@ func TestGenerateDockerfile_Caveman(t *testing.T) {
 	assertContainsStr(t, df, "install-caveman.sh", "caveman script")
 	// caveman requires nodejs
 	assertContainsStr(t, df, "fnm install --lts", "caveman requires nodejs")
+}
+
+func TestGenerateDockerfile_ClaudeMem(t *testing.T) {
+	cfg := makeConfig(func(c *types.DevcontainerConfig) {
+		c.Dockerfile.Modules = []types.SelectedModule{{ID: "claude-mem"}}
+	})
+	df := mustGenerateDockerfile(t, cfg)
+	assertContainsStr(t, df, "install-claude-mem.sh", "claude-mem script")
+	// claude-mem requires nodejs
+	assertContainsStr(t, df, "fnm install --lts", "claude-mem requires nodejs")
+}
+
+func TestGenerateDockerfile_ContextMode(t *testing.T) {
+	cfg := makeConfig(func(c *types.DevcontainerConfig) {
+		c.Dockerfile.Modules = []types.SelectedModule{{ID: "context-mode"}}
+	})
+	df := mustGenerateDockerfile(t, cfg)
+	assertContainsStr(t, df, "install-context-mode.sh", "context-mode script")
+	// context-mode requires nodejs
+	assertContainsStr(t, df, "fnm install --lts", "context-mode requires nodejs")
 }
 
 func TestGenerateCompose_DependsOnSortedRegardlessOfInputOrder(t *testing.T) {

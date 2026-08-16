@@ -3,25 +3,26 @@
 #
 # github-cli is listed first for the same reason every other built-in does it:
 # its Dockerfile layer is shared with the cached devcontainer-base image.
-id: scraper
-label: Scraper (Chromium, Python+uv, Node+pnpm, scraping toolchain)
+id: n8n
+label: n8n Automation (n8n local + Playwright/Chrome UI automation)
 modules:
   - github-cli
   - nodejs
   - pnpm
-  - python
   - chrome
-  - sqlite
-  - ffmpeg
+# n8n's default UI/webhook port, so the editor is reachable from the host
+# without a manual --publish.
+ports:
+  - "127.0.0.1:5678:5678"
 scripts:
   # Only the toolchain, which is baked into the image. Agent skills are not a
   # script's job — see `skills` below.
-  - file: install-scraper-tools.sh
+  - file: install-n8n-automation-tools.sh
     when: build
-# Project-scoped agent skills, installed into the workspace by the skills module
-# (which is what pulls nodejs in). The mode is left at the default, manual: the
-# installer writes into the project, so the first write is the user's call.
+# Project-scoped agent skills, installed into the workspace by the skills
+# module (which is what pulls nodejs in). The mode is left at the default,
+# manual: the installer writes into the project, so the first write is the
+# user's call.
 skills:
-  - firecrawl
+  - automation-n8n
   - agent-browser
-  - webapp-testing

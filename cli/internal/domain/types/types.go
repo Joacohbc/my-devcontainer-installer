@@ -33,6 +33,8 @@ const (
 	ModuleCopilotCli     ModuleID = "copilot-cli"
 	ModuleGraphify       ModuleID = "graphify"
 	ModuleCaveman        ModuleID = "caveman"
+	ModuleClaudeMem      ModuleID = "claude-mem"
+	ModuleContextMode    ModuleID = "context-mode"
 	ModuleZellij         ModuleID = "zellij"
 	ModuleChrome         ModuleID = "chrome"
 	ModuleFfmpeg         ModuleID = "ffmpeg"
@@ -201,9 +203,25 @@ type SelectedModule struct {
 type SkillID string
 
 const (
-	SkillFirecrawl     SkillID = "firecrawl"
-	SkillAgentBrowser  SkillID = "agent-browser"
-	SkillWebappTesting SkillID = "webapp-testing"
+	SkillFirecrawl      SkillID = "firecrawl"
+	SkillAgentBrowser   SkillID = "agent-browser"
+	SkillWebappTesting  SkillID = "webapp-testing"
+	SkillDataScience    SkillID = "data-science"
+	SkillRemotion       SkillID = "remotion-create"
+	SkillClaudeVideo    SkillID = "claude-video"
+	SkillImpeccable     SkillID = "impeccable"
+	SkillWayfinder      SkillID = "wayfinder"
+	SkillFrontendDesign SkillID = "frontend-design"
+	SkillUIUXProMax     SkillID = "ui-ux-pro-max"
+	SkillFindSkills     SkillID = "find-skills"
+
+	// Functional Category IDs (expandable via ExpandSkillGroups)
+	SkillCategoryCoreAgents           SkillID = "core-agents"
+	SkillCategoryFrontendDesign       SkillID = "frontend-ux-design"
+	SkillCategoryArchitecturePlanning SkillID = "architecture-planning"
+	SkillCategoryQualityTesting       SkillID = "quality-testing"
+	SkillCategoryDocsContent          SkillID = "docs-content"
+	SkillCategoryAutomationN8n        SkillID = "automation-n8n"
 )
 
 // SkillMode says who installs the project's agent skills.

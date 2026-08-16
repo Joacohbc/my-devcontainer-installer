@@ -3,6 +3,7 @@ package service
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
@@ -90,9 +91,9 @@ func TestConfigureReducesVolumes(t *testing.T) {
 	}
 }
 
-// The wizard prompts for shared-config (defaulting to the base's current value),
-// but when the step is left at its seeded default Configure must carry the base
-// value through: a nil base stays enabled-by-default and an explicit opt-out survives.
+// The wizard's yes/no steps all start at no, so a project that never chose gets
+// no shared-config volume; a project that did chose keeps its answer in either
+// direction when the step is left at its seeded default.
 func TestConfigureKeepsBaseSharedConfig(t *testing.T) {
 	defer useFakeDocker(&fakeRunner{status: 0})()
 
@@ -108,8 +109,18 @@ func TestConfigureKeepsBaseSharedConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Configure: %v", err)
 	}
+	if types.SharedConfigEnabled(cfg) {
+		t.Errorf("an unset base must default to no, got %v", cfg.Compose.SharedConfig)
+	}
+
+	on := true
+	optedIn := &types.DevcontainerConfig{Env: map[string]string{}, Compose: types.ComposeConfig{SharedConfig: &on}}
+	cfg, err = svc.Configure(optedIn, "/home/user/proj", scriptedPrompter{answers: answers})
+	if err != nil {
+		t.Fatalf("Configure: %v", err)
+	}
 	if !types.SharedConfigEnabled(cfg) {
-		t.Errorf("nil base should stay enabled by default, got %v", cfg.Compose.SharedConfig)
+		t.Errorf("explicit opt-in must survive the wizard, got %v", cfg.Compose.SharedConfig)
 	}
 
 	off := false
@@ -123,9 +134,8 @@ func TestConfigureKeepsBaseSharedConfig(t *testing.T) {
 	}
 }
 
-// The shared-config prompt defaults to on, but an explicit answer must win in
-// either direction: opting out from an enabled base, and opting in from an
-// opted-out base.
+// An explicit answer must win in either direction: opting out from an enabled
+// base, and opting in from an opted-out base.
 func TestConfigureHonorsSharedConfigAnswer(t *testing.T) {
 	defer useFakeDocker(&fakeRunner{status: 0})()
 
@@ -136,7 +146,7 @@ func TestConfigureHonorsSharedConfigAnswer(t *testing.T) {
 	}
 	svc := GenerateService{Report: nopReporter{}}
 
-	// Answering false on an enabled (nil) base opts out.
+	// Answering false on an unset base opts out explicitly.
 	answers := map[string]any{stepKeySharedConfig: false}
 	for k, v := range base {
 		answers[k] = v
@@ -498,16 +508,126 @@ func TestSkillsStepOffersUserDefinedSkill(t *testing.T) {
 	}
 
 	ctx := wizardContext{base: &types.DevcontainerConfig{}}
-	field := ctx.skillsStep().Build(NewState())
+	offered := offeredSkillIDs(ctx, skillsWanted())
 
-	found := false
-	for _, c := range field.Choices {
-		if c.Value == "my-skill" {
-			found = true
+	if !slices.Contains(offered, "my-skill") {
+		t.Errorf("expected 'my-skill' among the choices, got %+v", offered)
+	}
+}
+
+// skillPageKeyFor is the wizard step key of the page that offers a skill.
+func skillPageKeyFor(t *testing.T, id types.SkillID) string {
+	t.Helper()
+	for _, g := range catalog.AgentSkillsByCategory() {
+		for i, spec := range g.Skills {
+			if spec.ID == id {
+				return skillStepKey(g.ID, i/skillsPerPage)
+			}
 		}
 	}
-	if !found {
-		t.Errorf("expected 'my-skill' among the choices, got %+v", field.Choices)
+	t.Fatalf("skill %q is not in the catalogue", id)
+	return ""
+}
+
+// skillsWanted is a State that has already answered the gate step with yes, so
+// the category pages are reached.
+func skillsWanted() *State {
+	s := NewState()
+	s.Set(stepKeySkillsEnabled, true)
+	return s
+}
+
+// offeredSkillIDs is every choice the paginated category steps present.
+func offeredSkillIDs(ctx wizardContext, s *State) []string {
+	var out []string
+	for _, step := range ctx.skillSteps(s) {
+		for _, c := range step.Build(s).Choices {
+			out = append(out, c.Value)
+		}
+	}
+	return out
+}
+
+// The catalogue runs to dozens of skills, so each step asks about one category
+// and at most skillsPerPage of its skills, always leading with the skip choice.
+func TestSkillStepsAskOneCategoryPageAtATime(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	ctx := wizardContext{base: &types.DevcontainerConfig{}}
+	state := skillsWanted()
+	steps := ctx.skillSteps(state)
+	if len(steps) < 2 {
+		t.Fatal("expected the gate step plus at least one category page")
+	}
+
+	for _, step := range steps[1:] {
+		field := step.Build(state)
+		if len(field.Choices) > skillsPerPage+1 {
+			t.Errorf("step %q offers %d choices, want at most %d", step.Key, len(field.Choices), skillsPerPage+1)
+		}
+		if field.Choices[0].Value != skipSkillCategory {
+			t.Errorf("step %q leads with %q, want the skip choice", step.Key, field.Choices[0].Value)
+		}
+	}
+}
+
+// A category with more skills than fit on one page is asked over several, and
+// skipping it drops the pages after the answer along with everything picked.
+func TestSkillCategorySkipDropsTheWholeCategory(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	var paged catalog.SkillGroup
+	for _, g := range catalog.AgentSkillsByCategory() {
+		if len(g.Skills) > skillsPerPage {
+			paged = g
+			break
+		}
+	}
+	if paged.ID == "" {
+		t.Skip("no category is large enough to paginate")
+	}
+
+	ctx := wizardContext{base: &types.DevcontainerConfig{}}
+	first, second := skillStepKey(paged.ID, 0), skillStepKey(paged.ID, 1)
+
+	state := skillsWanted()
+	state.Set(first, []string{string(paged.Skills[0].ID)})
+	if !slices.ContainsFunc(ctx.skillSteps(state), func(s Step) bool { return s.Key == second }) {
+		t.Errorf("expected the category's second page among %d steps", len(ctx.skillSteps(state)))
+	}
+
+	state.Set(first, []string{skipSkillCategory, string(paged.Skills[0].ID)})
+	if slices.ContainsFunc(ctx.skillSteps(state), func(s Step) bool { return s.Key == second }) {
+		t.Error("a skipped category must not keep asking about its remaining pages")
+	}
+	if ids := categorySkillIDs(state, paged); ids != nil {
+		t.Errorf("a skipped category must select nothing, got %v", ids)
+	}
+}
+
+// Declining the gate must stop the listing entirely — no category is asked —
+// and clear what the project already carried, since "no skills" is an answer.
+func TestSkillsGateDeclinedAsksNothingElse(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	base := &types.DevcontainerConfig{Skills: types.SkillsConfig{
+		Mode:   types.SkillModeAuto,
+		Skills: []types.SkillID{types.SkillFirecrawl},
+	}}
+	ctx := wizardContext{base: base}
+
+	state := NewState()
+	if enabled, _ := ctx.skillsEnabledStep().Build(state).Initial.(bool); !enabled {
+		t.Error("a project that already has skills must default the gate to yes")
+	}
+
+	state.Set(stepKeySkillsEnabled, false)
+	steps := ctx.skillSteps(state)
+	if len(steps) != 1 || steps[0].Key != stepKeySkillsEnabled {
+		t.Fatalf("expected the gate step alone, got %d steps", len(steps))
+	}
+	if cfg := ctx.selectedSkills(state); len(cfg.Skills) != 0 {
+		t.Errorf("declining the gate must select no skills, got %+v", cfg.Skills)
 	}
 }
 
@@ -570,14 +690,18 @@ func TestConfigureExplicitSkillsBeatProfile(t *testing.T) {
 
 	svc := GenerateService{Report: nopReporter{}}
 	base := &types.DevcontainerConfig{Env: map[string]string{}}
-	prompter := scriptedPrompter{answers: map[string]any{
+	answers := map[string]any{
 		stepKeyWorkspace:  "ws",
 		stepKeyMode:       modeChoiceCustomFromProfile,
 		stepKeyProfile:    "withskills",
 		stepKeySubnet:     "172.20.0.0/24",
-		stepKeySkills:     []string{string(types.SkillAgentBrowser)},
 		stepKeySkillsMode: string(types.SkillModeManual),
-	}}
+	}
+	// Clear the page the profile's own skill sits on, then pick another one —
+	// they share a page when they share a category, so order matters here.
+	answers[skillPageKeyFor(t, types.SkillFirecrawl)] = []string{}
+	answers[skillPageKeyFor(t, types.SkillAgentBrowser)] = []string{string(types.SkillAgentBrowser)}
+	prompter := scriptedPrompter{answers: answers}
 
 	cfg, err := svc.Configure(base, tmp, prompter)
 	if err != nil {

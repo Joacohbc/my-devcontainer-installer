@@ -119,3 +119,48 @@ func TestAllAgentSkills_NoDirsIsJustBuiltins(t *testing.T) {
 		t.Errorf("got %d, want %d built-ins", len(all), len(catalog.AgentSkills))
 	}
 }
+
+// Every skill must reach exactly one group, or the wizard — which asks one
+// group at a time — would offer it twice or not at all.
+func TestAgentSkillsByCategoryCoversEverySkillOnce(t *testing.T) {
+	seen := map[types.SkillID]int{}
+	for _, g := range catalog.AgentSkillsByCategory() {
+		if len(g.Skills) == 0 {
+			t.Errorf("group %q is empty and should have been dropped", g.ID)
+		}
+		for _, s := range g.Skills {
+			seen[s.ID]++
+		}
+	}
+	for _, s := range catalog.AgentSkills {
+		if seen[s.ID] != 1 {
+			t.Errorf("skill %q appears in %d groups, want 1", s.ID, seen[s.ID])
+		}
+	}
+	if len(seen) != len(catalog.AgentSkills) {
+		t.Errorf("grouped %d skills, want %d", len(seen), len(catalog.AgentSkills))
+	}
+}
+
+// A user-defined skill has no category field, so it lands in the trailing
+// group rather than dropping out of the picker.
+func TestAgentSkillsByCategoryPutsUserSkillsInTheOtherGroup(t *testing.T) {
+	dir := t.TempDir()
+	manifest := "id: my-skill\nlabel: My Skill\nref: me/my-skill\n"
+	if err := os.WriteFile(filepath.Join(dir, "my-skill.yml"), []byte(manifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	groups := catalog.AgentSkillsByCategory(dir)
+	last := groups[len(groups)-1]
+	if last.ID != catalog.UncategorizedSkillGroupID {
+		t.Fatalf("expected the uncategorized group last, got %q", last.ID)
+	}
+	found := false
+	for _, s := range last.Skills {
+		found = found || s.ID == "my-skill"
+	}
+	if !found {
+		t.Errorf("expected my-skill in the %q group, got %+v", last.ID, last.Skills)
+	}
+}

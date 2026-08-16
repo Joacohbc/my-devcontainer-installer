@@ -9,6 +9,7 @@ import (
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/catalog"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/modules/skills"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 )
 
@@ -152,7 +153,7 @@ func TestSkillRefs(t *testing.T) {
 	refs := domain.SkillRefs(config)
 	// firecrawl/cli holds ten skills, so the entry carries a selector for the one
 	// we want: an unattended install must not take the other nine.
-	if !slices.Equal(refs, []string{"firecrawl/cli#firecrawl-cli"}) {
+	if !slices.Equal(refs, []string{"firecrawl/cli#firecrawl"}) {
 		t.Errorf("expected the selector entry, got %v", refs)
 	}
 
@@ -300,5 +301,91 @@ func TestSkillDirs(t *testing.T) {
 func TestSkillDirDoesNotCollideWithProfileDir(t *testing.T) {
 	if domain.SkillDir() == domain.ProfileDir() {
 		t.Error("SkillDir must not equal ProfileDir")
+	}
+}
+
+func TestExpandSkillGroups(t *testing.T) {
+	expanded := catalog.ExpandSkillGroups([]types.SkillID{
+		types.SkillCategoryCoreAgents,
+		types.SkillCategoryFrontendDesign,
+		types.SkillCategoryArchitecturePlanning,
+		types.SkillCategoryQualityTesting,
+		types.SkillCategoryDocsContent,
+		types.SkillCategoryAutomationN8n,
+	})
+	if !slices.Contains(expanded, types.SkillID("wayfinder")) {
+		t.Error("expected core-agents to expand wayfinder")
+	}
+	if !slices.Contains(expanded, types.SkillID("firecrawl")) {
+		t.Error("expected core-agents to expand firecrawl")
+	}
+	if !slices.Contains(expanded, types.SkillID("impeccable")) {
+		t.Error("expected frontend-design to expand impeccable")
+	}
+	if !slices.Contains(expanded, types.SkillID("ui-ux-pro-max")) {
+		t.Error("expected frontend-design to expand ui-ux-pro-max")
+	}
+	if !slices.Contains(expanded, types.SkillID("codebase-design")) {
+		t.Error("expected architecture-planning to expand codebase-design")
+	}
+	if !slices.Contains(expanded, types.SkillID("tdd")) {
+		t.Error("expected quality-testing to expand tdd")
+	}
+	if !slices.Contains(expanded, types.SkillID("skill-creator")) {
+		t.Error("expected docs-content to expand skill-creator")
+	}
+	if !slices.Contains(expanded, types.SkillID("n8n-agents-official")) {
+		t.Error("expected automation-n8n to expand n8n-agents-official")
+	}
+}
+
+func TestSkillsManifestIntegrity(t *testing.T) {
+	if len(skills.All) == 0 {
+		t.Fatal("expected skills.All to be populated from skills.yml")
+	}
+	if len(skills.Categories) != 6 {
+		t.Fatalf("expected exactly 6 functional categories, got %d", len(skills.Categories))
+	}
+	seenIDs := make(map[types.SkillID]bool, len(skills.All))
+	for _, s := range skills.All {
+		if s.ID == "" {
+			t.Error("found skill with empty ID")
+		}
+		if seenIDs[s.ID] {
+			t.Errorf("duplicate skill ID found: %s", s.ID)
+		}
+		seenIDs[s.ID] = true
+		if s.Ref == "" {
+			t.Errorf("skill %s has empty Ref", s.ID)
+		}
+		if len(s.RequiresModules) == 0 {
+			t.Errorf("skill %s has empty RequiresModules", s.ID)
+		}
+		if s.Category == "" {
+			t.Errorf("skill %s has empty Category", s.ID)
+		}
+	}
+}
+
+func TestDataScienceAndWayfinderSkills(t *testing.T) {
+	config := &types.DevcontainerConfig{
+		Skills: types.SkillsConfig{
+			Skills: []types.SkillID{types.SkillDataScience, types.SkillWayfinder},
+		},
+	}
+	missing := domain.MissingSkillModules(config)
+	if !slices.Contains(missing, types.ModulePython) {
+		t.Errorf("expected data-science to require python, got missing=%v", missing)
+	}
+	if !slices.Contains(missing, types.ModuleNodejs) {
+		t.Errorf("expected wayfinder to require nodejs, got missing=%v", missing)
+	}
+
+	refs := domain.SkillRefs(config.Skills)
+	if !slices.Contains(refs, "probabl-ai/skills#data-science-python-stack") {
+		t.Errorf("expected data-science ref 'probabl-ai/skills#data-science-python-stack', got %v", refs)
+	}
+	if !slices.Contains(refs, "mattpocock/skills#wayfinder") {
+		t.Errorf("expected wayfinder ref 'mattpocock/skills#wayfinder', got %v", refs)
 	}
 }
