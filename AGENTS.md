@@ -24,6 +24,20 @@ CI (`.github/workflows/cli-tests.yml`) runs gofmt, vet, build and test on every
 push/PR touching `cli/**`. All four must pass. Keep the tree `gofmt`-clean and
 `vet`-clean; an unformatted file or a vet finding fails the build.
 
+## Mandatory rule: No direct Docker interaction
+
+Agents operating in or on this project must **never** run `docker`, `docker compose`, `docker-compose`, or `docker exec` directly to interact with a workspace.
+They must **never** manually edit the generated `docker-compose.yml` or `Dockerfile` located in `.dc_<workspace>`.
+
+Instead, they must strictly use the CLI commands provided:
+- To run commands inside: `devcontainer-cli agent exec -w -- <cmd>`
+- To port-forward: `devcontainer-cli agent forward <ports>` (via SSH or Docker)
+- To open an SSH session: `devcontainer-cli agent ssh [--ephemeral]`
+- To run temporal isolated tasks: `devcontainer-cli agent create --temporal --profile <id>`
+
+This guarantees the workspace invariants are not broken.
+
+
 ## Mandatory rule: module changes require tests
 
 Every time a module or domain function is **added**, **modified**, or

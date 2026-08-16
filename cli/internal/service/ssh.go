@@ -285,3 +285,45 @@ func (s SshService) Connect(alias string, args []string) error {
 	}
 	return fmt.Errorf("failed to run ssh: %w", err)
 }
+
+// ConnectEphemeral opens an SSH session without writing to ~/.ssh/config or resolving a managed alias.
+// It directly dials the container's IP on port 2222 with StrictHostKeyChecking=no.
+func (s SshService) ConnectEphemeral(containerName, user, keyPath string, args []string) error {
+	state, ip, err := s.ContainerLiveness(containerName)
+	if err != nil {
+		return err
+	}
+	if state == TargetAbsent {
+		return fmt.Errorf("container '%s' not found", containerName)
+	}
+	if state == TargetStopped {
+		return fmt.Errorf("container '%s' is not running", containerName)
+	}
+	if ip == "" {
+		ip = "127.0.0.1" // Fallback if no network IP was found
+	}
+
+	target := fmt.Sprintf("%s@%s", user, ip)
+
+	sshArgs := []string{
+		"-i", keyPath,
+		"-p", "2222",
+		"-o", "StrictHostKeyChecking=no",
+		"-o", "UserKnownHostsFile=/dev/null",
+		"-o", "LogLevel=ERROR",
+		target,
+	}
+	sshArgs = append(sshArgs, args...)
+
+	c := exec.Command("ssh", sshArgs...)
+	c.Stdin, c.Stdout, c.Stderr = os.Stdin, os.Stdout, os.Stderr
+	runErr := c.Run()
+	if runErr == nil {
+		return nil
+	}
+	var exitErr *exec.ExitError
+	if errors.As(runErr, &exitErr) {
+		return fmt.Errorf("ssh session exited with code %d", exitErr.ExitCode())
+	}
+	return fmt.Errorf("failed to run ssh: %w", runErr)
+}

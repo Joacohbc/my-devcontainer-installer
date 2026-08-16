@@ -1,6 +1,9 @@
 package commands
 
 import (
+	"fmt"
+
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/service"
 	"github.com/spf13/cobra"
 )
@@ -54,6 +57,10 @@ the build.`,
 		_ = cmd.Flags().MarkHidden(name)
 	}
 	cmd.Flags().Bool(flagNoUp, false, "Generate and build only; leave the containers stopped")
+	cmd.Flags().Bool("temporal", false, "Run an ephemeral container without project files")
+	cmd.Flags().String("name", "", "Container name for temporal run (default: dc-<profile>)")
+	cmd.Flags().Bool("expose-all", false, "Publish ports on all interfaces for temporal run")
+	cmd.Flags().Bool("copy-ai-scripts", false, "Copy AI scripts for temporal run")
 	return cmd
 }
 
@@ -64,10 +71,15 @@ func agentCreateDefaults(cmd *cobra.Command, _ []string) error {
 		flagNoInteractive: "true",
 		flagForce:         "true",
 		flagBuild:         "true",
+		flagSharedConfig:  "false",
 	})
 }
 
 func runAgentCreate(cmd *cobra.Command, args []string) error {
+	if temporal, _ := cmd.Flags().GetBool("temporal"); temporal {
+		return runAgentTemporal(cmd, args)
+	}
+
 	if err := runGenerate(cmd, args); err != nil {
 		return err
 	}
@@ -90,5 +102,60 @@ func runAgentCreate(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	console.Done()
+	return nil
+}
+
+func runAgentTemporal(cmd *cobra.Command, _ []string) error {
+	svc := service.RunService{Report: console}
+
+	variant, _ := cmd.Flags().GetString(flagProfile)
+	if variant == "" {
+		return fmt.Errorf("--profile is required for temporal containers")
+	}
+
+	name, _ := cmd.Flags().GetString("name")
+	if name == "" {
+		name = "dc-" + variant
+	}
+
+	rawVolumes, _ := cmd.Flags().GetString(flagVolumes)
+	volumes := parseClearableCSV(cmd.Flags().GetString, flagVolumes)
+	if rawVolumes == "none" {
+		volumes = nil
+	}
+
+	rawPorts, _ := cmd.Flags().GetString(flagPorts)
+	ports := parseClearableCSV(cmd.Flags().GetString, flagPorts)
+	if rawPorts == "none" {
+		ports = nil
+	}
+
+	exposeAll, _ := cmd.Flags().GetBool("expose-all")
+	sharedConfig, _ := cmd.Flags().GetBool(flagSharedConfig)
+	copyScripts, _ := cmd.Flags().GetBool("copy-ai-scripts")
+
+	registry, _ := cmd.Flags().GetString(flagRegistry)
+	image := domain.ResolveRemoteImage(variant, domain.ResolveRegistry(registry, ""))
+
+	if err := svc.Run(service.QuickRunSpec{
+		Variant:       variant,
+		ContainerName: name,
+		Image:         image,
+		Volumes:       volumes,
+		Ports:         ports,
+		ExposeAll:     exposeAll,
+		SharedConfig:  sharedConfig,
+	}); err != nil {
+		return err
+	}
+
+	if copyScripts {
+		if err := svc.CopyAIScripts(name, nil); err != nil {
+			return err
+		}
+	}
+
+	console.NewLine()
+	printRunNextSteps(name)
 	return nil
 }

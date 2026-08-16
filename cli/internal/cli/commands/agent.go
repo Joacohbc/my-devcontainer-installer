@@ -47,7 +47,7 @@ container, 'config' for global settings.`,
 	cmd.AddCommand(
 		newAgentCLIInfoCommand(),
 		newAgentCreateCommand(),
-		newAgentConnectCommand(),
+		newAgentSshCommand(),
 		newAgentExecCommand(),
 		newAgentForwardCommand(),
 		newAgentCopyCommand(),
@@ -78,11 +78,11 @@ func agentNonInteractive(cmd *cobra.Command, _ []string) error {
 	return agentDefaults(cmd, map[string]string{flagNoInteractive: "true"})
 }
 
-func newAgentConnectCommand() *cobra.Command {
+func newAgentSshCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "connect [flags] [-- command args...]",
+		Use:   "ssh [flags] [-- command args...]",
 		Short: "Open an SSH session into the project's devcontainer",
-		Long: `devcontainer-cli agent connect — connect to the project's devcontainer over
+		Long: `devcontainer-cli agent ssh — connect to the project's devcontainer over
 SSH, configuring access (key + Host block) the first time.
 
 Same as 'ssh', with prompting off by default. Give it a command after '--':
@@ -91,10 +91,10 @@ use to an agent — 'agent exec' is the better tool for running a command anyway
 and this one is for when the task genuinely needs the SSH path (agent forwarding,
 a real tty, a tool that shells out to ssh).`,
 		Example: `  # Run a command over SSH
-  devcontainer-cli agent connect -- go version
+  devcontainer-cli agent ssh -- go version
 
   # Connect and forward ports for the session
-  devcontainer-cli agent connect --forward --ports 3000,8080:80`,
+  devcontainer-cli agent ssh --forward --ports 3000,8080:80`,
 		SilenceUsage: true,
 		PreRunE:      agentNonInteractive,
 		RunE:         runSsh,
