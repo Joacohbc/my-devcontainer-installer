@@ -95,6 +95,7 @@ func addSshFlags(cmd *cobra.Command) {
 	cmd.Flags().String("user", sshdefaults.User, "SSH user inside the container")
 	cmd.Flags().Bool("forward", false, "Also open SSH port-forwarding tunnels for the session (prompted when interactive and omitted)")
 	cmd.Flags().String("ports", "", "Ports to forward, e.g. '3000,8080:80' (implies --forward; skips the prompt)")
+	cmd.Flags().Bool("ephemeral", false, "Connect directly via SSH without modifying ~/.ssh/config or relying on existing Host blocks")
 
 	_ = cmd.RegisterFlagCompletionFunc("via", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return listSshHosts(), cobra.ShellCompDirectiveNoFileComp
@@ -112,6 +113,29 @@ func runSsh(cmd *cobra.Command, args []string) error {
 	if external, _ := cmd.Flags().GetString("setup-external"); external != "" {
 		_, err := runSshSetup(cmd)
 		return err
+	}
+
+	if ephemeral, _ := cmd.Flags().GetBool("ephemeral"); ephemeral {
+		var containerName string
+		if cmd.Flags().Changed("container") {
+			containerName, _ = cmd.Flags().GetString("container")
+		} else {
+			cwd, err := currentDir()
+			if err != nil {
+				return err
+			}
+			containerName, err = resolveDevcontainerContainer(cwd)
+			if err != nil {
+				return err
+			}
+		}
+
+		keyPath, _ := cmd.Flags().GetString("key")
+		keyPath = domain.ResolveSSHKeyPath(keyPath)
+		user, _ := cmd.Flags().GetString("user")
+
+		sshSvc := service.SshService{Report: console}
+		return sshSvc.ConnectEphemeral(containerName, user, keyPath, args)
 	}
 
 	interactive := interactiveFlag(cmd)

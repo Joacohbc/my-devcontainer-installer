@@ -16,7 +16,7 @@ import (
 // Renaming one breaks every skill and script that drives this CLI, so the set
 // is pinned here.
 var agentSubcommands = []string{
-	"cli-info", "create", "connect", "exec", "forward", "copy", "list", "clean",
+	"cli-info", "create", "ssh", "exec", "forward", "copy", "list", "clean",
 }
 
 func findCommand(t *testing.T, parent *cobra.Command, name string) *cobra.Command {
@@ -72,7 +72,7 @@ func TestAgentSubcommands_AreDocumented(t *testing.T) {
 
 // The whole point of the facade: nothing here may stop to ask a question.
 func TestAgentSubcommands_DefaultToNonInteractive(t *testing.T) {
-	for _, name := range []string{"create", "connect", "forward", "clean"} {
+	for _, name := range []string{"create", "ssh", "forward", "clean"} {
 		t.Run(name, func(t *testing.T) {
 			cmd := findCommand(t, agentCommand(t), name)
 			if err := cmd.PreRunE(cmd, nil); err != nil {
@@ -306,7 +306,7 @@ func TestAgentWrappers_KeepFlagCompletion(t *testing.T) {
 		command string
 		flag    string
 	}{
-		{"connect", "via"},
+		{"ssh", "via"},
 		{"exec", "user"},
 		{"forward", "alias"},
 		{"copy", "asset"},

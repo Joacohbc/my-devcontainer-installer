@@ -18,13 +18,6 @@ const KindBuild AssetKind = "build"
 // into a running container would leave a stale copy the next rebuild ignores.
 const KindDoc AssetKind = "doc"
 
-// KindHostDoc marks a markdown document meant for the HOST, not the image: the
-// agent skill that teaches a host-side assistant to drive this CLI. It is
-// installed into the host's agent skill directories by `skill install` and is
-// never baked into an image nor copied into a container, so like the other doc
-// kinds it stays out of the copyable set.
-const KindHostDoc AssetKind = "host-doc"
-
 // Asset describes an embedded asset and its capabilities.
 type Asset struct {
 	Name  string // selection/completion id, e.g. "install-claude-code"
@@ -52,7 +45,6 @@ var Registry = []Asset{
 	{Name: "install-opencode", File: "install-opencode.sh", Kind: KindScript, Label: "OpenCode installer"},
 	{Name: "login-github-cli", File: "login-github-cli.sh", Kind: KindScript, Label: "GitHub CLI login helper"},
 	{Name: "setup-help", File: "setup-help.sh", Kind: KindBuild, Label: "~/help quick reference writer"},
-	{Name: "skill-devcontainer-cli", File: "skill-devcontainer-cli.md", Kind: KindHostDoc, Label: "Host agent skill: drive devcontainer-cli"},
 	{Name: "skill-devcontainer-context", File: "skill-devcontainer-context.md", Kind: KindDoc, Label: "Global agent skill: read the container context"},
 	{Name: "update-golang", File: "update_golang.sh", Kind: KindBuild, Label: "Go update script"},
 	{Name: "zsh-installer", File: "zsh-installer.sh", Kind: KindBuild, Label: "Zsh configuration installer"},

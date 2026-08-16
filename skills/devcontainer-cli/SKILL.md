@@ -23,10 +23,10 @@ you waiting on a prompt you cannot answer.
 | Command | What it does |
 |---|---|
 | `agent cli-info` | Print the catalogue: modules, services, profiles, skills, scripts, paths |
-| `agent create` | Generate + build + start an environment for the current directory |
-| `agent exec -- <cmd>` | Run a command inside the container |
-| `agent connect [-- <cmd>]` | Same over a real SSH session |
-| `agent forward <ports>` | Tunnel a container port to 127.0.0.1 |
+| `agent create [--temporal]` | Generate + build + start an environment for the current directory (or throwaway with `--temporal`) |
+| `agent exec [-w] -- <cmd>` | Run a command inside the container (use `-w` to run from the workspace directory) |
+| `agent ssh [--ephemeral]` | Open an SSH session into the container, optionally ephemeral (bypasses ~/.ssh/config) |
+| `agent forward <ports>` | Tunnel a container port to 127.0.0.1 via SSH or Docker depending on the command |
 | `agent copy <src> <dest>` | Move files between host and container |
 | `agent list [path]` | List a directory inside the container |
 | `agent clean` | Destroy the project and remove what it left behind |
@@ -34,6 +34,17 @@ you waiting on a prompt you cannot answer.
 Use these first. The plain commands they wrap (`shell`, `ssh`, `port-forward`,
 `copy`, `ls`, `destroy`, `clean`) still exist and are documented at the end —
 reach for them only for the cases the group does not cover.
+
+## 🚨 STRICT RULE: NEVER TOUCH DOCKER DIRECTLY
+
+You must **NEVER** use `docker`, `docker compose`, `docker-compose`, or `docker exec` directly to interact with a devcontainer environment, not even for simple commands like `curl` or `wget`.
+You must **NEVER** manually edit the generated `docker-compose.yml` or `Dockerfile` located in `.dc_<workspace>`.
+
+Instead, you must always use the CLI commands provided:
+- To run commands inside: `devcontainer-cli agent exec -w -- <cmd>`
+- To port-forward: `devcontainer-cli agent forward <ports>`
+- To SSH: `devcontainer-cli agent ssh`
+- To run temporal tasks: `devcontainer-cli agent create --temporal --profile <id>`
 
 ## Orient before acting
 
