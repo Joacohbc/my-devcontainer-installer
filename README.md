@@ -118,9 +118,9 @@ graph LR
 curl -fsSL https://raw.githubusercontent.com/Joacohbc/my-devcontainer-installer/main/cli/install.sh | sh
 
 # Enseñarle a tu agente de IA a manejar la CLI (opcional, recomendado)
-devcontainer-cli skill install
+npx skills add Joacohbc/my-devcontainer-installer@devcontainer-cli -g
 
-# Actualizar la CLI a la última versión (volvé a correr 'skill install' después)
+# Actualizar la CLI a la última versión
 devcontainer-cli upgrade-cli
 
 # Desinstalar la CLI
@@ -129,7 +129,7 @@ curl -fsSL https://raw.githubusercontent.com/Joacohbc/my-devcontainer-installer/
 
 > **Descargas manuales:** Disponibles en los [Releases de GitHub](https://github.com/Joacohbc/my-devcontainer-installer/releases/latest) (binarios standalone para `linux-x64`, `linux-arm64`, `darwin-x64` y `darwin-arm64`). El autocompletado en Zsh y Bash se configura automáticamente tras instalar.
 
-> **Sobre `skill install`:** escribe la skill del host en `~/.claude/skills/` y `~/.agents/skills/` (todos los agentes y scope global por defecto), y con eso un agente que corre en tu máquina aprende a manejar esta CLI: crear el devcontainer de un proyecto, correr los builds y tests adentro y no ensuciar tu host. `upgrade-cli` no la actualiza, así que volvé a correrlo después de actualizar el binario. Ver [§6](#6-skill-para-el-agente-del-host-skill) para el resto (`skill show`/`remove`, archivos ajenos, y la instalación con `npx` en una máquina sin el binario).
+> **Sobre la skill para agentes:** podés instalar la skill del host en tus agentes (Claude Code, Antigravity, etc.) con el CLI de Skills (`npx skills add Joacohbc/my-devcontainer-installer@devcontainer-cli -g`), y con eso un agente que corre en tu máquina aprende a manejar esta CLI: crear el devcontainer de un proyecto, correr los builds y tests adentro y no ensuciar tu host. Ver [§6](#6-skill-para-el-agente-del-host).
 
 ## Uso Rápido y Flujo de Trabajo
 
@@ -181,24 +181,13 @@ devcontainer-cli context --json          # Salida estructurada, pensada para age
 get-devcontainer-context                 # Lo mismo, desde adentro del contenedor
 ```
 
-### 6. Skill para el agente del host (`skill`)
-Lo anterior es la mitad de adentro del contenedor. La mitad de **afuera** es `devcontainer-cli skill`: instala en tu máquina una skill que le enseña a un agente del host (Claude Code, Antigravity, …) a manejar esta CLI — generar el devcontainer de un proyecto, correr builds y tests adentro, publicar o tunelizar puertos, revisar qué trae la imagen y destruir el entorno. Con eso el agente puede meter el trabajo en un contenedor en vez de ensuciar tu máquina.
+### 6. Skill para el agente del host
+Lo anterior es la mitad de adentro del contenedor. La mitad de **afuera** es la skill publicada en `skills/devcontainer-cli/SKILL.md`: le enseña a un agente del host (Claude Code, Antigravity, …) a manejar esta CLI — generar el devcontainer de un proyecto, correr builds y tests adentro, publicar o tunelizar puertos, revisar qué trae la imagen y destruir el entorno. Con eso el agente puede meter el trabajo en un contenedor en vez de ensuciar tu máquina.
 
-El documento se escribe en los mismos dos directorios que usa la skill de adentro: `~/.claude/skills/devcontainer-cli/SKILL.md` y `~/.agents/skills/devcontainer-cli/SKILL.md`. Si ya hay un archivo ahí que no escribió la CLI, no se pisa sin `--force`.
-```bash
-devcontainer-cli skill                       # Dónde iría y qué hay instalado hoy
-devcontainer-cli skill install               # Instalar (o actualizar) la skill
-devcontainer-cli skill install --agent claude --scope project  # Sólo Claude Code, sólo en este proyecto
-devcontainer-cli skill show                  # Imprimir el documento (para otro agente)
-devcontainer-cli skill remove                # Quitar lo que instaló la CLI
-```
-Volvé a correr `skill install` después de un `upgrade-cli` para quedarte con la versión nueva del documento; los agentes la toman en la sesión siguiente.
-
-El mismo documento está publicado en el repo (`skills/devcontainer-cli/SKILL.md`), así que una máquina que todavía no tiene el binario puede instalarlo con el CLI de Skills — es la línea que imprimen `skill` y `skill install`:
+Podés instalarla en tu máquina mediante el CLI de Skills:
 ```bash
 npx skills add Joacohbc/my-devcontainer-installer@devcontainer-cli -g
 ```
-Las dos vías escriben el mismo archivo, así que `devcontainer-cli skill` reconoce como propia una copia instalada por `npx`.
 
 ### 7. Comandos pensados para agentes (`agent`)
 La skill le enseña al agente a manejar la CLI, y `devcontainer-cli agent` es la cara de la CLI hecha para que la maneje: un puñado de comandos de alto nivel que **nunca abren un wizard ni esperan una respuesta**, así que una sesión desatendida no se queda colgada en un prompt que el agente no puede contestar.

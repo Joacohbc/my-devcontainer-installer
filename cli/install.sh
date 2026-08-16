@@ -202,4 +202,4 @@ fi
 
 info "Verify: devcontainer-cli --help"
 info "Self-update: devcontainer-cli upgrade-cli"
-info "Teach your AI assistant to use it: devcontainer-cli skill install"
+info "Teach your AI assistant to use it: npx skills add Joacohbc/my-devcontainer-installer@devcontainer-cli -g"

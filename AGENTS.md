@@ -295,12 +295,9 @@ via `CopyableAssets()`/`CopyableNames()`/`LookupCopyable(name)`. The
 selected script and `docker cp`s it into `types.DevUserHome` (`/home/devuser`),
 left owned by devuser and executable. Add a new `.sh` → add a `Registry` entry
 (name, file, label) so it's selectable/completable; cover it in `registry_test.go`.
-The other three kinds are never copyable: `KindBuild` (build-time scripts) and
+The other two kinds are never copyable: `KindBuild` (build-time scripts) and
 `KindDoc` (markdown baked into the image, e.g. `skill-devcontainer-context.md`) —
-`docker cp`ing either would only leave a stale copy the next rebuild ignores —
-and `KindHostDoc` (markdown installed on the **host**, currently
-`skill-devcontainer-cli.md`, the agent skill for driving this CLI), which
-describes the host and has no business inside a container at all.
+`docker cp`ing either would only leave a stale copy the next rebuild ignores.
 
 ### The container environment is declared as data, not as shell text
 
@@ -884,56 +881,16 @@ fingerprint and rebuilds the image. Covered by `TestContextSkillDocument`,
 
 ### The host-side `devcontainer-cli` skill
 
-The CLI ships **two** agent skills, and they are for opposite sides of the
-boundary. Do not merge them:
-
-| Skill | Reader | How it gets there |
-|---|---|---|
-| `devcontainer-context` | an agent **inside** a container | baked into the image, linked by `entrypoint.sh` |
-| `devcontainer-cli` | an agent **on the host** | `devcontainer-cli skill install`, a plain file drop |
-
 The host skill teaches an assistant on the user's machine to drive this CLI:
 generate a project non-interactively, run commands in the container, forward
 ports, inspect it, tear it down. It never ends up in an image.
 
-| Piece | Where |
-|---|---|
-| Content | `internal/infra/assets/skill-devcontainer-cli.md` (embedded, `KindHostDoc`) |
-| Published copy | `skills/devcontainer-cli/SKILL.md` at the **repo root** |
-| Paths, scopes, state classification | `internal/domain/skill.go` |
-| Install / remove / status | `internal/service/skill.go` (`SkillService`) |
-| Command | `internal/cli/commands/skill.go` |
+It is published at `skills/devcontainer-cli/SKILL.md` at the **repo root** and
+installed on the host using the Skills CLI:
 
-**The document is committed twice, on purpose.** The Skills CLI
-(`npx skills add <owner/repo>@<skill>`) discovers a skill as `<dir>/SKILL.md`,
-so the repo carries `skills/devcontainer-cli/SKILL.md` — that is what a machine
-without this binary installs. `go:embed` cannot reach out of its own directory,
-so the copy cannot be a symlink either; `TestHostSkillMirrorsTheRepoCopy` keeps
-the two byte-identical instead. **Edit the embedded asset, then copy it over the
-repo one** — never one alone. Byte equality is load-bearing beyond tidiness: it
-is what makes an npx-installed copy classify as `current` rather than `foreign`.
-`domain.HostSkillRepo`/`HostSkillRepoPath`/`HostSkillNpxCommand()` are the
-single source of that invocation, printed by both `skill` and `skill install`.
-
-Load-bearing details:
-
-- **`KindHostDoc`, not `KindDoc`.** Both stay out of `CopyableAssets()`, but the
-  kinds say where the document belongs: `KindDoc` is baked into the image,
-  `KindHostDoc` is written on the host. The host skill is deliberately **not** in
-  any module's `CopyFiles`, so editing it does not change the fingerprint or
-  rebuild any image.
-- **It installs into the same two dirs the entrypoint links the in-image skill
-  into** — `~/.claude/skills` and `~/.agents/skills` (`domain.HostSkillAgents`).
-  Adding an agent is one row there; nothing else changes.
-- **The document carries `domain.HostSkillMarker`**, which is the only way
-  `ClassifyHostSkill` can tell an older copy of ours (`outdated`, upgraded in
-  place) from a skill the user wrote under the same name (`foreign`, never
-  touched without `--force`). Never strip the marker from the markdown.
-- **`TestHostSkillDocumentCoversTheCatalog`** (in `internal/service`, the only
-  layer that may import both `domain/catalog` and `infra/assets`) asserts every
-  module id, compose service id and remote variant is named in the document — a
-  new module that never reaches the skill leaves the host agent guessing. Add
-  the id to the `--with` list in the markdown when you add a module.
+```bash
+npx skills add Joacohbc/my-devcontainer-installer@devcontainer-cli -g
+```
 
 ### The `agent` group is a facade, not a second CLI
 
@@ -1074,7 +1031,6 @@ is Cobra-native.
 | `config` | `config.go` | Read/write global config (subcommands `registry`, `db-user`, `db-password`, `ssh-key`, `ssh-config-file`, `git-init`, `alias`, `profile`, `skill`, `shared`); `config git-init` (default `false`) opts into `generate` offering to `git init` a project directory that is not a repository yet (`GitRepoService.EnsureRepo` → `infra/git`) — it writes into the user's own directory rather than the CLI's `.dc_<ws>/`, which is why it is off by default and why an interactive run still asks before doing it; `config ssh-config-file` sets where managed SSH Host blocks live (default `~/.ssh/devcontainer-cli.config`) — it is global rather than a per-command flag on purpose, so `ssh`, `destroy` and `clean ssh` can never disagree about which file to read. `config alias` (`config_alias.go`) manages the user's own shell aliases, stored in the CLI config (`GlobalConfig.Aliases`), not a host file: `config alias set <name> <command>` / `config alias unset <name>` edit the map, bare `config alias` lists it, and `config alias sync` renders it into the `alias.sh` shared-config volume entry (`SharedConfigService.SyncAliases`) so every container picks it up without an image rebuild; `config profile` (`profile.go`, aliased `preset`) lists/creates/copies/removes reusable **profiles** (module ids + custom scripts + agent skills) saved under `~/.devcontainer-cli/profiles/` (`remove <id...>` deletes user profiles only — built-ins are not removable; tab-completed, `-y` to skip confirmation); `config profile info <id>` prints one profile's full resolved definition — source/dir, then `yaml.Marshal` of the resolved `catalog.Profile` (`Source`/`Dir`/`Embedded` are `yaml:"-"`, so this is exactly the manifest a project resolving it would read). A profile is a list of module ids plus optional custom scripts and agent skills (no services/ports/volumes/mode); `create` prompts for the id, runs a modules-only wizard (`GenerateService.SelectModules`), collects scripts, then picks skills and their mode (`GenerateService.SelectSkills`). The interactive `generate` wizard's first question offers 3 starting points, not 2: plain `custom` (pick modules by hand), `custom` from a profile (built-in or the user's own — pre-selects its modules and carries its scripts before the user continues with services/ports/volumes), or `profiles` (pull target, see below). The middle one is `modeChoiceCustomFromProfile` in `generate_wizard.go` — still `types.BuildModeCustom` once normalized (`currentMode`), it just also triggers `profileStep`, which plain `custom` skips. `config skill` (`config_skill.go`) lists built-in and user-defined agent skills (`config skill list`, grouped like `config profile list`) — a user one is a flat `~/.devcontainer-cli/skills/<id>.yml`, no scripts/directory shape, since a skill's install source is already a git ref; `config skill info <id>` prints one skill's full definition (source, install ref, required modules, its `~/CONTEXT.md` entry if any) via the local `skillInfoView` — a plain yaml-shaped mirror of `catalog`'s unexported `userSkillManifest`, since `skills.Spec.Context` is a Go func and cannot be marshaled directly, so a built-in and a user-defined skill render identically either way; `config skill add <id> --ref <source>` writes `~/.devcontainer-cli/skills/<id>.yml` from flags (`--ref` required, prompted for when interactive and missing; everything else optional), refusing to clobber an existing *user* file without `--force` — but never refusing to shadow a built-in id, which is the documented, expected way to override one; `config skill remove <id...>` deletes user-defined skills only (same built-ins-are-not-removable rule as `config profile remove`). `config shared` (`config_shared.go`) groups the shared tool-config volume ops — `config shared sync` (`sync_config.go`, seed from host configs `~/.claude`, `~/.config/gh`, …; `--force` replaces), `config shared backup` (`backup_config.go`, zip the volume; `-o` sets the destination, default a timestamped file in cwd), `config shared restore` (`restore_config.go`, load a zip made by `config shared backup`; `--force` replaces existing entries) |
 | `cleanup-tips` | `cleanup_tips.go` | Print docker cleanup commands |
 | `context` | `context.go` | Print the container's own context and installed tools: runs `get-devcontainer-context` inside it via `InspectService.Context` and streams the output (`--json` for structured output). Falls back to `copy --asset get-devcontainer-context` when the image predates the `aliases` module. Complements `info` (Docker metadata) by reporting what is *inside* the container |
-| `skill` | `skill.go` | Install the **host-side** agent skill (`skill-devcontainer-cli.md`) into the host's agent skill dirs, so an assistant running on the user's machine knows how to drive this CLI. Subcommands `skill install` / `skill remove` (alias `uninstall`) / `skill show`; bare `skill` lists every target with its state (`absent`/`current`/`outdated`/`foreign`). `--agent` narrows to one agent (default: all), `--scope global\|project` picks the base dir (home vs cwd). A target holding a file the CLI did not write (no managed marker) is reported `foreign` and never overwritten or deleted without `--force`; `remove` needs `-y` in non-interactive mode. Pure file I/O — no Docker, unlike every other command |
 | `network` | `network.go` | Attach/detach any container to the workspace network; subcommands `network connect`/`network disconnect <container...>` (tab-completed); `connect` takes `--alias` (extra DNS names; prompted when interactive) |
 | `agent` | `agent.go` (+ `agent_create.go`, `agent_info.go`) | The agent-facing facade: `agent cli-info` (the live catalogue as text or `--json`), `agent create` (generate + build + up), `agent connect`/`exec`/`forward`/`copy`/`list`/`clean`. Additive — every command it wraps stays top-level. See the section below |
 | `completion` | _(Cobra built-in)_ | Print shell completion script |
