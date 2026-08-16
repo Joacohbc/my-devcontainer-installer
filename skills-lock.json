@@ -15,7 +15,7 @@
       "source": "sickn33/antigravity-awesome-skills",
       "sourceType": "github",
       "skillPath": "skills/bash-linux/SKILL.md",
-      "computedHash": "e078b9da423a49126b6684dc210ae77e4d851b521de390a21b7c8b9f6c926851"
+      "computedHash": "a29fefe5ec5cf13747577d05e4e9a4d49c53b9fe1cc765ce6c9bd4146e8b4780"
     },
     "bash-scripting": {
       "source": "sickn33/antigravity-awesome-skills",
@@ -27,19 +27,19 @@
       "source": "sickn33/antigravity-awesome-skills",
       "sourceType": "github",
       "skillPath": "skills/docker-expert/SKILL.md",
-      "computedHash": "0974b5f64fcd284c1bd662810e2388f7beb9be6784c597de4d0ad4213ccbd6af"
+      "computedHash": "14840bcfb3fad72711975c3413416779ce5b9b14517fb5e326e248314e04f4d6"
     },
     "docker-patterns": {
       "source": "affaan-m/everything-claude-code",
       "sourceType": "github",
       "skillPath": "skills/docker-patterns/SKILL.md",
-      "computedHash": "2750c564c7b600fbbfd44de2c693955c677c18c872d06019fa896ab770c69ed9"
+      "computedHash": "af6deba271429bcb5198a7e56a4f71f948509e06037e6a3210d0ad5f516eeb29"
     },
     "find-skills": {
       "source": "vercel-labs/skills",
       "sourceType": "github",
       "skillPath": "skills/find-skills/SKILL.md",
-      "computedHash": "9e1c8b3103f92fa8092568a44fe64858de7c5c9dc65ce4bea8f168080e889cfd"
+      "computedHash": "b146008599c31057cef1c145774cea5d5afb30e8f43fa802e47a4b461419aaaf"
     },
     "frontend-design": {
       "source": "anthropics/skills",
@@ -56,7 +56,7 @@
       "source": "affaan-m/everything-claude-code",
       "sourceType": "github",
       "skillPath": "skills/golang-patterns/SKILL.md",
-      "computedHash": "67c25e95cec3f3166c2efefd5f4502863a1246c6f742b8cbcd2e2864d2a8182a"
+      "computedHash": "8cbfb90287390c9f09d46d5266f0e7f61ba5bd74400c1431b74a334be7bfdd6f"
     },
     "golang-pro": {
       "source": "jeffallan/claude-skills",
@@ -68,7 +68,7 @@
       "source": "affaan-m/everything-claude-code",
       "sourceType": "github",
       "skillPath": "skills/golang-testing/SKILL.md",
-      "computedHash": "db6e910031d9c289f91697cf2397b8a3f717c6fdeae7a115e811a32544d99e11"
+      "computedHash": "12195f2589c4a7b741523bed09db8b64f243c635b4c78297136c6becd7b1e032"
     }
   }
 }
