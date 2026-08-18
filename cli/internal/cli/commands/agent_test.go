@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/sshdefaults"
 	"github.com/spf13/cobra"
 )
@@ -72,14 +73,57 @@ func TestAgentSubcommands_AreDocumented(t *testing.T) {
 
 // The whole point of the facade: nothing here may stop to ask a question.
 func TestAgentSubcommands_DefaultToNonInteractive(t *testing.T) {
-	for _, name := range []string{"create", "ssh", "forward", "clean"} {
+	for _, name := range agentSubcommands {
+		t.Run(name, func(t *testing.T) {
+			cmd := findCommand(t, agentCommand(t), name)
+			var args []string
+			if name == "exec" {
+				args = []string{"echo", "hi"}
+			}
+			if cmd.PreRunE != nil {
+				if err := cmd.PreRunE(cmd, args); err != nil {
+					t.Fatalf("PreRunE: %v", err)
+				}
+			}
+			if interactiveFlag(cmd) {
+				t.Errorf("agent %s must default to non-interactive", name)
+			}
+		})
+	}
+}
+
+// ssh and forward must default to ephemeral mode so they never touch ~/.ssh/config.
+func TestAgentSubcommands_DefaultToEphemeral(t *testing.T) {
+	for _, name := range []string{"ssh", "forward"} {
 		t.Run(name, func(t *testing.T) {
 			cmd := findCommand(t, agentCommand(t), name)
 			if err := cmd.PreRunE(cmd, nil); err != nil {
 				t.Fatalf("PreRunE: %v", err)
 			}
-			if interactiveFlag(cmd) {
-				t.Errorf("agent %s must default to non-interactive", name)
+			eph, err := cmd.Flags().GetBool("ephemeral")
+			if err != nil {
+				t.Fatalf("flag --ephemeral: %v", err)
+			}
+			if !eph {
+				t.Errorf("agent %s must default --ephemeral to true", name)
+			}
+		})
+	}
+}
+
+func TestAgentEphemeral_ExplicitFalseWins(t *testing.T) {
+	for _, name := range []string{"ssh", "forward"} {
+		t.Run(name, func(t *testing.T) {
+			cmd := findCommand(t, agentCommand(t), name)
+			if err := cmd.Flags().Set("ephemeral", "false"); err != nil {
+				t.Fatal(err)
+			}
+			if err := cmd.PreRunE(cmd, nil); err != nil {
+				t.Fatalf("PreRunE: %v", err)
+			}
+			eph, _ := cmd.Flags().GetBool("ephemeral")
+			if eph {
+				t.Errorf("agent %s explicit --ephemeral=false must survive default", name)
 			}
 		})
 	}
@@ -120,7 +164,7 @@ func TestAgentCreate_ForcesTheFullFlow(t *testing.T) {
 	}
 }
 
-func TestAgentCreate_KeepsGenerateFlagsAndHidesTheNoise(t *testing.T) {
+func TestAgentCreate_KeepsGenerateFlagsAndOmitsNoise(t *testing.T) {
 	cmd := findCommand(t, agentCommand(t), "create")
 
 	// The flags an agent actually composes a project from must be present.
@@ -129,14 +173,46 @@ func TestAgentCreate_KeepsGenerateFlagsAndHidesTheNoise(t *testing.T) {
 			t.Errorf("agent create is missing --%s", name)
 		}
 	}
-	for _, name := range agentCreateHiddenFlags {
-		f := cmd.Flags().Lookup(name)
-		if f == nil {
-			t.Fatalf("--%s should stay registered (parseGenFlags reads it)", name)
+	// Irrelevant flags must be omitted entirely rather than registered/hidden.
+	for _, name := range []string{flagVersion, flagPreset, flagNonInteractive, flagForcePrompt} {
+		if f := cmd.Flags().Lookup(name); f != nil {
+			t.Errorf("--%s should not be registered on agent create", name)
 		}
-		if !f.Hidden {
-			t.Errorf("--%s should be hidden on the agent facade", name)
+	}
+}
+
+func TestAgentCreate_TemporalFlags(t *testing.T) {
+	cmd := findCommand(t, agentCommand(t), "create")
+
+	for _, name := range []string{"temporal", "name", "expose-all", "copy-ai-scripts"} {
+		if cmd.Flags().Lookup(name) == nil {
+			t.Errorf("agent create is missing temporal flag --%s", name)
 		}
+	}
+}
+
+func TestAgentCreate_TemporalExecution(t *testing.T) {
+	cmd := findCommand(t, agentCommand(t), "create")
+	if err := cmd.Flags().Set("temporal", "true"); err != nil {
+		t.Fatal(err)
+	}
+	if err := cmd.Flags().Set("profile", "nodejs"); err != nil {
+		t.Fatal(err)
+	}
+	if err := cmd.Flags().Set("name", "dc-test-temporal"); err != nil {
+		t.Fatal(err)
+	}
+
+	runner := &buildStatusRunner{buildStatus: 0}
+	docker.SetRunner(runner)
+	docker.ResetDockerCache()
+	t.Cleanup(func() {
+		docker.ResetRunner()
+		docker.ResetDockerCache()
+	})
+
+	if err := cmd.RunE(cmd, nil); err != nil {
+		t.Fatalf("agent create --temporal: %v", err)
 	}
 }
 
@@ -271,18 +347,17 @@ func TestAgentClean_Flags(t *testing.T) {
 	}
 }
 
-// The agent wrappers reuse the human commands' flag helpers. These assert the
-// originals kept every flag when the registration moved out of their
-// constructors.
+// The human commands keep every flag. These assert the originals kept every flag
+// and gained the appropriate flags.
 func TestExtractedFlagHelpers_KeepTheOriginalFlags(t *testing.T) {
 	root := NewRootCommand("test")
 	cases := []struct {
 		command string
 		flags   []string
 	}{
-		{"ssh", []string{"yes", flagNoInteractive, "container", "setup", "setup-external", "via", "key", "user", "forward", "ports"}},
+		{"ssh", []string{"yes", flagNoInteractive, "container", "setup", "setup-external", "via", "key", "user", "forward", "ports", "ephemeral"}},
 		{"shell", []string{"user", "type", "no-tty", "workdir", "via", "container"}},
-		{"port-forward", []string{"alias", "service", flagNoInteractive, flagNonInteractive}},
+		{"port-forward", []string{"alias", "service", flagNoInteractive, "ephemeral", "container", "key", "user"}},
 		{"copy", []string{"container", "asset"}},
 		{"ls", []string{"all", "long", "container"}},
 	}
@@ -292,6 +367,31 @@ func TestExtractedFlagHelpers_KeepTheOriginalFlags(t *testing.T) {
 			for _, name := range c.flags {
 				if cmd.Flags().Lookup(name) == nil {
 					t.Errorf("%s lost its --%s flag", c.command, name)
+				}
+			}
+		})
+	}
+}
+
+// Flags that make no sense for an unattended agent are omitted entirely from the
+// agent facade subcommands.
+func TestAgentPrunedFlags_AreNotRegistered(t *testing.T) {
+	agent := agentCommand(t)
+	cases := []struct {
+		command string
+		pruned  []string
+	}{
+		{"ssh", []string{"setup", "setup-external", "forward", "yes", "ports"}},
+		{"exec", []string{"type"}},
+		{"forward", []string{"non-interactive"}},
+		{"list", []string{"long"}},
+	}
+	for _, c := range cases {
+		t.Run(c.command, func(t *testing.T) {
+			cmd := findCommand(t, agent, c.command)
+			for _, name := range c.pruned {
+				if cmd.Flags().Lookup(name) != nil {
+					t.Errorf("agent %s should not have --%s registered", c.command, name)
 				}
 			}
 		})
@@ -339,14 +439,14 @@ func TestAgentList_ArgsAndCompletion(t *testing.T) {
 func TestAgentDirEntries_MarkDirectories(t *testing.T) {
 	cases := []struct {
 		in   string
-		want agentDirEntry
+		want types.DirEntry
 	}{
-		{"src/", agentDirEntry{Name: "src", Dir: true}},
-		{"main.go", agentDirEntry{Name: "main.go", Dir: false}},
-		{".config/", agentDirEntry{Name: ".config", Dir: true}},
+		{"src/", types.DirEntry{Name: "src", Dir: true}},
+		{"main.go", types.DirEntry{Name: "main.go", Dir: false}},
+		{".config/", types.DirEntry{Name: ".config", Dir: true}},
 	}
 	for _, c := range cases {
-		got := agentDirEntry{
+		got := types.DirEntry{
 			Name: strings.TrimSuffix(c.in, "/"),
 			Dir:  strings.HasSuffix(c.in, "/"),
 		}

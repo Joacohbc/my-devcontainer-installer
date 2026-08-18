@@ -34,9 +34,11 @@ use 'context' instead.`,
   devcontainer-cli agent cli-info --json`,
 		Args:         cobra.NoArgs,
 		SilenceUsage: true,
+		PreRunE:      agentNonInteractive,
 		RunE:         runAgentCLIInfo,
 	}
 	cmd.Flags().Bool("json", false, "Emit the catalogue as JSON instead of the human-readable report")
+	addInteractiveFlag(cmd)
 	return cmd
 }
 

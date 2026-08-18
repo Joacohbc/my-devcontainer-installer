@@ -3,7 +3,6 @@ package commands
 import (
 	"encoding/json"
 	"fmt"
-	"strings"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/sshdefaults"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/service"
@@ -83,24 +82,46 @@ func newAgentSshCommand() *cobra.Command {
 		Use:   "ssh [flags] [-- command args...]",
 		Short: "Open an SSH session into the project's devcontainer",
 		Long: `devcontainer-cli agent ssh — connect to the project's devcontainer over
-SSH, configuring access (key + Host block) the first time.
+SSH.
 
-Same as 'ssh', with prompting off by default. Give it a command after '--':
-without one it opens an interactive session that never returns, which is of no
-use to an agent — 'agent exec' is the better tool for running a command anyway,
-and this one is for when the task genuinely needs the SSH path (agent forwarding,
+Same as 'ssh', with prompting off and ephemeral mode on by default (bypassing
+~/.ssh/config Host block modifications). Give it a command after '--': without
+one it opens an interactive session that never returns, which is of no use to
+an agent — 'agent exec' is the better tool for running a command anyway, and
+this one is for when the task genuinely needs the SSH path (agent forwarding,
 a real tty, a tool that shells out to ssh).`,
 		Example: `  # Run a command over SSH
   devcontainer-cli agent ssh -- go version
 
-  # Connect and forward ports for the session
-  devcontainer-cli agent ssh --forward --ports 3000,8080:80`,
+  # Reach the container on another Docker host
+  devcontainer-cli agent ssh --via me@docker-host -c mycontainer -- uname -a`,
 		SilenceUsage: true,
-		PreRunE:      agentNonInteractive,
+		PreRunE:      agentSshDefaults,
 		RunE:         runSsh,
 	}
-	addSshFlags(cmd)
+	addAgentSshFlags(cmd)
 	return cmd
+}
+
+func agentSshDefaults(cmd *cobra.Command, _ []string) error {
+	return agentDefaults(cmd, map[string]string{
+		flagNoInteractive: "true",
+		"ephemeral":       "true",
+	})
+}
+
+func addAgentSshFlags(cmd *cobra.Command) {
+	addInteractiveFlag(cmd)
+	addContainerFlag(cmd)
+	cmd.Flags().Bool("ephemeral", false, "Connect directly via SSH without modifying ~/.ssh/config or relying on existing Host blocks (default true for agent)")
+	cmd.Flags().String("via", "", "Reach the container through an existing SSH connection to its Docker host (requires --container): USER@HOST or an ssh-config alias")
+	cmd.Flags().String("key", "", "Private key path (default: the shared managed key under the CLI config dir)")
+	cmd.Flags().String("user", sshdefaults.User, "SSH user inside the container")
+
+	_ = cmd.RegisterFlagCompletionFunc("via", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		return listSshHosts(), cobra.ShellCompDirectiveNoFileComp
+	})
+	_ = cmd.MarkFlagFilename("key")
 }
 
 func newAgentExecCommand() *cobra.Command {
@@ -146,19 +167,37 @@ directory, once -w is doing it.`,
 		PreRunE:      agentExecDefaults,
 		RunE:         runShell,
 	}
-	addShellFlags(cmd)
+	addAgentExecFlags(cmd)
 	return cmd
 }
 
 // agentExecDefaults runs the command as devuser unless the caller named another
-// user. 'shell' deliberately leaves --user unset with an explicit command so it
-// keeps working against containers with no devuser; the facade takes the
-// opposite trade, because the caller it serves is a program that would
-// otherwise litter the user's own project directory with root-owned files. A
-// container without devuser now fails loudly, which beats corrupting a
-// checkout quietly.
+// user, and enforces non-interactive mode.
 func agentExecDefaults(cmd *cobra.Command, _ []string) error {
-	return agentDefaults(cmd, map[string]string{"user": sshdefaults.User})
+	return agentDefaults(cmd, map[string]string{
+		"user":            sshdefaults.User,
+		flagNoInteractive: "true",
+	})
+}
+
+func addAgentExecFlags(cmd *cobra.Command) {
+	cmd.Flags().String("user", "", "User to run the command as; always honoured, but only an interactive shell defaults it to devuser")
+	cmd.Flags().BoolP("no-tty", "T", false, "Disable pseudo-TTY allocation (use when piping output to a file, e.g. a DB dump)")
+	cmd.Flags().BoolP("workdir", "w", false, "Run in the project's workspace mount instead of the container default; only the devcontainer has that directory, so a database container needs it left off")
+	cmd.Flags().String("via", "", "Reach the container through an existing SSH connection to its Docker host (requires --container): USER@HOST or an ssh-config alias")
+	addContainerFlag(cmd)
+	addInteractiveFlag(cmd)
+
+	_ = cmd.RegisterFlagCompletionFunc("user", func(cmd *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
+		containerName, err := resolveContainer(cmd)
+		if err != nil {
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		}
+		return service.InspectService{Report: console}.ListUsers(containerName), cobra.ShellCompDirectiveNoFileComp
+	})
+	_ = cmd.RegisterFlagCompletionFunc("via", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		return listSshHosts(), cobra.ShellCompDirectiveNoFileComp
+	})
 }
 
 // agentExecArgs requires the command 'shell' treats as optional.
@@ -177,8 +216,8 @@ func newAgentForwardCommand() *cobra.Command {
 		Long: `devcontainer-cli agent forward — open an SSH tunnel from 127.0.0.1 to a port
 inside the running container.
 
-Same as 'port-forward', with prompting off by default, so the port mapping has
-to be given as an argument rather than picked interactively.
+Same as 'port-forward', with prompting off and ephemeral mode on by default,
+so the port mapping is given as an argument and connects directly via SSH.
 
 It stays in the FOREGROUND until interrupted: run it in the background if you
 need to keep working. A port that should always be reachable belongs in the
@@ -193,11 +232,40 @@ project instead — regenerate with 'agent create --ports <spec>'.`,
   devcontainer-cli agent forward 5432:postgres:5432`,
 		Args:         cobra.MaximumNArgs(1),
 		SilenceUsage: true,
-		PreRunE:      agentNonInteractive,
+		PreRunE:      agentForwardDefaults,
 		RunE:         runPortForward,
 	}
-	addPortForwardFlags(cmd)
+	addAgentForwardFlags(cmd)
 	return cmd
+}
+
+func agentForwardDefaults(cmd *cobra.Command, _ []string) error {
+	return agentDefaults(cmd, map[string]string{
+		flagNoInteractive: "true",
+		"ephemeral":       "true",
+	})
+}
+
+func addAgentForwardFlags(cmd *cobra.Command) {
+	cmd.Flags().String("alias", "", "SSH host alias to use when --ephemeral=false")
+	cmd.Flags().String("service", "", "Compose service to map port to (default: localhost)")
+	cmd.Flags().Bool("ephemeral", false, "Forward directly via SSH without modifying ~/.ssh/config or relying on existing Host blocks (default true for agent)")
+	addContainerFlag(cmd)
+	cmd.Flags().String("key", "", "Private key path (default: the shared managed key under the CLI config dir)")
+	cmd.Flags().String("user", sshdefaults.User, "SSH user inside the container")
+	addInteractiveFlag(cmd)
+
+	_ = cmd.RegisterFlagCompletionFunc("alias", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		return listSshHosts(), cobra.ShellCompDirectiveNoFileComp
+	})
+	_ = cmd.RegisterFlagCompletionFunc("service", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		cwd, err := currentDir()
+		if err != nil {
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		}
+		return listComposeServices(defaultComposeFile(cwd)), cobra.ShellCompDirectiveNoFileComp
+	})
+	_ = cmd.MarkFlagFilename("key")
 }
 
 func newAgentCopyCommand() *cobra.Command {
@@ -221,10 +289,12 @@ instead ('agent cli-info' lists them).`,
   devcontainer-cli agent copy --asset install-claude-code`,
 		Args:              copyArgs,
 		SilenceUsage:      true,
+		PreRunE:           agentNonInteractive,
 		ValidArgsFunction: runCopyCompletion,
 		RunE:              runCopy,
 	}
 	addCopyFlags(cmd)
+	addInteractiveFlag(cmd)
 	return cmd
 }
 
@@ -238,7 +308,7 @@ devcontainer.
 Same as 'ls'. The path is interpreted inside the container and defaults to the
 working directory there. With --json each entry comes back as an object with a
 name and whether it is a directory, which is easier to consume than parsing
-'ls' output; -a and -l are ignored in that mode.
+'ls' output. -a/--all includes hidden entries.
 
 This lists files, not environments. For what a container has installed use
 'context'; for which containers exist use 'status --all'.`,
@@ -246,21 +316,25 @@ This lists files, not environments. For what a container has installed use
   devcontainer-cli agent list
 
   # Structured output for a specific path
-  devcontainer-cli agent list /home/devuser --json`,
+  devcontainer-cli agent list /home/devuser --json
+
+  # Structured output including hidden files
+  devcontainer-cli agent list /home/devuser --json -a`,
 		Args:              cobra.MaximumNArgs(1),
 		SilenceUsage:      true,
+		PreRunE:           agentNonInteractive,
 		ValidArgsFunction: runLsCompletion,
 		RunE:              runAgentList,
 	}
-	addLsFlags(cmd)
-	cmd.Flags().Bool("json", false, "Emit one JSON object per entry instead of raw 'ls' output")
+	addAgentListFlags(cmd)
 	return cmd
 }
 
-// agentDirEntry is one entry of a container directory listing.
-type agentDirEntry struct {
-	Name string `json:"name"`
-	Dir  bool   `json:"dir"`
+func addAgentListFlags(cmd *cobra.Command) {
+	cmd.Flags().BoolP("all", "a", false, "Show hidden files (ls -a)")
+	addContainerFlag(cmd)
+	cmd.Flags().Bool("json", false, "Emit one JSON object per entry instead of raw 'ls' output")
+	addInteractiveFlag(cmd)
 }
 
 func runAgentList(cmd *cobra.Command, args []string) error {
@@ -278,17 +352,10 @@ func runAgentList(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// ListDir runs `ls -1 -p`, where a trailing slash marks a directory.
-	names, err := service.InspectService{Report: console}.ListDir(containerName, containerPath)
+	all, _ := cmd.Flags().GetBool("all")
+	entries, err := service.InspectService{Report: console}.ListDirEntries(containerName, containerPath, all)
 	if err != nil {
 		return err
-	}
-	entries := make([]agentDirEntry, 0, len(names))
-	for _, name := range names {
-		entries = append(entries, agentDirEntry{
-			Name: strings.TrimSuffix(name, "/"),
-			Dir:  strings.HasSuffix(name, "/"),
-		})
 	}
 
 	out, err := json.MarshalIndent(entries, "", "  ")

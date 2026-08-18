@@ -530,9 +530,14 @@ func (s InspectService) ListUsers(name string) []string {
 }
 
 // ListDir returns the entries under dir inside the container (directories carry
-// a trailing slash), used to drive shell completion.
-func (s InspectService) ListDir(name, dir string) ([]string, error) {
-	status, stdout, _, err := docker.DockerCapture([]string{"exec", name, "ls", "-1", "-p", dir})
+// a trailing slash), used to drive shell completion and structured listing.
+func (s InspectService) ListDir(name, dir string, all ...bool) ([]string, error) {
+	args := []string{"exec", name, "ls", "-1", "-p"}
+	if len(all) > 0 && all[0] {
+		args = append(args, "-a")
+	}
+	args = append(args, dir)
+	status, stdout, _, err := docker.DockerCapture(args)
 	if err != nil || status != 0 {
 		return nil, fmt.Errorf("could not list %q in container %q", dir, name)
 	}
@@ -541,6 +546,22 @@ func (s InspectService) ListDir(name, dir string) ([]string, error) {
 		if e = strings.TrimSpace(e); e != "" {
 			entries = append(entries, e)
 		}
+	}
+	return entries, nil
+}
+
+// ListDirEntries returns structured directory entries inside the container.
+func (s InspectService) ListDirEntries(name, dir string, all ...bool) ([]types.DirEntry, error) {
+	names, err := s.ListDir(name, dir, all...)
+	if err != nil {
+		return nil, err
+	}
+	entries := make([]types.DirEntry, 0, len(names))
+	for _, raw := range names {
+		entries = append(entries, types.DirEntry{
+			Name: strings.TrimSuffix(raw, "/"),
+			Dir:  strings.HasSuffix(raw, "/"),
+		})
 	}
 	return entries, nil
 }

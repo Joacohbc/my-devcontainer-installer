@@ -11,6 +11,7 @@ import (
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/pick"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/sshdefaults"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/service"
 	"github.com/spf13/cobra"
 )
@@ -68,8 +69,11 @@ are opened in parallel after you confirm.`,
 func addPortForwardFlags(cmd *cobra.Command) {
 	cmd.Flags().String("alias", "", "SSH host alias to use (bypasses auto-discovery)")
 	cmd.Flags().String("service", "", "Compose service to map port to (default: localhost)")
-	cmd.Flags().Bool("no-interactive", false, "Disable interactive prompts (fail on missing config)")
-	cmd.Flags().Bool("non-interactive", false, "Disable interactive prompts (fail on missing config)")
+	addInteractiveFlag(cmd)
+	cmd.Flags().Bool("ephemeral", false, "Forward directly via SSH without modifying ~/.ssh/config or relying on existing Host blocks")
+	addContainerFlag(cmd)
+	cmd.Flags().String("key", "", "Private key path (default: the shared managed key under the CLI config dir)")
+	cmd.Flags().String("user", sshdefaults.User, "SSH user inside the container")
 
 	_ = cmd.RegisterFlagCompletionFunc("alias", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return listSshHosts(), cobra.ShellCompDirectiveNoFileComp
@@ -81,6 +85,7 @@ func addPortForwardFlags(cmd *cobra.Command) {
 		}
 		return listComposeServices(defaultComposeFile(cwd)), cobra.ShellCompDirectiveNoFileComp
 	})
+	_ = cmd.MarkFlagFilename("key")
 }
 
 type parsedMapping struct {
@@ -374,25 +379,55 @@ func printTunnelPlan(tunnels []service.Tunnel) {
 		if t.IsDevcontainer {
 			tag = console.SuccessS("(devcontainer)")
 		}
+		via := console.Subtle(fmt.Sprintf("(via %s)", t.Alias))
+		if t.Ephemeral {
+			via = console.Subtle("(ephemeral)")
+		}
 		console.Info("  %s  %s  %s → %s:%d  %s",
 			t.ContainerName, tag,
 			console.WarnS("127.0.0.1:%d", t.LocalPort),
 			t.TargetHost, t.ContainerPort,
-			console.Subtle(fmt.Sprintf("(via %s)", t.Alias)))
+			via)
 	}
 	console.NewLine()
 }
 
 func runPortForward(cmd *cobra.Command, args []string) error {
+	ephemeral, _ := cmd.Flags().GetBool("ephemeral")
 	alias, _ := cmd.Flags().GetString("alias")
 	serviceFlag, _ := cmd.Flags().GetString("service")
-	noI, _ := cmd.Flags().GetBool("no-interactive")
-	nonI, _ := cmd.Flags().GetBool("non-interactive")
-	interactive := !(noI || nonI)
+	interactive := interactiveFlag(cmd)
 
 	var portMapping string
 	if len(args) == 1 {
 		portMapping = args[0]
+	}
+
+	if ephemeral {
+		if portMapping == "" {
+			return fmt.Errorf("port mapping is required in non-interactive/ephemeral mode")
+		}
+		mapping, err := parsePortMapping(portMapping, serviceFlag)
+		if err != nil {
+			return err
+		}
+
+		containerName, err := resolveContainer(cmd)
+		if err != nil {
+			return err
+		}
+
+		keyPath, _ := cmd.Flags().GetString("key")
+		user, _ := cmd.Flags().GetString("user")
+
+		svc := service.PortForwardService{Report: console}
+		tunnel, err := svc.BuildEphemeralTunnel(mapping.localPort, mapping.containerPort, mapping.targetHost, containerName, user, keyPath)
+		if err != nil {
+			return err
+		}
+		printTunnelPlan([]service.Tunnel{tunnel})
+		console.Success("Press Ctrl+C to terminate the port forwarding session.\n")
+		return svc.OpenTunnels([]service.Tunnel{tunnel})
 	}
 
 	// With no argument, a project that configured its tunnels (from a profile or
