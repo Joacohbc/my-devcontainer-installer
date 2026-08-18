@@ -40,6 +40,7 @@ var Registry = []Asset{
 	{Name: "install-claude-mem", File: "install-claude-mem.sh", Kind: KindScript, Label: "Claude-Mem installer"},
 	{Name: "install-codex-cli", File: "install-codex-cli.sh", Kind: KindScript, Label: "Codex CLI installer"},
 	{Name: "install-context-mode", File: "install-context-mode.sh", Kind: KindScript, Label: "Context Mode installer"},
+	{Name: "install-ecc", File: "install-ecc.sh", Kind: KindScript, Label: "ECC installer"},
 	{Name: "install-copilot", File: "install-copilot.sh", Kind: KindScript, Label: "GitHub Copilot CLI installer"},
 	{Name: "install-graphify", File: "install-graphify.sh", Kind: KindScript, Label: "Graphify installer"},
 	{Name: "install-opencode", File: "install-opencode.sh", Kind: KindScript, Label: "OpenCode installer"},

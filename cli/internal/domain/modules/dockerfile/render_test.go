@@ -599,6 +599,22 @@ func TestModuleRunLayerCounts(t *testing.T) {
 // entrypoint runs them on start; the agent-wiring tools (graphify/caveman) carry
 // a higher run order so they run after the agents. Interactive scripts (codex,
 // the github login under cleanup) must NOT be auto-start.
+// ECC's installer only puts the CLIs on PATH; it never runs `ecc --target <t>`
+// itself, because every target writes into the user's own project or home. So
+// the module has no profile option and contributes no environment: a container
+// start must not rewrite a checkout with a bundle nobody chose.
+func TestEccModuleInstallsOnlyTheCLIs(t *testing.T) {
+	if dockerfile.EccModule.ProvidesEnv != nil {
+		t.Error("ecc must declare no environment: without a --target run there is no profile to pass")
+	}
+	if len(dockerfile.EccModule.Options) != 0 {
+		t.Errorf("ecc must expose no options, got %d", len(dockerfile.EccModule.Options))
+	}
+	if got := dockerfile.EccModule.PostScriptFiles(nil); len(got) != 1 || got[0] != "install-ecc.sh" {
+		t.Errorf("post-script files = %v, want [install-ecc.sh]", got)
+	}
+}
+
 func TestPostScriptAutoStartFlags(t *testing.T) {
 	cases := []struct {
 		name      string
@@ -614,6 +630,7 @@ func TestPostScriptAutoStartFlags(t *testing.T) {
 		{"caveman", dockerfile.CavemanModule, true, 90},
 		{"claude-mem", dockerfile.ClaudeMemModule, true, 90},
 		{"context-mode", dockerfile.ContextModeModule, true, 90},
+		{"ecc", dockerfile.EccModule, true, 90},
 		{"skills", dockerfile.SkillsModule, true, 95},
 		{"codex", dockerfile.CodexCliModule, false, 0},
 		{"cleanup (github login)", dockerfile.CleanupModule, false, 0},

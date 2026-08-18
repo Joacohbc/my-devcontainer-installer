@@ -17,7 +17,7 @@ mkdir -p temp-dir
 
 # Ejecutamos la compilación dentro del devcontainer
 # Como la carpeta está montada como volumen, el binario aparecerá automáticamente en temp-dir/
-devcontainer-cli agent exec -w -- bash -c '
+devcontainer-cli agent exec -w -T -- bash -c '
   cd cli
   VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "dev")
   

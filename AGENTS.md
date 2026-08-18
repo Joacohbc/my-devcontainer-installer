@@ -488,8 +488,9 @@ Two mechanisms keep those links alive, and neither may be dropped:
   repaired without a re-sync) and the sync helper (so a volume seeded before any
   container ever ran is already consistent). They give the relative link above a
   name to land on. Adding an entry needs no extra work — the alias falls out of
-  `Target` — but it does need the matching row in `entrypoint.sh`'s table.
-- **`fix_symlinks` in `service/sharedconfig.go`** — resolves every symlink of a
+  `Target` — and needs nothing else at all now that the catalogue is rendered
+  from Go (see below).
+- **`fix_symlinks` in `internal/infra/assets/shared-config-sync.sh`** — resolves every symlink of a
   copied entry against the **source tree under `/host`**, never against the copy
   in the volume. Resolving in the destination (what it used to do) can only
   succeed for links that never leave the entry, i.e. the ones needing no help,
@@ -500,6 +501,108 @@ Two mechanisms keep those links alive, and neither may be dropped:
   present on the host → replaced with a **real copy**, the only way it survives
   into a container; target dangling on the host too → left alone (never an
   error — `cp -aL` used to abort the whole sync over `~/.claude/debug/latest`).
+
+### One implementation of the layout, one declaration of the catalogue
+
+Two very different callers build that layout, and they used to carry a copy of
+it each:
+
+| caller | runs in | needs |
+|---|---|---|
+| `entrypoint.sh` | every managed container | all of it |
+| the `config shared sync` helper | a throwaway `ubuntu:24.04` container | the volume aliases only |
+
+Neither copy existed because anything varied between them — they want exactly
+the same layout. They existed because it was written twice, so the "one `../`
+per directory level" alias computation was byte-duplicated and the catalogue was
+encoded twice in two different grammars (a heredoc of `id kind target` rows in
+the entrypoint, a space-separated `id=target` string for the helper).
+
+Now there is one of each:
+
+- **`internal/infra/assets/shared-config.sh`** is the module. Its interface is
+  `shared_config_apply <volume-root> <home>` (materialize + aliases + home
+  links, idempotent), `shared_config_volume_aliases <volume-root>` (the half the
+  host-side sync needs before any container has ever run),
+  `shared_config_is_target <home-relative-path>`, and the primitives
+  `link_or_keep` / `own` / `own_link`. It is configured by exactly two
+  variables: `SC_ENTRIES` (the catalogue) and `SC_OWNER` (`uid:gid`, or empty to
+  skip chowning — which is what lets a test run it unprivileged). POSIX sh, so
+  it is valid in the helper's dash and in the entrypoint's bash, and every input
+  is read as `${VAR:-}` because it cannot know whether its caller set `set -u`.
+  The image gets it at `types.SharedConfigLibDir` via the cleanup module's
+  `CopyFiles`; the helper gets it concatenated into its `sh -c` program.
+- **`types.RenderSharedConfigTable()`** is the catalogue, rendered as
+  `<id> <kind> <target>` lines — the dumbest grammar a `while read -r a b c`
+  loop can consume. `prepareBuildDir` writes it into the build dir as
+  `types.SharedConfigTableFileName` (generated, like `CONTEXT.md`, so it is
+  **not** in `CopyFiles` — Preflight would look for it in the embedded FS) and
+  folds it into `copyContents`, so adding an entry changes the fingerprint and
+  rebuilds the image whose entrypoint has to know about it. The helper gets the
+  same string as `-e SC_ENTRIES=`.
+
+So `types.SharedConfigEntries` is the only place an entry is declared. It can no
+longer be right in one language and stale in the other, and
+`TestSharedConfigCatalogueIsDeclaredOnlyInGo` fails if a shell copy grows back.
+
+**`shared-config-sync.sh` is the host-side half**, loaded on top of the library
+by `syncEntryScript()`. It is separate because `fix_symlinks` and friends need
+the host home mounted at `/host`, which exists only inside the helper container
+— shipping them in the image would bake dead weight into every layer.
+
+**Every link goes through `link_or_keep <link-path> <target> [message]`.** It
+keeps whatever real (non-symlink) thing already sits there and returns 1 so the
+caller can skip, otherwise creates the parent, points the link with `ln -sfn`
+and applies `SC_OWNER` to link and parent. The target is used **verbatim**,
+which is what lets the volume aliases pass a relative one (`.config/gh ->
+../gh`). Four places need those rules — the entry's home link, its volume-root
+alias, the Antigravity skills bridge, the image's baked global skill — and
+open-coding them is how they drifted: the same "is something real already here?"
+guard existed in two contrary phrasings. A kept entry is a normal outcome, so
+the loops in the library swallow that `1` with `|| :`; without it the pipeline's
+status would be the last entry's and a caller under `set -e` (the sync helper)
+would abort. Covered by `TestLinkOrKeep`, `TestSharedConfigApply` and
+`TestSharedConfigIsTarget`, which run the real functions against temp trees.
+
+### `entrypoint.sh` is a driver over named stages
+
+Every step is a `stage_*` function and `main` at the bottom is the whole order
+in one readable list:
+
+```
+stage_users → stage_workspace → stage_identity → stage_shared_config
+  → stage_user_aliases → stage_context_skill → stage_post_scripts → exec sshd
+```
+
+They are functions in one shell, not separate processes, because they share
+state on purpose: `stage_workspace` publishes `WORKSPACE_DIR`, `stage_identity`
+publishes `DEV_UID`/`DEV_GID`/`SC_OWNER`, and four later stages read them.
+`DEV_HOME` exists for the same reason ten literals did not: a test can point a
+stage at a temp tree.
+
+**Why not an `/etc/entrypoint.d/` of numbered scripts.** A stage directory is a
+seam, and nothing varies across it — no module and no user contributes an
+entrypoint stage. (Modules *do* contribute installer scripts, and that
+directory-drop seam already exists: `~/post-script/start.d`, run by the last
+stage.) Functions give the same readability and the same test seam —
+`extractShellFunc` pulls one out and runs it — without inventing an extension
+point that would have exactly one adapter.
+
+**The order is load-bearing**, and `TestEntrypointStageOrder` pins four edges
+plus "every stage `main` calls is actually defined" (a typo'd call is a silent
+no-op in a script with no `set -e`):
+
+| edge | why |
+|---|---|
+| `stage_workspace` → `stage_identity` | `WORKSPACE_DIR` decides which UID devuser is remapped to |
+| `stage_identity` → `stage_shared_config` | the library is configured with `SC_OWNER`, set from `DEV_UID`/`DEV_GID` |
+| `stage_shared_config` → `stage_user_aliases` | a local `~/.alias.sh` created first would win the race against the volume symlink |
+| `stage_shared_config` → `stage_context_skill` | `~/.claude` must already *be* the volume symlink, or `mkdir -p` makes it a real directory |
+
+`TestEntrypointSharedConfigStage` runs the real `stage_shared_config` against
+temp stand-ins for the volume, the catalogue file and the home — the wiring the
+unit tests cannot see.
+
 
 ### Profiles carry modules **and** the user's own scripts
 
@@ -896,13 +999,13 @@ npx skills add Joacohbc/my-devcontainer-installer@devcontainer-cli -g
 
 `internal/cli/commands/agent.go` adds one command group aimed at an AI agent
 driving this CLI: `agent cli-info | create | connect | exec | forward | copy |
-list | clean`. It is **additive** — every command it wraps stays top-level and
+list | context | clean`. It is **additive** — every command it wraps stays top-level and
 unchanged, and the host skill teaches the group first with those as the escape
 hatch (`TestAgentGroup_DoesNotReplaceTheHumanCommands` pins that).
 
-Five of the eight are the same handler under a different name: `ssh` →
+Six of the nine are the same handler under a different name: `ssh` →
 `runSsh`, `exec` → `runShell`, `forward` → `runPortForward`, `copy` → `runCopy`,
-`list` → `runLs`. The flags come from helpers extracted out of the human
+`list` → `runLs`, `context` → `runContext`. The flags come from helpers extracted out of the human
 commands' constructors (`addSshFlags`, `addShellFlags`, `addPortForwardFlags`,
 `addCopyFlags`, `addLsFlags`), so each flag — description and completion — is
 still registered exactly once. A new flag on `ssh` reaches `agent ssh` for
@@ -945,6 +1048,13 @@ Four properties are load-bearing:
   the same profile) and it is still present locally (`CleanImages` treats an
   unknown ref as an error, and an already-deleted image must not fail the
   cleanup). `--all` adds `CleanAll` on top.
+
+- **`agent context` is the read half of `cli-info`.** `cli-info` describes what
+  this *binary* could build; `agent context` describes what the *container in
+  front of you* actually has, by streaming its own `~/CONTEXT.md` plus the live
+  inventory. It is the same handler as `context` with prompting off, and it is
+  the question an agent should answer before running anything inside a
+  container — which Python, how to reach the database, is pnpm there.
 
 **`agent cli-info` is why the catalogue no longer has to be duplicated in
 prose.** `AgentService.Info` reads `catalog.DockerfileModules`,
@@ -1032,7 +1142,7 @@ is Cobra-native.
 | `cleanup-tips` | `cleanup_tips.go` | Print docker cleanup commands |
 | `context` | `context.go` | Print the container's own context and installed tools: runs `get-devcontainer-context` inside it via `InspectService.Context` and streams the output (`--json` for structured output). Falls back to `copy --asset get-devcontainer-context` when the image predates the `aliases` module. Complements `info` (Docker metadata) by reporting what is *inside* the container |
 | `network` | `network.go` | Attach/detach any container to the workspace network; subcommands `network connect`/`network disconnect <container...>` (tab-completed); `connect` takes `--alias` (extra DNS names; prompted when interactive) |
-| `agent` | `agent.go` (+ `agent_create.go`, `agent_info.go`) | The agent-facing facade: `agent cli-info` (the live catalogue as text or `--json`), `agent create` (generate + build + up), `agent ssh`/`exec`/`forward`/`copy`/`list`/`clean`. Additive — every command it wraps stays top-level. See the section below |
+| `agent` | `agent.go` (+ `agent_create.go`, `agent_info.go`) | The agent-facing facade: `agent cli-info` (the live catalogue as text or `--json`), `agent create` (generate + build + up), `agent ssh`/`exec`/`forward`/`copy`/`list`/`context`/`clean`. Additive — every command it wraps stays top-level. See the section below |
 | `completion` | _(Cobra built-in)_ | Print shell completion script |
 
 ---

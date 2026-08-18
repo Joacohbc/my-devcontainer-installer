@@ -4,6 +4,7 @@ package sshdefaults
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
@@ -14,6 +15,12 @@ const (
 	ServiceName = "devcontainer-ssh"
 	Alias       = "devcontainer"
 	KeyName     = types.SSHKeyName
+	// Port is the port sshd listens on INSIDE the container. The entrypoint
+	// starts `sshd -D -o ListenAddress=0.0.0.0` with no Port override, so it is
+	// the stock 22 — every path that dials the container's own IP (a managed
+	// block's ProxyCommand, an ephemeral session, an ephemeral tunnel) must use
+	// this and not a published host port.
+	Port = "22"
 	// RemoteKnownHostsPath is the known_hosts file referenced by a ProxyCommand
 	// block pasted on the machine you connect FROM. That machine has its own
 	// home, so — like the key — the path must use the ~ form rather than this
@@ -58,6 +65,45 @@ func ManagedComment(kind Kind, ref, alias, host string) string {
 		comment += " host=" + host
 	}
 	return comment
+}
+
+// EphemeralDialArgs returns the ssh flags for dialing a container directly on
+// its own address, with no managed Host block involved.
+//
+// It exists as one list because it has more than one caller (an ephemeral
+// session and an ephemeral tunnel), and those two drifted apart once already:
+// both dialed a port the container never listened on while the managed block
+// dialed the right one.
+func EphemeralDialArgs(keyPath string) []string {
+	options := append(ephemeralHostKeyOptions(), ConfigOption{Keyword: "LogLevel", Value: "ERROR"})
+	return append([]string{"-i", keyPath, "-p", Port}, OptionFlags(options)...)
+}
+
+// ephemeralHostKeyOptions is the host-key policy of a dial that leaves no trace:
+// verification off, known_hosts discarded. It is the deliberate opposite of
+// HostKeyOptions, and the difference is not an oversight — a managed Host block
+// persists, so the CLI pins the container's keys into its own known_hosts and
+// re-pins them after a rebuild (SshService.PinContainerHostKeys). An ephemeral
+// dial has nothing that would ever re-pin, so recording a key there could only
+// produce a mismatch the user has to clear by hand.
+func ephemeralHostKeyOptions() []ConfigOption {
+	return []ConfigOption{
+		{Keyword: "StrictHostKeyChecking", Value: "no"},
+		{Keyword: "UserKnownHostsFile", Value: os.DevNull},
+	}
+}
+
+// ProbeOptions returns the options for a non-interactive reachability probe: it
+// must never block on a prompt (BatchMode, accept-new) and must fail fast rather
+// than hang on a container that is up but not answering.
+func ProbeOptions() []ConfigOption {
+	return []ConfigOption{
+		{Keyword: "BatchMode", Value: "yes"},
+		{Keyword: "StrictHostKeyChecking", Value: "accept-new"},
+		{Keyword: "ConnectTimeout", Value: "5"},
+		{Keyword: "ServerAliveInterval", Value: "2"},
+		{Keyword: "ServerAliveCountMax", Value: "2"},
+	}
 }
 
 // AuthorizedKeysInstallScript returns the sh script that installs a public key
@@ -183,9 +229,12 @@ func BuildConfigBlock(opts ConfigBlockOptions) (string, error) {
 	return stanza, nil
 }
 
-// ConfigOption is one `Keyword Value` line of an ssh config stanza, kept
-// structured so callers can both render it and detect/refresh it in an already
-// written block.
+// ConfigOption is one ssh option, kept structured because the same option has to
+// be expressed in two grammars: a `Keyword Value` line inside a ~/.ssh/config
+// Host stanza, and a `-o Keyword=Value` flag on an ssh command line. Keeping it
+// as data means an option is named once and rendered per grammar, rather than
+// every call site spelling out keyword strings of its own. It also stays
+// detectable in an already written block, which is how a stanza is refreshed.
 type ConfigOption struct {
 	Keyword string
 	Value   string
@@ -193,6 +242,19 @@ type ConfigOption struct {
 
 // Line renders the option as it appears inside a Host stanza (4-space indented).
 func (o ConfigOption) Line() string { return "    " + o.Keyword + " " + o.Value }
+
+// Flag renders the option as it appears on an ssh command line.
+func (o ConfigOption) Flag() []string { return []string{"-o", o.Keyword + "=" + o.Value} }
+
+// OptionFlags renders options for a command line, the counterpart of
+// withHostKeyOptions on the config side.
+func OptionFlags(options []ConfigOption) []string {
+	flags := make([]string, 0, 2*len(options))
+	for _, option := range options {
+		flags = append(flags, option.Flag()...)
+	}
+	return flags
+}
 
 // HostKeyOptions returns the host-key options that scope verification for a
 // devcontainer Host to knownHostsFile: the file itself, accept-new so a
@@ -255,7 +317,7 @@ func buildStanza(opts ConfigBlockOptions) (string, error) {
     User %s
     IdentityFile %s
     IdentitiesOnly yes
-    ProxyCommand ssh %s "nc -q0 %s 22"`, opts.Alias, opts.User, opts.KeyPath, opts.Remote, ipExpr)
+    ProxyCommand ssh %s "nc -q0 %s %s"`, opts.Alias, opts.User, opts.KeyPath, opts.Remote, ipExpr, Port)
 		return withHostKeyOptions(stanza, opts.KnownHostsFile), nil
 	}
 	return "", fmt.Errorf("unknown mode %q", opts.Mode)

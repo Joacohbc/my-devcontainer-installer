@@ -7,6 +7,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/sshdefaults"
 )
 
 // writeFakeSSH puts an executable "ssh" shell script (running body) at the
@@ -90,9 +92,11 @@ type cmdRoutingRunner struct {
 	psOut      string
 	inspectOut string
 	psStatus   int
+	calls      [][]string
 }
 
 func (r *cmdRoutingRunner) Run(_ context.Context, args []string, _ string, _ string, _ map[string]string) (int, string, string) {
+	r.calls = append(r.calls, args)
 	if len(args) >= 2 && args[1] == "version" {
 		return 0, "27.0.0", ""
 	}
@@ -105,6 +109,18 @@ func (r *cmdRoutingRunner) Run(_ context.Context, args []string, _ string, _ str
 		}
 	}
 	return 0, "", ""
+}
+
+// sawKeyInstall reports whether the runner was asked to pipe a public key into
+// a container's authorized_keys (the `docker exec -i ... sh -c <script>` call).
+func (r *cmdRoutingRunner) sawKeyInstall() bool {
+	for _, call := range r.calls {
+		joined := strings.Join(call, " ")
+		if slices.Contains(call, "exec") && strings.Contains(joined, "authorized_keys") {
+			return true
+		}
+	}
+	return false
 }
 
 func TestSshContainerLiveness(t *testing.T) {
@@ -319,17 +335,48 @@ func TestSshCommandExists(t *testing.T) {
 }
 
 func TestSshConnectEphemeral(t *testing.T) {
-	writeFakeSSH(t, "exit 0")
+	argsFile := filepath.Join(t.TempDir(), "args")
+	writeFakeSSH(t, `echo "$@" > `+argsFile+`
+exit 0`)
 	ps := `{"Names":"c1","Image":"img1","Status":"Up","State":"running","Labels":"","Ports":""}`
 	runner := &cmdRoutingRunner{psOut: ps, inspectOut: "bridge 172.25.0.14\n"}
 	defer useFakeDocker(runner)()
 
+	// A key pair on disk keeps EnsureKey from shelling out to ssh-keygen and
+	// writing into the real user config dir.
+	keyPath := filepath.Join(t.TempDir(), "id_devcontainer")
+	if err := os.WriteFile(keyPath, []byte("private"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(keyPath+".pub", []byte("ssh-ed25519 AAAA test\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
 	svc := SshService{Report: nopReporter{}}
-	if err := svc.ConnectEphemeral("c1", "", "", []string{"echo", "hi"}); err != nil {
+	if err := svc.ConnectEphemeral("c1", "", keyPath, []string{"echo", "hi"}); err != nil {
 		t.Errorf("ConnectEphemeral ok: %v", err)
 	}
 
-	if err := svc.ConnectEphemeral("absent", "", "", nil); err == nil {
+	got, err := os.ReadFile(argsFile)
+	if err != nil {
+		t.Fatalf("fake ssh recorded no invocation: %v", err)
+	}
+	line := string(got)
+	// sshd inside the container listens on 22; a published host port would not
+	// answer on the container's own IP, which is what this dials.
+	if !strings.Contains(line, "-p "+sshdefaults.Port+" ") {
+		t.Errorf("ssh args = %q, want it to dial port %s", line, sshdefaults.Port)
+	}
+	if !strings.Contains(line, "devuser@172.25.0.14") {
+		t.Errorf("ssh args = %q, want devuser@172.25.0.14", line)
+	}
+	// Nothing in the image ships an authorized_keys, so an ephemeral connect has
+	// to install the key itself or it can only ever be denied.
+	if !runner.sawKeyInstall() {
+		t.Error("ConnectEphemeral must install the public key in the container")
+	}
+
+	if err := svc.ConnectEphemeral("absent", "", keyPath, nil); err == nil {
 		t.Error("expected error for absent container")
 	}
 }

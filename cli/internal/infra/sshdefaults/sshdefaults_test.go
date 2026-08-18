@@ -240,6 +240,72 @@ func TestBuildConfigBlock_UnknownMode(t *testing.T) {
 	}
 }
 
+// One option, two grammars: the config stanza line and the command-line flag.
+// This is the whole reason ConfigOption is data rather than a string in each
+// call site.
+func TestConfigOptionRendersInBothGrammars(t *testing.T) {
+	option := sshdefaults.ConfigOption{Keyword: "StrictHostKeyChecking", Value: "accept-new"}
+
+	if got, want := option.Line(), "    StrictHostKeyChecking accept-new"; got != want {
+		t.Errorf("Line() = %q, want %q", got, want)
+	}
+	if got := option.Flag(); len(got) != 2 || got[0] != "-o" || got[1] != "StrictHostKeyChecking=accept-new" {
+		t.Errorf("Flag() = %v, want [-o StrictHostKeyChecking=accept-new]", got)
+	}
+
+	flags := sshdefaults.OptionFlags(sshdefaults.ProbeOptions())
+	if len(flags) != 2*len(sshdefaults.ProbeOptions()) {
+		t.Errorf("OptionFlags emitted %d flags for %d options", len(flags), len(sshdefaults.ProbeOptions()))
+	}
+	// A probe runs unattended: a prompt would hang it instead of answering.
+	if !strings.Contains(strings.Join(flags, " "), "-o BatchMode=yes") {
+		t.Errorf("ProbeOptions = %v, want BatchMode=yes", flags)
+	}
+}
+
+// The two host-key policies must stay opposites: a managed block pins keys
+// because something re-pins them after a rebuild, an ephemeral dial has no such
+// machinery and must record nothing.
+func TestHostKeyPoliciesAreDeliberatelyOpposite(t *testing.T) {
+	managed := strings.Join(sshdefaults.OptionFlags(sshdefaults.HostKeyOptions("/managed/known_hosts")), " ")
+	ephemeral := strings.Join(sshdefaults.EphemeralDialArgs("/keys/id_devcontainer"), " ")
+
+	if !strings.Contains(managed, "StrictHostKeyChecking=accept-new") {
+		t.Errorf("managed options = %q, want accept-new", managed)
+	}
+	if !strings.Contains(managed, "UserKnownHostsFile=/managed/known_hosts") {
+		t.Errorf("managed options = %q, want the CLI-owned known_hosts", managed)
+	}
+	if strings.Contains(ephemeral, "accept-new") {
+		t.Errorf("ephemeral args = %q, must not pin a host key", ephemeral)
+	}
+}
+
+// The ephemeral dial flags are the contract two callers share (an ephemeral
+// session and an ephemeral tunnel), so they are pinned here rather than in each.
+func TestEphemeralDialArgs(t *testing.T) {
+	args := strings.Join(sshdefaults.EphemeralDialArgs("/keys/id_devcontainer"), " ")
+
+	// sshd runs inside the container on the stock port; a published host port
+	// would not answer on the container's own address, which is what this dials.
+	if !strings.Contains(args, "-p "+sshdefaults.Port) {
+		t.Errorf("EphemeralDialArgs = %q, want it to dial port %s", args, sshdefaults.Port)
+	}
+	if sshdefaults.Port != "22" {
+		t.Errorf("Port = %q, want 22 — the entrypoint starts sshd with no Port override", sshdefaults.Port)
+	}
+	if !strings.Contains(args, "-i /keys/id_devcontainer") {
+		t.Errorf("EphemeralDialArgs = %q, want it to offer the given key", args)
+	}
+	// A container is recreated often and its host key changes with it, so an
+	// ephemeral dial must not pin one: the managed-alias path owns that.
+	for _, want := range []string{"StrictHostKeyChecking=no", "UserKnownHostsFile=/dev/null"} {
+		if !strings.Contains(args, want) {
+			t.Errorf("EphemeralDialArgs = %q, want %s", args, want)
+		}
+	}
+}
+
 func TestHostKeyOptions(t *testing.T) {
 	opts := sshdefaults.HostKeyOptions("/cfg/ssh/known_hosts")
 	want := map[string]string{

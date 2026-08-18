@@ -6,7 +6,6 @@ import (
 	"os/exec"
 	"sync"
 
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/sshdefaults"
 )
 
@@ -17,6 +16,10 @@ type PortForwardService struct {
 	Report Reporter
 }
 
+// tunnelBindAddress keeps a forwarded port on the loopback: a tunnel is for this
+// machine, not for everything that can reach it.
+const tunnelBindAddress = "127.0.0.1"
+
 // Tunnel is one resolved local→container port forward over an SSH alias or direct ephemeral connection.
 type Tunnel struct {
 	LocalPort      int
@@ -26,31 +29,21 @@ type Tunnel struct {
 	ContainerName  string
 	IsDevcontainer bool
 	Ephemeral      bool
-	HostIP         string
-	User           string
-	KeyPath        string
+	// Target is only meaningful when Ephemeral: an aliased tunnel gets its
+	// address, user and key from the managed Host block instead.
+	Target EphemeralTarget
 }
 
-// BuildEphemeralTunnel constructs an ephemeral direct SSH tunnel into containerName.
+// BuildEphemeralTunnel constructs an ephemeral direct SSH tunnel into
+// containerName. It goes through the same EnsureEphemeralAccess as an ephemeral
+// session, so a container that never had `ssh --setup` run still accepts the
+// tunnel instead of refusing the key.
 func (s PortForwardService) BuildEphemeralTunnel(localPort, containerPort int, targetHost, containerName, user, keyPath string) (Tunnel, error) {
 	sshSvc := SshService{Report: s.Report}
-	state, ip, err := sshSvc.ContainerLiveness(containerName)
+	target, err := sshSvc.EnsureEphemeralAccess(containerName, user, keyPath)
 	if err != nil {
 		return Tunnel{}, err
 	}
-	if state == TargetAbsent {
-		return Tunnel{}, fmt.Errorf("container '%s' not found", containerName)
-	}
-	if state == TargetStopped {
-		return Tunnel{}, fmt.Errorf("container '%s' is not running", containerName)
-	}
-	if ip == "" {
-		ip = "127.0.0.1"
-	}
-	if user == "" {
-		user = sshdefaults.User
-	}
-	keyPath = domain.ResolveSSHKeyPath(keyPath)
 
 	return Tunnel{
 		LocalPort:      localPort,
@@ -59,41 +52,25 @@ func (s PortForwardService) BuildEphemeralTunnel(localPort, containerPort int, t
 		ContainerName:  containerName,
 		IsDevcontainer: true,
 		Ephemeral:      true,
-		HostIP:         ip,
-		User:           user,
-		KeyPath:        keyPath,
+		Target:         target,
 	}, nil
 }
 
-// tunnelCommand builds the `ssh -N -L` invocation for one tunnel. The bind
-// address is explicit: an omitted bind address makes ssh listen on both the
-// IPv4 and IPv6 loopback (127.0.0.1 and ::1), which we don't want.
+// tunnelCommand builds the `ssh -N -L` invocation for one tunnel.
 func tunnelCommand(t Tunnel) *exec.Cmd {
 	if t.Ephemeral {
-		ip := t.HostIP
-		if ip == "" {
-			ip = "127.0.0.1"
-		}
-		user := t.User
-		if user == "" {
-			user = sshdefaults.User
-		}
-		target := fmt.Sprintf("%s@%s", user, ip)
-		args := []string{
-			"-N",
-			"-L", fmt.Sprintf("127.0.0.1:%d:%s:%d", t.LocalPort, t.TargetHost, t.ContainerPort),
-			"-p", "2222",
-			"-o", "StrictHostKeyChecking=no",
-			"-o", "UserKnownHostsFile=/dev/null",
-			"-o", "LogLevel=ERROR",
-		}
-		if t.KeyPath != "" {
-			args = append(args, "-i", t.KeyPath)
-		}
-		args = append(args, target)
+		args := []string{"-N", "-L", t.forwardSpec()}
+		args = append(args, sshdefaults.EphemeralDialArgs(t.Target.KeyPath)...)
+		args = append(args, t.Target.Destination())
 		return exec.Command("ssh", args...)
 	}
-	return exec.Command("ssh", "-N", "-L", fmt.Sprintf("127.0.0.1:%d:%s:%d", t.LocalPort, t.TargetHost, t.ContainerPort), t.Alias)
+	return exec.Command("ssh", "-N", "-L", t.forwardSpec(), t.Alias)
+}
+
+// forwardSpec renders ssh's -L argument. The bind address is explicit: an
+// omitted one makes ssh listen on both 127.0.0.1 and ::1, which we don't want.
+func (t Tunnel) forwardSpec() string {
+	return fmt.Sprintf("%s:%d:%s:%d", tunnelBindAddress, t.LocalPort, t.TargetHost, t.ContainerPort)
 }
 
 // OpenTunnels spawns one `ssh -N -L` process per tunnel in parallel and blocks

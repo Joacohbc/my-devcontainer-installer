@@ -1,5 +1,7 @@
 package types
 
+import "strings"
+
 // Shared persistent tool-config support. A single daemon-level Docker volume
 // (devcontainer-shared-config) is mounted into every managed container at
 // SharedConfigMountPath; the container entrypoint materializes one entry per
@@ -28,9 +30,12 @@ type SharedConfigEntry struct {
 	Kind   SharedConfigKind // dir → mkdir+symlink; file → touch+symlink
 }
 
-// SharedConfigEntries is the catalog of tool configs persisted across containers.
-// Adding a future tool is one new row here PLUS one matching row in the shell
-// table inside internal/infra/assets/entrypoint.sh (a test keeps them in sync).
+// SharedConfigEntries is the catalog of tool configs persisted across containers,
+// and the ONLY place it is declared. Adding a future tool is one new row here —
+// nothing else. The shell that builds the layout used to carry its own copy of
+// this table (a heredoc in entrypoint.sh) plus a second encoding of it for the
+// sync helper; both now read RenderSharedConfigTable() below, so the row can no
+// longer be right in one language and stale in the other.
 //
 // Note: the "gemini" entry (~/.gemini) is also the documented config home of
 // the Antigravity CLI (agy) — settings (antigravity-cli/settings.json), plugins
@@ -119,4 +124,41 @@ func SharedConfigMount() string {
 // (the default, including legacy configs); set it to false to opt out.
 func SharedConfigEnabled(c *DevcontainerConfig) bool {
 	return c.Compose.SharedConfig == nil || *c.Compose.SharedConfig
+}
+
+// SharedConfigLibDir is where the image keeps the shell library that builds the
+// layout, plus the rendered catalogue it reads. It is outside devuser's home on
+// purpose: the home is partly symlinked into the shared volume, and a library
+// the entrypoint depends on must not live in storage the entrypoint has not
+// wired up yet.
+const SharedConfigLibDir = "/usr/local/lib/devcontainer"
+
+// SharedConfigLibFile is the embedded asset holding that library. It is listed
+// in the cleanup module's CopyFiles, so editing it changes the fingerprint and
+// rebuilds the image.
+const SharedConfigLibFile = "shared-config.sh"
+
+// SharedConfigTableFileName is the rendered catalogue the library reads. Unlike
+// the library it is GENERATED (like CONTEXT.md), so it is written into the build
+// dir by prepareBuildDir rather than materialized by assets.Preflight — and it
+// is folded into the fingerprint there, which is what makes adding an entry
+// rebuild the image whose entrypoint has to know about it.
+const SharedConfigTableFileName = "shared-config-entries"
+
+// RenderSharedConfigTable renders the catalogue in the one format both callers
+// parse: "<id> <kind> <target>", one entry per line. The grammar is deliberately
+// the dumbest thing a POSIX `while read -r a b c` loop can consume — no quoting,
+// no escaping, no separator that can appear in a value. ValidateSharedConfig
+// (types tests) is what keeps a field from ever containing whitespace.
+func RenderSharedConfigTable() string {
+	var b strings.Builder
+	for _, e := range SharedConfigEntries {
+		b.WriteString(e.ID)
+		b.WriteByte(' ')
+		b.WriteString(string(e.Kind))
+		b.WriteByte(' ')
+		b.WriteString(e.Target)
+		b.WriteByte('\n')
+	}
+	return b.String()
 }
