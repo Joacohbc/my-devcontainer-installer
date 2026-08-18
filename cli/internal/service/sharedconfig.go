@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/assets"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
 )
 
@@ -54,179 +55,37 @@ type SyncResult struct {
 // already present in the daemon.
 const syncHelperImage = "ubuntu:24.04"
 
-// sharedTargetsFunc defines `is_shared_target <home-relative-path>`, true when
-// the path lies inside one of the shared entries (ENTRY_SHARED_PAIRS holds every
-// entry as "<id>=<home-relative target>"). It is what tells a symlink pointing
-// at another persisted config (~/.claude/skills/x -> ~/.agents/skills/x) apart
-// from one pointing at something that only exists on the host.
-const sharedTargetsFunc = `is_shared_target() {
-  for _shared_pair in $ENTRY_SHARED_PAIRS; do
-    _shared_entry_target="${_shared_pair#*=}"
-    case "$1" in
-      "$_shared_entry_target"|"$_shared_entry_target"/*) return 0 ;;
-    esac
-  done
-  return 1
-}
-`
+// syncHelperLibs are the two shell libraries the helper container runs, in load
+// order. The first is the shared-config module itself — the same file the
+// image's entrypoint sources, so the volume layout has ONE implementation
+// instead of one per caller. The second adds the symlink pass only this caller
+// can run, since it needs the host home mounted at /host.
+var syncHelperLibs = []string{types.SharedConfigLibFile, "shared-config-sync.sh"}
 
-// volumeAliasesFunc defines `ensure_volume_aliases` and its helpers, which
-// mirror the home layout at the volume root: every entry also gets a relative
-// link under its HOME-relative name (.claude -> claude, .config/gh -> ../gh, …).
-//
-// The volume is flat (one dir per entry id) while the home it is symlinked
-// into is not, and ~/.claude is itself a link into that flat root — so a
-// RELATIVE cross-entry symlink such as ~/.claude/skills/x ->
-// ../../.agents/skills/x lands on <volume>/.agents/skills/x, a name the flat
-// layout does not have. These aliases give it one, which is what keeps such a
-// link alive both when it is copied in from the host and when a tool inside a
-// container writes it straight onto the volume. Keep in sync with the matching
-// block in entrypoint.sh (which creates them on every container start).
-const volumeAliasesFunc = `prefix_to_volume_root() {
-  _remaining_dir="$(dirname "$1")"
-  _parent_hops=""
-  while [ "$_remaining_dir" != "." ] && [ "$_remaining_dir" != "/" ]; do
-    _parent_hops="../$_parent_hops"
-    _remaining_dir="$(dirname "$_remaining_dir")"
-  done
-  printf '%s' "$_parent_hops"
+// mustAsset reads an embedded asset at init. The embed is always present in the
+// binary (there is no disk fallback), so a failure here can only mean the file
+// was deleted from the tree — a build-time mistake, not a runtime condition,
+// and one every test in this package would hit immediately.
+func mustAsset(file string) string {
+	data, err := assets.Content(file)
+	if err != nil {
+		panic("embedded asset " + file + " is missing: " + err.Error())
+	}
+	return string(data)
 }
 
-ensure_volume_alias() {
-  _entry_id="$1"
-  _entry_target="$2"
-  _alias_path="/vol/$_entry_target"
-  if [ -e "$_alias_path" ] && [ ! -L "$_alias_path" ]; then return 0; fi
-  mkdir -p "$(dirname "$_alias_path")"
-  ln -sfn "$(prefix_to_volume_root "$_entry_target")$_entry_id" "$_alias_path"
-  if [ -n "$ENTRY_OWNER" ]; then chown -h "$ENTRY_OWNER" "$_alias_path" 2>/dev/null || true; fi
-  return 0
-}
-
-ensure_volume_aliases() {
-  for _alias_pair in $ENTRY_SHARED_PAIRS; do
-    ensure_volume_alias "${_alias_pair%%=*}" "${_alias_pair#*=}"
-  done
-  return 0
-}
-`
-
-// fixSymlinksFunc defines `fix_symlinks <copied-tree> <source-tree>`, the pass
-// that makes symlinks inside a copied entry mean the same thing in the volume
-// as they did on the host. It matters for entries like
-// "claude"/"codex"/"agents": tools such as the skills.sh CLI (`npx skills add -g`)
-// install global skills/agents into a canonical ~/.agents/skills store and
-// symlink them into each agent's own config dir (e.g. ~/.claude/skills/<name> ->
-// ~/.agents/skills/<name>).
-//
-// Every link is resolved against the SOURCE tree under /host, never against the
-// copy — that is the whole point. Resolving in the destination (what this used
-// to do) can only ever succeed for links that stay inside the entry, i.e. the
-// ones that need no help at all, and silently left every cross-entry link
-// dangling in the volume and therefore in every container.
-//
-// Three outcomes, in order:
-//
-//   - the target is inside another shared entry → keep it a LINK, so both sides
-//     stay one store instead of drifting copies. A relative link is left
-//     verbatim (the volume aliases make it resolve); an absolute host path is
-//     repointed at ENTRY_DEV_HOME, the home the volume is symlinked into.
-//   - the target is outside the shared entries but exists on the host → replace
-//     the link with a real copy of that content, which is the only way it can
-//     survive into a container.
-//   - the target does not exist on the host either → left as-is. `cp -aL` used
-//     to error "cannot stat" here and failed the whole sync for entries like
-//     ~/.claude, where Claude Code leaves a dangling `debug/latest` pointer;
-//     leaving it dangling is no worse than it already was on the host.
-const fixSymlinksFunc = `UNMATCHABLE_HOST_HOME=/nonexistent-host-home
-
-symlink_target_is_absolute() {
-  case "$(readlink "$1")" in
-    /*) return 0 ;;
-  esac
-  return 1
-}
-
-resolve_symlink_in_source() {
-  _source_link_path="$1"
-  _raw_target="$(readlink "$_source_link_path")"
-  # An unset host home would leave the pattern below as a bare "/*", matching
-  # (and rewriting) every absolute link target.
-  _host_home="${ENTRY_HOST_HOME:-$UNMATCHABLE_HOST_HOME}"
-  case "$_raw_target" in
-    "$_host_home"/*) _raw_target="/host/${_raw_target#"$_host_home"/}" ;;
-    /*) ;;
-    *) _raw_target="$(dirname "$_source_link_path")/$_raw_target" ;;
-  esac
-  readlink -m "$_raw_target"
-}
-
-home_relative_path() {
-  case "$1" in
-    /host/*) printf '%s' "${1#/host/}" ;;
-  esac
-}
-
-source_link_of() {
-  _path_within_tree="${1#"$2"}"
-  printf '%s' "$3/${_path_within_tree#/}"
-}
-
-repoint_at_container_home() {
-  rm -rf "$1"
-  ln -sfn "$ENTRY_DEV_HOME/$2" "$1"
-}
-
-replace_with_real_copy() {
-  rm -rf "$1"
-  cp -a "$2" "$1"
-}
-
-fix_symlink() {
-  _copied_link="$1"
-  _source_link="$2"
-  [ -L "$_copied_link" ] || return 0
-  [ -L "$_source_link" ] || return 0
-
-  _resolved_target="$(resolve_symlink_in_source "$_source_link")"
-  _shared_entry_path="$(home_relative_path "$_resolved_target")"
-
-  if [ -n "$_shared_entry_path" ] && is_shared_target "$_shared_entry_path"; then
-    symlink_target_is_absolute "$_source_link" || return 0
-    repoint_at_container_home "$_copied_link" "$_shared_entry_path"
-    return 0
-  fi
-
-  [ -e "$_resolved_target" ] || return 0
-  replace_with_real_copy "$_copied_link" "$_resolved_target"
-}
-
-fix_symlinks() {
-  _copied_tree="$1"
-  _source_tree="$2"
-  _found_links="$(mktemp)"
-  find "$_copied_tree" -type l > "$_found_links"
-  while IFS= read -r _found_link; do
-    fix_symlink "$_found_link" "$(source_link_of "$_found_link" "$_copied_tree" "$_source_tree")"
-  done < "$_found_links"
-  rm -f "$_found_links"
-  return 0
-}
-`
-
-// syncEntryScript runs inside the helper. It reads the entry from the
-// environment, mounts the volume at /vol and the host home (read-only) at
-// /host, skips when the volume already has data (unless ENTRY_FORCE), otherwise
-// replaces the entry with the host copy and re-owns it. It prints COPIED or
-// SKIPPED so the caller can classify the result. See fixSymlinksFunc for why
-// the copy is a plain `cp -a` followed by a symlink pass rather than a single
-// `cp -aL`; the volume aliases are refreshed on every run, skipped entries
-// included, since they cost one symlink each and nothing else creates them
-// before a container first starts.
-const syncEntryScript = `set -e
-` + sharedTargetsFunc + volumeAliasesFunc + fixSymlinksFunc + `dst="/vol/$ENTRY_ID"
+// syncEntryBody is the per-entry program, run on top of syncHelperLibs. It
+// reads the entry from the environment, mounts the volume at /vol and the host
+// home (read-only) at /host, skips when the volume already has data (unless
+// ENTRY_FORCE), otherwise replaces the entry with the host copy and re-owns it.
+// It prints COPIED or SKIPPED so the caller can classify the result. See
+// fix_symlinks in shared-config-sync.sh for why the copy is a plain `cp -a`
+// followed by a symlink pass rather than a single `cp -aL`; the volume aliases
+// are refreshed on every run, skipped entries included, since they cost one
+// symlink each and nothing else creates them before a container first starts.
+const syncEntryBody = `dst="/vol/$ENTRY_ID"
 src="/host/$ENTRY_TARGET"
-ensure_volume_aliases
+shared_config_volume_aliases /vol
 if [ -z "$ENTRY_FORCE" ]; then
   if [ "$ENTRY_KIND" = dir ]; then
     if [ -d "$dst" ] && [ -n "$(ls -A "$dst" 2>/dev/null)" ]; then echo SKIPPED; exit 0; fi
@@ -245,8 +104,18 @@ else
     cp -aL "$src" "$dst"
   fi
 fi
-[ -n "$ENTRY_OWNER" ] && chown -R "$ENTRY_OWNER" "$dst"
+[ -n "$SC_OWNER" ] && chown -R "$SC_OWNER" "$dst"
 echo COPIED`
+
+// syncEntryScript is the whole program handed to the helper: the shell
+// libraries, in load order, followed by the per-entry body.
+func syncEntryScript() string {
+	script := "set -e\n"
+	for _, lib := range syncHelperLibs {
+		script += mustAsset(lib)
+	}
+	return script + syncEntryBody
+}
 
 // SyncFromHost copies each entry's host config (hostHome + entry.Target) into
 // the shared volume via a throwaway helper container that mounts the volume and
@@ -287,19 +156,6 @@ func (s SharedConfigService) SyncFromHost(entries []types.SharedConfigEntry, hos
 	return res, nil
 }
 
-// renderSharedEntryPairs renders every shared entry as
-// "<id>=<home-relative target>", space-separated. The helper needs the WHOLE
-// catalog, not just the entries being synced: a link inside one entry routinely
-// points into another, and the volume aliases must exist for all of them
-// regardless of what was requested.
-func renderSharedEntryPairs() string {
-	pairs := make([]string, len(types.SharedConfigEntries))
-	for i, e := range types.SharedConfigEntries {
-		pairs[i] = e.ID + "=" + e.Target
-	}
-	return strings.Join(pairs, " ")
-}
-
 // syncEntry runs the helper for one entry and reports whether it copied (vs
 // skipped because the volume already had data).
 func (s SharedConfigService) syncEntry(e types.SharedConfigEntry, hostHome, owner string, force bool) (bool, error) {
@@ -315,14 +171,16 @@ func (s SharedConfigService) syncEntry(e types.SharedConfigEntry, hostHome, owne
 		"-e", "ENTRY_TARGET=" + e.Target,
 		"-e", "ENTRY_KIND=" + string(e.Kind),
 		"-e", "ENTRY_FORCE=" + forceVal,
-		"-e", "ENTRY_OWNER=" + owner,
+		"-e", "SC_OWNER=" + owner,
 		// Symlink resolution inputs: the host home is what an absolute link
-		// target is rewritten from, DevUserHome what it is rewritten to, and the
-		// map says which targets are shared entries.
+		// target is rewritten from, DevUserHome what it is rewritten to.
 		"-e", "ENTRY_HOST_HOME=" + strings.TrimSuffix(filepath.ToSlash(hostHome), "/"),
 		"-e", "ENTRY_DEV_HOME=" + types.DevUserHome,
-		"-e", "ENTRY_SHARED_PAIRS=" + renderSharedEntryPairs(),
-		syncHelperImage, "sh", "-c", syncEntryScript,
+		// The WHOLE catalogue, not just the entry being synced: a link inside one
+		// entry routinely points into another, and the volume aliases must exist
+		// for all of them regardless of what was requested.
+		"-e", "SC_ENTRIES=" + types.RenderSharedConfigTable(),
+		syncHelperImage, "sh", "-c", syncEntryScript(),
 	})
 	if err != nil {
 		return false, err
@@ -339,7 +197,7 @@ func (s SharedConfigService) syncEntry(e types.SharedConfigEntry, hostHome, owne
 const writeFileEntryScript = `set -e
 dst="/vol/$ENTRY_ID"
 printf '%s' "$ENTRY_CONTENT" > "$dst"
-[ -n "$ENTRY_OWNER" ] && chown "$ENTRY_OWNER" "$dst"
+[ -n "$SC_OWNER" ] && chown "$SC_OWNER" "$dst"
 echo COPIED`
 
 // SyncAliases writes the rendered alias script into the shared volume's
@@ -364,7 +222,7 @@ func (s SharedConfigService) SyncAliases(content string) error {
 		"-v", types.SharedConfigVolumeName + ":/vol",
 		"-e", "ENTRY_ID=" + entry.ID,
 		"-e", "ENTRY_CONTENT=" + content,
-		"-e", "ENTRY_OWNER=" + hostOwnerString(),
+		"-e", "SC_OWNER=" + hostOwnerString(),
 		syncHelperImage, "sh", "-c", writeFileEntryScript,
 	})
 	if err != nil {
@@ -421,7 +279,7 @@ for id in $ENTRY_IDS; do
   fi
   rm -rf "$dst"
   cp -a "$src" "$dst"
-  [ -n "$ENTRY_OWNER" ] && chown -R "$ENTRY_OWNER" "$dst"
+  [ -n "$SC_OWNER" ] && chown -R "$SC_OWNER" "$dst"
   echo "RESTORED $id"
 done`
 
@@ -551,7 +409,7 @@ func (s SharedConfigService) RestoreFromZip(zipPath string, entries []types.Shar
 		"-v", stageDir + ":/stage:ro",
 		"-e", "ENTRY_IDS=" + strings.Join(ids, " "),
 		"-e", "ENTRY_FORCE=" + forceVal,
-		"-e", "ENTRY_OWNER=" + hostOwnerString(),
+		"-e", "SC_OWNER=" + hostOwnerString(),
 		syncHelperImage, "sh", "-c", stageInScript,
 	})
 	if err != nil {

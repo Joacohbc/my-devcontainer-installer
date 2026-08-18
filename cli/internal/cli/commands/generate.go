@@ -639,6 +639,20 @@ func prepareBuildDir(cwd string, config *types.DevcontainerConfig, paths project
 		}
 	}
 
+	// The shared-config catalogue is rendered from types.SharedConfigEntries
+	// rather than kept as a second copy in shell. It is written here for the
+	// same reason CONTEXT.md is (generated, so Preflight would not find it) and
+	// folded into copyContents for the same reason too: adding an entry changes
+	// what the image's entrypoint links, and two projects must not share an
+	// image whose baked catalogue disagrees with the CLI that built it.
+	if !skipBuildArtifacts {
+		table := types.RenderSharedConfigTable()
+		if werr := os.WriteFile(filepath.Join(buildDir, types.SharedConfigTableFileName), []byte(table), 0o644); werr != nil {
+			return nil, nil, werr
+		}
+		copyContents[types.SharedConfigTableFileName] = table
+	}
+
 	// CONTEXT.md is generated rather than materialized from the embedded assets,
 	// so it is written here (after the build dir exists, before the fingerprint
 	// is computed) instead of going through Preflight. Folding it into

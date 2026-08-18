@@ -1,38 +1,84 @@
 #!/bin/bash
+#
+# The container entrypoint.
+#
+# It is a DRIVER, not a program: every step below is a named stage function, and
+# `main` at the bottom is the whole order in one readable list. Stages share
+# state through globals on purpose — stage_identity computes DEV_UID/DEV_GID
+# that three later stages need — so they are functions in one shell, not
+# separate processes.
+#
+# Why functions in one file and not an /etc/entrypoint.d/ directory of numbered
+# scripts: a stage directory is a seam, and nothing varies across it. No module
+# and no user contributes an entrypoint stage. (Modules DO contribute installer
+# scripts, and that directory-drop seam already exists — ~/post-script/start.d,
+# run by the last stage below.) Functions give the same readability and the same
+# test seam — a test extracts one and runs it against a temp tree — without
+# inventing an extension point that would have exactly one adapter.
+#
+# ORDER IS LOAD-BEARING. Four edges, three of them pinned by tests:
+#
+#   stage_workspace     -> stage_identity        WORKSPACE_DIR decides the remap
+#   stage_identity      -> everything after it   DEV_UID/DEV_GID, SC_OWNER
+#   stage_shared_config -> stage_user_aliases    ~/.alias.sh must not win the
+#                                                race against the volume symlink
+#   stage_shared_config -> stage_context_skill   ~/.claude must already BE the
+#                                                volume symlink, or `mkdir -p`
+#                                                makes it a real directory and
+#                                                the volume is never wired up
 
-# Ensure the SSH service is configured correctly
-if [ ! -d "/var/run/sshd" ]; then
-    mkdir /var/run/sshd
-fi
+# ── The shared-config module ────────────────────────────────────────────────
+# Its implementation is one library shared with the host-side `config shared
+# sync`, so the volume layout has a single definition instead of one copy per
+# caller. The catalogue it reads is rendered from types.SharedConfigEntries at
+# generate time, so Go is the only place an entry is declared.
+# DEV_HOME is where every stage below writes. It is a variable rather than ten
+# literals so the stages can be run against a temp tree by a test — the same
+# reason the workspace roots above it are.
+DEV_HOME="/home/devuser"
 
-# Check if the devuser exists (it should be created in the Dockerfile)
-if ! id "devuser" &>/dev/null; then
-    echo "Error: User 'devuser' does not exist. Please ensure it is created in the Dockerfile."
-    exit 1
-fi
+SHARED_CONFIG_LIB="/usr/local/lib/devcontainer/shared-config.sh"
+SHARED_CONFIG_TABLE="/usr/local/lib/devcontainer/shared-config-entries"
+SHARED_CONFIG_DIR="/mnt/shared-config"
 
-# Ensure devuser has a password
-if [ ! -f /home/devuser/initial_password.txt ]; then
-    DEV_PASSWORD=$(pwgen -s 32) # Generate a 32-character random password
-    echo "devuser:$DEV_PASSWORD" | chpasswd
-    
-    echo "$DEV_PASSWORD" > /home/devuser/initial_password.txt
-    chown devuser:devuser /home/devuser/initial_password.txt # Ensure devuser owns the file
-    chmod 600 /home/devuser/initial_password.txt # Set appropriate permissions
-fi
-
-echo "devuser password: $(cat /home/devuser/initial_password.txt)"
-
-# Check if root already has a password file
-if [ -f /root/initial_password.txt ]; then
-    echo "initial root password: $(cat /root/initial_password.txt)"
+if [ -r "$SHARED_CONFIG_LIB" ]; then
+    . "$SHARED_CONFIG_LIB"
 else
-    # Set a password for the root user
-    INITIAL_PASSWORD=$(pwgen -s 32)
-    echo $INITIAL_PASSWORD > /root/initial_password.txt
-    echo "root:$INITIAL_PASSWORD" | chpasswd
-    echo "initial root password: $INITIAL_PASSWORD"
+    echo "entrypoint: $SHARED_CONFIG_LIB is missing; shared config and the global agent skill will be skipped" >&2
 fi
+
+# ── Stages ──────────────────────────────────────────────────────────────────
+
+# sshd's runtime dir, the account the whole image is built around, and one
+# random password each for devuser and root, generated once and kept.
+stage_users() {
+    if [ ! -d "/var/run/sshd" ]; then
+        mkdir /var/run/sshd
+    fi
+
+    if ! id "devuser" &>/dev/null; then
+        echo "Error: User 'devuser' does not exist. Please ensure it is created in the Dockerfile."
+        exit 1
+    fi
+
+    if [ ! -f "$DEV_HOME/initial_password.txt" ]; then
+        DEV_PASSWORD=$(pwgen -s 32)
+        echo "devuser:$DEV_PASSWORD" | chpasswd
+        echo "$DEV_PASSWORD" > "$DEV_HOME/initial_password.txt"
+        chown devuser:devuser "$DEV_HOME/initial_password.txt"
+        chmod 600 "$DEV_HOME/initial_password.txt"
+    fi
+    echo "devuser password: $(cat "$DEV_HOME/initial_password.txt")"
+
+    if [ -f /root/initial_password.txt ]; then
+        echo "initial root password: $(cat /root/initial_password.txt)"
+    else
+        INITIAL_PASSWORD=$(pwgen -s 32)
+        echo $INITIAL_PASSWORD > /root/initial_password.txt
+        echo "root:$INITIAL_PASSWORD" | chpasswd
+        echo "initial root password: $INITIAL_PASSWORD"
+    fi
+}
 
 # Resolve the project mount. New layouts mount it at /workspaces/<name> — a
 # unique path per project so the path-keyed history of Claude Code/Antigravity
@@ -57,13 +103,15 @@ alias_project_mount() {
     ln -sfn "$project_mount" "$WORKSPACE_ALIAS_ROOT/$(basename "$project_mount")"
 }
 
-WORKSPACE_DIR=$LEGACY_WORKSPACE_MOUNT
-for _project_mount in "$WORKSPACE_MOUNT_ROOT"/*; do
-    [ -d "$_project_mount" ] || continue
-    WORKSPACE_DIR="$_project_mount"
-    alias_project_mount "$_project_mount"
-    break
-done
+stage_workspace() {
+    WORKSPACE_DIR=$LEGACY_WORKSPACE_MOUNT
+    for _project_mount in "$WORKSPACE_MOUNT_ROOT"/*; do
+        [ -d "$_project_mount" ] || continue
+        WORKSPACE_DIR="$_project_mount"
+        alias_project_mount "$_project_mount"
+        break
+    done
+}
 
 # Align devuser's UID/GID with the owner of the mounted project dir so the
 # container can read/write the bind mount WITHOUT ever modifying the host's
@@ -71,143 +119,88 @@ done
 # already bakes the host UID/GID at build time, so this is a no-op there; it only
 # fires for prebuilt 'remote' images run on a host whose UID is not the baked
 # default (the image has no other account squatting on the target id).
-if [ -d "$WORKSPACE_DIR" ]; then
-    WS_UID=$(stat -c %u "$WORKSPACE_DIR")
-    WS_GID=$(stat -c %g "$WORKSPACE_DIR")
-    CUR_UID=$(id -u devuser)
-    CUR_GID=$(id -g devuser)
-    if [ "$WS_UID" != "0" ] && { [ "$WS_UID" != "$CUR_UID" ] || [ "$WS_GID" != "$CUR_GID" ]; }; then
-        # Renumber devuser's own group only when the target GID is free;
-        # otherwise adopt the existing group as primary via usermod -g.
-        if ! getent group "$WS_GID" >/dev/null; then
-            groupmod -g "$WS_GID" devuser 2>/dev/null || true
+#
+# It ends by publishing DEV_UID/DEV_GID and SC_OWNER, which every later stage
+# reads — SC_OWNER is the shared-config library's one configuration knob.
+stage_identity() {
+    if [ -d "$WORKSPACE_DIR" ]; then
+        WS_UID=$(stat -c %u "$WORKSPACE_DIR")
+        WS_GID=$(stat -c %g "$WORKSPACE_DIR")
+        CUR_UID=$(id -u devuser)
+        CUR_GID=$(id -g devuser)
+        if [ "$WS_UID" != "0" ] && { [ "$WS_UID" != "$CUR_UID" ] || [ "$WS_GID" != "$CUR_GID" ]; }; then
+            # Renumber devuser's own group only when the target GID is free;
+            # otherwise adopt the existing group as primary via usermod -g.
+            if ! getent group "$WS_GID" >/dev/null; then
+                groupmod -g "$WS_GID" devuser 2>/dev/null || true
+            fi
+            usermod -u "$WS_UID" -g "$WS_GID" devuser 2>/dev/null || usermod -u "$WS_UID" devuser 2>/dev/null || true
         fi
-        usermod -u "$WS_UID" -g "$WS_GID" devuser 2>/dev/null || usermod -u "$WS_UID" devuser 2>/dev/null || true
     fi
-fi
 
-# Re-own the persisted home to devuser's ACTUAL UID/GID, and only when it
-# drifted: this finishes a successful remap and repairs homes left owned by a
-# foreign UID after a failed one. A silent failure here breaks every shell rc on
-# SSH login, so surface it instead of swallowing the error. The home must never
-# be chowned to a UID devuser does not really have, and the workspace is never
-# touched.
-DEV_UID=$(id -u devuser)
-DEV_GID=$(id -g devuser)
-if [ "$(stat -c %u /home/devuser)" != "$DEV_UID" ] || [ "$(stat -c %g /home/devuser)" != "$DEV_GID" ]; then
-    chown -R "$DEV_UID:$DEV_GID" /home/devuser || echo "warning: could not fully chown /home/devuser to $DEV_UID:$DEV_GID; shell rc files may not load" >&2
-fi
+    DEV_UID=$(id -u devuser)
+    DEV_GID=$(id -g devuser)
+    SC_OWNER="$DEV_UID:$DEV_GID"
 
-if [ -S /var/run/docker.sock ]; then
-    setfacl -m u:devuser:rw /var/run/docker.sock 2>/dev/null || true
-fi
+    # Re-own the persisted home to devuser's ACTUAL UID/GID, and only when it
+    # drifted: this finishes a successful remap and repairs homes left owned by a
+    # foreign UID after a failed one. A silent failure here breaks every shell rc
+    # on SSH login, so surface it instead of swallowing the error. The home must
+    # never be chowned to a UID devuser does not really have, and the workspace is
+    # never touched.
+    if [ "$(stat -c %u "$DEV_HOME")" != "$DEV_UID" ] || [ "$(stat -c %g "$DEV_HOME")" != "$DEV_GID" ]; then
+        chown -R "$DEV_UID:$DEV_GID" "$DEV_HOME" || echo "warning: could not fully chown $DEV_HOME to $DEV_UID:$DEV_GID; shell rc files may not load" >&2
+    fi
 
-# ── Shared persistent tool config ──────────────────────────────────────────
-# One global volume (mounted at /mnt/shared-config) holds the config/sessions
-# for AI/dev tools so logins persist across every container. Each entry below is
-# materialized inside the volume and symlinked into devuser's home. The whole
-# block no-ops when the mount is absent (opt-out, or an image built before the
-# mount existed), which keeps it safe for quick-run on older images. Pre-existing
-# real config in the home is never destroyed; seed the volume from the host with
-# 'devcontainer-cli config shared sync'.
-# Each row: "<volume-subpath> <dir|file> <home-relative-target>".
-# Keep in sync with types.SharedConfigEntries (internal/domain/types/sharedconfig.go).
-SHARED_CONFIG_DIR="/mnt/shared-config"
-if [ -d "$SHARED_CONFIG_DIR" ]; then
+    if [ -S /var/run/docker.sock ]; then
+        setfacl -m u:devuser:rw /var/run/docker.sock 2>/dev/null || true
+    fi
+}
+
+# One global volume (mounted at SHARED_CONFIG_DIR) holds the config/sessions for
+# AI/dev tools so logins persist across every container. The whole stage no-ops
+# when the mount is absent (opt-out, or an image built before the mount existed),
+# which keeps it safe for quick-run on older images.
+stage_shared_config() {
+    command -v shared_config_apply >/dev/null || return 0
+    [ -d "$SHARED_CONFIG_DIR" ] || return 0
+    [ -r "$SHARED_CONFIG_TABLE" ] || {
+        echo "shared-config: $SHARED_CONFIG_TABLE is missing; skipping" >&2
+        return 0
+    }
+    SC_ENTRIES="$(cat "$SHARED_CONFIG_TABLE")"
+
     # Re-own the volume to devuser's real UID only when it drifted (mirrors the
-    # /home/devuser repair above); also fixes entries seeded by config shared sync.
+    # $DEV_HOME repair above); also fixes entries seeded by config shared sync.
     if [ "$(stat -c %u "$SHARED_CONFIG_DIR")" != "$DEV_UID" ]; then
         chown -R "$DEV_UID:$DEV_GID" "$SHARED_CONFIG_DIR" 2>/dev/null || true
     fi
-    prefix_to_volume_root() {
-        local remaining_dir parent_hops=""
-        remaining_dir="$(dirname "$1")"
-        while [ "$remaining_dir" != "." ] && [ "$remaining_dir" != "/" ]; do
-            parent_hops="../$parent_hops"
-            remaining_dir="$(dirname "$remaining_dir")"
-        done
-        printf '%s' "$parent_hops"
-    }
 
-    # Mirror the HOME layout at the volume root: <volume>/.claude -> claude,
-    # <volume>/.config/gh -> ../gh, … The volume is flat (one dir per entry id)
-    # while the home it is symlinked into is not, and ~/.claude is itself a link
-    # into that flat root — so a RELATIVE cross-entry symlink such as
-    # ~/.claude/skills/x -> ../../.agents/skills/x (what `npx skills add -g`
-    # writes) lands on <volume>/.agents/skills/x, a name the flat layout does not
-    # have, and dangles. These aliases give it one.
-    mirror_entry_at_home_name() {
-        local entry_id="$1" entry_target="$2" alias_path alias_parent
-        alias_path="$SHARED_CONFIG_DIR/$entry_target"
-        if [ -e "$alias_path" ] && [ ! -L "$alias_path" ]; then return 0; fi
-        alias_parent="$(dirname "$alias_path")"
-        mkdir -p "$alias_parent"
-        chown "$DEV_UID:$DEV_GID" "$alias_parent" 2>/dev/null || true
-        ln -sfn "$(prefix_to_volume_root "$entry_target")$entry_id" "$alias_path"
-        chown -h "$DEV_UID:$DEV_GID" "$alias_path" 2>/dev/null || true
-    }
-
-    while read -r entry_id entry_kind entry_target; do
-        [ -z "$entry_id" ] && continue
-        src="$SHARED_CONFIG_DIR/$entry_id"
-        dest="/home/devuser/$entry_target"
-
-        # Materialize the entry inside the volume (dir, or empty file).
-        if [ "$entry_kind" = "dir" ]; then
-            mkdir -p "$src"
-        elif [ ! -e "$src" ]; then
-            touch "$src"
-        fi
-        chown "$DEV_UID:$DEV_GID" "$src" 2>/dev/null || true
-
-        mirror_entry_at_home_name "$entry_id" "$entry_target"
-
-        # Link into the home, never clobbering pre-existing real (non-symlink)
-        # config. ln -sfn both creates a missing link and repoints a stale one.
-        if [ -e "$dest" ] && [ ! -L "$dest" ]; then
-            echo "shared-config: keeping existing $dest (not a symlink); run 'devcontainer-cli config shared sync' to seed the volume" >&2
-            continue
-        fi
-        destparent="$(dirname "$dest")"
-        [ -d "$destparent" ] || { mkdir -p "$destparent" && chown "$DEV_UID:$DEV_GID" "$destparent" 2>/dev/null; }
-        ln -sfn "$src" "$dest"
-        chown -h "$DEV_UID:$DEV_GID" "$dest" 2>/dev/null || true
-    done <<'SHARED_CONFIG_ENTRIES'
-claude dir .claude
-claude.json file .claude.json
-antigravity dir .antigravity
-antigravity-config dir .config/antigravity
-gemini dir .gemini
-agents dir .agents
-codex dir .codex
-gh dir .config/gh
-alias.sh file .alias.sh
-SHARED_CONFIG_ENTRIES
+    shared_config_apply "$SHARED_CONFIG_DIR" "$DEV_HOME"
 
     # Antigravity CLI 2.0 reads skills from ~/.gemini/antigravity-cli/skills but
     # does not understand ~/.agents/skills, where the shared agent skills live.
     # Bridge them with a symlink so the (persisted, shared) .agents skills are
     # visible to Antigravity. Both .agents and .gemini are symlinks into the
-    # shared volume set up above, so this link persists across containers. Never
-    # clobber a real (non-symlink) skills dir.
-    ag_skills_parent="/home/devuser/.gemini/antigravity-cli"
-    ag_skills_link="$ag_skills_parent/skills"
-    if [ ! -e "$ag_skills_link" ] || [ -L "$ag_skills_link" ]; then
-        mkdir -p "$ag_skills_parent" "/home/devuser/.agents/skills"
-        ln -sfn "/home/devuser/.agents/skills" "$ag_skills_link"
-        chown -h "$DEV_UID:$DEV_GID" "$ag_skills_link" 2>/dev/null || true
-        chown "$DEV_UID:$DEV_GID" "$ag_skills_parent" "/home/devuser/.agents/skills" 2>/dev/null || true
-    fi
-fi
+    # shared volume set up above, so this link persists across containers.
+    local ag_skills_link="$DEV_HOME/.gemini/antigravity-cli/skills"
+    local ag_shared_skills="$DEV_HOME/.agents/skills"
+    # The bridge's target has to exist for Antigravity to read through it; the
+    # link's own parent is created by link_or_keep.
+    mkdir -p "$ag_shared_skills"
+    own "$ag_shared_skills"
+    link_or_keep "$ag_skills_link" "$ag_shared_skills"
+}
 
-# ── The user's own alias file ───────────────────────────────────────────────
 # ~/.alias.sh is sourced by every shell after the image's baked defaults, so the
 # user can redefine anything at any time. Normally it is a symlink into the
-# shared-config volume (created above), which is what makes an edit apply to
-# every container and survive a rebuild. When that volume is opted out of there
-# is nothing to link, so create a plain local file instead — the file must always
-# exist and be writable by devuser, or "edit your aliases" has no answer.
-if [ ! -e /home/devuser/.alias.sh ]; then
+# shared-config volume (created by the stage above), which is what makes an edit
+# apply to every container and survive a rebuild. When that volume is opted out
+# of there is nothing to link, so create a plain local file instead — the file
+# must always exist and be writable by devuser, or "edit your aliases" has no
+# answer.
+stage_user_aliases() {
+    [ -e "$DEV_HOME/.alias.sh" ] && return 0
     su - devuser -c 'cat > "$HOME/.alias.sh"' <<'USER_ALIASES'
 # Your own shell aliases and functions.
 #
@@ -220,10 +213,9 @@ if [ ! -e /home/devuser/.alias.sh ]; then
 # on the host with `devcontainer-cli config alias set` (and `config alias sync`)
 # to have them persist across every container.
 USER_ALIASES
-    chown "$DEV_UID:$DEV_GID" /home/devuser/.alias.sh 2>/dev/null || true
-fi
+    chown "$DEV_UID:$DEV_GID" "$DEV_HOME/.alias.sh" 2>/dev/null || true
+}
 
-# ── The image's own global agent skill ──────────────────────────────────────
 # Every image bakes ~/.devcontainer-skills/devcontainer-context/SKILL.md (see the
 # aliases Dockerfile module): a small always-installed skill telling an agent it
 # is inside a devcontainer and to read ~/CONTEXT.md / run
@@ -233,26 +225,22 @@ fi
 # canonical ~/.agents/skills store (which the Antigravity bridge above already
 # follows) and into ~/.claude/skills. A SYMLINK is deliberate: those directories
 # usually live in the shared volume, so the link always resolves to THIS image's
-# copy instead of persisting a stale one for every other container. Runs after
-# the shared-config block so the volume symlinks already exist.
-BAKED_SKILLS_DIR=/home/devuser/.devcontainer-skills
-if [ -d "$BAKED_SKILLS_DIR/devcontainer-context" ]; then
-    for skills_dir in /home/devuser/.agents/skills /home/devuser/.claude/skills; do
-        skill_link="$skills_dir/devcontainer-context"
-        # Never clobber a real directory: the user may have installed their own
-        # skill under that name.
-        if [ -e "$skill_link" ] && [ ! -L "$skill_link" ]; then
-            echo "skills: keeping existing $skill_link (not a symlink)" >&2
-            continue
-        fi
-        mkdir -p "$skills_dir"
-        ln -sfn "$BAKED_SKILLS_DIR/devcontainer-context" "$skill_link"
-        chown -h "$DEV_UID:$DEV_GID" "$skill_link" 2>/dev/null || true
-        chown "$DEV_UID:$DEV_GID" "$skills_dir" 2>/dev/null || true
-    done
-fi
+# copy instead of persisting a stale one for every other container. link_or_keep
+# never clobbers a real directory, so a skill the user installed under that name
+# is kept.
+BAKED_SKILLS_DIR="$DEV_HOME/.devcontainer-skills"
 
-# ── Auto-run non-interactive installer post-scripts ─────────────────────────
+stage_context_skill() {
+    command -v link_or_keep >/dev/null || return 0
+    [ -d "$BAKED_SKILLS_DIR/devcontainer-context" ] || return 0
+    local skills_dir skill_link
+    for skills_dir in "$DEV_HOME/.agents/skills" "$DEV_HOME/.claude/skills"; do
+        skill_link="$skills_dir/devcontainer-context"
+        link_or_keep "$skill_link" "$BAKED_SKILLS_DIR/devcontainer-context" \
+            "skills: keeping existing $skill_link (not a symlink)"
+    done
+}
+
 # Scripts under post-script/start.d/ are the non-interactive installers
 # (Claude Code, Antigravity, Copilot, OpenCode, then the agent-wiring tools
 # Graphify/Caveman) the generator marked as auto-start. The ENTIRE block runs as
@@ -263,8 +251,9 @@ fi
 # tools across stop/start (a fresh container has no sentinel and reinstalls).
 # The numeric "NN-" filename prefix drives run order via the sorted glob. Each
 # script runs through a login shell (bash -l) so node/python/.local/bin from the
-# shell-init files are on PATH. The whole block no-ops when the dir is absent.
-if [ -d /home/devuser/post-script/start.d ]; then
+# shell-init files are on PATH. The whole stage no-ops when the dir is absent.
+stage_post_scripts() {
+    [ -d "$DEV_HOME/post-script/start.d" ] || return 0
     su - devuser -s /bin/bash -c '
         start_dir="$HOME/post-script/start.d"
         state_dir="$HOME/.post-script-state"
@@ -284,7 +273,22 @@ if [ -d /home/devuser/post-script/start.d ]; then
             fi
         done
     ' &
-fi
+}
 
-# Start the SSH service
-/usr/sbin/sshd -D -o ListenAddress=0.0.0.0
+# ── The order ───────────────────────────────────────────────────────────────
+
+main() {
+    stage_users
+    stage_workspace
+    stage_identity
+    stage_shared_config
+    stage_user_aliases
+    stage_context_skill
+    stage_post_scripts
+
+    # sshd is exec'd, not backgrounded: it must be PID 1 so a `docker stop`
+    # reaches it and the container's lifetime is its lifetime.
+    exec /usr/sbin/sshd -D -o ListenAddress=0.0.0.0
+}
+
+main "$@"

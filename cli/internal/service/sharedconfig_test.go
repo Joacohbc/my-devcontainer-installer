@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/modules/dockerfile"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/assets"
 )
@@ -75,7 +76,7 @@ func TestSyncAliases_WritesRenderedContentIntoVolume(t *testing.T) {
 		types.SharedConfigVolumeName + ":/vol",
 		"ENTRY_ID=" + types.SharedConfigAliasID,
 		"ENTRY_CONTENT=" + content,
-		"ENTRY_OWNER=" + hostOwnerString(),
+		"SC_OWNER=" + hostOwnerString(),
 	} {
 		if !sliceHas(run, want) {
 			t.Errorf("helper run missing %q: %v", want, run)
@@ -107,19 +108,44 @@ func TestSyncAliases_ReportsHelperFailure(t *testing.T) {
 	}
 }
 
-// TestSharedConfigEntriesMatchEntrypoint is the contract test keeping the Go
-// registry (types.SharedConfigEntries) in sync with the shell table baked into
-// entrypoint.sh. Every entry must appear as "<id> <kind> <target>".
-func TestSharedConfigEntriesMatchEntrypoint(t *testing.T) {
-	data, err := assets.Content("entrypoint.sh")
-	if err != nil {
-		t.Fatalf("could not read entrypoint.sh: %v", err)
+// The catalogue used to be declared twice — once in Go, once as a heredoc table
+// in entrypoint.sh — kept together by a one-directional contract test that could
+// not see a stale shell row. There is no second declaration now: both callers
+// read RenderSharedConfigTable(). This test is what stops one growing back.
+func TestSharedConfigCatalogueIsDeclaredOnlyInGo(t *testing.T) {
+	for _, file := range append([]string{"entrypoint.sh"}, syncHelperLibs...) {
+		data, err := assets.Content(file)
+		if err != nil {
+			t.Fatalf("could not read %s: %v", file, err)
+		}
+		for _, e := range types.SharedConfigEntries {
+			row := fmt.Sprintf("%s %s %s", e.ID, e.Kind, e.Target)
+			if strings.Contains(string(data), row) {
+				t.Errorf("%s hardcodes the catalogue row %q; it must read SC_ENTRIES instead", file, row)
+			}
+		}
 	}
-	script := string(data)
-	for _, e := range types.SharedConfigEntries {
-		row := fmt.Sprintf("%s %s %s", e.ID, e.Kind, e.Target)
-		if !strings.Contains(script, row) {
-			t.Errorf("entrypoint.sh missing shared-config row %q", row)
+}
+
+// The image can only build the layout if the entrypoint is handed both halves:
+// the library that implements it and the rendered catalogue it reads.
+func TestCleanupModuleShipsTheSharedConfigLibrary(t *testing.T) {
+	if !sliceHas(dockerfile.CleanupModule.CopyFiles, types.SharedConfigLibFile) {
+		t.Errorf("the cleanup module must copy %s into the build dir", types.SharedConfigLibFile)
+	}
+	// The catalogue is generated, so it must NOT be in CopyFiles (Preflight would
+	// look for it in the embedded FS and report it missing) but must still be
+	// COPYed by the Dockerfile.
+	if sliceHas(dockerfile.CleanupModule.CopyFiles, types.SharedConfigTableFileName) {
+		t.Errorf("%s is generated; it must not go through Preflight", types.SharedConfigTableFileName)
+	}
+	df := dockerfile.CleanupModule.Render(nil)
+	for _, want := range []string{
+		fmt.Sprintf("COPY %s %s/%s", types.SharedConfigLibFile, types.SharedConfigLibDir, types.SharedConfigLibFile),
+		fmt.Sprintf("COPY %s %s/%s", types.SharedConfigTableFileName, types.SharedConfigLibDir, types.SharedConfigTableFileName),
+	} {
+		if !strings.Contains(df, want) {
+			t.Errorf("cleanup module Dockerfile missing %q", want)
 		}
 	}
 }
@@ -239,14 +265,14 @@ func TestSyncFromHostForcePassesFlagToHelper(t *testing.T) {
 // over blind. The behavior itself is exercised against the real shell in
 // TestSyncEntryScriptFixesSymlinks.
 func TestSyncEntryScriptRunsTheSymlinkPasses(t *testing.T) {
-	for _, want := range []string{"ensure_volume_aliases", `fix_symlinks "$dst" "$src"`} {
-		if !strings.Contains(syncEntryScript, want) {
-			t.Errorf("syncEntryScript must call %s, got: %s", want, syncEntryScript)
+	for _, want := range []string{"shared_config_volume_aliases /vol", `fix_symlinks "$dst" "$src"`} {
+		if !strings.Contains(syncEntryScript(), want) {
+			t.Errorf("syncEntryScript must call %s, got: %s", want, syncEntryScript())
 		}
 	}
 	// The old pass resolved links in the destination, where a cross-entry
 	// target can never exist — the exact bug that left them dangling.
-	if strings.Contains(syncEntryScript, `deref_symlinks "$dst"`) {
+	if strings.Contains(syncEntryScript(), `deref_symlinks "$dst"`) {
 		t.Error("syncEntryScript must not resolve symlinks against the copy in the volume")
 	}
 }
@@ -278,7 +304,7 @@ func lookupSharedConfigEntry(t *testing.T, id string) types.SharedConfigEntry {
 // covered without Docker.
 func runSyncEntryScript(t *testing.T, volDir, hostDir string, e types.SharedConfigEntry) {
 	t.Helper()
-	script := strings.ReplaceAll(syncEntryScript, "/vol", volDir)
+	script := strings.ReplaceAll(syncEntryScript(), "/vol", volDir)
 	script = strings.ReplaceAll(script, "/host", hostDir)
 
 	cmd := exec.Command("sh", "-c", script)
@@ -287,10 +313,10 @@ func runSyncEntryScript(t *testing.T, volDir, hostDir string, e types.SharedConf
 		"ENTRY_TARGET="+e.Target,
 		"ENTRY_KIND="+string(e.Kind),
 		"ENTRY_FORCE=1",
-		"ENTRY_OWNER=",
+		"SC_OWNER=",
 		"ENTRY_HOST_HOME="+hostDir,
 		"ENTRY_DEV_HOME="+types.DevUserHome,
-		"ENTRY_SHARED_PAIRS="+renderSharedEntryPairs(),
+		"SC_ENTRIES="+types.RenderSharedConfigTable(),
 	)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -434,18 +460,6 @@ func assertSymlinkTarget(t *testing.T, path, want string) {
 	}
 	if got != want {
 		t.Errorf("%s -> %q, want %q", filepath.Base(path), got, want)
-	}
-}
-
-// TestRenderedSharedEntryPairsCoverEveryEntry: the helper needs the whole catalog, not
-// just the entries being synced — a link inside one entry routinely points into
-// another, and the volume aliases must exist for all of them.
-func TestRenderedSharedEntryPairsCoverEveryEntry(t *testing.T) {
-	pairs := renderSharedEntryPairs()
-	for _, e := range types.SharedConfigEntries {
-		if !strings.Contains(pairs, e.ID+"="+e.Target) {
-			t.Errorf("renderSharedEntryPairs() missing %s=%s, got %q", e.ID, e.Target, pairs)
-		}
 	}
 }
 
@@ -729,5 +743,47 @@ func TestRestoreFromZip_ReportsMissingEntriesNotInZip(t *testing.T) {
 	}
 	if !sliceHas(run, "ENTRY_IDS=claude") {
 		t.Errorf("expected ENTRY_IDS=claude in run call, got %v", run)
+	}
+}
+
+// The helper's program is the shell libraries plus the per-entry body. The
+// libraries are loaded in order and the body comes last, because the body calls
+// functions they define; getting that wrong is only visible inside a container.
+func TestSyncEntryScriptLoadsBothLibraries(t *testing.T) {
+	script := syncEntryScript()
+	if !strings.HasPrefix(script, "set -e\n") {
+		t.Error("the helper program must start with set -e")
+	}
+	if !strings.HasSuffix(script, syncEntryBody) {
+		t.Error("the per-entry body must come last, so the libraries' functions are defined")
+	}
+	at := -1
+	for _, lib := range syncHelperLibs {
+		data, err := assets.Content(lib)
+		if err != nil {
+			t.Fatalf("%s is not embedded: %v", lib, err)
+		}
+		i := strings.Index(script, string(data))
+		if i < 0 {
+			t.Fatalf("the helper program must carry %s verbatim", lib)
+		}
+		if i < at {
+			t.Errorf("%s is loaded out of order", lib)
+		}
+		at = i
+	}
+	// The body calls into the libraries; a missing definition is only visible at
+	// run time inside a container, so check the wiring here.
+	for fn, lib := range map[string]string{
+		"shared_config_volume_aliases": types.SharedConfigLibFile,
+		"fix_symlinks":                 "shared-config-sync.sh",
+	} {
+		if !strings.Contains(syncEntryBody, fn) {
+			t.Errorf("the per-entry body no longer calls %s", fn)
+		}
+		data, _ := assets.Content(lib)
+		if !strings.Contains(string(data), fn+"() {") {
+			t.Errorf("%s does not define %s()", lib, fn)
+		}
 	}
 }

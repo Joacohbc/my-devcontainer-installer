@@ -13,6 +13,10 @@ import (
 // entrypoint.sh is one of the scripts embedded via //go:embed *.sh.
 const embeddedScript = "entrypoint.sh"
 
+// sharedConfigLib holds the shared-config module: the volume layout the
+// entrypoint sources and the `config shared sync` helper concatenates.
+const sharedConfigLib = "shared-config.sh"
+
 func TestAssetExists(t *testing.T) {
 	if !assets.AssetExists(embeddedScript) {
 		t.Errorf("expected %q to be embedded", embeddedScript)
@@ -120,10 +124,10 @@ func TestEntrypointAlignsUIDInsteadOfChangingWorkspaceACLs(t *testing.T) {
 	}
 	// The home may only ever be chowned to devuser's ACTUAL UID/GID, never to
 	// the workspace owner directly (the remap may have failed).
-	if strings.Contains(script, `chown -R "$WS_UID:$WS_GID" /home/devuser`) {
+	if strings.Contains(script, `chown -R "$WS_UID:$WS_GID" "$DEV_HOME"`) {
 		t.Error("entrypoint must not chown the home to the workspace UID; use devuser's actual UID")
 	}
-	if !strings.Contains(script, `chown -R "$DEV_UID:$DEV_GID" /home/devuser`) {
+	if !strings.Contains(script, `chown -R "$DEV_UID:$DEV_GID" "$DEV_HOME"`) {
 		t.Error("entrypoint must re-own the home to devuser's actual UID/GID when it drifted")
 	}
 }
@@ -191,8 +195,12 @@ func TestEntrypointWorkspaceAliasIsCreated(t *testing.T) {
 				}
 			}
 
-			localizedBlock := strings.ReplaceAll(workspaceBlock, "/workspaces", mountRoot)
-			localizedBlock = strings.ReplaceAll(localizedBlock, "/workspace", aliasRoot)
+			// The stage reads the WORKSPACE_* globals the entrypoint sets at top
+			// level; point them at the temp stand-ins rather than rewriting the
+			// block's text (a path containing "/workspace" would be rewritten twice).
+			localizedBlock := "WORKSPACE_MOUNT_ROOT=" + mountRoot + "\n" +
+				"WORKSPACE_ALIAS_ROOT=" + aliasRoot + "\n" +
+				"LEGACY_WORKSPACE_MOUNT=" + aliasRoot + "\n" + workspaceBlock
 			if out, err := exec.Command("bash", "-c", localizedBlock).CombinedOutput(); err != nil {
 				t.Fatalf("workspace block: %v\n%s", err, out)
 			}
@@ -216,61 +224,30 @@ func TestEntrypointWorkspaceAliasIsCreated(t *testing.T) {
 	}
 }
 
-// extractWorkspaceBlock returns the entrypoint's workspace-resolution block
-// (the WORKSPACE_DIR assignment through the end of its loop), so the test runs
-// the real thing instead of a copy.
+// extractWorkspaceBlock assembles the entrypoint's real workspace resolution —
+// the helper plus the stage that drives it — followed by a call, so the test
+// runs the shipped code instead of a copy of it.
 func extractWorkspaceBlock(t *testing.T, script string) string {
 	t.Helper()
-	const start = "WORKSPACE_MOUNT_ROOT=/workspaces\n"
-	i := strings.Index(script, start)
-	if i < 0 {
-		t.Fatal("entrypoint has no workspace resolution block")
-	}
-	rest := script[i:]
-	end := strings.Index(rest, "\ndone\n")
-	if end < 0 {
-		t.Fatal("could not find the end of the workspace resolution loop")
-	}
-	return rest[:end+len("\ndone\n")]
+	return extractShellFunc(t, script, "alias_project_mount") +
+		extractShellFunc(t, script, "stage_workspace") +
+		"\nstage_workspace\n"
 }
 
-// The shared-config volume is flat (one dir per entry id) while the home it is
-// symlinked into is not, so a relative cross-entry link written against the home
-// layout (~/.claude/skills/x -> ../../.agents/skills/x, what `npx skills add -g`
-// writes) has no name to land on inside the volume and dangles. The entrypoint
-// must mirror the home layout at the volume root so it does — without clobbering
-// anything real sitting at that name.
-func TestEntrypointMirrorsHomeLayoutAtVolumeRoot(t *testing.T) {
-	body, err := os.ReadFile(embeddedScript)
-	if err != nil {
-		t.Fatalf("reading %s: %v", embeddedScript, err)
-	}
-	script := string(body)
-	for _, frag := range []string{
-		`mirror_entry_at_home_name "$entry_id" "$entry_target"`,
-		`if [ -e "$alias_path" ] && [ ! -L "$alias_path" ]; then return 0; fi`,
-		`ln -sfn "$(prefix_to_volume_root "$entry_target")$entry_id" "$alias_path"`,
-	} {
-		if !strings.Contains(script, frag) {
-			t.Errorf("entrypoint must mirror the home layout at the volume root (missing %q)", frag)
-		}
-	}
-}
-
-// TestEntrypointVolumeAliasesResolve runs the entrypoint's own prefix_to_volume_root
-// helper to prove the aliases it builds point back at the flat entry, for a
-// nested target (.config/gh -> ../gh) as much as a top-level one (.claude ->
-// claude). An alias with the wrong number of "../" hops is silently dangling,
-// which is exactly the failure it exists to prevent.
-func TestEntrypointVolumeAliasesResolve(t *testing.T) {
+// TestVolumeAliasTargetResolves runs the library's real volume_alias_target and
+// proves the aliases it builds point back at the flat entry, for a nested target
+// (.config/gh -> ../gh) as much as a top-level one (.claude -> claude). An alias
+// with the wrong number of "../" hops does not fail, it silently dangles — which
+// is exactly the failure it exists to prevent.
+func TestVolumeAliasTargetResolves(t *testing.T) {
 	if _, err := exec.LookPath("bash"); err != nil {
 		t.Skip("bash not available")
 	}
-	body, err := os.ReadFile(embeddedScript)
+	body, err := os.ReadFile(sharedConfigLib)
 	if err != nil {
-		t.Fatalf("reading %s: %v", embeddedScript, err)
+		t.Fatalf("reading %s: %v", sharedConfigLib, err)
 	}
-	fn := extractShellFunc(t, string(body), "prefix_to_volume_root")
+	fn := extractShellFunc(t, string(body), "volume_alias_target")
 
 	vol := t.TempDir()
 	for _, tc := range []struct{ id, target string }{
@@ -284,10 +261,10 @@ func TestEntrypointVolumeAliasesResolve(t *testing.T) {
 		script := fn + `
 alias_path="$1/$2"
 mkdir -p "$(dirname "$alias_path")"
-ln -sfn "$(prefix_to_volume_root "$2")$3" "$alias_path"`
+ln -sfn "$(volume_alias_target "$2" "$3")" "$alias_path"`
 		cmd := exec.Command("bash", "-c", script, "bash", vol, tc.target, tc.id)
 		if out, err := cmd.CombinedOutput(); err != nil {
-			t.Fatalf("prefix_to_volume_root(%s): %v\n%s", tc.target, err, out)
+			t.Fatalf("volume_alias_target(%s): %v\n%s", tc.target, err, out)
 		}
 		alias := filepath.Join(vol, filepath.FromSlash(tc.target))
 		resolved, err := filepath.EvalSymlinks(alias)
@@ -307,18 +284,29 @@ ln -sfn "$(prefix_to_volume_root "$2")$3" "$alias_path"`
 
 // extractShellFunc returns the source of a `name() { … }` function defined in
 // script, so a test can run the entrypoint's real helper instead of a copy.
+//
+// The closing brace is found at the same indentation as the definition rather
+// than at a fixed one: anchoring on four spaces (what this used to do) made the
+// entrypoint's whitespace load-bearing for the test harness, so moving a
+// function out of a block broke tests that had nothing to do with the change.
 func extractShellFunc(t *testing.T, script, name string) string {
 	t.Helper()
 	start := strings.Index(script, name+"() {")
 	if start < 0 {
 		t.Fatalf("entrypoint has no %s() function", name)
 	}
-	rest := script[start:]
-	end := strings.Index(rest, "\n    }\n")
+	lineStart := strings.LastIndex(script[:start], "\n") + 1
+	indent := script[lineStart:start]
+	if i := strings.IndexFunc(indent, func(r rune) bool { return r != ' ' && r != '\t' }); i >= 0 {
+		indent = indent[:i]
+	}
+	closer := "\n" + indent + "}\n"
+	rest := script[lineStart:]
+	end := strings.Index(rest, closer)
 	if end < 0 {
 		t.Fatalf("could not find the end of %s()", name)
 	}
-	return rest[:end+len("\n    }\n")]
+	return rest[:end+len(closer)]
 }
 
 // Antigravity CLI 2.0 reads skills from ~/.gemini/antigravity-cli/skills and
@@ -330,14 +318,16 @@ func TestEntrypointBridgesAntigravitySkills(t *testing.T) {
 		t.Fatalf("reading %s: %v", embeddedScript, err)
 	}
 	script := string(body)
-	if !strings.Contains(script, "/home/devuser/.gemini/antigravity-cli") {
+	if !strings.Contains(script, `ag_skills_link="$DEV_HOME/.gemini/antigravity-cli/skills"`) {
 		t.Error("entrypoint must target the Antigravity CLI skills dir under ~/.gemini/antigravity-cli")
 	}
-	if !strings.Contains(script, `ln -sfn "/home/devuser/.agents/skills"`) {
-		t.Error("entrypoint must symlink Antigravity's skills dir to the shared ~/.agents/skills")
+	if !strings.Contains(script, `ag_shared_skills="$DEV_HOME/.agents/skills"`) {
+		t.Error("entrypoint must point Antigravity's skills dir at the shared ~/.agents/skills")
 	}
-	if !strings.Contains(script, `[ ! -e "$ag_skills_link" ] || [ -L "$ag_skills_link" ]`) {
-		t.Error("entrypoint must not clobber a real (non-symlink) Antigravity skills dir")
+	// Not clobbering a real dir is link_or_keep's invariant now, proven by
+	// TestEntrypointLinkOrKeep; here we only check the bridge goes through it.
+	if !strings.Contains(script, `link_or_keep "$ag_skills_link" "$ag_shared_skills"`) {
+		t.Error("the Antigravity bridge must be created with link_or_keep")
 	}
 }
 
@@ -404,21 +394,18 @@ func TestEntrypointEnsuresUserAliasFile(t *testing.T) {
 	}
 	script := string(body)
 
-	if !strings.Contains(script, `[ ! -e /home/devuser/.alias.sh ]`) {
+	if !strings.Contains(script, `[ -e "$DEV_HOME/.alias.sh" ] && return 0`) {
 		t.Error("entrypoint must only create ~/.alias.sh when nothing is there (a symlink counts)")
 	}
 	if !strings.Contains(script, `su - devuser -c 'cat > "$HOME/.alias.sh"'`) {
 		t.Error("entrypoint must write ~/.alias.sh as devuser, not root")
 	}
-	if !strings.Contains(script, `chown "$DEV_UID:$DEV_GID" /home/devuser/.alias.sh`) {
+	if !strings.Contains(script, `chown "$DEV_UID:$DEV_GID" "$DEV_HOME/.alias.sh"`) {
 		t.Error("entrypoint must leave ~/.alias.sh owned by devuser's actual UID/GID")
 	}
 
-	// The fallback must come after the shared-config block, or it would win the
-	// race and the volume symlink would never be created.
-	if shared, alias := strings.Index(script, "SHARED_CONFIG_ENTRIES"), strings.Index(script, "/home/devuser/.alias.sh"); shared == -1 || alias == -1 || shared > alias {
-		t.Errorf("the ~/.alias.sh fallback must run after the shared-config symlinks (shared=%d alias=%d)", shared, alias)
-	}
+	// The ordering constraint that makes this a fallback rather than a race is
+	// pinned once, for every stage, by TestEntrypointStageOrder.
 }
 
 // The container context reaches agents through the generated ~/CONTEXT.md and
@@ -492,26 +479,25 @@ func TestEntrypointInstallsContextSkill(t *testing.T) {
 	}
 	script := string(body)
 
-	if !strings.Contains(script, "/home/devuser/.devcontainer-skills") {
+	if !strings.Contains(script, `BAKED_SKILLS_DIR="$DEV_HOME/.devcontainer-skills"`) {
 		t.Error("entrypoint must link the skill baked at ~/.devcontainer-skills")
 	}
-	for _, dir := range []string{"/home/devuser/.agents/skills", "/home/devuser/.claude/skills"} {
+	for _, dir := range []string{`"$DEV_HOME/.agents/skills"`, `"$DEV_HOME/.claude/skills"`} {
 		if !strings.Contains(script, dir) {
 			t.Errorf("entrypoint must install the skill into %s", dir)
 		}
 	}
-	if !strings.Contains(script, `ln -sfn "$BAKED_SKILLS_DIR/devcontainer-context" "$skill_link"`) {
-		t.Error("the skill must be symlinked, not copied, so a rebuilt image always wins")
+	// link_or_keep symlinks (never copies) and never clobbers a real directory,
+	// both proven by TestEntrypointLinkOrKeep; here we only check the skill goes
+	// through it rather than being copied in.
+	if !strings.Contains(script, `link_or_keep "$skill_link" "$BAKED_SKILLS_DIR/devcontainer-context"`) {
+		t.Error("the skill must be linked with link_or_keep, so a rebuilt image always wins")
 	}
-	if !strings.Contains(script, `if [ -e "$skill_link" ] && [ ! -L "$skill_link" ]; then`) {
-		t.Error("entrypoint must not clobber a real (non-symlink) skill of the same name")
+	if strings.Contains(script, `cp -a "$BAKED_SKILLS_DIR`) {
+		t.Error("the skill must be symlinked, not copied")
 	}
-	// The .claude/.agents dirs become symlinks into the shared volume in the
-	// block above; linking earlier would create them as real dirs and the volume
-	// entries would never be wired up.
-	if shared, skill := strings.Index(script, "SHARED_CONFIG_ENTRIES"), strings.Index(script, "BAKED_SKILLS_DIR"); shared == -1 || skill == -1 || shared > skill {
-		t.Errorf("the skill links must be created after the shared-config block (shared=%d skill=%d)", shared, skill)
-	}
+	// Running after the shared-config stage is what keeps `mkdir -p ~/.claude/skills`
+	// from creating the home dir as a real directory; pinned by TestEntrypointStageOrder.
 }
 
 // The auto-start post-scripts must run as devuser (never root): the whole loop
@@ -523,7 +509,7 @@ func TestEntrypointAutoStartRunsAsDevuser(t *testing.T) {
 		t.Fatalf("reading %s: %v", embeddedScript, err)
 	}
 	script := string(body)
-	if !strings.Contains(script, "/home/devuser/post-script/start.d") {
+	if !strings.Contains(script, `"$DEV_HOME/post-script/start.d"`) {
 		t.Error("entrypoint must auto-run the start.d post-scripts")
 	}
 	if !strings.Contains(script, "su - devuser -s /bin/bash -c") {
@@ -533,7 +519,7 @@ func TestEntrypointAutoStartRunsAsDevuser(t *testing.T) {
 		t.Error("entrypoint must guard re-runs with a per-script .done sentinel")
 	}
 	// The su block must be backgrounded so it never blocks sshd from starting.
-	if !strings.Contains(script, "' &\nfi") {
+	if !strings.Contains(script, "' &\n}") {
 		t.Error("entrypoint must background the auto-start block so SSH comes up immediately")
 	}
 }
@@ -933,5 +919,431 @@ func TestEccInstallOnlyPutsTheCLIsOnPath(t *testing.T) {
 		if strings.Contains(executable, f) {
 			t.Errorf("install-ecc.sh must not run %q: it writes into files the user owns, or installs only part of ECC", f)
 		}
+	}
+}
+
+// ── link_or_keep ────────────────────────────────────────────────────────────
+
+// Four blocks of the entrypoint link something into a place devuser reads: a
+// shared-config entry into the home, that entry's alias at the volume root, the
+// Antigravity skills bridge and the image's baked global skill. They must all go
+// through link_or_keep — open-coding the guard is how it ended up written in two
+// contrary phrasings of the same condition.
+func TestEntrypointLinksThroughOneHelper(t *testing.T) {
+	body, err := os.ReadFile(embeddedScript)
+	if err != nil {
+		t.Fatalf("reading %s: %v", embeddedScript, err)
+	}
+	script := string(body)
+	// Two of the four are inside shared_config_apply, in the library; the other
+	// two (the Antigravity bridge, the baked skill) are call sites here.
+	if got := strings.Count(script, "link_or_keep "); got < 2 {
+		t.Errorf("expected the entrypoint to call link_or_keep for the bridge and the skill, found %d mentions", got)
+	}
+	// The only ln -sfn left outside link_or_keep is the workspace alias, which
+	// links a mount (not something under the home) and has its own rules.
+	for _, frag := range []string{
+		`ln -sfn "$src" "$dest"`,
+		`ln -sfn "$BAKED_SKILLS_DIR`,
+		`ln -sfn "/home/devuser/.agents/skills"`,
+	} {
+		if strings.Contains(script, frag) {
+			t.Errorf("%q must go through link_or_keep, not a bare ln -sfn", frag)
+		}
+	}
+}
+
+// TestLinkOrKeep runs the library's real link_or_keep against a temp tree. Its
+// three rules are what four call sites now depend on: never replace something
+// real, create the parent, and point the link at the target verbatim (the volume
+// aliases pass a RELATIVE target).
+func TestLinkOrKeep(t *testing.T) {
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("bash not available")
+	}
+	body, err := os.ReadFile(sharedConfigLib)
+	if err != nil {
+		t.Fatalf("reading %s: %v", sharedConfigLib, err)
+	}
+	fn := extractShellFunc(t, string(body), "own") +
+		extractShellFunc(t, string(body), "link_or_keep")
+
+	// link_or_keep <path> <target> [message]. SC_OWNER is the library's one
+	// configuration knob; an empty one skips the chowns, which is what lets this
+	// run unprivileged.
+	run := func(t *testing.T, root, linkPath, target, message string) (int, string) {
+		t.Helper()
+		script := "SC_OWNER=\n" + fn + "\nlink_or_keep \"$1\" \"$2\" \"$3\"\n"
+		cmd := exec.Command("bash", "-c", script, "bash", linkPath, target, message)
+		cmd.Dir = root
+		out, err := cmd.CombinedOutput()
+		code := 0
+		if ee, ok := err.(*exec.ExitError); ok {
+			code = ee.ExitCode()
+		} else if err != nil {
+			t.Fatalf("running link_or_keep: %v\n%s", err, out)
+		}
+		return code, string(out)
+	}
+
+	t.Run("creates the link and its missing parent", func(t *testing.T) {
+		root := t.TempDir()
+		target := filepath.Join(root, "store")
+		if err := os.MkdirAll(target, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		link := filepath.Join(root, "deep", "nested", "link")
+		if code, out := run(t, root, link, target, ""); code != 0 {
+			t.Fatalf("link_or_keep returned %d: %s", code, out)
+		}
+		got, err := os.Readlink(link)
+		if err != nil {
+			t.Fatalf("expected a symlink at %s: %v", link, err)
+		}
+		if got != target {
+			t.Errorf("link -> %q, want %q", got, target)
+		}
+	})
+
+	t.Run("repoints a stale link", func(t *testing.T) {
+		root := t.TempDir()
+		link := filepath.Join(root, "link")
+		if err := os.Symlink(filepath.Join(root, "gone"), link); err != nil {
+			t.Fatal(err)
+		}
+		target := filepath.Join(root, "store")
+		if err := os.MkdirAll(target, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if code, out := run(t, root, link, target, ""); code != 0 {
+			t.Fatalf("link_or_keep returned %d: %s", code, out)
+		}
+		if got, _ := os.Readlink(link); got != target {
+			t.Errorf("stale link -> %q, want it repointed at %q", got, target)
+		}
+	})
+
+	t.Run("keeps a real directory and reports it", func(t *testing.T) {
+		root := t.TempDir()
+		link := filepath.Join(root, "real")
+		if err := os.MkdirAll(filepath.Join(link, "inner"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		code, out := run(t, root, link, filepath.Join(root, "store"), "keeping it")
+		if code == 0 {
+			t.Error("link_or_keep must return non-zero when it keeps what is already there, so callers can skip")
+		}
+		if !strings.Contains(out, "keeping it") {
+			t.Errorf("expected the kept-message on stderr, got %q", out)
+		}
+		if info, err := os.Lstat(link); err != nil || !info.IsDir() {
+			t.Errorf("the real directory must survive untouched (err=%v)", err)
+		}
+		if _, err := os.Stat(filepath.Join(link, "inner")); err != nil {
+			t.Errorf("contents of the kept directory must survive: %v", err)
+		}
+	})
+
+	t.Run("keeps a relative target verbatim", func(t *testing.T) {
+		// The volume aliases depend on this: <volume>/.config/gh -> ../gh only
+		// resolves if the target is stored as written, not resolved first.
+		root := t.TempDir()
+		if err := os.MkdirAll(filepath.Join(root, "gh"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		link := filepath.Join(root, ".config", "gh")
+		if code, out := run(t, root, link, "../gh", ""); code != 0 {
+			t.Fatalf("link_or_keep returned %d: %s", code, out)
+		}
+		if got, _ := os.Readlink(link); got != "../gh" {
+			t.Errorf("link -> %q, want the relative target %q kept verbatim", got, "../gh")
+		}
+		if _, err := filepath.EvalSymlinks(link); err != nil {
+			t.Errorf("the relative alias must resolve: %v", err)
+		}
+	})
+}
+
+// ── The stage order ─────────────────────────────────────────────────────────
+
+// entrypointStages returns the stage_* calls in main(), in order — the
+// entrypoint's whole control flow, read from the shipped file.
+func entrypointStages(t *testing.T) []string {
+	t.Helper()
+	body, err := os.ReadFile(embeddedScript)
+	if err != nil {
+		t.Fatalf("reading %s: %v", embeddedScript, err)
+	}
+	main := extractShellFunc(t, string(body), "main")
+	var stages []string
+	for _, line := range strings.Split(main, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "stage_") && !strings.Contains(line, "(") {
+			stages = append(stages, line)
+		}
+	}
+	if len(stages) == 0 {
+		t.Fatal("main() calls no stages")
+	}
+	return stages
+}
+
+// The entrypoint is a driver over named stages, and the order is the part that
+// carries meaning. Each edge below is a real failure if inverted, so they are
+// pinned here once instead of as an index comparison inside each stage's own
+// test. Every stage in main() must also exist as a function — a typo'd call is
+// a silent no-op in a script with no `set -e`.
+func TestEntrypointStageOrder(t *testing.T) {
+	body, err := os.ReadFile(embeddedScript)
+	if err != nil {
+		t.Fatalf("reading %s: %v", embeddedScript, err)
+	}
+	script := string(body)
+	stages := entrypointStages(t)
+
+	at := map[string]int{}
+	for i, stage := range stages {
+		if _, dup := at[stage]; dup {
+			t.Errorf("main() calls %s twice", stage)
+		}
+		at[stage] = i
+		if !strings.Contains(script, stage+"() {") {
+			t.Errorf("main() calls %s, which is not defined", stage)
+		}
+	}
+
+	for _, edge := range []struct{ before, after, why string }{
+		{"stage_workspace", "stage_identity",
+			"WORKSPACE_DIR decides which UID devuser is remapped to"},
+		{"stage_identity", "stage_shared_config",
+			"the shared-config library is configured with SC_OWNER, set from DEV_UID/DEV_GID"},
+		{"stage_shared_config", "stage_user_aliases",
+			"a local ~/.alias.sh created first would win the race against the volume symlink"},
+		{"stage_shared_config", "stage_context_skill",
+			"~/.claude must already be the volume symlink, or mkdir -p makes it a real directory"},
+	} {
+		i, iOK := at[edge.before]
+		j, jOK := at[edge.after]
+		if !iOK || !jOK {
+			t.Errorf("missing stage for the %s -> %s edge", edge.before, edge.after)
+			continue
+		}
+		if i > j {
+			t.Errorf("%s must run before %s: %s", edge.before, edge.after, edge.why)
+		}
+	}
+
+	// sshd is the container's lifetime, so it is exec'd last and never
+	// backgrounded.
+	if !strings.Contains(script, "exec /usr/sbin/sshd -D") {
+		t.Error("main() must exec sshd so it becomes PID 1")
+	}
+}
+
+// ── shared_config_apply ─────────────────────────────────────────────────────
+
+// TestSharedConfigApply runs the library's real shared_config_apply against a
+// temp volume and home, with the catalogue passed in as data. It is the whole
+// layout in one call, so this covers what used to be spread over the entrypoint
+// and the sync helper: the entry is materialized in the flat volume, gets a
+// home-shaped alias at the volume root, and is linked into the home.
+func TestSharedConfigApply(t *testing.T) {
+	if _, err := exec.LookPath("sh"); err != nil {
+		t.Skip("sh not available")
+	}
+	lib, err := os.ReadFile(sharedConfigLib)
+	if err != nil {
+		t.Fatalf("reading %s: %v", sharedConfigLib, err)
+	}
+
+	root := t.TempDir()
+	vol := filepath.Join(root, "vol")
+	home := filepath.Join(root, "home")
+	for _, d := range []string{vol, home} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// A real directory already in the home must survive: the volume is seeded
+	// with `config shared sync`, never by overwriting what is in the container.
+	if err := os.MkdirAll(filepath.Join(home, ".codex", "sessions"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// A dir entry, a file entry, and a nested target — the three shapes the
+	// catalogue actually contains.
+	entries := "claude dir .claude\nclaude.json file .claude.json\ngh dir .config/gh\ncodex dir .codex\n"
+	cmd := exec.Command("sh", "-c", "set -e\n"+string(lib)+"\nshared_config_apply \"$1\" \"$2\"", "sh", vol, home)
+	cmd.Env = append(os.Environ(), "SC_ENTRIES="+entries, "SC_OWNER=")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("shared_config_apply: %v\n%s", err, out)
+	}
+
+	// Materialized in the flat volume, with the declared kind.
+	if info, err := os.Stat(filepath.Join(vol, "claude")); err != nil || !info.IsDir() {
+		t.Errorf("dir entry must be created in the volume (err=%v)", err)
+	}
+	if info, err := os.Stat(filepath.Join(vol, "claude.json")); err != nil || info.IsDir() {
+		t.Errorf("file entry must be created as a file in the volume (err=%v)", err)
+	}
+
+	// Linked into the home, and the home-shaped alias resolves back at the flat
+	// entry so a relative cross-entry link written against the home layout lands
+	// on a real name.
+	for _, tc := range []struct{ id, target string }{
+		{"claude", ".claude"},
+		{"claude.json", ".claude.json"},
+		{"gh", ".config/gh"},
+	} {
+		if got, err := os.Readlink(filepath.Join(home, filepath.FromSlash(tc.target))); err != nil {
+			t.Errorf("%s must be a symlink into the volume: %v", tc.target, err)
+		} else if got != filepath.Join(vol, tc.id) {
+			t.Errorf("%s -> %q, want %q", tc.target, got, filepath.Join(vol, tc.id))
+		}
+		resolved, err := filepath.EvalSymlinks(filepath.Join(vol, filepath.FromSlash(tc.target)))
+		if err != nil {
+			t.Errorf("volume alias %s does not resolve: %v", tc.target, err)
+			continue
+		}
+		want, _ := filepath.EvalSymlinks(filepath.Join(vol, tc.id))
+		if resolved != want {
+			t.Errorf("volume alias %s resolves to %s, want %s", tc.target, resolved, want)
+		}
+	}
+
+	// The pre-existing real directory is kept, not replaced by a link, and the
+	// caller is told why.
+	if info, err := os.Lstat(filepath.Join(home, ".codex")); err != nil || info.Mode()&os.ModeSymlink != 0 {
+		t.Error("a real config directory in the home must never be replaced with a symlink")
+	}
+	if _, err := os.Stat(filepath.Join(home, ".codex", "sessions")); err != nil {
+		t.Errorf("contents of the kept directory must survive: %v", err)
+	}
+	if !strings.Contains(string(out), "config shared sync") {
+		t.Errorf("keeping real config must point at the command that seeds the volume, got %q", out)
+	}
+
+	// Idempotent: a second start must change nothing and must not fail.
+	if out2, err := cmd2(t, string(lib), vol, home, entries); err != nil {
+		t.Fatalf("second run: %v\n%s", err, out2)
+	}
+}
+
+func cmd2(t *testing.T, lib, vol, home, entries string) (string, error) {
+	t.Helper()
+	c := exec.Command("sh", "-c", "set -e\n"+lib+"\nshared_config_apply \"$1\" \"$2\"", "sh", vol, home)
+	c.Env = append(os.Environ(), "SC_ENTRIES="+entries, "SC_OWNER=")
+	out, err := c.CombinedOutput()
+	return string(out), err
+}
+
+// shared_config_is_target is what tells a symlink pointing at another persisted
+// config apart from one pointing at something that only exists on the host — the
+// distinction the whole symlink pass turns on.
+func TestSharedConfigIsTarget(t *testing.T) {
+	if _, err := exec.LookPath("sh"); err != nil {
+		t.Skip("sh not available")
+	}
+	lib, err := os.ReadFile(sharedConfigLib)
+	if err != nil {
+		t.Fatalf("reading %s: %v", sharedConfigLib, err)
+	}
+	for _, tc := range []struct {
+		path string
+		want bool
+	}{
+		{".claude", true},
+		{".claude/skills/x", true},
+		{".config/gh", true},
+		{".config/gh/hosts.yml", true},
+		{".claude-backup", false},
+		{"projects/tool", false},
+		{".config", false},
+	} {
+		c := exec.Command("sh", "-c", "set -e\n"+string(lib)+"\nshared_config_is_target \"$1\"", "sh", tc.path)
+		c.Env = append(os.Environ(), "SC_ENTRIES=claude dir .claude\ngh dir .config/gh\n", "SC_OWNER=")
+		got := c.Run() == nil
+		if got != tc.want {
+			t.Errorf("shared_config_is_target(%q) = %v, want %v", tc.path, got, tc.want)
+		}
+	}
+}
+
+// TestEntrypointSharedConfigStage runs the entrypoint's real stage_shared_config
+// against temp stand-ins for the volume, the catalogue file and the home. It is
+// the wiring the unit tests above cannot see: that the stage reads the generated
+// catalogue into SC_ENTRIES, hands the library the right two roots, and bridges
+// Antigravity's skills dir at the shared store.
+func TestEntrypointSharedConfigStage(t *testing.T) {
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("bash not available")
+	}
+	entrypoint, err := os.ReadFile(embeddedScript)
+	if err != nil {
+		t.Fatalf("reading %s: %v", embeddedScript, err)
+	}
+	lib, err := os.ReadFile(sharedConfigLib)
+	if err != nil {
+		t.Fatalf("reading %s: %v", sharedConfigLib, err)
+	}
+	stage := extractShellFunc(t, string(entrypoint), "stage_shared_config")
+
+	root := t.TempDir()
+	vol := filepath.Join(root, "vol")
+	home := filepath.Join(root, "home")
+	for _, d := range []string{vol, home} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	table := filepath.Join(root, "shared-config-entries")
+	if err := os.WriteFile(table, []byte("claude dir .claude\nagents dir .agents\ngh dir .config/gh\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	script := strings.Join([]string{
+		"set -u",
+		string(lib),
+		"SC_OWNER=",
+		"DEV_UID=$(id -u)",
+		"DEV_GID=$(id -g)",
+		"DEV_HOME=" + home,
+		"SHARED_CONFIG_DIR=" + vol,
+		"SHARED_CONFIG_TABLE=" + table,
+		stage,
+		"stage_shared_config",
+	}, "\n")
+	if out, err := exec.Command("bash", "-c", script).CombinedOutput(); err != nil {
+		t.Fatalf("stage_shared_config: %v\n%s", err, out)
+	}
+
+	// The catalogue file drove the layout: an entry named only there is linked.
+	if got, err := os.Readlink(filepath.Join(home, ".config", "gh")); err != nil {
+		t.Errorf("the stage must link every entry in the catalogue file: %v", err)
+	} else if got != filepath.Join(vol, "gh") {
+		t.Errorf(".config/gh -> %q, want %q", got, filepath.Join(vol, "gh"))
+	}
+
+	// Antigravity reads skills from ~/.gemini/antigravity-cli/skills and does not
+	// understand ~/.agents/skills, so the stage bridges them — and the target has
+	// to exist for it to read through.
+	bridge := filepath.Join(home, ".gemini", "antigravity-cli", "skills")
+	got, err := os.Readlink(bridge)
+	if err != nil {
+		t.Fatalf("the Antigravity skills bridge must be a symlink: %v", err)
+	}
+	if want := filepath.Join(home, ".agents", "skills"); got != want {
+		t.Errorf("bridge -> %q, want %q", got, want)
+	}
+	if _, err := filepath.EvalSymlinks(bridge); err != nil {
+		t.Errorf("the bridge must resolve, i.e. its target must be created: %v", err)
+	}
+
+	// The stage is a no-op without the mount (opt-out, or an image built before
+	// it existed), which is what keeps quick-run working on older images.
+	absent := strings.Replace(script, "SHARED_CONFIG_DIR="+vol, "SHARED_CONFIG_DIR="+filepath.Join(root, "nope"), 1)
+	if out, err := exec.Command("bash", "-c", absent).CombinedOutput(); err != nil {
+		t.Errorf("stage_shared_config must no-op when the volume is not mounted: %v\n%s", err, out)
 	}
 }
