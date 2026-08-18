@@ -55,7 +55,7 @@ func TestBuildOnlyAssetsAreNotCopyable(t *testing.T) {
 		"get-devcontainer-context",
 		"install-antigravity", "install-caveman", "install-claude-code",
 		"install-claude-mem", "install-codex-cli", "install-context-mode",
-		"install-copilot", "install-graphify",
+		"install-copilot", "install-ecc", "install-graphify",
 		"install-opencode", "login-github-cli",
 	}
 	if len(CopyableNames()) != len(want) {

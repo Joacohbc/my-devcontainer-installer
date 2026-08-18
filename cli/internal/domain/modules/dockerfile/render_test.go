@@ -599,6 +599,37 @@ func TestModuleRunLayerCounts(t *testing.T) {
 // entrypoint runs them on start; the agent-wiring tools (graphify/caveman) carry
 // a higher run order so they run after the agents. Interactive scripts (codex,
 // the github login under cleanup) must NOT be auto-start.
+// The ECC installer takes no arguments — the entrypoint runs start.d scripts
+// with none — so the selected profile has to reach it as image environment.
+func TestEccModuleDeclaresProfileEnv(t *testing.T) {
+	cases := []struct {
+		name string
+		opts map[string]any
+		want string
+	}{
+		{"default", nil, "developer"},
+		{"explicit", map[string]any{"profile": "full"}, "full"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			env := dockerfile.EccModule.ProvidesEnv(c.opts)
+			if len(env.Assignments) != 1 {
+				t.Fatalf("ecc must declare exactly one assignment, got %d", len(env.Assignments))
+			}
+			got := env.Assignments[0]
+			if got.Name != "DEVCONTAINER_ECC_PROFILE" {
+				t.Errorf("assignment name = %q, want DEVCONTAINER_ECC_PROFILE", got.Name)
+			}
+			if string(got.Value) != c.want {
+				t.Errorf("profile = %q, want %q", got.Value, c.want)
+			}
+		})
+	}
+	if env := dockerfile.EccModule.ProvidesEnv(nil); len(env.PathEntries) != 0 {
+		t.Error("ecc must not put anything on PATH; the global npm/pnpm bin dir already is")
+	}
+}
+
 func TestPostScriptAutoStartFlags(t *testing.T) {
 	cases := []struct {
 		name      string
@@ -614,6 +645,7 @@ func TestPostScriptAutoStartFlags(t *testing.T) {
 		{"caveman", dockerfile.CavemanModule, true, 90},
 		{"claude-mem", dockerfile.ClaudeMemModule, true, 90},
 		{"context-mode", dockerfile.ContextModeModule, true, 90},
+		{"ecc", dockerfile.EccModule, true, 90},
 		{"skills", dockerfile.SkillsModule, true, 95},
 		{"codex", dockerfile.CodexCliModule, false, 0},
 		{"cleanup (github login)", dockerfile.CleanupModule, false, 0},

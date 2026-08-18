@@ -35,6 +35,7 @@ const (
 	ModuleCaveman        ModuleID = "caveman"
 	ModuleClaudeMem      ModuleID = "claude-mem"
 	ModuleContextMode    ModuleID = "context-mode"
+	ModuleEcc            ModuleID = "ecc"
 	ModuleZellij         ModuleID = "zellij"
 	ModuleChrome         ModuleID = "chrome"
 	ModuleFfmpeg         ModuleID = "ffmpeg"
