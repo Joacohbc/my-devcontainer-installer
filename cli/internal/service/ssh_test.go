@@ -317,3 +317,19 @@ func TestSshCommandExists(t *testing.T) {
 		t.Error("did not expect a bogus binary to exist")
 	}
 }
+
+func TestSshConnectEphemeral(t *testing.T) {
+	writeFakeSSH(t, "exit 0")
+	ps := `{"Names":"c1","Image":"img1","Status":"Up","State":"running","Labels":"","Ports":""}`
+	runner := &cmdRoutingRunner{psOut: ps, inspectOut: "bridge 172.25.0.14\n"}
+	defer useFakeDocker(runner)()
+
+	svc := SshService{Report: nopReporter{}}
+	if err := svc.ConnectEphemeral("c1", "", "", []string{"echo", "hi"}); err != nil {
+		t.Errorf("ConnectEphemeral ok: %v", err)
+	}
+
+	if err := svc.ConnectEphemeral("absent", "", "", nil); err == nil {
+		t.Error("expected error for absent container")
+	}
+}

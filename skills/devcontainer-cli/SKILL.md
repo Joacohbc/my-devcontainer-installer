@@ -25,10 +25,10 @@ you waiting on a prompt you cannot answer.
 | `agent cli-info` | Print the catalogue: modules, services, profiles, skills, scripts, paths |
 | `agent create [--temporal]` | Generate + build + start an environment for the current directory (or throwaway with `--temporal`) |
 | `agent exec [-w] -- <cmd>` | Run a command inside the container (use `-w` to run from the workspace directory) |
-| `agent ssh [--ephemeral]` | Open an SSH session into the container, optionally ephemeral (bypasses ~/.ssh/config) |
-| `agent forward <ports>` | Tunnel a container port to 127.0.0.1 via SSH or Docker depending on the command |
+| `agent ssh [--ephemeral]` | Open an SSH session into the container (ephemeral by default, bypassing ~/.ssh/config) |
+| `agent forward <ports>` | Tunnel a container port to 127.0.0.1 via direct SSH tunnel (ephemeral by default) |
 | `agent copy <src> <dest>` | Move files between host and container |
-| `agent list [path]` | List a directory inside the container |
+| `agent list [path]` | List a directory inside the container (--json and -a supported) |
 | `agent clean` | Destroy the project and remove what it left behind |
 
 Use these first. The plain commands they wrap (`shell`, `ssh`, `port-forward`,
@@ -91,6 +91,10 @@ generated files without asking.
 | `--workspace <name>` | Override the workspace name (default: directory name) |
 | `--mode profiles --profile nodejs` | Skip the local build, pull a prebuilt ghcr.io image for a `[remote]`-tagged profile |
 | `--no-up` | Generate and build, but leave the containers stopped |
+| `--temporal` | Run an ephemeral container without project files |
+| `--name <name>` | Container name for temporal run (default: `dc-<profile>`) |
+| `--expose-all` | Publish ports on all interfaces for temporal run |
+| `--copy-ai-scripts` | Copy AI scripts into the temporal container |
 
 Module ids for `--with`: `github-cli`, `nodejs`, `pnpm`, `yarn`, `bun`,
 `python`, `go`, `rust`, `php`, `c-cpp`, `java-temurin`, `java-openjdk`,
@@ -247,11 +251,10 @@ Publishing a port permanently means regenerating with the port included:
 
     devcontainer-cli agent create --ports 3000:3000
 
-For a real SSH session rather than a `docker exec` — it configures the key and
-the Host block on first use:
+For a real SSH session rather than a `docker exec`:
 
-    devcontainer-cli agent connect -- go version
-    devcontainer-cli agent connect --forward --ports 3000,8080:80
+    devcontainer-cli agent ssh -- go version
+    devcontainer-cli agent ssh --via me@docker-host -c mycontainer -- uname -a
 
 Sibling services are reached **inside** the container by compose service name
 (`postgres`, `redis`, `mongo`), never `localhost`.
@@ -371,7 +374,7 @@ managed label). Use `--dry-run` first and show the user what would go.
   `apt-get install` inside the container.
 - Run every command from the project directory; the CLI resolves the workspace
   from the current directory unless `--workspace` says otherwise.
-- Long-running commands (`logs -f`, `agent forward`, `agent connect` without a
+- Long-running commands (`logs -f`, `agent forward`, `agent ssh` without a
   command) do not return. Give them a command, a `--tail`, or run them in the
   background.
 - `--help` on any command is authoritative and current; check it before

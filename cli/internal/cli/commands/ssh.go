@@ -83,7 +83,7 @@ when the session ends.`,
 }
 
 // addSshFlags registers the flags runSsh reads. It is shared with the
-// 'agent connect' facade, which reuses runSsh with agent-safe defaults.
+// 'agent ssh' facade, which reuses runSsh with agent-safe defaults.
 func addSshFlags(cmd *cobra.Command) {
 	addYesFlag(cmd)
 	addInteractiveFlag(cmd)
@@ -115,23 +115,14 @@ func runSsh(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	if ephemeral, _ := cmd.Flags().GetBool("ephemeral"); ephemeral {
-		var containerName string
-		if cmd.Flags().Changed("container") {
-			containerName, _ = cmd.Flags().GetString("container")
-		} else {
-			cwd, err := currentDir()
-			if err != nil {
-				return err
-			}
-			containerName, err = resolveDevcontainerContainer(cwd)
-			if err != nil {
-				return err
-			}
+	via, _ := cmd.Flags().GetString("via")
+	if ephemeral, _ := cmd.Flags().GetBool("ephemeral"); ephemeral && via == "" {
+		containerName, err := resolveContainer(cmd)
+		if err != nil {
+			return err
 		}
 
 		keyPath, _ := cmd.Flags().GetString("key")
-		keyPath = domain.ResolveSSHKeyPath(keyPath)
 		user, _ := cmd.Flags().GetString("user")
 
 		sshSvc := service.SshService{Report: console}
@@ -147,7 +138,6 @@ func runSsh(cmd *cobra.Command, args []string) error {
 	}
 
 	containerExplicit := cmd.Flags().Changed("container")
-	via, _ := cmd.Flags().GetString("via")
 	if via != "" && !containerExplicit {
 		return fmt.Errorf("--via requires --container <name>: there is no local compose project describing a container on a remote host")
 	}

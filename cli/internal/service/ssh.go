@@ -13,6 +13,7 @@ import (
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/osutil"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/sshdefaults"
 )
 
 // SshService owns the external-command and docker orchestration behind the
@@ -302,6 +303,10 @@ func (s SshService) ConnectEphemeral(containerName, user, keyPath string, args [
 	if ip == "" {
 		ip = "127.0.0.1" // Fallback if no network IP was found
 	}
+	if user == "" {
+		user = sshdefaults.User
+	}
+	keyPath = domain.ResolveSSHKeyPath(keyPath)
 
 	target := fmt.Sprintf("%s@%s", user, ip)
 

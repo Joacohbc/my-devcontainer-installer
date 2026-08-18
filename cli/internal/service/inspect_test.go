@@ -7,6 +7,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 )
 
 func TestInspectContainerStateAndImage(t *testing.T) {
@@ -439,6 +441,48 @@ func TestInspectListDir(t *testing.T) {
 	want := []string{"a", "b/", "c"}
 	if !slices.Equal(entries, want) {
 		t.Errorf("entries = %v, want %v", entries, want)
+	}
+	call := runner.callContaining("ls")
+	if call == nil || slices.Contains(call, "-a") {
+		t.Errorf("expected no -a flag in default ListDir call: %v", call)
+	}
+}
+
+func TestInspectListDirAll(t *testing.T) {
+	runner := &fakeRunner{status: 0, stdout: ".dot\na\nb/\n"}
+	defer useFakeDocker(runner)()
+
+	svc := InspectService{Report: nopReporter{}}
+	entries, err := svc.ListDir("c1", "/", true)
+	if err != nil {
+		t.Fatalf("ListDir: %v", err)
+	}
+	want := []string{".dot", "a", "b/"}
+	if !slices.Equal(entries, want) {
+		t.Errorf("entries = %v, want %v", entries, want)
+	}
+	call := runner.callContaining("ls")
+	if call == nil || !slices.Contains(call, "-a") {
+		t.Errorf("expected -a flag in ListDir call when all=true: %v", call)
+	}
+}
+
+func TestInspectListDirEntries(t *testing.T) {
+	runner := &fakeRunner{status: 0, stdout: ".dot\nfile.txt\ndir/\n"}
+	defer useFakeDocker(runner)()
+
+	svc := InspectService{Report: nopReporter{}}
+	entries, err := svc.ListDirEntries("c1", "/", true)
+	if err != nil {
+		t.Fatalf("ListDirEntries: %v", err)
+	}
+	want := []types.DirEntry{
+		{Name: ".dot", Dir: false},
+		{Name: "file.txt", Dir: false},
+		{Name: "dir", Dir: true},
+	}
+	if !slices.Equal(entries, want) {
+		t.Errorf("entries = %+v, want %+v", entries, want)
 	}
 }
 
