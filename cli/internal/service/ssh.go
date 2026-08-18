@@ -247,14 +247,8 @@ const (
 func (s SshService) TestConnection(alias string) SSHTestResult {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	c := exec.CommandContext(ctx, "ssh",
-		"-o", "BatchMode=yes",
-		"-o", "StrictHostKeyChecking=accept-new",
-		"-o", "ConnectTimeout=5",
-		"-o", "ServerAliveInterval=2",
-		"-o", "ServerAliveCountMax=2",
-		alias, "echo OK",
-	)
+	probeArgs := append(sshdefaults.OptionFlags(sshdefaults.ProbeOptions()), alias, "echo OK")
+	c := exec.CommandContext(ctx, "ssh", probeArgs...)
 	out, err := c.Output()
 	if ctx.Err() == context.DeadlineExceeded {
 		return SSHTestTimeout
@@ -287,37 +281,86 @@ func (s SshService) Connect(alias string, args []string) error {
 	return fmt.Errorf("failed to run ssh: %w", err)
 }
 
-// ConnectEphemeral opens an SSH session without writing to ~/.ssh/config or resolving a managed alias.
-// It directly dials the container's IP on port 2222 with StrictHostKeyChecking=no.
-func (s SshService) ConnectEphemeral(containerName, user, keyPath string, args []string) error {
+// EphemeralTarget is a container resolved for a direct SSH dial: where to
+// connect, as whom, and with which key — already trusted there.
+type EphemeralTarget struct {
+	IP      string
+	User    string
+	KeyPath string
+}
+
+// Destination renders the target as ssh's user@host argument.
+func (t EphemeralTarget) Destination() string {
+	return fmt.Sprintf("%s@%s", t.User, t.IP)
+}
+
+// noNetworkIPFallback is what an ephemeral dial falls back to when the daemon
+// reports no address for the container: a container published on the host is
+// still reachable on the loopback.
+const noNetworkIPFallback = "127.0.0.1"
+
+// EnsureEphemeralAccess resolves an ephemeral target: it checks the container is
+// running, finds the address to dial, and makes the managed key usable against it.
+//
+// Installing the public key is part of resolving the target, not an extra step.
+// Nothing in the image ships an authorized_keys — only the setup flow writes one
+// — so an ephemeral connection into a container that never had `ssh --setup` run
+// would always fail with "Permission denied (publickey)". "Ephemeral" means the
+// local ~/.ssh/config is left alone; it cannot mean the target has no way to
+// authenticate us. The install script is idempotent (it appends then sort -u's),
+// so repeating it on a container that already trusts the key is a no-op.
+func (s SshService) EnsureEphemeralAccess(containerName, user, keyPath string) (EphemeralTarget, error) {
 	state, ip, err := s.ContainerLiveness(containerName)
 	if err != nil {
-		return err
+		return EphemeralTarget{}, err
 	}
 	if state == TargetAbsent {
-		return fmt.Errorf("container '%s' not found", containerName)
+		return EphemeralTarget{}, fmt.Errorf("container '%s' not found", containerName)
 	}
 	if state == TargetStopped {
-		return fmt.Errorf("container '%s' is not running", containerName)
+		return EphemeralTarget{}, fmt.Errorf("container '%s' is not running; start it with 'devcontainer-cli start'", containerName)
 	}
 	if ip == "" {
-		ip = "127.0.0.1" // Fallback if no network IP was found
+		ip = noNetworkIPFallback
 	}
 	if user == "" {
 		user = sshdefaults.User
 	}
-	keyPath = domain.ResolveSSHKeyPath(keyPath)
+	target := EphemeralTarget{IP: ip, User: user, KeyPath: domain.ResolveSSHKeyPath(keyPath)}
 
-	target := fmt.Sprintf("%s@%s", user, ip)
-
-	sshArgs := []string{
-		"-i", keyPath,
-		"-p", "2222",
-		"-o", "StrictHostKeyChecking=no",
-		"-o", "UserKnownHostsFile=/dev/null",
-		"-o", "LogLevel=ERROR",
-		target,
+	if err := s.trustManagedKey(containerName, target); err != nil {
+		return EphemeralTarget{}, err
 	}
+	return target, nil
+}
+
+// trustManagedKey generates the managed key if it is missing and installs its
+// public half in the container's authorized_keys.
+func (s SshService) trustManagedKey(containerName string, target EphemeralTarget) error {
+	if _, err := s.EnsureKey(target.KeyPath); err != nil {
+		return err
+	}
+	publicKey, err := s.PublicKey(target.KeyPath)
+	if err != nil {
+		return err
+	}
+	return s.InstallKeyLocal(InstallKeySpec{
+		PublicKey: publicKey,
+		User:      target.User,
+		Container: containerName,
+		Script:    sshdefaults.AuthorizedKeysInstallScript(),
+	})
+}
+
+// ConnectEphemeral opens an SSH session without writing to ~/.ssh/config or
+// resolving a managed alias, dialing the container's own address directly.
+func (s SshService) ConnectEphemeral(containerName, user, keyPath string, args []string) error {
+	target, err := s.EnsureEphemeralAccess(containerName, user, keyPath)
+	if err != nil {
+		return err
+	}
+
+	sshArgs := append(sshdefaults.EphemeralDialArgs(target.KeyPath), target.Destination())
 	sshArgs = append(sshArgs, args...)
 
 	c := exec.Command("ssh", sshArgs...)

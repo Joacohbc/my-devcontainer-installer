@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/sshdefaults"
 )
 
 func TestOpenTunnelsNoTunnelsIsNoop(t *testing.T) {
@@ -32,7 +34,7 @@ func TestOpenTunnelsDetachedStartsAndStops(t *testing.T) {
 	svc := PortForwardService{Report: nopReporter{}}
 	tunnels := []Tunnel{
 		{LocalPort: 12345, ContainerPort: 80, TargetHost: "localhost", Alias: "myalias"},
-		{LocalPort: 12346, ContainerPort: 8080, TargetHost: "localhost", Ephemeral: true, HostIP: "172.18.0.2", User: "devuser", KeyPath: "/tmp/testkey"},
+		{LocalPort: 12346, ContainerPort: 8080, TargetHost: "localhost", Ephemeral: true, Target: EphemeralTarget{IP: "172.18.0.2", User: "devuser", KeyPath: "/tmp/testkey"}},
 	}
 	stop, err := svc.OpenTunnelsDetached(tunnels)
 	if err != nil {
@@ -64,20 +66,18 @@ func TestTunnelCommand_AliasAndEphemeral(t *testing.T) {
 		ContainerPort: 80,
 		TargetHost:    "localhost",
 		Ephemeral:     true,
-		HostIP:        "172.20.0.5",
-		User:          "devuser",
-		KeyPath:       "/home/devuser/.config/devcontainer-cli/id_ed25519",
+		Target: EphemeralTarget{
+			IP:      "172.20.0.5",
+			User:    "devuser",
+			KeyPath: "/home/devuser/.config/devcontainer-cli/id_ed25519",
+		},
 	}
 	ephCmd := tunnelCommand(ephemeralTunnel)
-	expectedArgs := []string{
-		"ssh", "-N", "-L", "127.0.0.1:8080:localhost:80",
-		"-p", "2222",
-		"-o", "StrictHostKeyChecking=no",
-		"-o", "UserKnownHostsFile=/dev/null",
-		"-o", "LogLevel=ERROR",
-		"-i", "/home/devuser/.config/devcontainer-cli/id_ed25519",
-		"devuser@172.20.0.5",
-	}
+	// The dial flags themselves are sshdefaults' contract; what this pins is that
+	// an ephemeral tunnel dials with exactly them, and nothing of its own.
+	expectedArgs := []string{"ssh", "-N", "-L", "127.0.0.1:8080:localhost:80"}
+	expectedArgs = append(expectedArgs, sshdefaults.EphemeralDialArgs(ephemeralTunnel.Target.KeyPath)...)
+	expectedArgs = append(expectedArgs, "devuser@172.20.0.5")
 	if len(ephCmd.Args) != len(expectedArgs) {
 		t.Fatalf("expected %d args, got %d: %v", len(expectedArgs), len(ephCmd.Args), ephCmd.Args)
 	}
@@ -94,21 +94,31 @@ func TestBuildEphemeralTunnel(t *testing.T) {
 	runner := &cmdRoutingRunner{psOut: psOut, inspectOut: inspectOut}
 	defer useFakeDocker(runner)()
 
+	// A real key pair on disk: BuildEphemeralTunnel now resolves ephemeral access,
+	// which reads the public half and installs it in the container.
+	keyPath := filepath.Join(t.TempDir(), "id_ed25519")
+	if err := os.WriteFile(keyPath, []byte("private"), 0o600); err != nil {
+		t.Fatalf("writing key: %v", err)
+	}
+	if err := os.WriteFile(keyPath+".pub", []byte("ssh-ed25519 AAAA test\n"), 0o644); err != nil {
+		t.Fatalf("writing pubkey: %v", err)
+	}
+
 	svc := PortForwardService{Report: nopReporter{}}
-	tunnel, err := svc.BuildEphemeralTunnel(3000, 3000, "localhost", "my-container", "", "/custom/key")
+	tunnel, err := svc.BuildEphemeralTunnel(3000, 3000, "localhost", "my-container", "", keyPath)
 	if err != nil {
 		t.Fatalf("BuildEphemeralTunnel: %v", err)
 	}
 	if !tunnel.Ephemeral {
 		t.Error("expected tunnel.Ephemeral to be true")
 	}
-	if tunnel.HostIP != "172.20.0.10" {
-		t.Errorf("tunnel.HostIP = %q, want 172.20.0.10", tunnel.HostIP)
+	want := EphemeralTarget{IP: "172.20.0.10", User: "devuser", KeyPath: keyPath}
+	if tunnel.Target != want {
+		t.Errorf("tunnel.Target = %+v, want %+v", tunnel.Target, want)
 	}
-	if tunnel.User != "devuser" {
-		t.Errorf("tunnel.User = %q, want devuser", tunnel.User)
-	}
-	if tunnel.KeyPath != "/custom/key" {
-		t.Errorf("tunnel.KeyPath = %q, want /custom/key", tunnel.KeyPath)
+	// The public key must have been piped into the container: without it a
+	// container that never ran `ssh --setup` refuses the tunnel's key.
+	if !runner.sawKeyInstall() {
+		t.Error("BuildEphemeralTunnel must install the public key in the container")
 	}
 }
