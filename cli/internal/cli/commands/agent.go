@@ -35,6 +35,7 @@ container, 'config' for global settings.`,
   devcontainer-cli agent create --with nodejs,pnpm --service postgres
 
   # Work inside it
+  devcontainer-cli agent context --json
   devcontainer-cli agent exec -- go test ./...
   devcontainer-cli agent list /home/devuser --json
 
@@ -51,6 +52,7 @@ container, 'config' for global settings.`,
 		newAgentForwardCommand(),
 		newAgentCopyCommand(),
 		newAgentListCommand(),
+		newAgentContextCommand(),
 		newAgentCleanCommand(),
 	)
 	return cmd
@@ -364,6 +366,43 @@ func runAgentList(cmd *cobra.Command, args []string) error {
 	}
 	fmt.Println(string(out))
 	return nil
+}
+
+func newAgentContextCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "context",
+		Short: "Read the container's own ~/CONTEXT.md and installed tools",
+		Long: `devcontainer-cli agent context — print what this container is and what it
+has installed. Read it before running anything inside one.
+
+Same as 'context'. It streams the container's own ~/CONTEXT.md, generated at
+build time from the modules and services that project selected, so it names the
+actual package managers, versions, database endpoints and published ports —
+followed by a live inventory of the detected tools and the reachable services.
+That makes it the answer to "which Python is in here", "how do I reach the
+database", "is pnpm installed" without guessing or probing.
+
+Prefer --json when the answer feeds a decision rather than a human.
+
+It reports what is INSIDE the container. For Docker metadata (image, mounts,
+port bindings) use 'status'; for this CLI's own catalogue of what a project
+could be built with, 'agent cli-info'.`,
+		Example: `  # The current project's container
+  devcontainer-cli agent context
+
+  # Structured output, easier to consume than the markdown
+  devcontainer-cli agent context --json
+
+  # A specific container
+  devcontainer-cli agent context --container myproject-devcontainer`,
+		Args:         cobra.NoArgs,
+		SilenceUsage: true,
+		PreRunE:      agentNonInteractive,
+		RunE:         runContext,
+	}
+	addContextFlags(cmd)
+	addInteractiveFlag(cmd)
+	return cmd
 }
 
 func newAgentCleanCommand() *cobra.Command {

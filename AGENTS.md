@@ -896,13 +896,13 @@ npx skills add Joacohbc/my-devcontainer-installer@devcontainer-cli -g
 
 `internal/cli/commands/agent.go` adds one command group aimed at an AI agent
 driving this CLI: `agent cli-info | create | connect | exec | forward | copy |
-list | clean`. It is **additive** — every command it wraps stays top-level and
+list | context | clean`. It is **additive** — every command it wraps stays top-level and
 unchanged, and the host skill teaches the group first with those as the escape
 hatch (`TestAgentGroup_DoesNotReplaceTheHumanCommands` pins that).
 
-Five of the eight are the same handler under a different name: `ssh` →
+Six of the nine are the same handler under a different name: `ssh` →
 `runSsh`, `exec` → `runShell`, `forward` → `runPortForward`, `copy` → `runCopy`,
-`list` → `runLs`. The flags come from helpers extracted out of the human
+`list` → `runLs`, `context` → `runContext`. The flags come from helpers extracted out of the human
 commands' constructors (`addSshFlags`, `addShellFlags`, `addPortForwardFlags`,
 `addCopyFlags`, `addLsFlags`), so each flag — description and completion — is
 still registered exactly once. A new flag on `ssh` reaches `agent ssh` for
@@ -945,6 +945,13 @@ Four properties are load-bearing:
   the same profile) and it is still present locally (`CleanImages` treats an
   unknown ref as an error, and an already-deleted image must not fail the
   cleanup). `--all` adds `CleanAll` on top.
+
+- **`agent context` is the read half of `cli-info`.** `cli-info` describes what
+  this *binary* could build; `agent context` describes what the *container in
+  front of you* actually has, by streaming its own `~/CONTEXT.md` plus the live
+  inventory. It is the same handler as `context` with prompting off, and it is
+  the question an agent should answer before running anything inside a
+  container — which Python, how to reach the database, is pnpm there.
 
 **`agent cli-info` is why the catalogue no longer has to be duplicated in
 prose.** `AgentService.Info` reads `catalog.DockerfileModules`,
@@ -1032,7 +1039,7 @@ is Cobra-native.
 | `cleanup-tips` | `cleanup_tips.go` | Print docker cleanup commands |
 | `context` | `context.go` | Print the container's own context and installed tools: runs `get-devcontainer-context` inside it via `InspectService.Context` and streams the output (`--json` for structured output). Falls back to `copy --asset get-devcontainer-context` when the image predates the `aliases` module. Complements `info` (Docker metadata) by reporting what is *inside* the container |
 | `network` | `network.go` | Attach/detach any container to the workspace network; subcommands `network connect`/`network disconnect <container...>` (tab-completed); `connect` takes `--alias` (extra DNS names; prompted when interactive) |
-| `agent` | `agent.go` (+ `agent_create.go`, `agent_info.go`) | The agent-facing facade: `agent cli-info` (the live catalogue as text or `--json`), `agent create` (generate + build + up), `agent ssh`/`exec`/`forward`/`copy`/`list`/`clean`. Additive — every command it wraps stays top-level. See the section below |
+| `agent` | `agent.go` (+ `agent_create.go`, `agent_info.go`) | The agent-facing facade: `agent cli-info` (the live catalogue as text or `--json`), `agent create` (generate + build + up), `agent ssh`/`exec`/`forward`/`copy`/`list`/`context`/`clean`. Additive — every command it wraps stays top-level. See the section below |
 | `completion` | _(Cobra built-in)_ | Print shell completion script |
 
 ---

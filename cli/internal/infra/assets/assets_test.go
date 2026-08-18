@@ -683,77 +683,6 @@ func TestContextModeInstallWiresScriptablePlatforms(t *testing.T) {
 	}
 }
 
-// install-ecc.sh must install ECC through ECC's own installer, which is the
-// only channel that ships the agents, rules, commands and hooks — `npx skills
-// add` copies the skills and nothing else — and it must keep every target
-// project-scoped so nothing lands in the shared config volume.
-func TestEccInstallUsesTheOfficialInstaller(t *testing.T) {
-	body, err := os.ReadFile("install-ecc.sh")
-	if err != nil {
-		t.Fatalf("reading install-ecc.sh: %v", err)
-	}
-	script := string(body)
-
-	wantWires := []string{
-		"pnpm add -g ecc-universal ecc-agentshield",
-		"npm install -g ecc-universal ecc-agentshield",
-		"run_ecc claude-project",
-		"run_ecc antigravity",
-		"ecc --target opencode --profile opencode",
-		`ecc --target "$1" --profile "$PROFILE"`,
-		`PROFILE="${DEVCONTAINER_ECC_PROFILE:-developer}"`,
-		"workspace_dir",
-		`cd "$target"`,
-	}
-	for _, w := range wantWires {
-		if !strings.Contains(script, w) {
-			t.Errorf("install-ecc.sh must wire %q", w)
-		}
-	}
-
-	wantGuards := []string{
-		"command -v agy",
-		"command -v opencode",
-	}
-	for _, g := range wantGuards {
-		if !strings.Contains(script, g) {
-			t.Errorf("install-ecc.sh must guard a platform with %q", g)
-		}
-	}
-	if strings.Contains(script, "command -v antigravity") {
-		t.Error("install-ecc.sh must detect Antigravity via its real binary `agy`, not `antigravity`")
-	}
-
-	// The forbidden checks look at executable lines only: the header comment
-	// explains why these approaches are wrong, so it names them on purpose.
-	var code []string
-	for _, line := range strings.Split(script, "\n") {
-		if !strings.HasPrefix(strings.TrimSpace(line), "#") {
-			code = append(code, line)
-		}
-	}
-	executable := strings.Join(code, "\n")
-
-	// `npx skills add` only lays down the skills, so it can never stand in for
-	// the installer, and it symlinks into Claude Code regardless of --only,
-	// which stacks a second install method on top of the first. The Claude
-	// plugin and the codex target both write into the home, which is symlinked
-	// into the shared config volume — one project's ECC would leak into every
-	// other container mounting it.
-	forbidden := []string{
-		"skills add",
-		"claude plugin install",
-		"claude plugin marketplace",
-		"run_ecc codex",
-		`--target codex --profile "$PROFILE"`,
-	}
-	for _, f := range forbidden {
-		if strings.Contains(executable, f) {
-			t.Errorf("install-ecc.sh must not run %q: it installs only part of ECC, or writes into the shared config volume", f)
-		}
-	}
-}
-
 // setup-help.sh must write the quick reference to ~/help and cover both the
 // micro editor and zellij, so every container ships an accurate cheat-sheet.
 func TestSetupHelpWritesQuickReference(t *testing.T) {
@@ -952,4 +881,57 @@ func TestAutostartProjectSkillsPassesTheAutoFlag(t *testing.T) {
 // names one skill of a repo holding several without pinning its branch.
 func TestProjectSkillsInstallerSplitsTheSkillSelector(t *testing.T) {
 	// Replaced by grouped commands and interactive prompt allowing global installs.
+}
+
+// install-ecc.sh only puts ECC's CLIs on PATH, and must stop there.
+//
+// Every ECC install target writes into the project (./.claude/, ./.agent/) or
+// into the home, and the workspace is a bind mount — so running one unattended
+// on first boot rewrites the user's real checkout with a module bundle nobody
+// chose. The home targets are worse still: ~/.claude and ~/.codex are symlinks
+// into the shared config volume, so one project's ECC would leak into every
+// other container mounting it. `npx skills add` and the Claude plugin are the
+// other two channels, and both ship only part of ECC.
+func TestEccInstallOnlyPutsTheCLIsOnPath(t *testing.T) {
+	body, err := os.ReadFile("install-ecc.sh")
+	if err != nil {
+		t.Fatalf("reading install-ecc.sh: %v", err)
+	}
+	script := string(body)
+
+	for _, w := range []string{
+		"pnpm add -g ecc-universal ecc-agentshield",
+		"npm install -g ecc-universal ecc-agentshield",
+	} {
+		if !strings.Contains(script, w) {
+			t.Errorf("install-ecc.sh must wire %q", w)
+		}
+	}
+
+	// The forbidden checks look at lines that could actually run something. The
+	// header comment explains what the script deliberately does not do, and the
+	// closing echo tells the user the command to run themselves, so both name
+	// the forbidden strings on purpose.
+	var code []string
+	for _, line := range strings.Split(script, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "#") || strings.HasPrefix(trimmed, "echo ") {
+			continue
+		}
+		code = append(code, line)
+	}
+	executable := strings.Join(code, "\n")
+
+	forbidden := []string{
+		"--target",
+		"DEVCONTAINER_ECC_PROFILE",
+		"skills add",
+		"claude plugin install",
+		"claude plugin marketplace",
+	}
+	for _, f := range forbidden {
+		if strings.Contains(executable, f) {
+			t.Errorf("install-ecc.sh must not run %q: it writes into files the user owns, or installs only part of ECC", f)
+		}
+	}
 }

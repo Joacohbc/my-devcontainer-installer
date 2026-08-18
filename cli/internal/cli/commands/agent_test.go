@@ -17,7 +17,7 @@ import (
 // Renaming one breaks every skill and script that drives this CLI, so the set
 // is pinned here.
 var agentSubcommands = []string{
-	"cli-info", "create", "ssh", "exec", "forward", "copy", "list", "clean",
+	"cli-info", "create", "ssh", "exec", "forward", "copy", "list", "context", "clean",
 }
 
 func findCommand(t *testing.T, parent *cobra.Command, name string) *cobra.Command {
@@ -360,6 +360,7 @@ func TestExtractedFlagHelpers_KeepTheOriginalFlags(t *testing.T) {
 		{"port-forward", []string{"alias", "service", flagNoInteractive, "ephemeral", "container", "key", "user"}},
 		{"copy", []string{"container", "asset"}},
 		{"ls", []string{"all", "long", "container"}},
+		{"context", []string{"container", "json"}},
 	}
 	for _, c := range cases {
 		t.Run(c.command, func(t *testing.T) {

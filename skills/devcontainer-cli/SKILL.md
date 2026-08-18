@@ -29,6 +29,7 @@ you waiting on a prompt you cannot answer.
 | `agent forward <ports>` | Tunnel a container port to 127.0.0.1 via direct SSH tunnel (ephemeral by default) |
 | `agent copy <src> <dest>` | Move files between host and container |
 | `agent list [path]` | List a directory inside the container (--json and -a supported) |
+| `agent context` | Print what the container IS and has installed: its `~/CONTEXT.md` plus a live tool inventory (`--json`) |
 | `agent clean` | Destroy the project and remove what it left behind |
 
 Use these first. The plain commands they wrap (`shell`, `ssh`, `port-forward`,
@@ -100,7 +101,7 @@ Module ids for `--with`: `github-cli`, `nodejs`, `pnpm`, `yarn`, `bun`,
 `python`, `go`, `rust`, `php`, `c-cpp`, `java-temurin`, `java-openjdk`,
 `sqlite`, `postgres-client`, `redis-client`, `mongo-client`, `claude-code`,
 `codex-cli`, `copilot-cli`, `opencode`, `antigravity-cli`, `graphify`,
-`caveman`, `claude-mem`, `context-mode`, `chrome`, `ffmpeg`,
+`caveman`, `claude-mem`, `context-mode`, `ecc`, `chrome`, `ffmpeg`,
 `dod` (Docker-out-of-Docker), `ngrok`, `cloudflared`. Pick only one of the two
 `java-*` modules.
 
@@ -118,6 +119,23 @@ Prebuilt images exist for these profile ids, and pulling one with
 `node-java-temurin`, `bun-go`, `bun-python`, `bun-java-temurin`. A `[local]`
 profile (e.g. `scraper`, or a user-created one) has nothing to pull — build it
 with `agent create --profile <id>` on the default mode.
+
+### Then read the container, before running anything in it
+
+`agent create` tells you the image was built. It does not tell you what ended up
+in it — a profile carries modules you did not name, a module pins a version, a
+service publishes a port. Read that once, up front:
+
+    devcontainer-cli agent context            # or --json to parse
+
+It streams the container's own `~/CONTEXT.md`, generated at build time from the
+modules and services this project selected, plus a live inventory of the tools
+with their versions and the reachable services. That is where the answers to
+"which Python is in here", "how do I reach postgres", "is pnpm installed" are,
+so you stop guessing and stop probing with throwaway `agent exec` calls.
+
+Read it again after any `agent create` re-run or `update --rebuild`: both can
+change what is inside.
 
 ## Run commands inside
 
@@ -355,6 +373,10 @@ managed label). Use `--dry-run` first and show the user what would go.
 - **Read `agent cli-info` before composing a create.** It is generated from the
   live catalogue, so it never names a module this binary does not have — and it
   includes the user's own profiles and skills, which no document can.
+- **Read `agent context` after every create, before working inside.**
+  `cli-info` says what this CLI could build; `agent context` says what the
+  container actually has. Skipping it is how you end up running the wrong
+  Python, guessing a database host, or installing something already there.
 - **`bash -lc '…'` only for shell syntax** (`&&`, `|`, `*`, `cd`, `$VAR`) or the
   container's `pip`/`npm` indirections — not to find a binary, which the image
   PATH already handles. `command not found` from `agent exec` on an image built

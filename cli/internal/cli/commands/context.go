@@ -37,9 +37,15 @@ command away: 'get-devcontainer-context'.`,
 		SilenceUsage: true,
 		RunE:         runContext,
 	}
+	addContextFlags(cmd)
+	return cmd
+}
+
+// addContextFlags registers the flags 'context' shares with 'agent context', so
+// each one is described in exactly one place.
+func addContextFlags(cmd *cobra.Command) {
 	addContainerFlag(cmd)
 	cmd.Flags().Bool("json", false, "Emit structured JSON instead of the human-readable report")
-	return cmd
 }
 
 func runContext(cmd *cobra.Command, _ []string) error {

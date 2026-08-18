@@ -599,34 +599,19 @@ func TestModuleRunLayerCounts(t *testing.T) {
 // entrypoint runs them on start; the agent-wiring tools (graphify/caveman) carry
 // a higher run order so they run after the agents. Interactive scripts (codex,
 // the github login under cleanup) must NOT be auto-start.
-// The ECC installer takes no arguments — the entrypoint runs start.d scripts
-// with none — so the selected profile has to reach it as image environment.
-func TestEccModuleDeclaresProfileEnv(t *testing.T) {
-	cases := []struct {
-		name string
-		opts map[string]any
-		want string
-	}{
-		{"default", nil, "developer"},
-		{"explicit", map[string]any{"profile": "full"}, "full"},
+// ECC's installer only puts the CLIs on PATH; it never runs `ecc --target <t>`
+// itself, because every target writes into the user's own project or home. So
+// the module has no profile option and contributes no environment: a container
+// start must not rewrite a checkout with a bundle nobody chose.
+func TestEccModuleInstallsOnlyTheCLIs(t *testing.T) {
+	if dockerfile.EccModule.ProvidesEnv != nil {
+		t.Error("ecc must declare no environment: without a --target run there is no profile to pass")
 	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			env := dockerfile.EccModule.ProvidesEnv(c.opts)
-			if len(env.Assignments) != 1 {
-				t.Fatalf("ecc must declare exactly one assignment, got %d", len(env.Assignments))
-			}
-			got := env.Assignments[0]
-			if got.Name != "DEVCONTAINER_ECC_PROFILE" {
-				t.Errorf("assignment name = %q, want DEVCONTAINER_ECC_PROFILE", got.Name)
-			}
-			if string(got.Value) != c.want {
-				t.Errorf("profile = %q, want %q", got.Value, c.want)
-			}
-		})
+	if len(dockerfile.EccModule.Options) != 0 {
+		t.Errorf("ecc must expose no options, got %d", len(dockerfile.EccModule.Options))
 	}
-	if env := dockerfile.EccModule.ProvidesEnv(nil); len(env.PathEntries) != 0 {
-		t.Error("ecc must not put anything on PATH; the global npm/pnpm bin dir already is")
+	if got := dockerfile.EccModule.PostScriptFiles(nil); len(got) != 1 || got[0] != "install-ecc.sh" {
+		t.Errorf("post-script files = %v, want [install-ecc.sh]", got)
 	}
 }
 
