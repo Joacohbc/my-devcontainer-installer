@@ -631,6 +631,7 @@ func TestPostScriptAutoStartFlags(t *testing.T) {
 		{"claude-mem", dockerfile.ClaudeMemModule, true, 90},
 		{"context-mode", dockerfile.ContextModeModule, true, 90},
 		{"ecc", dockerfile.EccModule, true, 90},
+		{"browser-harness", dockerfile.BrowserHarnessModule, true, 90},
 		{"skills", dockerfile.SkillsModule, true, 95},
 		{"codex", dockerfile.CodexCliModule, false, 0},
 		{"cleanup (github login)", dockerfile.CleanupModule, false, 0},

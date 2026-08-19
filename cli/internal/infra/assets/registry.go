@@ -35,6 +35,7 @@ var Registry = []Asset{
 	{Name: "get-devcontainer-context", File: "get-devcontainer-context.sh", Kind: KindScript, Label: "Container context / installed-tool report"},
 	{Name: "golang-utils", File: "golang_utils.sh", Kind: KindBuild, Label: "Go install/update utilities"},
 	{Name: "install-antigravity", File: "install-antigravity.sh", Kind: KindScript, Label: "Antigravity CLI installer"},
+	{Name: "install-browser-harness", File: "install-browser-harness.sh", Kind: KindScript, Label: "Browser Harness installer"},
 	{Name: "install-caveman", File: "install-caveman.sh", Kind: KindScript, Label: "Caveman installer"},
 	{Name: "install-claude-code", File: "install-claude-code.sh", Kind: KindScript, Label: "Claude Code installer"},
 	{Name: "install-claude-mem", File: "install-claude-mem.sh", Kind: KindScript, Label: "Claude-Mem installer"},

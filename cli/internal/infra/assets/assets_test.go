@@ -1347,3 +1347,38 @@ func TestEntrypointSharedConfigStage(t *testing.T) {
 		t.Errorf("stage_shared_config must no-op when the volume is not mounted: %v\n%s", err, out)
 	}
 }
+
+func TestBrowserHarnessInstall(t *testing.T) {
+	body, err := os.ReadFile("install-browser-harness.sh")
+	if err != nil {
+		t.Fatalf("reading install-browser-harness.sh: %v", err)
+	}
+	script := string(body)
+
+	wantWires := []string{
+		"uv tool install --python 3.12 --upgrade --force browser-harness",
+		"browser-harness recordings enable",
+		"browser-harness skill",
+		".agents/skills/browser-harness/SKILL.md",
+		".claude/skills/browser-harness/SKILL.md",
+		".codex/skills/browser-harness/SKILL.md",
+		"interaction-skills",
+		"agent-workspace",
+	}
+	for _, w := range wantWires {
+		if !strings.Contains(script, w) {
+			t.Errorf("install-browser-harness.sh must contain %q", w)
+		}
+	}
+
+	wantGuards := []string{
+		"command -v uv",
+		"command -v browser-harness",
+		"workspace_dir",
+	}
+	for _, g := range wantGuards {
+		if !strings.Contains(script, g) {
+			t.Errorf("install-browser-harness.sh must guard with %q", g)
+		}
+	}
+}
