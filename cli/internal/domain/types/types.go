@@ -36,6 +36,7 @@ const (
 	ModuleClaudeMem      ModuleID = "claude-mem"
 	ModuleContextMode    ModuleID = "context-mode"
 	ModuleEcc            ModuleID = "ecc"
+	ModuleBrowserHarness ModuleID = "browser-harness"
 	ModuleZellij         ModuleID = "zellij"
 	ModuleChrome         ModuleID = "chrome"
 	ModuleFfmpeg         ModuleID = "ffmpeg"

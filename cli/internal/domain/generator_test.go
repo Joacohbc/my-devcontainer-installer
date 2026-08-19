@@ -1079,6 +1079,20 @@ func TestGenerateDockerfile_Caveman(t *testing.T) {
 	assertContainsStr(t, df, "fnm install --lts", "caveman requires nodejs")
 }
 
+func TestGenerateDockerfile_BrowserHarness(t *testing.T) {
+	cfg := makeConfig(func(c *types.DevcontainerConfig) {
+		c.Dockerfile.Modules = []types.SelectedModule{{ID: "browser-harness"}}
+	})
+	df := mustGenerateDockerfile(t, cfg)
+	assertContainsStr(t, df, "install-browser-harness.sh", "browser-harness script")
+	assertContainsStr(t, df, "start.d/90-install-browser-harness.sh", "browser-harness start.d auto-start")
+	// browser-harness requires python, chrome (chromium), and ffmpeg
+	assertContainsStr(t, df, "python3", "browser-harness requires python")
+	assertContainsStr(t, df, "chromium", "browser-harness requires chromium")
+	assertContainsStr(t, df, "ffmpeg", "browser-harness requires ffmpeg")
+	assertContainsStr(t, df, "CHROME_PATH", "browser-harness provides CHROME_PATH")
+}
+
 func TestGenerateDockerfile_ClaudeMem(t *testing.T) {
 	cfg := makeConfig(func(c *types.DevcontainerConfig) {
 		c.Dockerfile.Modules = []types.SelectedModule{{ID: "claude-mem"}}

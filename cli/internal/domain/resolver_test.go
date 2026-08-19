@@ -65,6 +65,18 @@ func TestResolveDockerfileModules_TransitiveRequires(t *testing.T) {
 	assertContains(t, ids, "github-cli")
 }
 
+func TestResolveDockerfileModules_BrowserHarnessDependencies(t *testing.T) {
+	resolved, err := domain.ResolveDockerfileModules([]types.SelectedModule{{ID: "browser-harness"}})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	ids := moduleIDs(resolved)
+	assertContains(t, ids, "browser-harness")
+	assertContains(t, ids, "python")
+	assertContains(t, ids, "chrome")
+	assertContains(t, ids, "ffmpeg")
+}
+
 func TestResolveDockerfileModules_UnknownModuleErrors(t *testing.T) {
 	_, err := domain.ResolveDockerfileModules([]types.SelectedModule{{ID: "nonexistent"}})
 	if err == nil {

@@ -60,17 +60,18 @@ La CLI incluye estos scripts dentro de la imagen según los módulos elegidos:
 sudo ~/post-script/update_golang.sh  # actualiza Go a la última estable (módulo go; requiere root, escribe en /usr/local/go)
 ```
 
-### CLIs de IA (módulos `claude-code`, `opencode`, `codex-cli`, `antigravity-cli`, `copilot-cli`, `caveman`, `graphify`)
+### CLIs de IA (módulos `claude-code`, `opencode`, `codex-cli`, `antigravity-cli`, `copilot-cli`, `caveman`, `graphify`, `browser-harness`)
 
-Los instaladores **no interactivos** se ejecutan **automáticamente al arrancar el contenedor**, en segundo plano y **una sola vez por contenedor** (un sentinel en `~/.post-script-state/<script>.done` evita reinstalar tras un `stop`/`start`; un contenedor nuevo reinstala). El orden está fijado: primero los agentes y al final las herramientas que se cablean sobre ellos (Graphify/Caveman).
+Los instaladores **no interactivos** se ejecutan **automáticamente al arrancar el contenedor**, en segundo plano y **una sola vez por contenedor** (un sentinel en `~/.post-script-state/<script>.done` evita reinstalar tras un `stop`/`start`; un contenedor nuevo reinstala). El orden está fijado: primero los agentes y al final las herramientas que se cablean sobre ellos (Graphify/Caveman/Browser Harness).
 
 ```bash
-~/post-script/start.d/50-install-claude-code.sh   # Claude Code      (auto)
-~/post-script/start.d/50-install-opencode.sh      # OpenCode         (auto)
-~/post-script/start.d/50-install-antigravity.sh   # Antigravity CLI  (auto)
-~/post-script/start.d/50-install-copilot.sh       # GitHub Copilot   (auto)
-~/post-script/start.d/90-install-graphify.sh      # Graphify         (auto, al final)
-~/post-script/start.d/90-install-caveman.sh       # Caveman          (auto, al final)
+~/post-script/start.d/50-install-claude-code.sh      # Claude Code      (auto)
+~/post-script/start.d/50-install-opencode.sh         # OpenCode         (auto)
+~/post-script/start.d/50-install-antigravity.sh      # Antigravity CLI  (auto)
+~/post-script/start.d/50-install-copilot.sh          # GitHub Copilot   (auto)
+~/post-script/start.d/90-install-graphify.sh         # Graphify         (auto, al final)
+~/post-script/start.d/90-install-caveman.sh          # Caveman          (auto, al final)
+~/post-script/start.d/90-install-browser-harness.sh  # Browser Harness  (auto, al final)
 ```
 
 Cada instalador auto-start también queda accesible con su nombre llano en `~/post-script/` (un symlink a `start.d/NN-...`), así que podés ejecutarlo a mano cuando quieras:

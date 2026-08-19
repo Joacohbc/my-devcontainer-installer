@@ -53,7 +53,7 @@ func TestBuildOnlyAssetsAreNotCopyable(t *testing.T) {
 	// aliases module shipped it on PATH).
 	want := []string{
 		"get-devcontainer-context",
-		"install-antigravity", "install-caveman", "install-claude-code",
+		"install-antigravity", "install-browser-harness", "install-caveman", "install-claude-code",
 		"install-claude-mem", "install-codex-cli", "install-context-mode",
 		"install-copilot", "install-ecc", "install-graphify",
 		"install-opencode", "login-github-cli",
