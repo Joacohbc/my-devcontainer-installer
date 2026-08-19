@@ -281,6 +281,13 @@ To let an unrelated container talk to the project:
 
     devcontainer-cli network connect other-app
 
+To route a local domain to a container service via the global Caddy reverse proxy:
+
+    devcontainer-cli route add 3000                  # http://<workspace>-3000.devcli.localhost
+    devcontainer-cli route add 8000 --domain api     # http://api.devcli.localhost
+    devcontainer-cli route ls                        # list active routes
+    devcontainer-cli route status                    # check global Caddy router status
+
 ## Inspect
 
     devcontainer-cli context           # what is installed inside; --json for parsing

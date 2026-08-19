@@ -974,7 +974,7 @@ func (s PruneService) filterSharedConfig(volumes []LocalVolume) []LocalVolume {
 	}
 	var out []LocalVolume
 	for _, v := range volumes {
-		if v.Name == types.SharedConfigVolumeName {
+		if v.Name == types.SharedConfigVolumeName || v.Name == domain.RouterDataVolumeName || v.Name == domain.RouterConfigVolumeName {
 			continue
 		}
 		out = append(out, v)

@@ -182,7 +182,7 @@ func TestPruneSelectAllParsesNetworksAndVolumes(t *testing.T) {
 }
 
 func TestPruneSelectVolumesExcludesSharedConfigByDefault(t *testing.T) {
-	runner := &fakeRunner{status: 0, stdout: "devcontainer-shared-config\nmyproj_devcontainer_etc"}
+	runner := &fakeRunner{status: 0, stdout: "devcontainer-shared-config\ndevcontainer-router-data\ndevcontainer-router-config\nmyproj_devcontainer_etc"}
 	defer useFakeDocker(runner)()
 
 	svc := PruneService{Report: nopReporter{}}
@@ -191,8 +191,8 @@ func TestPruneSelectVolumesExcludesSharedConfigByDefault(t *testing.T) {
 		t.Fatal("expected anyExist=true")
 	}
 	for _, v := range volumes {
-		if v.Name == "devcontainer-shared-config" {
-			t.Errorf("shared-config volume must be excluded by default, got %v", volumes)
+		if v.Name == types.SharedConfigVolumeName || v.Name == domain.RouterDataVolumeName || v.Name == domain.RouterConfigVolumeName {
+			t.Errorf("global volume %s must be excluded by default, got %v", v.Name, volumes)
 		}
 	}
 	if len(volumes) != 1 || volumes[0].Name != "myproj_devcontainer_etc" {
