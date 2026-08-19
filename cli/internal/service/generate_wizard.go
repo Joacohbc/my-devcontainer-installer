@@ -154,6 +154,33 @@ func categoryChoices(c types.UICategory, mode types.BuildMode, selectedModules m
 	return choices
 }
 
+func requiredModulesForSelected(selected map[string]bool) map[types.ModuleID]bool {
+	reqs := map[types.ModuleID]bool{}
+	var walk func(id types.ModuleID)
+	walk = func(id types.ModuleID) {
+		spec := catalog.GetDockerfileModule(id)
+		if spec == nil {
+			return
+		}
+		for _, req := range spec.Requires {
+			if !reqs[req] {
+				reqs[req] = true
+				walk(req)
+			}
+		}
+	}
+	for id := range selected {
+		walk(types.ModuleID(id))
+		if svc := catalog.GetComposeService(types.ServiceID(id)); svc != nil && svc.RequiresModule != "" {
+			if !reqs[svc.RequiresModule] {
+				reqs[svc.RequiresModule] = true
+				walk(svc.RequiresModule)
+			}
+		}
+	}
+	return reqs
+}
+
 func selectedEntryIDs(s *State) map[string]bool {
 	set := map[string]bool{}
 	for _, c := range catalog.CategoriesInOrder() {
@@ -167,6 +194,36 @@ func selectedEntryIDs(s *State) map[string]bool {
 func selectedModuleIDs(s *State) map[string]bool {
 	set := map[string]bool{}
 	for id := range selectedEntryIDs(s) {
+		if catalog.GetDockerfileModule(types.ModuleID(id)) != nil {
+			set[id] = true
+		}
+	}
+	return set
+}
+
+func (w wizardContext) selectedEntryIDs(s *State) map[string]bool {
+	set := map[string]bool{}
+	for _, c := range catalog.CategoriesInOrder() {
+		if s.Has(categoryStepKey(c)) {
+			for _, id := range s.Strings(categoryStepKey(c)) {
+				set[id] = true
+			}
+		} else if p, ok := w.pickedProfile(s); ok {
+			for _, id := range profileCategoryIDs(p, c) {
+				set[id] = true
+			}
+		} else if w.base != nil {
+			for _, id := range baseCategoryIDs(w.base, c) {
+				set[id] = true
+			}
+		}
+	}
+	return set
+}
+
+func (w wizardContext) selectedModuleIDs(s *State) map[string]bool {
+	set := map[string]bool{}
+	for id := range w.selectedEntryIDs(s) {
 		if catalog.GetDockerfileModule(types.ModuleID(id)) != nil {
 			set[id] = true
 		}
@@ -418,7 +475,7 @@ func profileCategoryIDs(p catalog.Profile, c types.UICategory) []string {
 func (w wizardContext) categorySteps(s *State) []Step {
 	var steps []Step
 	for _, c := range catalog.CategoriesInOrder() {
-		if len(categoryChoices(c, currentMode(s), selectedModuleIDs(s))) == 0 {
+		if len(categoryChoices(c, currentMode(s), w.selectedModuleIDs(s))) == 0 {
 			continue
 		}
 		category := c
@@ -432,10 +489,22 @@ func (w wizardContext) categorySteps(s *State) []Step {
 			if s.Has(categoryStepKey(category)) {
 				initial = s.Strings(categoryStepKey(category))
 			}
+
+			// Pre-select any module in this category that is required by an
+			// already selected module or service (e.g. browser-harness -> python, chrome, ffmpeg).
+			reqs := requiredModulesForSelected(w.selectedEntryIDs(s))
+			for reqID := range reqs {
+				if spec := catalog.GetDockerfileModule(reqID); spec != nil && spec.UICategory == category {
+					if !slices.Contains(initial, string(reqID)) {
+						initial = append(initial, string(reqID))
+					}
+				}
+			}
+
 			return Field{
 				Kind:    FieldMultiselect,
 				Title:   types.UICategoryLabels[category] + " (Space to select, Enter to confirm):",
-				Choices: categoryChoices(category, currentMode(s), selectedModuleIDs(s)),
+				Choices: categoryChoices(category, currentMode(s), w.selectedModuleIDs(s)),
 				Initial: initial,
 			}
 		}})
@@ -444,7 +513,7 @@ func (w wizardContext) categorySteps(s *State) []Step {
 }
 
 func (w wizardContext) optionSteps(s *State) []Step {
-	selected := selectedEntryIDs(s)
+	selected := w.selectedEntryIDs(s)
 	localCached := currentMode(s) == types.BuildModeCustom
 	var steps []Step
 	for _, m := range catalog.DockerfileModules {
@@ -551,7 +620,7 @@ func (w wizardContext) envSteps(s *State) []Step {
 // selection) and once at the end to produce the final config.
 func (w wizardContext) reduce(s *State) *types.DevcontainerConfig {
 	mode := currentMode(s)
-	selected := selectedEntryIDs(s)
+	selected := w.selectedEntryIDs(s)
 
 	var modules []types.SelectedModule
 	if mode == types.BuildModeCustom {
@@ -742,6 +811,17 @@ func (s GenerateService) SelectModules(base *types.DevcontainerConfig, prompt Pr
 				if st.Has(categoryStepKey(category)) {
 					initial = st.Strings(categoryStepKey(category))
 				}
+
+				// Pre-select any module in this category required by already selected modules
+				reqs := requiredModulesForSelected(selectedEntryIDs(st))
+				for reqID := range reqs {
+					if spec := catalog.GetDockerfileModule(reqID); spec != nil && spec.UICategory == category {
+						if !slices.Contains(initial, string(reqID)) {
+							initial = append(initial, string(reqID))
+						}
+					}
+				}
+
 				return Field{
 					Kind:    FieldMultiselect,
 					Title:   types.UICategoryLabels[category] + " (Space to select, Enter to confirm):",

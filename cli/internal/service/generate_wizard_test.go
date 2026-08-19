@@ -726,3 +726,51 @@ func TestServiceOptionsOf(t *testing.T) {
 		t.Errorf("ServiceOptionsOf for absent id = %v, want empty", opts)
 	}
 }
+
+func TestCategorySteps_PreSelectsRequiredDependencies(t *testing.T) {
+	ctx := wizardContext{
+		base:      &types.DevcontainerConfig{Env: map[string]string{}},
+		workspace: "testws",
+	}
+
+	state := NewState()
+	state.Set(stepKeyMode, string(types.BuildModeCustom))
+	state.Set(categoryStepKey(types.UICategoryAITools), []string{"browser-harness"})
+
+	steps := ctx.categorySteps(state)
+	stepMap := map[string]Step{}
+	for _, s := range steps {
+		stepMap[s.Key] = s
+	}
+
+	// For Languages category, python should be pre-selected in Initial
+	langStep, ok := stepMap[categoryStepKey(types.UICategoryLanguages)]
+	if !ok {
+		t.Fatalf("missing languages category step")
+	}
+	langField := langStep.Build(state)
+	langInitial, ok := langField.Initial.([]string)
+	if !ok {
+		t.Fatalf("expected Initial to be []string, got %T", langField.Initial)
+	}
+	if !slices.Contains(langInitial, "python") {
+		t.Errorf("expected python to be pre-selected in languages, got %v", langInitial)
+	}
+
+	// For Dev Tools category, chrome and ffmpeg should be pre-selected in Initial
+	devStep, ok := stepMap[categoryStepKey(types.UICategoryDevTools)]
+	if !ok {
+		t.Fatalf("missing dev-tools category step")
+	}
+	devField := devStep.Build(state)
+	devInitial, ok := devField.Initial.([]string)
+	if !ok {
+		t.Fatalf("expected Initial to be []string, got %T", devField.Initial)
+	}
+	if !slices.Contains(devInitial, "chrome") {
+		t.Errorf("expected chrome to be pre-selected in dev-tools, got %v", devInitial)
+	}
+	if !slices.Contains(devInitial, "ffmpeg") {
+		t.Errorf("expected ffmpeg to be pre-selected in dev-tools, got %v", devInitial)
+	}
+}
