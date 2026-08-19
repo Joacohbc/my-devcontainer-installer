@@ -1359,11 +1359,11 @@ func TestBrowserHarnessInstall(t *testing.T) {
 		"uv tool install --python 3.12 --upgrade --force browser-harness",
 		"browser-harness recordings enable",
 		"browser-harness skill",
+		".agents/skills/browser-harness/SKILL.md",
 		".claude/skills/browser-harness/SKILL.md",
-		"skills/browser-harness/SKILL.md",
-		".gemini/antigravity/skills/browser-harness/SKILL.md",
-		".copilot/skills/browser-harness/SKILL.md",
-		".config/opencode/skills/browser-harness/SKILL.md",
+		".codex/skills/browser-harness/SKILL.md",
+		"interaction-skills",
+		"agent-workspace",
 	}
 	for _, w := range wantWires {
 		if !strings.Contains(script, w) {
@@ -1373,18 +1373,12 @@ func TestBrowserHarnessInstall(t *testing.T) {
 
 	wantGuards := []string{
 		"command -v uv",
-		"command -v claude",
-		"command -v codex",
-		"command -v agy",
-		"command -v copilot",
-		"command -v opencode",
+		"command -v browser-harness",
+		"workspace_dir",
 	}
 	for _, g := range wantGuards {
 		if !strings.Contains(script, g) {
 			t.Errorf("install-browser-harness.sh must guard with %q", g)
 		}
-	}
-	if strings.Contains(script, "command -v antigravity") {
-		t.Error("install-browser-harness.sh must detect Antigravity via its real binary `agy`, not `antigravity`")
 	}
 }

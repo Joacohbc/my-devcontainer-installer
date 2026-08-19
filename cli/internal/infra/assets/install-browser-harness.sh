@@ -1,7 +1,7 @@
 #!/bin/bash
 # Install Browser Harness (browser-use/browser-harness) for devuser,
-# enable recording traces, and register its agent skill into every AI agent
-# present in this container (Claude Code, Codex, Antigravity, GitHub Copilot, OpenCode).
+# enable recording traces, and register its skills and interaction-skills
+# at the project workspace level.
 # Requires Python 3.12+ (prefers uv tool, falls back to pipx, then pip --user).
 set -e
 
@@ -23,41 +23,50 @@ browser-harness --version || true
 echo "==> Enabling browser-harness recordings"
 browser-harness recordings enable || true
 
-# Wire the skill into detected agents.
-if command -v browser-harness >/dev/null 2>&1; then
-  # Claude Code
-  if command -v claude >/dev/null 2>&1 || [ -d "$HOME/.claude" ]; then
-    echo "==> browser-harness -> Claude Code (skill)"
-    mkdir -p "$HOME/.claude/skills/browser-harness"
-    browser-harness skill > "$HOME/.claude/skills/browser-harness/SKILL.md" 2>/dev/null || true
+workspace_dir() {
+  for candidate in /workspaces/*/ /workspace/*/ /workspace/; do
+    [ -d "$candidate" ] && { echo "${candidate%/}"; return 0; }
+  done
+  return 1
+}
+
+# Install skills and interaction recipes into project workspace
+if target="$(workspace_dir)"; then
+  echo "==> Installing browser-harness skills into project workspace: $target"
+
+  # Standard project-scoped agent skills (.agents/skills/browser-harness)
+  mkdir -p "$target/.agents/skills/browser-harness"
+  if command -v browser-harness >/dev/null 2>&1; then
+    browser-harness skill > "$target/.agents/skills/browser-harness/SKILL.md" 2>/dev/null || true
   fi
 
-  # Codex
-  if command -v codex >/dev/null 2>&1 || [ -d "$HOME/.codex" ]; then
-    echo "==> browser-harness -> Codex (skill)"
-    codex_home="${CODEX_HOME:-$HOME/.codex}"
-    mkdir -p "$codex_home/skills/browser-harness"
-    browser-harness skill > "$codex_home/skills/browser-harness/SKILL.md" 2>/dev/null || true
+  # Project-scoped Claude Code and Codex skills
+  mkdir -p "$target/.claude/skills/browser-harness"
+  mkdir -p "$target/.codex/skills/browser-harness"
+  if [ -f "$target/.agents/skills/browser-harness/SKILL.md" ]; then
+    cp "$target/.agents/skills/browser-harness/SKILL.md" "$target/.claude/skills/browser-harness/SKILL.md" 2>/dev/null || true
+    cp "$target/.agents/skills/browser-harness/SKILL.md" "$target/.codex/skills/browser-harness/SKILL.md" 2>/dev/null || true
   fi
 
-  # Antigravity
-  if command -v agy >/dev/null 2>&1 || [ -d "$HOME/.gemini/antigravity" ]; then
-    echo "==> browser-harness -> Antigravity (skill)"
-    mkdir -p "$HOME/.gemini/antigravity/skills/browser-harness"
-    browser-harness skill > "$HOME/.gemini/antigravity/skills/browser-harness/SKILL.md" 2>/dev/null || true
-  fi
+  # Fetch interaction-skills and agent-workspace from upstream GitHub repo
+  echo "==> Fetching interaction-skills and agent-workspace from GitHub"
+  TMP_DIR=$(mktemp -d /tmp/bh-fetch-XXXXXX)
+  if curl -fsSL https://github.com/browser-use/browser-harness/archive/refs/heads/main.tar.gz | tar -xz -C "$TMP_DIR" 2>/dev/null; then
+    SRC_DIR="$TMP_DIR/browser-harness-main"
 
-  # GitHub Copilot CLI
-  if command -v copilot >/dev/null 2>&1 || [ -d "$HOME/.copilot" ]; then
-    echo "==> browser-harness -> GitHub Copilot (skill)"
-    mkdir -p "$HOME/.copilot/skills/browser-harness"
-    browser-harness skill > "$HOME/.copilot/skills/browser-harness/SKILL.md" 2>/dev/null || true
-  fi
+    if [ -d "$SRC_DIR/interaction-skills" ]; then
+      cp -r "$SRC_DIR/interaction-skills" "$target/.agents/skills/browser-harness/"
+      cp -r "$SRC_DIR/interaction-skills" "$target/.claude/skills/browser-harness/" 2>/dev/null || true
+      cp -r "$SRC_DIR/interaction-skills" "$target/.codex/skills/browser-harness/" 2>/dev/null || true
+    fi
 
-  # OpenCode
-  if command -v opencode >/dev/null 2>&1 || [ -d "$HOME/.config/opencode" ]; then
-    echo "==> browser-harness -> OpenCode (skill)"
-    mkdir -p "$HOME/.config/opencode/skills/browser-harness"
-    browser-harness skill > "$HOME/.config/opencode/skills/browser-harness/SKILL.md" 2>/dev/null || true
+    # Place agent-workspace in project root if not already existing
+    if [ -d "$SRC_DIR/agent-workspace" ] && [ ! -d "$target/agent-workspace" ]; then
+      cp -r "$SRC_DIR/agent-workspace" "$target/"
+    fi
+
+    rm -rf "$TMP_DIR"
   fi
+else
+  echo "==> No workspace mount found; skipping project-level skills install"
 fi
