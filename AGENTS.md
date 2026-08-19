@@ -1142,6 +1142,7 @@ is Cobra-native.
 | `cleanup-tips` | `cleanup_tips.go` | Print docker cleanup commands |
 | `context` | `context.go` | Print the container's own context and installed tools: runs `get-devcontainer-context` inside it via `InspectService.Context` and streams the output (`--json` for structured output). Falls back to `copy --asset get-devcontainer-context` when the image predates the `aliases` module. Complements `info` (Docker metadata) by reporting what is *inside* the container |
 | `network` | `network.go` | Attach/detach any container to the workspace network; subcommands `network connect`/`network disconnect <container...>` (tab-completed); `connect` takes `--alias` (extra DNS names; prompted when interactive) |
+| `route` | `route.go` | Manage local domain routing for devcontainers via global Caddy proxy (`<name>.devcli.localhost`). Subcommands: `route add <port>` (foreground session with auto-cleanup on Ctrl+C), `route ls`, `route rm <id-or-domain>`, `route status`, `route stop` |
 | `agent` | `agent.go` (+ `agent_create.go`, `agent_info.go`) | The agent-facing facade: `agent cli-info` (the live catalogue as text or `--json`), `agent create` (generate + build + up), `agent ssh`/`exec`/`forward`/`copy`/`list`/`context`/`clean`. Additive — every command it wraps stays top-level. See the section below |
 | `completion` | _(Cobra built-in)_ | Print shell completion script |
 
