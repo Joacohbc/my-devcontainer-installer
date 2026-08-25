@@ -157,6 +157,18 @@ func TestDevcontainerRender_DoesNotSetDependsOn(t *testing.T) {
 	}
 }
 
+// The main devcontainer service must not carry a restart policy: it should
+// stop with the host/daemon like any other process, but never auto-start on
+// the next daemon/system boot without the user explicitly starting it again.
+func TestDevcontainerRender_NoRestartPolicy(t *testing.T) {
+	def := compose.DevcontainerService.Render(compose.RenderContext{
+		ImageName: "img",
+	})
+	if def.Restart != "" {
+		t.Errorf("Restart = %q, want empty (no auto-start on daemon/system boot)", def.Restart)
+	}
+}
+
 func TestDevcontainerRender_NoPersistVolumesKeepsWorkspace(t *testing.T) {
 	def := compose.DevcontainerService.Render(compose.RenderContext{
 		ImageName: "img",
