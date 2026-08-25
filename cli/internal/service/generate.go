@@ -3,11 +3,16 @@ package service
 import (
 	"fmt"
 	"os"
+	"path/filepath"
+	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/assets"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/project"
 )
 
 // resolveHostBuildIDs records the host user's UID/GID on the config so a
@@ -133,6 +138,115 @@ func (s GenerateService) Build(composeFile string, remote bool) error {
 	}
 	if status != 0 {
 		return fmt.Errorf("docker compose %s failed (exit %d)", action, status)
+	}
+	return nil
+}
+
+// MaterializeCustomScripts copies custom scripts defined in config to buildDir.
+func (s GenerateService) MaterializeCustomScripts(config *types.DevcontainerConfig, buildDir string) ([]string, error) {
+	names, err := domain.CollectCustomScriptFiles(config)
+	if err != nil {
+		return nil, err
+	}
+	for _, sc := range config.Dockerfile.Scripts {
+		if sc.Source == "" {
+			continue
+		}
+		data, rerr := domain.ReadCustomScript(sc)
+		if rerr != nil {
+			return nil, rerr
+		}
+		if werr := os.WriteFile(filepath.Join(buildDir, sc.BuildFile()), data, 0o755); werr != nil {
+			return nil, werr
+		}
+	}
+	return names, nil
+}
+
+// PrepareBuildDir sets up build directories, copies assets and returns file contents map.
+func (s GenerateService) PrepareBuildDir(config *types.DevcontainerConfig, paths project.Paths) (map[string]string, []string, error) {
+	buildDir := paths.BuildDir
+	skipBuildArtifacts := config.Mode == types.BuildModeProfiles
+
+	if err := os.MkdirAll(buildDir, 0o755); err != nil {
+		return nil, nil, err
+	}
+
+	var copyFiles, postScriptFiles, customScripts []string
+	if !skipBuildArtifacts {
+		copyFiles, _ = domain.CollectRequiredCopyFiles(config)
+		postScriptFiles, _ = domain.CollectRequiredPostScriptFiles(config)
+
+		var err error
+		customScripts, err = s.MaterializeCustomScripts(config, buildDir)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		referenced := slices.Concat(copyFiles, postScriptFiles, customScripts)
+		if missing := assets.ValidateRequiredFiles(referenced, buildDir); len(missing) > 0 {
+			return nil, nil, fmt.Errorf("missing required script(s) (not embedded in binary or %s): %s", buildDir, strings.Join(missing, ", "))
+		}
+
+		if len(copyFiles) > 0 {
+			pre := assets.Preflight(copyFiles, buildDir)
+			if len(pre.Missing) > 0 {
+				return nil, nil, fmt.Errorf("missing required scripts: %s", strings.Join(pre.Missing, ", "))
+			}
+		}
+		if len(postScriptFiles) > 0 {
+			pre := assets.Preflight(postScriptFiles, buildDir)
+			if len(pre.Missing) > 0 {
+				return nil, nil, fmt.Errorf("missing required post-install scripts: %s", strings.Join(pre.Missing, ", "))
+			}
+		}
+	}
+
+	copyContents := map[string]string{}
+	for _, f := range slices.Concat(copyFiles, postScriptFiles, customScripts) {
+		if data, rerr := os.ReadFile(filepath.Join(buildDir, f)); rerr == nil {
+			copyContents[f] = string(data)
+		}
+	}
+
+	if !skipBuildArtifacts {
+		table := types.RenderSharedConfigTable()
+		if werr := os.WriteFile(filepath.Join(buildDir, types.SharedConfigTableFileName), []byte(table), 0o644); werr != nil {
+			return nil, nil, werr
+		}
+		copyContents[types.SharedConfigTableFileName] = table
+
+		contextDoc, cerr := domain.GenerateContext(config)
+		if cerr != nil {
+			return nil, nil, cerr
+		}
+		if contextDoc != "" {
+			if werr := os.WriteFile(filepath.Join(buildDir, types.ContextFileName), []byte(contextDoc), 0o644); werr != nil {
+				return nil, nil, werr
+			}
+			copyContents[types.ContextFileName] = contextDoc
+		}
+	}
+
+	return copyContents, postScriptFiles, nil
+}
+
+// WriteFiles writes the rendered Dockerfile, docker-compose.yml, and .env to disk.
+func (s GenerateService) WriteFiles(paths project.Paths, plan *GeneratePlan, config *types.DevcontainerConfig) error {
+	if plan.Dockerfile != "" {
+		if err := os.WriteFile(paths.DockerfilePath, []byte(plan.Dockerfile), 0o644); err != nil {
+			return err
+		}
+	}
+	if plan.Compose != "" {
+		if err := os.WriteFile(paths.ComposeFile, []byte(plan.Compose), 0o644); err != nil {
+			return err
+		}
+	}
+	if len(config.Env) > 0 || config.Compose.Subnet != "" {
+		if err := os.WriteFile(paths.EnvPath, []byte(plan.Env), 0o644); err != nil {
+			return err
+		}
 	}
 	return nil
 }

@@ -38,3 +38,12 @@ func Init(dir string) error {
 	}
 	return nil
 }
+
+// Clone clones a git repository from repoURL into targetDir.
+func Clone(repoURL, targetDir string) error {
+	cmd := exec.Command("git", "clone", repoURL, targetDir)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("git clone %s into %s failed: %w: %s", repoURL, filepath.Clean(targetDir), err, strings.TrimSpace(string(out)))
+	}
+	return nil
+}
