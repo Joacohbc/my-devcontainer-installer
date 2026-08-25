@@ -87,7 +87,7 @@ generated files without asking.
 | `--skill firecrawl,agent-browser,webapp-testing` | Agent skills installed **into the project workspace** via the Skills CLI. Adds the internal `skills` module, which requires `nodejs` |
 | `--skills-mode manual\|auto` | `manual` (default) leaves the `install-skills` command to the user; `auto` installs on every container start, writing into the workspace unprompted |
 | `--service mongo,postgres,redis` | Add database services to the compose stack |
-| `--ports 3000:3000,8080:80` | Publish container ports (bound to 127.0.0.1 unless an IP is given) |
+| `--ports 3000:3000,8080:80` | Publish container ports (bound to 127.0.0.1 unless an IP is given). **Avoid this by default** — prefer `agent forward`/`route add` instead (see below) |
 | `--volumes myvol:/data,./cache:/cache` | Extra mounts on the dev container |
 | `--workspace <name>` | Override the workspace name (default: directory name) |
 | `--mode profiles --profile nodejs` | Skip the local build, pull a prebuilt ghcr.io image for a `[remote]`-tagged profile |
@@ -254,8 +254,13 @@ wrong one. Run `devcontainer-cli context` to see which of these the image has.
 
 ## Reach services in the container
 
-Ports published at creation time (`--ports`) are reachable on `127.0.0.1`
-directly. For a port that was not published, tunnel it instead of regenerating:
+**Prefer `agent forward` or `route add` over publishing ports with `--ports`.**
+A published port is a permanent, host-wide change to the project (it changes
+the compose file and stays open on every future `up`), while a tunnel or a
+route is created on demand and torn down when you are done — it needs no
+regenerate/rebuild and cannot collide with another project's port on the same
+host. Reach for `--ports` only when the user explicitly wants the port
+published (e.g. so something outside your control can dial it directly).
 
     devcontainer-cli agent forward 3000              # 127.0.0.1:3000 -> container:3000
     devcontainer-cli agent forward 8080:80           # 127.0.0.1:8080 -> container:80
@@ -265,7 +270,12 @@ directly. For a port that was not published, tunnel it instead of regenerating:
 interrupted, so run it in the background (or in a separate terminal) if you need
 to keep working.
 
-Publishing a port permanently means regenerating with the port included:
+For a stable local domain instead of a raw port (e.g. to hand a URL to
+something else, or keep it running across sessions) use `route add` — see
+below — rather than publishing.
+
+Only publish a port permanently (via `--ports`) when a tunnel/route genuinely
+does not fit the case:
 
     devcontainer-cli agent create --ports 3000:3000
 
@@ -377,6 +387,10 @@ managed label). Use `--dry-run` first and show the user what would go.
   `port-forward`), pass `--no-interactive` or it opens a wizard and hangs. Add
   `-y/--yes` for destructive commands — and get the user's agreement first for
   `agent clean`, `destroy`, `down -v` and `clean --all`.
+- **Reach a service with `agent forward` or `route add`, not `--ports`.**
+  Publishing a port is a permanent project change; a tunnel or a route is
+  on-demand and leaves nothing behind. Only publish when the user explicitly
+  needs the port open outside a tunnel/route.
 - **Read `agent cli-info` before composing a create.** It is generated from the
   live catalogue, so it never names a module this binary does not have — and it
   includes the user's own profiles and skills, which no document can.
