@@ -22,6 +22,9 @@ func TestRunCreatesWhenAbsent(t *testing.T) {
 	if !slices.Contains(call, "ghcr.io/x/devcontainer-nodejs:latest") {
 		t.Errorf("run call missing image: %v", call)
 	}
+	if slices.Contains(call, "--restart") {
+		t.Errorf("quick-run container must not carry a restart policy (should not auto-start on daemon/system boot): %v", call)
+	}
 }
 
 func TestRunStartsExisting(t *testing.T) {

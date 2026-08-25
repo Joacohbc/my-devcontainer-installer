@@ -143,7 +143,6 @@ func (s RouterService) EnsureRouterRunning(ctx context.Context) error {
 	args := []string{
 		"run", "-d",
 		"--name", domain.RouterContainerName,
-		"--restart", "unless-stopped",
 		"--label", types.LabelManaged + "=true",
 		"-v", domain.RouterDataVolumeName + ":/data",
 		"-v", domain.RouterConfigVolumeName + ":/config",

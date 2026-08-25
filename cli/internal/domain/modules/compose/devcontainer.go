@@ -61,7 +61,6 @@ var DevcontainerService = &ServiceSpec{
 			Build:         &BuildDef{Context: "."},
 			ContainerName: SSHServiceName,
 			Command:       "sleep infinity",
-			Restart:       "unless-stopped",
 			Environment:   environment,
 			Volumes:       volumes,
 			Ports:         ctx.Ports,

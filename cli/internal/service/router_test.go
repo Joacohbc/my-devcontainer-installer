@@ -113,8 +113,11 @@ func TestEnsureRouterRunning_StartsContainerWhenNotExists(t *testing.T) {
 		t.Fatalf("EnsureRouterRunning failed: %v", err)
 	}
 
-	if runner.callContaining("run") == nil {
+	runCall := runner.callContaining("run")
+	if runCall == nil {
 		t.Error("expected 'docker run' to be called for devcli-router")
+	} else if slices.Contains(runCall, "--restart") {
+		t.Errorf("router container must not carry a restart policy (should not auto-start on daemon/system boot): %v", runCall)
 	}
 }
 
