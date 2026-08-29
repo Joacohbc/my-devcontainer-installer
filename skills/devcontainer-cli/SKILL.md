@@ -88,6 +88,7 @@ generated files without asking.
 | `--skills-mode manual\|auto` | `manual` (default) leaves the `install-skills` command to the user; `auto` installs on every container start, writing into the workspace unprompted |
 | `--service mongo,postgres,redis` | Add database services to the compose stack |
 | `--ports 3000:3000,8080:80` | Publish container ports (bound to 127.0.0.1 unless an IP is given). **Avoid this by default** — prefer `agent forward`/`route add` instead (see below) |
+| `--forward-ports 3000,reverse:5432` | Tunnels `port-forward` opens for this project when called with no argument. Nothing is published; a `reverse:` spec brings a host port into the container instead |
 | `--volumes myvol:/data,./cache:/cache` | Extra mounts on the dev container |
 | `--workspace <name>` | Override the workspace name (default: directory name) |
 | `--mode profiles --profile nodejs` | Skip the local build, pull a prebuilt ghcr.io image for a `[remote]`-tagged profile |
@@ -252,7 +253,12 @@ wrong one. Run `devcontainer-cli context` to see which of these the image has.
 
 `start`/`stop`/`restart` accept `-c <container>` to act on one container.
 
-## Reach services in the container
+## Reach services across the boundary
+
+A tunnel works in both directions: from here into the container (the common
+case) and from the container back to something running on this machine.
+
+### From here into the container
 
 **Prefer `agent forward` or `route add` over publishing ports with `--ports`.**
 A published port is a permanent, host-wide change to the project (it changes
@@ -266,20 +272,6 @@ published (e.g. so something outside your control can dial it directly).
     devcontainer-cli agent forward 8080:80           # 127.0.0.1:8080 -> container:80
     devcontainer-cli agent forward 5432:postgres:5432  # reach a sibling service
 
-The same command goes the other way with a `reverse:` prefix (or `--reverse`),
-which is how something running **on the host** — a database, an API, another
-project's published port — becomes reachable from inside the container. The
-port fields keep their meaning: the first is the host's, the last the
-container's.
-
-    devcontainer-cli agent forward reverse:5432       # container:5432 -> host:5432
-    devcontainer-cli agent forward reverse:5432:15432 # container:15432 -> host:5432
-    devcontainer-cli agent forward reverse:5432:192.168.1.20:5432  # a LAN host
-
-The container side of a reverse tunnel is bound by the SSH session, which runs
-as `devuser`, so it must be port 1024 or above — `reverse:80:80` fails, and
-`reverse:80:8080` is the way to reach the host's port 80.
-
 `agent forward` tunnels over SSH and stays in the **foreground** until
 interrupted, so run it in the background (or in a separate terminal) if you need
 to keep working.
@@ -292,6 +284,39 @@ Only publish a port permanently (via `--ports`) when a tunnel/route genuinely
 does not fit the case:
 
     devcontainer-cli agent create --ports 3000:3000
+
+### From the container back to this machine
+
+The host's `localhost` is **not** the container's. A database, an API or a dev
+server running on this machine is unreachable from inside until you open a
+reverse tunnel for it — the same command with a `reverse:` prefix (or
+`--reverse`). The container then finds it on its own `127.0.0.1`.
+
+    devcontainer-cli agent forward reverse:5432       # container:5432 -> host:5432
+    devcontainer-cli agent forward reverse:5432:15432 # container:15432 -> host:5432
+    devcontainer-cli agent forward reverse:5432:192.168.1.20:5432  # a LAN host
+
+The port fields keep their meaning in both directions: the first is always this
+machine's port, the last always the container's — only the arrow flips.
+
+Three things to know before reaching for it:
+
+- **The container port must be 1024 or above.** The listener is bound by the
+  SSH session, which runs as `devuser`, so `reverse:80:80` is refused;
+  `reverse:80:8080` reaches the host's port 80 on the container's 8080.
+- **The host service must answer on an address this machine can dial.** A
+  server bound to `127.0.0.1` here is fine (the tunnel dials from here); one
+  that is not running yet is not.
+- **A sibling compose service is not this.** `postgres`, `redis` and `mongo`
+  from the project's own stack are reached inside the container by service
+  name — no tunnel at all. Use a reverse tunnel only for something running
+  outside the stack.
+
+It is still a foreground process, and still torn down when you stop it. To make
+one permanent for a project, put it in its `forward_ports` instead — a
+`reverse:` spec is accepted there too:
+
+    devcontainer-cli agent create --forward-ports reverse:5432,3000
 
 For a real SSH session rather than a `docker exec`:
 
@@ -405,6 +430,10 @@ managed label). Use `--dry-run` first and show the user what would go.
   Publishing a port is a permanent project change; a tunnel or a route is
   on-demand and leaves nothing behind. Only publish when the user explicitly
   needs the port open outside a tunnel/route.
+- **A host service needs `agent forward reverse:<port>` to exist inside.**
+  The container's `localhost` is its own; nothing on this machine answers there
+  by default. Open the reverse tunnel instead of editing the project to publish
+  a port, and never assume a host database is reachable because it runs.
 - **Read `agent cli-info` before composing a create.** It is generated from the
   live catalogue, so it never names a module this binary does not have — and it
   includes the user's own profiles and skills, which no document can.
