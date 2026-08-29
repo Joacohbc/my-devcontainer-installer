@@ -22,20 +22,34 @@ func newPortForwardCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "port-forward [port_mapping]",
 		Short: "Forward host ports into a running container over SSH",
-		Long: `devcontainer-cli port-forward — open SSH tunnels from your machine to ports
-inside a running container, so you can reach a service in the container on
-127.0.0.1 (never exposed on other interfaces). The session stays in the
+		Long: `devcontainer-cli port-forward — open SSH tunnels between your machine and
+a running container, in either direction. Every listener binds 127.0.0.1, so a
+tunnel is never exposed on another interface. The session stays in the
 foreground; press Ctrl+C to close the tunnels.
+
+By default a tunnel goes container -> here: it listens on this machine and
+reaches a port inside the container. Prefix a mapping with 'reverse:' (or pass
+--reverse) to turn it around, so the container listens and reaches a service
+running on this machine — a database, an API, another project's published port.
+A reverse tunnel is bound by the container's SSH session, which runs as devuser,
+so its container-side port must be 1024 or above.
 
 It tunnels through a devcontainer's SSH alias (set up with 'ssh'), so that
 alias must already be configured. Non-devcontainer containers are reached via a
 devcontainer used as an SSH jump host.
 
-The optional port_mapping argument accepts three forms:
-  PORT                     forward 127.0.0.1:PORT -> container:PORT
-  LOCAL:CONTAINER          forward 127.0.0.1:LOCAL -> container:CONTAINER
-  LOCAL:HOST:CONTAINER     forward 127.0.0.1:LOCAL -> HOST:CONTAINER inside the
-                           container's network (e.g. a compose service name)
+The port fields mean the same thing in both directions — the first is always
+this machine's port, the last always the container's — so only the arrow flips:
+  PORT                     127.0.0.1:PORT here -> container:PORT
+  LOCAL:CONTAINER          127.0.0.1:LOCAL here -> container:CONTAINER
+  LOCAL:HOST:CONTAINER     127.0.0.1:LOCAL here -> HOST:CONTAINER, HOST resolved
+                           inside the container network (e.g. a compose service)
+  reverse:PORT             127.0.0.1:PORT in the container -> this machine:PORT
+  reverse:LOCAL:CONTAINER  127.0.0.1:CONTAINER in the container ->
+                           this machine:LOCAL
+  reverse:LOCAL:HOST:CONTAINER
+                           127.0.0.1:CONTAINER in the container -> HOST:LOCAL,
+                           HOST resolved from this machine (e.g. a LAN address)
 
 With no argument it runs an interactive picker: choose any running container,
 enter one or more ports, optionally repeat for other containers, then all tunnels
@@ -52,6 +66,16 @@ are opened in parallel after you confirm.`,
   # Reach the 'postgres' service inside the container network
   devcontainer-cli port-forward 5432:postgres:5432
   devcontainer-cli port-forward 5432 --service postgres
+
+  # The other way round: container:5432 -> this machine's 5432
+  devcontainer-cli port-forward reverse:5432
+  devcontainer-cli port-forward 5432 --reverse
+
+  # This machine's 5432, answering on container:15432
+  devcontainer-cli port-forward reverse:5432:15432
+
+  # container:5432 -> a host on your LAN, as seen from this machine
+  devcontainer-cli port-forward reverse:5432:192.168.1.20:5432
 
   # Pin the SSH alias to tunnel through
   devcontainer-cli port-forward 3000 --alias my-custom-host`,
@@ -70,6 +94,7 @@ func addPortForwardFlags(cmd *cobra.Command) {
 	cmd.Flags().String("alias", "", "SSH host alias to use (bypasses auto-discovery)")
 	cmd.Flags().String("service", "", "Compose service to map port to (default: localhost)")
 	addInteractiveFlag(cmd)
+	cmd.Flags().Bool("reverse", false, "Reverse every mapping without an explicit prefix: the container listens and reaches a service on this machine (a single mapping can still opt in with 'reverse:')")
 	cmd.Flags().Bool("ephemeral", false, "Forward directly via SSH without modifying ~/.ssh/config or relying on existing Host blocks")
 	addContainerFlag(cmd)
 	cmd.Flags().String("key", "", "Private key path (default: the shared managed key under the CLI config dir)")
@@ -92,11 +117,33 @@ type parsedMapping struct {
 	localPort     int
 	targetHost    string
 	containerPort int
+	reverse       bool
 }
 
 type portPair struct {
 	localPort     int
 	containerPort int
+	reverse       bool
+}
+
+// reversePrefixes mark a single spec as a host→container tunnel, whatever
+// --reverse says. Having the direction inside the spec is what lets one
+// comma-separated list ('3000,reverse:5432') mix both, and what lets a profile
+// or a project's forward_ports declare a reverse tunnel at all — those are
+// plain strings with nowhere to put a flag.
+var reversePrefixes = []string{"reverse:", "r:"}
+
+// splitDirection strips an optional direction prefix, returning the remaining
+// mapping and whether the tunnel is reverse. Without a prefix the caller's
+// default (the --reverse flag) decides.
+func splitDirection(spec string, defaultReverse bool) (string, bool) {
+	trimmed := strings.TrimSpace(spec)
+	for _, prefix := range reversePrefixes {
+		if len(trimmed) >= len(prefix) && strings.EqualFold(trimmed[:len(prefix)], prefix) {
+			return strings.TrimSpace(trimmed[len(prefix):]), true
+		}
+	}
+	return trimmed, defaultReverse
 }
 
 func parsePort(value, label string) (int, error) {
@@ -107,7 +154,15 @@ func parsePort(value, label string) (int, error) {
 	return n, nil
 }
 
-func parsePortMapping(mapping, defaultService string) (parsedMapping, error) {
+// parsePortMapping resolves one tunnel spec. The port fields keep the same
+// meaning in both directions — the first is always this machine's port and the
+// last always the container's — so only the arrow flips: 'reverse:8080:80'
+// makes the container reach this machine's 8080 on its own port 80.
+func parsePortMapping(mapping, defaultService string, defaultReverse bool) (parsedMapping, error) {
+	mapping, reverse := splitDirection(mapping, defaultReverse)
+	if reverse && defaultService != "" {
+		return parsedMapping{}, fmt.Errorf("--service names a compose service inside the container network, which a reverse tunnel never dials; use the 'reverse:LOCAL:HOST:CONTAINER' form to name a host reachable from this machine")
+	}
 	parts := strings.Split(mapping, ":")
 	for i := range parts {
 		parts[i] = strings.TrimSpace(parts[i])
@@ -122,7 +177,7 @@ func parsePortMapping(mapping, defaultService string) (parsedMapping, error) {
 		if host == "" {
 			host = "localhost"
 		}
-		return parsedMapping{localPort: port, targetHost: host, containerPort: port}, nil
+		return parsedMapping{localPort: port, targetHost: host, containerPort: port, reverse: reverse}, nil
 	case 2:
 		local, err := parsePort(parts[0], "local port")
 		if err != nil {
@@ -136,7 +191,7 @@ func parsePortMapping(mapping, defaultService string) (parsedMapping, error) {
 		if host == "" {
 			host = "localhost"
 		}
-		return parsedMapping{localPort: local, targetHost: host, containerPort: container}, nil
+		return parsedMapping{localPort: local, targetHost: host, containerPort: container, reverse: reverse}, nil
 	case 3:
 		local, err := parsePort(parts[0], "local port")
 		if err != nil {
@@ -153,13 +208,14 @@ func parsePortMapping(mapping, defaultService string) (parsedMapping, error) {
 		if defaultService != "" && defaultService != targetHost {
 			return parsedMapping{}, fmt.Errorf("conflicting target hosts: mapping specifies '%s' but --service is '%s'", targetHost, defaultService)
 		}
-		return parsedMapping{localPort: local, targetHost: targetHost, containerPort: container}, nil
+		return parsedMapping{localPort: local, targetHost: targetHost, containerPort: container, reverse: reverse}, nil
 	default:
 		return parsedMapping{}, fmt.Errorf("invalid port mapping format: %s", mapping)
 	}
 }
 
-func parsePortPair(item string) (portPair, error) {
+func parsePortPair(item string, defaultReverse bool) (portPair, error) {
+	item, reverse := splitDirection(item, defaultReverse)
 	parts := strings.Split(item, ":")
 	for i := range parts {
 		parts[i] = strings.TrimSpace(parts[i])
@@ -170,7 +226,7 @@ func parsePortPair(item string) (portPair, error) {
 		if err != nil {
 			return portPair{}, err
 		}
-		return portPair{localPort: p, containerPort: p}, nil
+		return portPair{localPort: p, containerPort: p, reverse: reverse}, nil
 	case 2:
 		local, err := parsePort(parts[0], "local port")
 		if err != nil {
@@ -180,17 +236,17 @@ func parsePortPair(item string) (portPair, error) {
 		if err != nil {
 			return portPair{}, err
 		}
-		return portPair{localPort: local, containerPort: container}, nil
+		return portPair{localPort: local, containerPort: container, reverse: reverse}, nil
 	default:
 		return portPair{}, fmt.Errorf("invalid port mapping: %s (expected 'port' or 'local:container')", item)
 	}
 }
 
-func parsePortsList(value string) ([]portPair, error) {
+func parsePortsList(value string, defaultReverse bool) ([]portPair, error) {
 	var pairs []portPair
 	for _, item := range strings.Split(value, ",") {
 		if t := strings.TrimSpace(item); t != "" {
-			p, err := parsePortPair(t)
+			p, err := parsePortPair(t, defaultReverse)
 			if err != nil {
 				return nil, err
 			}
@@ -320,7 +376,7 @@ func resolveTarget(container pick.Container, aliases []string, containers []pick
 	return *jumpHost, container.Name, nil
 }
 
-func buildTunnelsInteractive(flagAlias string, interactive bool) ([]service.Tunnel, error) {
+func buildTunnelsInteractive(flagAlias string, reverse, interactive bool) ([]service.Tunnel, error) {
 	// You can only forward into a running container, so filter the unified list
 	// down to running ones here.
 	containers := runningContainers(pick.ListAll())
@@ -342,18 +398,25 @@ func buildTunnelsInteractive(flagAlias string, interactive bool) ([]service.Tunn
 			return nil, terr
 		}
 
-		portsStr, ierr := console.AskDefault(fmt.Sprintf("Ports to forward from '%s' (e.g. 3000, 8080:80):", container.Name), "", func(v string) error {
-			_, e := parsePortsList(v)
+		portsStr, ierr := console.AskDefault(fmt.Sprintf("Ports to forward from '%s' (e.g. 3000, 8080:80, reverse:5432):", container.Name), "", func(v string) error {
+			_, e := parsePortsList(v, reverse)
 			return e
 		})
 		if ierr != nil {
 			return nil, ierr
 		}
-		pairs, _ := parsePortsList(portsStr)
+		pairs, _ := parsePortsList(portsStr, reverse)
 		for _, pair := range pairs {
+			// A reverse tunnel is opened by the SSH server, so it can only ever
+			// listen inside the container the alias connects to. Reaching
+			// another container through it as a jump host works one way only.
+			if pair.reverse && targetHost != "localhost" {
+				return nil, fmt.Errorf("cannot open a reverse tunnel into '%s': it is reached through the jump host '%s', and a reverse tunnel listens inside the container it connects to. Select a devcontainer with its own SSH alias instead", container.Name, alias)
+			}
 			tunnels = append(tunnels, service.Tunnel{
 				LocalPort:      pair.localPort,
 				ContainerPort:  pair.containerPort,
+				Reverse:        pair.reverse,
 				TargetHost:     targetHost,
 				Alias:          alias,
 				ContainerName:  container.Name,
@@ -383,19 +446,54 @@ func printTunnelPlan(tunnels []service.Tunnel) {
 		if t.Ephemeral {
 			via = console.Subtle("(ephemeral)")
 		}
+		// The listening side is highlighted and always written first, so a
+		// reverse tunnel reads as what it is: the container listening.
+		if t.Reverse {
+			console.Info("  %s  %s  %s → %s:%d  %s",
+				t.ContainerName, tag,
+				console.WarnS("container 127.0.0.1:%d", t.ContainerPort),
+				t.TargetHost, t.LocalPort,
+				via)
+			continue
+		}
 		console.Info("  %s  %s  %s → %s:%d  %s",
 			t.ContainerName, tag,
 			console.WarnS("127.0.0.1:%d", t.LocalPort),
 			t.TargetHost, t.ContainerPort,
 			via)
 	}
+	warnPrivilegedReversePorts(tunnels)
 	console.NewLine()
+}
+
+// privilegedPort is the first port a non-root user may bind.
+const privilegedPort = 1024
+
+// needsPrivilegedBind reports whether the tunnel asks the container's SSH
+// session to bind a port only root may take.
+func needsPrivilegedBind(t service.Tunnel) bool {
+	return t.Reverse && t.ContainerPort < privilegedPort
+}
+
+// warnPrivilegedReversePorts flags the one failure ssh reports in terms of
+// nothing the user typed ("remote port forwarding failed for listen port 80"):
+// the container side of a reverse tunnel is bound by the SSH session, which
+// runs as devuser and cannot take a privileged port. It stays a warning rather
+// than a rejection because the session's user is configurable.
+func warnPrivilegedReversePorts(tunnels []service.Tunnel) {
+	for _, t := range tunnels {
+		if needsPrivilegedBind(t) {
+			console.Warn("Container port %d is privileged: the SSH session binds it as '%s', so this tunnel will be refused unless that user may bind ports below %d. Map it to a higher container port instead (e.g. reverse:%d:%d).",
+				t.ContainerPort, sshdefaults.User, privilegedPort, t.LocalPort, t.ContainerPort+8000)
+		}
+	}
 }
 
 func runPortForward(cmd *cobra.Command, args []string) error {
 	ephemeral, _ := cmd.Flags().GetBool("ephemeral")
 	alias, _ := cmd.Flags().GetString("alias")
 	serviceFlag, _ := cmd.Flags().GetString("service")
+	reverse, _ := cmd.Flags().GetBool("reverse")
 	interactive := interactiveFlag(cmd)
 
 	var portMapping string
@@ -407,7 +505,7 @@ func runPortForward(cmd *cobra.Command, args []string) error {
 		if portMapping == "" {
 			return fmt.Errorf("port mapping is required in non-interactive/ephemeral mode")
 		}
-		mapping, err := parsePortMapping(portMapping, serviceFlag)
+		mapping, err := parsePortMapping(portMapping, serviceFlag, reverse)
 		if err != nil {
 			return err
 		}
@@ -421,7 +519,13 @@ func runPortForward(cmd *cobra.Command, args []string) error {
 		user, _ := cmd.Flags().GetString("user")
 
 		svc := service.PortForwardService{Report: console}
-		tunnel, err := svc.BuildEphemeralTunnel(mapping.localPort, mapping.containerPort, mapping.targetHost, containerName, user, keyPath)
+		tunnel, err := svc.BuildEphemeralTunnel(service.Tunnel{
+			LocalPort:     mapping.localPort,
+			ContainerPort: mapping.containerPort,
+			Reverse:       mapping.reverse,
+			TargetHost:    mapping.targetHost,
+			ContainerName: containerName,
+		}, user, keyPath)
 		if err != nil {
 			return err
 		}
@@ -434,7 +538,7 @@ func runPortForward(cmd *cobra.Command, args []string) error {
 	// --forward-ports) gets those instead of the picker: that is what makes them
 	// automatic. Passing a mapping still overrides them.
 	if portMapping == "" {
-		opened, err := forwardConfiguredPorts(alias, serviceFlag, interactive)
+		opened, err := forwardConfiguredPorts(alias, serviceFlag, reverse, interactive)
 		if err != nil {
 			return err
 		}
@@ -444,7 +548,7 @@ func runPortForward(cmd *cobra.Command, args []string) error {
 	}
 
 	if portMapping == "" && interactive {
-		tunnels, err := buildTunnelsInteractive(alias, interactive)
+		tunnels, err := buildTunnelsInteractive(alias, reverse, interactive)
 		if err != nil {
 			return err
 		}
@@ -465,7 +569,7 @@ func runPortForward(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("port mapping is required in non-interactive mode")
 	}
 
-	mapping, err := parsePortMapping(portMapping, serviceFlag)
+	mapping, err := parsePortMapping(portMapping, serviceFlag, reverse)
 	if err != nil {
 		return err
 	}
@@ -478,6 +582,7 @@ func runPortForward(cmd *cobra.Command, args []string) error {
 	tunnel := service.Tunnel{
 		LocalPort:      mapping.localPort,
 		ContainerPort:  mapping.containerPort,
+		Reverse:        mapping.reverse,
 		TargetHost:     mapping.targetHost,
 		Alias:          alias,
 		ContainerName:  containerName,
@@ -491,7 +596,7 @@ func runPortForward(cmd *cobra.Command, args []string) error {
 // forwardConfiguredPorts opens the tunnels the current project declared, and
 // reports whether it opened any. A directory that is not a generated project,
 // or one that declared none, falls through to the usual paths.
-func forwardConfiguredPorts(alias, serviceFlag string, interactive bool) (bool, error) {
+func forwardConfiguredPorts(alias, serviceFlag string, reverse, interactive bool) (bool, error) {
 	cwd, err := currentDir()
 	if err != nil {
 		return false, nil
@@ -503,7 +608,7 @@ func forwardConfiguredPorts(alias, serviceFlag string, interactive bool) (bool, 
 
 	mappings := make([]parsedMapping, 0, len(config.ForwardPorts))
 	for _, spec := range config.ForwardPorts {
-		mapping, perr := parsePortMapping(spec, serviceFlag)
+		mapping, perr := parsePortMapping(spec, serviceFlag, reverse)
 		if perr != nil {
 			return false, fmt.Errorf("configured forward port %q: %w", spec, perr)
 		}
@@ -520,6 +625,7 @@ func forwardConfiguredPorts(alias, serviceFlag string, interactive bool) (bool, 
 		tunnels = append(tunnels, service.Tunnel{
 			LocalPort:      mapping.localPort,
 			ContainerPort:  mapping.containerPort,
+			Reverse:        mapping.reverse,
 			TargetHost:     mapping.targetHost,
 			Alias:          alias,
 			ContainerName:  containerName,

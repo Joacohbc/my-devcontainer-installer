@@ -19,8 +19,9 @@ const maxPort = 65535
 // "0.0.0.0:3000:3000"). A "/tcp" or "/udp" suffix is allowed on the last field.
 //
 // The tunnels of `port-forward` are a different grammar — their middle field is
-// a compose service name, not a host IP — and are checked by the parser that
-// opens them, parsePortMapping.
+// a compose service name, not a host IP, and they may carry a "reverse:"
+// direction prefix — and are checked by the parser that opens them,
+// parsePortMapping.
 func ValidatePortSpecs(specs []string) error {
 	for _, spec := range specs {
 		if err := validatePortSpec(spec); err != nil {

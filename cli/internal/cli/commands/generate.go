@@ -55,7 +55,7 @@ func addGenerateFlags(cmd *cobra.Command) {
 	f.String(flagWorkspace, "", "Workspace name (default: current dir name)")
 	f.String(flagPorts, "", "Ports to publish on the devcontainer (e.g. 8080:80,5432:5432); bound to 127.0.0.1 unless an IP is given; 'none' clears them")
 	f.String(flagVolumes, "", "Extra volume mounts on the devcontainer (e.g. myvol:/data,./cache:/cache); 'none' clears them")
-	f.String(flagForwardPorts, "", "Ports 'port-forward' tunnels when called with no argument (e.g. 3000,8080:80); 'none' clears them")
+	f.String(flagForwardPorts, "", "Ports 'port-forward' tunnels when called with no argument (e.g. 3000,8080:80, reverse:5432 for a host port reachable inside the container); 'none' clears them")
 	f.Bool(flagSharedConfig, true, "Mount the global shared AI/dev tool config volume (devcontainer-shared-config) so logins/sessions persist across containers; --shared-config=false to opt out")
 	f.String(flagProfile, "", "Apply a profile: a module bundle for mode=custom (any profile, e.g. 'scraper'), or the pull target for mode=profiles (must be [remote]-tagged). See 'config profile list'.")
 	f.String(flagPreset, "", "Deprecated alias for --profile")
@@ -203,10 +203,11 @@ func parsePortsFlag(get func(string) (string, error)) []string {
 
 // validateForwardPorts checks tunnel specs with the parser that will open them,
 // rather than with the compose validator: their middle field is a compose
-// service name ("5432:postgres:5432"), which is not a port.
+// service name ("5432:postgres:5432"), which is not a port, and they may carry
+// a "reverse:" direction prefix, which compose knows nothing about.
 func validateForwardPorts(specs []string) error {
 	for _, spec := range specs {
-		if _, err := parsePortMapping(spec, ""); err != nil {
+		if _, err := parsePortMapping(spec, "", false); err != nil {
 			return fmt.Errorf("invalid forward port %q: %w", spec, err)
 		}
 	}

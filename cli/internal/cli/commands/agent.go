@@ -214,12 +214,16 @@ func agentExecArgs(_ *cobra.Command, args []string) error {
 func newAgentForwardCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "forward [port_mapping]",
-		Short: "Forward a host port into the running container over SSH",
-		Long: `devcontainer-cli agent forward — open an SSH tunnel from 127.0.0.1 to a port
-inside the running container.
+		Short: "Forward a port between this machine and the running container over SSH",
+		Long: `devcontainer-cli agent forward — open an SSH tunnel between 127.0.0.1 here and
+a port inside the running container, in either direction.
 
 Same as 'port-forward', with prompting off and ephemeral mode on by default,
 so the port mapping is given as an argument and connects directly via SSH.
+
+By default the tunnel listens here and reaches into the container. Prefix the
+mapping with 'reverse:' (or pass --reverse) to turn it around, so a service
+running on this machine becomes reachable inside the container.
 
 It stays in the FOREGROUND until interrupted: run it in the background if you
 need to keep working. A port that should always be reachable belongs in the
@@ -231,7 +235,10 @@ project instead — regenerate with 'agent create --ports <spec>'.`,
   devcontainer-cli agent forward 8080:80
 
   # Reach a sibling compose service through the container
-  devcontainer-cli agent forward 5432:postgres:5432`,
+  devcontainer-cli agent forward 5432:postgres:5432
+
+  # container:5432 -> this machine's 5432 (a database running on the host)
+  devcontainer-cli agent forward reverse:5432`,
 		Args:         cobra.MaximumNArgs(1),
 		SilenceUsage: true,
 		PreRunE:      agentForwardDefaults,
@@ -251,6 +258,7 @@ func agentForwardDefaults(cmd *cobra.Command, _ []string) error {
 func addAgentForwardFlags(cmd *cobra.Command) {
 	cmd.Flags().String("alias", "", "SSH host alias to use when --ephemeral=false")
 	cmd.Flags().String("service", "", "Compose service to map port to (default: localhost)")
+	cmd.Flags().Bool("reverse", false, "Reverse the mapping: the container listens and reaches a service on this machine (a mapping can also opt in with 'reverse:')")
 	cmd.Flags().Bool("ephemeral", false, "Forward directly via SSH without modifying ~/.ssh/config or relying on existing Host blocks (default true for agent)")
 	addContainerFlag(cmd)
 	cmd.Flags().String("key", "", "Private key path (default: the shared managed key under the CLI config dir)")

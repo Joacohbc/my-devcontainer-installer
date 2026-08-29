@@ -3,6 +3,7 @@ package service
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/sshdefaults"
@@ -88,6 +89,60 @@ func TestTunnelCommand_AliasAndEphemeral(t *testing.T) {
 	}
 }
 
+// A reverse tunnel is the same ssh process with -R and the two ports swapped:
+// the container binds ContainerPort and the connection is dialed from here to
+// TargetHost:LocalPort.
+func TestTunnelCommand_Reverse(t *testing.T) {
+	aliasCmd := tunnelCommand(Tunnel{
+		LocalPort:     5432,
+		ContainerPort: 5432,
+		Reverse:       true,
+		TargetHost:    "localhost",
+		Alias:         "myalias",
+	})
+	want := []string{"ssh", "-N", "-R", "127.0.0.1:5432:localhost:5432", "myalias"}
+	if !slices.Equal(aliasCmd.Args, want) {
+		t.Errorf("reverse alias args = %v, want %v", aliasCmd.Args, want)
+	}
+
+	// Distinct ports show which side each one binds: the container listens on
+	// 80, this machine's 8080 is what gets dialed.
+	mapped := tunnelCommand(Tunnel{
+		LocalPort:     8080,
+		ContainerPort: 80,
+		Reverse:       true,
+		TargetHost:    "192.168.1.20",
+		Alias:         "myalias",
+	})
+	wantMapped := []string{"ssh", "-N", "-R", "127.0.0.1:80:192.168.1.20:8080", "myalias"}
+	if !slices.Equal(mapped.Args, wantMapped) {
+		t.Errorf("reverse mapped args = %v, want %v", mapped.Args, wantMapped)
+	}
+
+	ephemeral := tunnelCommand(Tunnel{
+		LocalPort:     5432,
+		ContainerPort: 5432,
+		Reverse:       true,
+		TargetHost:    "localhost",
+		Ephemeral:     true,
+		Target:        EphemeralTarget{IP: "172.18.0.2", User: "devuser", KeyPath: "/tmp/testkey"},
+	})
+	if !slices.Contains(ephemeral.Args, "-R") || slices.Contains(ephemeral.Args, "-L") {
+		t.Errorf("ephemeral reverse args = %v, want -R and no -L", ephemeral.Args)
+	}
+}
+
+func TestTunnelDescription(t *testing.T) {
+	forward := Tunnel{LocalPort: 3000, ContainerPort: 80, TargetHost: "localhost"}
+	if got, want := forward.Description(), "3000→localhost:80"; got != want {
+		t.Errorf("forward description = %q, want %q", got, want)
+	}
+	reverse := Tunnel{LocalPort: 3000, ContainerPort: 80, TargetHost: "localhost", Reverse: true}
+	if got, want := reverse.Description(), "container:80→localhost:3000"; got != want {
+		t.Errorf("reverse description = %q, want %q", got, want)
+	}
+}
+
 func TestBuildEphemeralTunnel(t *testing.T) {
 	psOut := `{"Names":"my-container","Image":"img1","Status":"Up","State":"running","Labels":"","Ports":""}`
 	inspectOut := "my-net 172.20.0.10\n"
@@ -105,7 +160,12 @@ func TestBuildEphemeralTunnel(t *testing.T) {
 	}
 
 	svc := PortForwardService{Report: nopReporter{}}
-	tunnel, err := svc.BuildEphemeralTunnel(3000, 3000, "localhost", "my-container", "", keyPath)
+	tunnel, err := svc.BuildEphemeralTunnel(Tunnel{
+		LocalPort:     3000,
+		ContainerPort: 3000,
+		TargetHost:    "localhost",
+		ContainerName: "my-container",
+	}, "", keyPath)
 	if err != nil {
 		t.Fatalf("BuildEphemeralTunnel: %v", err)
 	}
@@ -120,5 +180,20 @@ func TestBuildEphemeralTunnel(t *testing.T) {
 	// container that never ran `ssh --setup` refuses the tunnel's key.
 	if !runner.sawKeyInstall() {
 		t.Error("BuildEphemeralTunnel must install the public key in the container")
+	}
+
+	// The caller owns the direction; the service only fills in the connection.
+	reverse, err := svc.BuildEphemeralTunnel(Tunnel{
+		LocalPort:     5432,
+		ContainerPort: 5432,
+		Reverse:       true,
+		TargetHost:    "localhost",
+		ContainerName: "my-container",
+	}, "", keyPath)
+	if err != nil {
+		t.Fatalf("BuildEphemeralTunnel (reverse): %v", err)
+	}
+	if !reverse.Reverse || !reverse.Ephemeral {
+		t.Errorf("reverse ephemeral tunnel = %+v, want both Reverse and Ephemeral", reverse)
 	}
 }

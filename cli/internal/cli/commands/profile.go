@@ -49,7 +49,9 @@ A profile can also carry ports: 'ports:' are published by the generated stack,
 'forward_ports:' are the tunnels 'port-forward' opens when called with no
 argument. Both take a bare container port (3000 — Docker picks a free host port,
 so two projects from one profile can run at once) or an explicit mapping
-(3000:3000 — predictable, but the second project collides).
+(3000:3000 — predictable, but the second project collides). A forward port
+prefixed with 'reverse:' (reverse:5432) is tunnelled the other way instead: the
+container reaches that port on your machine.
 
 A profile can also carry agent skills, installed project-scoped into the
 workspace by the Skills CLI. Their mode is 'manual' (the default — you run
