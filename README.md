@@ -198,6 +198,7 @@ devcontainer-cli agent cli-info --json                    # Catálogo estructura
 devcontainer-cli agent create --with nodejs,pnpm --service postgres  # Generar + build + up
 devcontainer-cli agent exec -- go test ./...              # Correr algo adentro
 devcontainer-cli agent forward 3000                       # Túnel a 127.0.0.1:3000
+devcontainer-cli agent forward reverse:5432               # Al revés: el host adentro
 devcontainer-cli agent list /home/devuser --json          # Listar archivos del contenedor
 devcontainer-cli agent clean --dry-run                    # Ver qué se borraría
 ```

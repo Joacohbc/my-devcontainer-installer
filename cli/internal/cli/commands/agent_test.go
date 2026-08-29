@@ -357,7 +357,7 @@ func TestExtractedFlagHelpers_KeepTheOriginalFlags(t *testing.T) {
 	}{
 		{"ssh", []string{"yes", flagNoInteractive, "container", "setup", "setup-external", "via", "key", "user", "forward", "ports", "ephemeral"}},
 		{"shell", []string{"user", "type", "no-tty", "workdir", "via", "container"}},
-		{"port-forward", []string{"alias", "service", flagNoInteractive, "ephemeral", "container", "key", "user"}},
+		{"port-forward", []string{"alias", "service", "reverse", flagNoInteractive, "ephemeral", "container", "key", "user"}},
 		{"copy", []string{"container", "asset"}},
 		{"ls", []string{"all", "long", "container"}},
 		{"context", []string{"container", "json"}},
@@ -371,6 +371,16 @@ func TestExtractedFlagHelpers_KeepTheOriginalFlags(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// Both directions must be reachable from the agent facade too: runPortForward
+// reads --reverse, so 'agent forward' has to register it or the flag silently
+// does nothing there.
+func TestAgentForward_RegistersReverse(t *testing.T) {
+	cmd := findCommand(t, agentCommand(t), "forward")
+	if cmd.Flags().Lookup("reverse") == nil {
+		t.Error("agent forward must register --reverse")
 	}
 }
 

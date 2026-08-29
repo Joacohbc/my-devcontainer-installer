@@ -819,41 +819,56 @@ func TestConfigSSHKeyCommand_Flags(t *testing.T) {
 
 func TestParsePortMapping(t *testing.T) {
 	cases := []struct {
-		in        string
-		service   string
-		local     int
-		host      string
-		container int
-		wantErr   bool
+		in             string
+		service        string
+		defaultReverse bool
+		local          int
+		host           string
+		container      int
+		reverse        bool
+		wantErr        bool
 	}{
 		{in: "3000", local: 3000, host: "localhost", container: 3000},
 		{in: "8080:80", local: 8080, host: "localhost", container: 80},
 		{in: "5432:postgres:5432", local: 5432, host: "postgres", container: 5432},
 		{in: "5432", service: "postgres", local: 5432, host: "postgres", container: 5432},
+		// The ports keep their meaning when the direction flips: the first
+		// field is this machine's port in both cases.
+		{in: "reverse:5432", local: 5432, host: "localhost", container: 5432, reverse: true},
+		{in: "R:8080:80", local: 8080, host: "localhost", container: 80, reverse: true},
+		{in: "reverse:5432:192.168.1.20:5432", local: 5432, host: "192.168.1.20", container: 5432, reverse: true},
+		{in: "3000", defaultReverse: true, local: 3000, host: "localhost", container: 3000, reverse: true},
+		// An explicit prefix wins over the flag, never the other way round.
+		{in: "reverse:3000", defaultReverse: true, local: 3000, host: "localhost", container: 3000, reverse: true},
+		// --service names something inside the container network, which a
+		// reverse tunnel never dials.
+		{in: "reverse:5432", service: "postgres", wantErr: true},
+		{in: "5432", service: "postgres", defaultReverse: true, wantErr: true},
+		{in: "reverse:", wantErr: true},
 		{in: "0", wantErr: true},
 		{in: "70000", wantErr: true},
 		{in: "a:b:c:d", wantErr: true},
 	}
 	for _, c := range cases {
-		got, err := parsePortMapping(c.in, c.service)
+		got, err := parsePortMapping(c.in, c.service, c.defaultReverse)
 		if c.wantErr {
 			if err == nil {
-				t.Errorf("parsePortMapping(%q,%q): expected error", c.in, c.service)
+				t.Errorf("parsePortMapping(%q,%q,%v): expected error", c.in, c.service, c.defaultReverse)
 			}
 			continue
 		}
 		if err != nil {
-			t.Errorf("parsePortMapping(%q,%q): unexpected error %v", c.in, c.service, err)
+			t.Errorf("parsePortMapping(%q,%q,%v): unexpected error %v", c.in, c.service, c.defaultReverse, err)
 			continue
 		}
-		if got.localPort != c.local || got.targetHost != c.host || got.containerPort != c.container {
-			t.Errorf("parsePortMapping(%q,%q) = %+v, want local=%d host=%s container=%d", c.in, c.service, got, c.local, c.host, c.container)
+		if got.localPort != c.local || got.targetHost != c.host || got.containerPort != c.container || got.reverse != c.reverse {
+			t.Errorf("parsePortMapping(%q,%q,%v) = %+v, want local=%d host=%s container=%d reverse=%v", c.in, c.service, c.defaultReverse, got, c.local, c.host, c.container, c.reverse)
 		}
 	}
 }
 
 func TestParsePortMapping_ConflictingService(t *testing.T) {
-	if _, err := parsePortMapping("5432:postgres:5432", "redis"); err == nil {
+	if _, err := parsePortMapping("5432:postgres:5432", "redis", false); err == nil {
 		t.Error("expected conflicting target host error")
 	}
 }
@@ -876,6 +891,24 @@ func TestBuildSshTunnels(t *testing.T) {
 	}
 	if _, err := buildSshTunnels("not-a-port", "myws", "c"); err == nil {
 		t.Error("expected error for an invalid ports spec")
+	}
+}
+
+// 'ssh --ports' has no --reverse flag of its own: a single spec carries the
+// direction, so one list can mix both.
+func TestBuildSshTunnels_ReversePrefix(t *testing.T) {
+	tunnels, err := buildSshTunnels("3000, reverse:5432", "myws", "myws-devcontainer-ssh")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(tunnels) != 2 {
+		t.Fatalf("expected 2 tunnels, got %d", len(tunnels))
+	}
+	if tunnels[0].Reverse {
+		t.Errorf("tunnel 0 must stay a forward tunnel: %+v", tunnels[0])
+	}
+	if !tunnels[1].Reverse || tunnels[1].LocalPort != 5432 || tunnels[1].ContainerPort != 5432 {
+		t.Errorf("tunnel 1 = %+v, want a reverse 5432 tunnel", tunnels[1])
 	}
 }
 
@@ -920,7 +953,7 @@ func TestDestroyCommandRegistered(t *testing.T) {
 }
 
 func TestParsePortsList(t *testing.T) {
-	pairs, err := parsePortsList("3000, 8080:80")
+	pairs, err := parsePortsList("3000, 8080:80", false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -933,8 +966,58 @@ func TestParsePortsList(t *testing.T) {
 	if pairs[1].localPort != 8080 || pairs[1].containerPort != 80 {
 		t.Errorf("pair 1 = %+v", pairs[1])
 	}
-	if _, err := parsePortsList(""); err == nil {
+	if _, err := parsePortsList("", false); err == nil {
 		t.Error("expected error for empty ports list")
+	}
+}
+
+// Only the container side of a reverse tunnel is bound by the SSH session, so
+// that is the only port a privileged-bind warning applies to.
+func TestNeedsPrivilegedBind(t *testing.T) {
+	cases := []struct {
+		name string
+		in   service.Tunnel
+		want bool
+	}{
+		{"reverse into a privileged container port", service.Tunnel{Reverse: true, LocalPort: 80, ContainerPort: 80}, true},
+		{"reverse into a high container port", service.Tunnel{Reverse: true, LocalPort: 80, ContainerPort: 8080}, false},
+		{"forward listens here, not in the container", service.Tunnel{LocalPort: 8080, ContainerPort: 80}, false},
+	}
+	for _, c := range cases {
+		if got := needsPrivilegedBind(c.in); got != c.want {
+			t.Errorf("%s: needsPrivilegedBind(%+v) = %v, want %v", c.name, c.in, got, c.want)
+		}
+	}
+}
+
+func TestParsePortsList_MixedDirections(t *testing.T) {
+	pairs, err := parsePortsList("3000, reverse:5432, r:8080:80", false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := []portPair{
+		{localPort: 3000, containerPort: 3000},
+		{localPort: 5432, containerPort: 5432, reverse: true},
+		{localPort: 8080, containerPort: 80, reverse: true},
+	}
+	if len(pairs) != len(want) {
+		t.Fatalf("expected %d pairs, got %d", len(want), len(pairs))
+	}
+	for i, w := range want {
+		if pairs[i] != w {
+			t.Errorf("pair %d = %+v, want %+v", i, pairs[i], w)
+		}
+	}
+
+	// The flag flips only the specs that did not say it themselves.
+	all, err := parsePortsList("3000, 8080:80", true)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for i, p := range all {
+		if !p.reverse {
+			t.Errorf("pair %d = %+v, want reverse under a reverse default", i, p)
+		}
 	}
 }
 

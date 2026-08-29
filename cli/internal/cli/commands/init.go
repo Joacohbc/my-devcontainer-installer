@@ -54,7 +54,7 @@ func addInitFlags(cmd *cobra.Command) {
 	f.String(flagWorkspace, "", "Workspace name (default: directory name or repo name)")
 	f.String(flagPorts, "", "Ports to publish on the devcontainer (e.g. 8080:80,5432:5432)")
 	f.String(flagVolumes, "", "Extra volume mounts on the devcontainer")
-	f.String(flagForwardPorts, "", "Ports 'port-forward' tunnels by default")
+	f.String(flagForwardPorts, "", "Ports 'port-forward' tunnels by default (a 'reverse:' prefix tunnels a host port into the container)")
 	f.Bool(flagSharedConfig, true, "Mount global shared tool config volume")
 	f.String(flagProfile, "", "Apply a profile bundle")
 	f.Bool(flagNoUp, false, "Generate and build only; leave containers stopped")

@@ -26,7 +26,7 @@ you waiting on a prompt you cannot answer.
 | `agent create [--temporal]` | Generate + build + start an environment for the current directory (or throwaway with `--temporal`) |
 | `agent exec [-w] -- <cmd>` | Run a command inside the container (use `-w` to run from the workspace directory) |
 | `agent ssh [--ephemeral]` | Open an SSH session into the container (ephemeral by default, bypassing ~/.ssh/config) |
-| `agent forward <ports>` | Tunnel a container port to 127.0.0.1 via direct SSH tunnel (ephemeral by default) |
+| `agent forward <ports>` | Tunnel a container port to 127.0.0.1 via direct SSH tunnel (ephemeral by default); `reverse:<port>` tunnels the other way, exposing a host port inside the container |
 | `agent copy <src> <dest>` | Move files between host and container |
 | `agent list [path]` | List a directory inside the container (--json and -a supported) |
 | `agent context` | Print what the container IS and has installed: its `~/CONTEXT.md` plus a live tool inventory (`--json`) |
@@ -265,6 +265,20 @@ published (e.g. so something outside your control can dial it directly).
     devcontainer-cli agent forward 3000              # 127.0.0.1:3000 -> container:3000
     devcontainer-cli agent forward 8080:80           # 127.0.0.1:8080 -> container:80
     devcontainer-cli agent forward 5432:postgres:5432  # reach a sibling service
+
+The same command goes the other way with a `reverse:` prefix (or `--reverse`),
+which is how something running **on the host** — a database, an API, another
+project's published port — becomes reachable from inside the container. The
+port fields keep their meaning: the first is the host's, the last the
+container's.
+
+    devcontainer-cli agent forward reverse:5432       # container:5432 -> host:5432
+    devcontainer-cli agent forward reverse:5432:15432 # container:15432 -> host:5432
+    devcontainer-cli agent forward reverse:5432:192.168.1.20:5432  # a LAN host
+
+The container side of a reverse tunnel is bound by the SSH session, which runs
+as `devuser`, so it must be port 1024 or above — `reverse:80:80` fails, and
+`reverse:80:8080` is the way to reach the host's port 80.
 
 `agent forward` tunnels over SSH and stays in the **foreground** until
 interrupted, so run it in the background (or in a separate terminal) if you need

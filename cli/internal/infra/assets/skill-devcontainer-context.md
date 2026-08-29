@@ -54,6 +54,11 @@ this container", the command answers "what is true at this moment".
 - **Only the ports the project published are reachable from the host.** Binding
   another port inside the container does not expose it — that needs the project
   to be regenerated, or `devcontainer-cli port-forward`, from the host.
+- **A service running on the host is not reachable from here either**, unless
+  the host opened a reverse tunnel for it
+  (`devcontainer-cli port-forward reverse:<port>`), which makes it answer on
+  this container's own `127.0.0.1:<port>`. Ask for one instead of assuming the
+  host's `localhost` is yours.
 - Sibling services (postgres, redis, mongo, …) are reached by their **compose
   service name** as hostname, not `localhost`. Names, ports and credentials are
   in `~/CONTEXT.md`.
