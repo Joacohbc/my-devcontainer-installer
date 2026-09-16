@@ -83,7 +83,7 @@ generated files without asking.
 |---|---|
 | `--with a,b,c` | Dockerfile modules (toolchains/tools) to install |
 | `--profile <id>` | With mode=custom (default): start from a profile — a module bundle plus its custom scripts. With mode=profiles: the `[remote]`-tagged id to pull instead of building |
-| `--script <path>[:build\|start\|manual]` | Add a script of your own (repeatable): baked into the image, run once per container start, or only copied to `~/post-script/` |
+| `--script <path>[:build\|start\|service\|manual]` | Add a script of your own (repeatable): baked into the image, run once per container start, run as background service on every start, or only copied to `~/post-script/` |
 | `--skill firecrawl,agent-browser,webapp-testing` | Agent skills installed **into the project workspace** via the Skills CLI. Adds the internal `skills` module, which requires `nodejs` |
 | `--skills-mode manual\|auto` | `manual` (default) leaves the `install-skills` command to the user; `auto` installs on every container start, writing into the workspace unprompted |
 | `--service mongo,postgres,redis` | Add database services to the compose stack |

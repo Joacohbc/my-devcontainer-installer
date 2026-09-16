@@ -42,6 +42,7 @@ func TestValidateCustomScript(t *testing.T) {
 		{"plain", types.CustomScript{File: "setup.sh"}, false},
 		{"explicit build", types.CustomScript{File: "setup.sh", When: types.ScriptWhenBuild}, false},
 		{"start", types.CustomScript{File: "setup.sh", When: types.ScriptWhenStart}, false},
+		{"service", types.CustomScript{File: "setup.sh", When: types.ScriptWhenService}, false},
 		{"manual", types.CustomScript{File: "setup.sh", When: types.ScriptWhenManual}, false},
 		{"empty", types.CustomScript{}, true},
 		{"unknown when", types.CustomScript{File: "setup.sh", When: "someday"}, true},
@@ -89,6 +90,7 @@ func TestParseScriptSpec(t *testing.T) {
 	}{
 		{"bare path defaults to build", path, types.ScriptWhenBuild, false},
 		{"explicit start", path + ":start", types.ScriptWhenStart, false},
+		{"explicit service", path + ":service", types.ScriptWhenService, false},
 		{"explicit manual", path + ":manual", types.ScriptWhenManual, false},
 		{"explicit build", path + ":build", types.ScriptWhenBuild, false},
 		// A colon that is not a known `when` belongs to the path, not to the spec.
@@ -163,6 +165,7 @@ func TestPartitionCustomScripts(t *testing.T) {
 			Scripts: []types.CustomScript{
 				{File: "b.sh"},
 				{File: "s.sh", When: types.ScriptWhenStart},
+				{File: "svc.sh", When: types.ScriptWhenService},
 				{File: "m.sh", When: types.ScriptWhenManual},
 				{File: "explicit.sh", When: types.ScriptWhenBuild},
 				// A duplicate must not produce a duplicate COPY.
@@ -171,7 +174,7 @@ func TestPartitionCustomScripts(t *testing.T) {
 		},
 	}
 
-	build, start, manual, err := domain.PartitionCustomScripts(config)
+	build, start, service, manual, err := domain.PartitionCustomScripts(config)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -181,6 +184,9 @@ func TestPartitionCustomScripts(t *testing.T) {
 	if want := []string{"custom-s.sh"}; !slices.Equal(start, want) {
 		t.Errorf("expected start %v, got %v", want, start)
 	}
+	if want := []string{"custom-svc.sh"}; !slices.Equal(service, want) {
+		t.Errorf("expected service %v, got %v", want, service)
+	}
 	if want := []string{"custom-m.sh"}; !slices.Equal(manual, want) {
 		t.Errorf("expected manual %v, got %v", want, manual)
 	}
@@ -189,8 +195,8 @@ func TestPartitionCustomScripts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(all) != 4 {
-		t.Errorf("expected 4 collected scripts, got %d: %v", len(all), all)
+	if len(all) != 5 {
+		t.Errorf("expected 5 collected scripts, got %d: %v", len(all), all)
 	}
 }
 
@@ -200,7 +206,7 @@ func TestPartitionCustomScriptsRejectsInvalid(t *testing.T) {
 			Scripts: []types.CustomScript{{File: "ok.sh", When: "eventually"}},
 		},
 	}
-	if _, _, _, err := domain.PartitionCustomScripts(config); err == nil {
+	if _, _, _, _, err := domain.PartitionCustomScripts(config); err == nil {
 		t.Fatal("expected an error for an unknown 'when'")
 	}
 }
@@ -233,7 +239,7 @@ func TestPartitionCustomScriptsRejectsCollidingBuildNames(t *testing.T) {
 			},
 		},
 	}
-	_, _, _, err := domain.PartitionCustomScripts(config)
+	_, _, _, _, err := domain.PartitionCustomScripts(config)
 	if err == nil {
 		t.Fatal("expected an error for two scripts staged under the same name")
 	}
@@ -249,7 +255,7 @@ func TestPartitionCustomScriptsAllowsExactDuplicates(t *testing.T) {
 			Scripts: []types.CustomScript{{File: "setup.sh"}, {File: "setup.sh"}},
 		},
 	}
-	build, _, _, err := domain.PartitionCustomScripts(config)
+	build, _, _, _, err := domain.PartitionCustomScripts(config)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

@@ -737,12 +737,13 @@ and each value maps onto machinery that already existed:
 | `when` | where it lands | who runs it |
 |---|---|---|
 | `build` | `/tmp/devcontainer-custom-scripts/` in a build layer | a `RUN` in the generated Dockerfile, as devuser, staging dir deleted in the same layer |
-| `start` | `PostScriptStartDir` with a `90-` order prefix | `entrypoint.sh`'s sorted glob, once per container |
+| `start` | `PostScriptStartDir` with a `90-` order prefix | `entrypoint.sh`'s sorted glob, once per container (guarded by `.done` sentinel) |
+| `service` | `PostScriptServicesDir` (`~/post-script/services.d/`) | `entrypoint.sh`'s `stage_services`, in background on EVERY container start (no `.done` sentinel) |
 | `manual` | `PostScriptDir` | nobody — the user runs it |
 
-The `start`/`manual` buckets are folded into `collectPartitionedPostScripts`, so
+The `start`/`service`/`manual` buckets are folded into `collectPartitionedPostScripts`, so
 they share one COPY with the module-provided post-scripts; only `build` gets its
-own block, `customScriptsDockerfileBlock`. `entrypoint.sh` needed no change.
+own block, `customScriptsDockerfileBlock`. `entrypoint.sh` runs `services.d/` scripts in the background via `stage_services`.
 
 Four properties are load-bearing:
 

@@ -74,6 +74,19 @@ func TestGenerateDockerfile_CustomStartScriptRunsAfterModules(t *testing.T) {
 	assertContainsStr(t, df, "start.d/90-custom-last.sh", "custom auto-start script")
 }
 
+// `when: service` lands in services.d/ so the entrypoint runs it in the background
+// on every container start (without a .done sentinel).
+func TestGenerateDockerfile_CustomServiceScript(t *testing.T) {
+	df := mustGenerateDockerfile(t, makeConfig(withScripts(
+		types.CustomScript{File: "daemon.sh", When: types.ScriptWhenService},
+	)))
+
+	assertContainsStr(t, df, "COPY custom-daemon.sh /home/devuser/post-script/services.d/", "custom service script copy")
+	assertContainsStr(t, df, "ln -sfn services.d/custom-daemon.sh /home/devuser/post-script/custom-daemon.sh", "custom service script symlink")
+	assertNotContainsStr(t, df, "/tmp/devcontainer-custom-scripts", "a service script must not run at build time")
+	assertNotContainsStr(t, df, "start.d/", "a service script must not land in start.d")
+}
+
 // `when: manual` only copies the script; nothing ever runs it on its own.
 func TestGenerateDockerfile_CustomManualScript(t *testing.T) {
 	df := mustGenerateDockerfile(t, makeConfig(withScripts(

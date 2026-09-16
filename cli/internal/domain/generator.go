@@ -74,11 +74,11 @@ func renderEnvironmentBlocks(resolved []ResolvedModule) []string {
 }
 
 func postScriptsDockerfileBlock(config *types.DevcontainerConfig) (string, error) {
-	manual, autoStart, err := collectPartitionedPostScripts(config)
+	manual, autoStart, services, err := collectPartitionedPostScripts(config)
 	if err != nil {
 		return "", err
 	}
-	if len(manual) == 0 && len(autoStart) == 0 {
+	if len(manual) == 0 && len(autoStart) == 0 && len(services) == 0 {
 		return "", nil
 	}
 
@@ -105,6 +105,15 @@ func postScriptsDockerfileBlock(config *types.DevcontainerConfig) (string, error
 		}
 		chmodTargets = append(chmodTargets, types.PostScriptStartDir+"/*.sh")
 	}
+	if len(services) > 0 {
+		// Background services the entrypoint runs on every container start
+		// (without a .done sentinel).
+		lines = append(lines, fmt.Sprintf("COPY %s %s/", strings.Join(services, " "), types.PostScriptServicesDir))
+		for _, f := range services {
+			symlinks = append(symlinks, fmt.Sprintf("ln -sfn services.d/%s %s/%s", f, types.PostScriptDir, f))
+		}
+		chmodTargets = append(chmodTargets, types.PostScriptServicesDir+"/*.sh")
+	}
 
 	run := fmt.Sprintf("RUN chown -R devuser:devuser %s && chmod +x %s",
 		types.PostScriptDir, strings.Join(chmodTargets, " "))
@@ -130,7 +139,7 @@ func postScriptsDockerfileBlock(config *types.DevcontainerConfig) (string, error
 // everywhere else in this image) and the staging directory is removed in the
 // same layer, so nothing of it survives into the final image.
 func customScriptsDockerfileBlock(config *types.DevcontainerConfig) (string, error) {
-	build, _, _, err := PartitionCustomScripts(config)
+	build, _, _, _, err := PartitionCustomScripts(config)
 	if err != nil {
 		return "", err
 	}
@@ -163,10 +172,10 @@ type postScriptStart struct {
 // (interactive, left under PostScriptDir) and auto-start (non-interactive
 // installers the entrypoint runs on start), with the auto-start set sorted by
 // run order then filename for deterministic output.
-func collectPartitionedPostScripts(config *types.DevcontainerConfig) (manual []string, autoStart []postScriptStart, err error) {
+func collectPartitionedPostScripts(config *types.DevcontainerConfig) (manual []string, autoStart []postScriptStart, services []string, err error) {
 	resolved, err := ResolveDockerfileModules(config.Dockerfile.Modules)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	seen := make(map[string]bool)
 	for _, r := range resolved {
@@ -189,12 +198,13 @@ func collectPartitionedPostScripts(config *types.DevcontainerConfig) (manual []s
 			}
 		}
 	}
-	// The user's own scripts join the same two buckets: `when: start` is an
+	// The user's own scripts join three buckets: `when: start` is an
 	// auto-start installer (ordered after every module-provided one, so it can
-	// build on them), `when: manual` is left under PostScriptDir to be run by hand.
-	_, customStart, customManual, err := PartitionCustomScripts(config)
+	// build on them), `when: service` is a background daemon started on every boot,
+	// and `when: manual` is left under PostScriptDir to be run by hand.
+	_, customStart, customService, customManual, err := PartitionCustomScripts(config)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	for _, f := range customStart {
 		if seen[f] {
@@ -202,6 +212,13 @@ func collectPartitionedPostScripts(config *types.DevcontainerConfig) (manual []s
 		}
 		seen[f] = true
 		autoStart = append(autoStart, postScriptStart{File: f, Order: types.CustomScriptStartOrder})
+	}
+	for _, f := range customService {
+		if seen[f] {
+			continue
+		}
+		seen[f] = true
+		services = append(services, f)
 	}
 	for _, f := range customManual {
 		if seen[f] {
@@ -217,7 +234,7 @@ func collectPartitionedPostScripts(config *types.DevcontainerConfig) (manual []s
 		}
 		return autoStart[i].File < autoStart[j].File
 	})
-	return manual, autoStart, nil
+	return manual, autoStart, services, nil
 }
 
 func ResolveRemoteImage(variant, registry string) string {

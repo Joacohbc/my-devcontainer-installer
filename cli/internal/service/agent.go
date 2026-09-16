@@ -120,16 +120,17 @@ type AgentAssetInfo struct {
 // AgentPathsInfo are the paths a project always follows, with <workspace>
 // standing in for the project's workspace name.
 type AgentPathsInfo struct {
-	WorkspacePlaceholder string `json:"workspacePlaceholder"`
-	WorkspaceMount       string `json:"workspaceMount"`
-	WorkspaceAlias       string `json:"workspaceAlias"`
-	DevUserHome          string `json:"devUserHome"`
-	ProjectDir           string `json:"projectDir"`
-	ConfigFile           string `json:"configFile"`
-	PostScriptDir        string `json:"postScriptDir"`
-	PostScriptStartDir   string `json:"postScriptStartDir"`
-	DevcontainerName     string `json:"devcontainerName"`
-	ContextFile          string `json:"contextFile"`
+	WorkspacePlaceholder  string `json:"workspacePlaceholder"`
+	WorkspaceMount        string `json:"workspaceMount"`
+	WorkspaceAlias        string `json:"workspaceAlias"`
+	DevUserHome           string `json:"devUserHome"`
+	ProjectDir            string `json:"projectDir"`
+	ConfigFile            string `json:"configFile"`
+	PostScriptDir         string `json:"postScriptDir"`
+	PostScriptStartDir    string `json:"postScriptStartDir"`
+	PostScriptServicesDir string `json:"postScriptServicesDir"`
+	DevcontainerName      string `json:"devcontainerName"`
+	ContextFile           string `json:"contextFile"`
 }
 
 // workspacePlaceholder is the stand-in for the project's workspace name in the
@@ -251,6 +252,10 @@ func agentScriptInfo() AgentScriptInfo {
 			Description: "Run once per container start by the entrypoint, in the background. Use it for anything that depends on the running container rather than the image.",
 			Location:    types.PostScriptStartDir,
 		},
+		types.ScriptWhenService: {
+			Description: "Run in the background on every container start (without a .done sentinel). Use it for long-running services, daemons, and background workers.",
+			Location:    types.PostScriptServicesDir,
+		},
 		types.ScriptWhenManual: {
 			Description: "Only copied into the container; nobody runs it for you.",
 			Location:    types.PostScriptDir,
@@ -289,16 +294,17 @@ func agentAssets() []AgentAssetInfo {
 
 func agentPaths() AgentPathsInfo {
 	return AgentPathsInfo{
-		WorkspacePlaceholder: workspacePlaceholder,
-		WorkspaceMount:       types.WorkspaceDir(workspacePlaceholder),
-		WorkspaceAlias:       types.WorkspaceAlias(workspacePlaceholder),
-		DevUserHome:          types.DevUserHome,
-		ProjectDir:           ".dc_" + workspacePlaceholder + "/",
-		ConfigFile:           "devcontainer.config.json",
-		PostScriptDir:        types.PostScriptDir,
-		PostScriptStartDir:   types.PostScriptStartDir,
-		DevcontainerName:     workspacePlaceholder + "-" + sshdefaults.ServiceName,
-		ContextFile:          types.DevUserHome + "/CONTEXT.md",
+		WorkspacePlaceholder:  workspacePlaceholder,
+		WorkspaceMount:        types.WorkspaceDir(workspacePlaceholder),
+		WorkspaceAlias:        types.WorkspaceAlias(workspacePlaceholder),
+		DevUserHome:           types.DevUserHome,
+		ProjectDir:            ".dc_" + workspacePlaceholder + "/",
+		ConfigFile:            "devcontainer.config.json",
+		PostScriptDir:         types.PostScriptDir,
+		PostScriptStartDir:    types.PostScriptStartDir,
+		PostScriptServicesDir: types.PostScriptServicesDir,
+		DevcontainerName:      workspacePlaceholder + "-" + sshdefaults.ServiceName,
+		ContextFile:           types.DevUserHome + "/CONTEXT.md",
 	}
 }
 

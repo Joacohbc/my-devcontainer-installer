@@ -238,6 +238,7 @@ func TestGenerateContext_CustomScripts(t *testing.T) {
 		c.Dockerfile.Scripts = []types.CustomScript{
 			{File: "install-terraform.sh"},
 			{File: "vpn-login.sh", When: types.ScriptWhenStart},
+			{File: "daemon.sh", When: types.ScriptWhenService},
 			{File: "reset-db.sh", When: types.ScriptWhenManual},
 		}
 	})
@@ -249,6 +250,7 @@ func TestGenerateContext_CustomScripts(t *testing.T) {
 	assertContainsStr(t, doc, "## Project scripts", "custom scripts section")
 	assertContainsStr(t, doc, "`custom-install-terraform.sh`", "build script")
 	assertContainsStr(t, doc, "/home/devuser/post-script/custom-vpn-login.sh", "start script")
+	assertContainsStr(t, doc, "/home/devuser/post-script/services.d/custom-daemon.sh", "service script")
 	assertContainsStr(t, doc, "/home/devuser/post-script/custom-reset-db.sh", "manual script")
 }
 
