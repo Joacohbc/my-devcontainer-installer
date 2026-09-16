@@ -275,6 +275,28 @@ stage_post_scripts() {
     ' &
 }
 
+# Services under post-script/services.d/ are long-running background daemons
+# or processes that start on EVERY container boot (unlike start.d, these are not
+# guarded by .done sentinels). Each service script is run as devuser in the
+# background via a login shell (bash -l) with stdout/stderr sent to
+# ~/.post-script-state/<name>.log. The entire stage is backgrounded so SSH comes
+# up immediately without waiting.
+stage_services() {
+    [ -d "$DEV_HOME/post-script/services.d" ] || return 0
+    su - devuser -s /bin/bash -c '
+        services_dir="$HOME/post-script/services.d"
+        state_dir="$HOME/.post-script-state"
+        mkdir -p "$state_dir"
+        for script in "$services_dir"/*.sh; do
+            [ -e "$script" ] || continue
+            name="$(basename "$script")"
+            log="$state_dir/$name.log"
+            echo "services: starting $name as $(id -un) (log: $log)"
+            nohup bash -l "$script" > "$log" 2>&1 &
+        done
+    ' &
+}
+
 # ── The order ───────────────────────────────────────────────────────────────
 
 main() {
@@ -285,6 +307,7 @@ main() {
     stage_user_aliases
     stage_context_skill
     stage_post_scripts
+    stage_services
 
     # sshd is exec'd, not backgrounded: it must be PID 1 so a `docker stop`
     # reaches it and the container's lifetime is its lifetime.

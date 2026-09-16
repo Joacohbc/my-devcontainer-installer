@@ -178,17 +178,17 @@ func ReadCustomScript(s types.CustomScript) ([]byte, error) {
 // name, whatever its `when`. It is the list the build directory must contain
 // and that feeds the image fingerprint.
 func CollectCustomScriptFiles(config *types.DevcontainerConfig) ([]string, error) {
-	build, start, manual, err := PartitionCustomScripts(config)
+	build, start, service, manual, err := PartitionCustomScripts(config)
 	if err != nil {
 		return nil, err
 	}
-	return slices.Concat(build, start, manual), nil
+	return slices.Concat(build, start, service, manual), nil
 }
 
 // PartitionCustomScripts splits the configured scripts by when they run. The
 // names returned are build-dir names (already prefixed), which is what both the
 // Dockerfile and the build directory use.
-func PartitionCustomScripts(config *types.DevcontainerConfig) (build, start, manual []string, err error) {
+func PartitionCustomScripts(config *types.DevcontainerConfig) (build, start, service, manual []string, err error) {
 	// Keyed by build-dir name so the check catches the one pair that is not an
 	// exact duplicate: `x.sh` and `custom-x.sh` both resolve to `custom-x.sh`,
 	// and letting that through would silently drop one script and build an image
@@ -196,12 +196,12 @@ func PartitionCustomScripts(config *types.DevcontainerConfig) (build, start, man
 	seen := map[string]string{}
 	for _, s := range config.Dockerfile.Scripts {
 		if err := ValidateCustomScript(s); err != nil {
-			return nil, nil, nil, err
+			return nil, nil, nil, nil, err
 		}
 		name := s.BuildFile()
 		if prev, ok := seen[name]; ok {
 			if prev != s.File {
-				return nil, nil, nil, fmt.Errorf("custom scripts %q and %q collide: both are staged as %q — rename one", prev, s.File, name)
+				return nil, nil, nil, nil, fmt.Errorf("custom scripts %q and %q collide: both are staged as %q — rename one", prev, s.File, name)
 			}
 			continue
 		}
@@ -209,11 +209,13 @@ func PartitionCustomScripts(config *types.DevcontainerConfig) (build, start, man
 		switch s.ResolvedWhen() {
 		case types.ScriptWhenStart:
 			start = append(start, name)
+		case types.ScriptWhenService:
+			service = append(service, name)
 		case types.ScriptWhenManual:
 			manual = append(manual, name)
 		default:
 			build = append(build, name)
 		}
 	}
-	return build, start, manual, nil
+	return build, start, service, manual, nil
 }

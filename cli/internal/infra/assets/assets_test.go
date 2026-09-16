@@ -524,6 +524,35 @@ func TestEntrypointAutoStartRunsAsDevuser(t *testing.T) {
 	}
 }
 
+// Background services under post-script/services.d must run as devuser (never root)
+// on every container start, in the background, without a .done sentinel.
+func TestEntrypointServicesRunAsDevuser(t *testing.T) {
+	body, err := os.ReadFile(embeddedScript)
+	if err != nil {
+		t.Fatalf("reading %s: %v", embeddedScript, err)
+	}
+	script := string(body)
+	if !strings.Contains(script, `"$DEV_HOME/post-script/services.d"`) {
+		t.Error("entrypoint must run the services.d scripts")
+	}
+	if !strings.Contains(script, "stage_services") {
+		t.Error("entrypoint must have stage_services")
+	}
+	stageServicesFunc := extractShellFunc(t, script, "stage_services")
+	if !strings.Contains(stageServicesFunc, "su - devuser -s /bin/bash -c") {
+		t.Error("stage_services must run services as devuser (su - devuser)")
+	}
+	if strings.Contains(stageServicesFunc, ".done") {
+		t.Error("stage_services must not guard runs with a .done sentinel")
+	}
+	if !strings.Contains(stageServicesFunc, `nohup bash -l "$script" > "$log" 2>&1 &`) {
+		t.Error("stage_services must run scripts in the background via nohup bash -l ... &")
+	}
+	if !strings.Contains(stageServicesFunc, "' &\n}") {
+		t.Error("stage_services must background the service loop so SSH comes up immediately")
+	}
+}
+
 // install-graphify.sh must wire Graphify into every supported agent present in
 // the container (global scope, never --project) and detect/skip absent ones.
 func TestGraphifyInstallWiresAllPlatforms(t *testing.T) {
@@ -1121,6 +1150,8 @@ func TestEntrypointStageOrder(t *testing.T) {
 			"a local ~/.alias.sh created first would win the race against the volume symlink"},
 		{"stage_shared_config", "stage_context_skill",
 			"~/.claude must already be the volume symlink, or mkdir -p makes it a real directory"},
+		{"stage_post_scripts", "stage_services",
+			"installer scripts run before background services so dependencies are installed first"},
 	} {
 		i, iOK := at[edge.before]
 		j, jOK := at[edge.after]

@@ -387,6 +387,8 @@ func scriptWhenLabel(w types.ScriptWhen) string {
 	switch w {
 	case types.ScriptWhenStart:
 		return "start — run once per container on start"
+	case types.ScriptWhenService:
+		return "service — run in background on every container start"
 	case types.ScriptWhenManual:
 		return "manual — only copy it to ~/post-script/"
 	default:

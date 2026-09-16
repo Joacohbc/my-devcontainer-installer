@@ -77,6 +77,10 @@ const PostScriptDir = DevUserHome + "/post-script"
 // graphify/caveman last). Manual/interactive scripts stay under PostScriptDir.
 const PostScriptStartDir = PostScriptDir + "/start.d"
 
+// PostScriptServicesDir holds background service scripts the entrypoint runs
+// automatically on every container start (without a .done sentinel).
+const PostScriptServicesDir = PostScriptDir + "/services.d"
+
 // DefaultPostScriptStartOrder is the run-order prefix used for auto-start
 // scripts whose module does not set an explicit PostScriptStartOrder.
 const DefaultPostScriptStartOrder = 50
@@ -294,13 +298,16 @@ const (
 	// ScriptWhenStart lands in PostScriptStartDir, which the entrypoint runs
 	// once per container on start (state is kept in ~/.post-script-state).
 	ScriptWhenStart ScriptWhen = "start"
+	// ScriptWhenService lands in PostScriptServicesDir, which the entrypoint runs
+	// in the background on every container start (without a .done sentinel).
+	ScriptWhenService ScriptWhen = "service"
 	// ScriptWhenManual only copies the script into PostScriptDir; the user runs
 	// it themselves, like the interactive login helpers.
 	ScriptWhenManual ScriptWhen = "manual"
 )
 
 // ScriptWhens is every accepted ScriptWhen, in the order they are offered.
-var ScriptWhens = []ScriptWhen{ScriptWhenBuild, ScriptWhenStart, ScriptWhenManual}
+var ScriptWhens = []ScriptWhen{ScriptWhenBuild, ScriptWhenStart, ScriptWhenService, ScriptWhenManual}
 
 // DefaultScriptWhen is what an entry that omits `when` gets.
 const DefaultScriptWhen = ScriptWhenBuild

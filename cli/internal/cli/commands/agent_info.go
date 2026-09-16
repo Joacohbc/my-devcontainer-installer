@@ -250,6 +250,7 @@ func printAgentPaths(info service.AgentInfo) {
 		{"generated files", p.ProjectDir},
 		{"project config", p.ConfigFile},
 		{"start scripts", p.PostScriptStartDir},
+		{"service scripts", p.PostScriptServicesDir},
 		{"manual scripts", p.PostScriptDir},
 		{"devcontainer name", p.DevcontainerName},
 	}

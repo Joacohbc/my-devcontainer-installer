@@ -57,8 +57,8 @@ func GenerateContext(config *types.DevcontainerConfig) (string, error) {
 // script or wait for a manual one to have happened by itself. Nil when the
 // project brought no scripts, which is the common case.
 func customScriptsContextSection(config *types.DevcontainerConfig) *types.ContextSection {
-	build, start, manual, err := PartitionCustomScripts(config)
-	if err != nil || len(build)+len(start)+len(manual) == 0 {
+	build, start, service, manual, err := PartitionCustomScripts(config)
+	if err != nil || len(build)+len(start)+len(service)+len(manual) == 0 {
 		return nil
 	}
 
@@ -75,6 +75,13 @@ func customScriptsContextSection(config *types.DevcontainerConfig) *types.Contex
 		lines = append(lines, "Run once per container on start, by the entrypoint (logs under `~/.post-script-state`):\n")
 		for _, f := range start {
 			lines = append(lines, "- `"+types.PostScriptDir+"/"+f+"`")
+		}
+		lines = append(lines, "")
+	}
+	if len(service) > 0 {
+		lines = append(lines, "Run in background on every container start as services (logs under `~/.post-script-state`):\n")
+		for _, f := range service {
+			lines = append(lines, "- `"+types.PostScriptServicesDir+"/"+f+"`")
 		}
 		lines = append(lines, "")
 	}

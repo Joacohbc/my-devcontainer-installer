@@ -67,7 +67,7 @@ func TestPrepareBuildDirMaterializesCustomScripts(t *testing.T) {
 // Editing the script must change what the fingerprint sees, whatever `when` it
 // runs at — a start script changes the image too, since it is COPYed into it.
 func TestPrepareBuildDirCustomScriptFeedsFingerprint(t *testing.T) {
-	for _, when := range []types.ScriptWhen{types.ScriptWhenBuild, types.ScriptWhenStart, types.ScriptWhenManual} {
+	for _, when := range types.ScriptWhens {
 		t.Run(string(when), func(t *testing.T) {
 			profileDir := t.TempDir()
 			src := writeScript(t, profileDir, "setup.sh", "#!/bin/sh\necho one\n")
@@ -331,10 +331,14 @@ func TestWhenOptionMatchesTheParsedWhen(t *testing.T) {
 	choices := []service.Option{
 		{Value: string(types.ScriptWhenBuild)},
 		{Value: string(types.ScriptWhenStart)},
+		{Value: string(types.ScriptWhenService)},
 		{Value: string(types.ScriptWhenManual)},
 	}
 	if got := whenOption(choices, types.ScriptWhenStart); got.Value != string(types.ScriptWhenStart) {
 		t.Errorf("expected the picker to open on start, got %q", got.Value)
+	}
+	if got := whenOption(choices, types.ScriptWhenService); got.Value != string(types.ScriptWhenService) {
+		t.Errorf("expected the picker to open on service, got %q", got.Value)
 	}
 	// An unknown value falls back to the first choice rather than panicking.
 	if got := whenOption(choices, "someday"); got.Value != string(types.ScriptWhenBuild) {
