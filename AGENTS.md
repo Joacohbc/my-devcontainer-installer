@@ -571,7 +571,8 @@ in one readable list:
 
 ```
 stage_users → stage_workspace → stage_identity → stage_shared_config
-  → stage_user_aliases → stage_context_skill → stage_post_scripts → exec sshd
+  → stage_user_aliases → stage_context_skill → stage_post_scripts
+  → stage_services → exec sshd
 ```
 
 They are functions in one shell, not separate processes, because they share

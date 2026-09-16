@@ -213,20 +213,16 @@ func collectPartitionedPostScripts(config *types.DevcontainerConfig) (manual []s
 		seen[f] = true
 		autoStart = append(autoStart, postScriptStart{File: f, Order: types.CustomScriptStartOrder})
 	}
-	for _, f := range customService {
-		if seen[f] {
-			continue
+	appendUnseen := func(dst *[]string, src []string) {
+		for _, f := range src {
+			if !seen[f] {
+				seen[f] = true
+				*dst = append(*dst, f)
+			}
 		}
-		seen[f] = true
-		services = append(services, f)
 	}
-	for _, f := range customManual {
-		if seen[f] {
-			continue
-		}
-		seen[f] = true
-		manual = append(manual, f)
-	}
+	appendUnseen(&services, customService)
+	appendUnseen(&manual, customManual)
 
 	sort.Slice(autoStart, func(i, j int) bool {
 		if autoStart[i].Order != autoStart[j].Order {
