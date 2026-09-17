@@ -57,7 +57,10 @@ const legacyTunnelService = "tunnel"
 // "cloudflared" Dockerfile module, which installs the same binary inside the
 // devcontainer instead of beside it. Without this an older config would fail to
 // generate ("unknown compose service: tunnel"). The project's TUNNEL_TOKEN is
-// left untouched in cfg.Env — the module reads the same variable.
+// left untouched in cfg.Env, so it still reaches the generated .env — but
+// nothing injects it into the container any more: the module declares no
+// RequiresEnv, and a token is handed to `cloudflared tunnel run --token` inside
+// the container instead.
 func migrateTunnel(cfg *types.DevcontainerConfig) {
 	remainingServices, hadTunnelService := removeService(cfg.Compose.Services, legacyTunnelService)
 	if !hadTunnelService {

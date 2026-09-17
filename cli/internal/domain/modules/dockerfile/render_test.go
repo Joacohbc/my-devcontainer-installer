@@ -405,24 +405,12 @@ func TestCloudflaredModuleRender(t *testing.T) {
 	if !strings.Contains(out, "signed-by=/etc/apt/keyrings/cloudflare-main.gpg") {
 		t.Errorf("cloudflared apt list must be signed by the installed keyring:\n%s", out)
 	}
-	// The declared env var is what the generator passes through to the container
-	// and what the wizard prompts for; without it the token can never arrive.
-	if len(dockerfile.CloudflaredModule.RequiresEnv) != 1 {
-		t.Fatalf("cloudflared must declare exactly its token env var, got %v", dockerfile.CloudflaredModule.RequiresEnv)
-	}
-	env := dockerfile.CloudflaredModule.RequiresEnv[0]
-	// The name must stay TUNNEL_TOKEN: it is what the removed tunnel service used,
-	// so a migrated project's existing .env keeps working.
-	if dockerfile.TunnelTokenEnv != "TUNNEL_TOKEN" {
-		t.Errorf("TunnelTokenEnv = %q, want TUNNEL_TOKEN", dockerfile.TunnelTokenEnv)
-	}
-	if env.Name != dockerfile.TunnelTokenEnv {
-		t.Errorf("cloudflared env var = %q, want %q", env.Name, dockerfile.TunnelTokenEnv)
-	}
-	// An empty token is a supported answer, so it must carry no Default that
-	// would silently pre-fill the prompt.
-	if env.Default != "" {
-		t.Errorf("TUNNEL_TOKEN must have no default, got %q", env.Default)
+	// The module asks for no env var: a connector token is given to
+	// `cloudflared tunnel run --token` inside the container, never prompted for by
+	// the wizard and never injected by compose, so it stays out of the project's
+	// .env and out of the generated compose file.
+	if len(dockerfile.CloudflaredModule.RequiresEnv) != 0 {
+		t.Errorf("cloudflared must declare no env var, got %v", dockerfile.CloudflaredModule.RequiresEnv)
 	}
 	// The context has to name all three ways to run a tunnel, since which one
 	// applies depends on whether the user supplied a token — and an agent that
@@ -433,8 +421,7 @@ func TestCloudflaredModuleRender(t *testing.T) {
 		t.Fatal("cloudflared must document itself for agents")
 	}
 	for _, frag := range []string{
-		"TUNNEL_TOKEN",
-		"cloudflared tunnel run",
+		"cloudflared tunnel run --token",
 		"cloudflared tunnel login",
 		"cloudflared tunnel --url",
 		"trycloudflare.com",

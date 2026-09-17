@@ -8,8 +8,32 @@ import (
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/catalog"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/modules/dockerfile"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 )
+
+// envModuleID is the id of the module withEnvModule registers.
+const envModuleID = types.ModuleID("test-env-module")
+
+// withEnvModule adds a pickable module declaring a RequiresEnv var to the
+// catalog for the duration of the test. No shipped module declares one —
+// cloudflared, the last that did, now takes its token inside the container — so
+// the wizard's env step is exercised against a module defined here.
+func withEnvModule(t *testing.T) {
+	t.Helper()
+	original := catalog.DockerfileModules
+	catalog.DockerfileModules = append(append([]*dockerfile.ModuleSpec{}, original...), &dockerfile.ModuleSpec{
+		ID:         envModuleID,
+		Label:      "Test env module",
+		Category:   types.CategoryInfra,
+		UICategory: types.UICategoryDevTools,
+		RequiresEnv: []types.RequiredEnvVar{
+			{Name: "TEST_TOKEN", Prompt: "Test token (optional)"},
+		},
+		Render: func(map[string]any) string { return "" },
+	})
+	t.Cleanup(func() { catalog.DockerfileModules = original })
+}
 
 func TestConfigureReducesWizardAnswers(t *testing.T) {
 	defer useFakeDocker(&fakeRunner{status: 0})()
@@ -451,10 +475,54 @@ func TestConfigureSavesAlwaysOnModuleOptions(t *testing.T) {
 	}
 }
 
-// Env vars are declared by Dockerfile modules too (cloudflared's TUNNEL_TOKEN),
-// not only by compose services, so selecting the module must raise the prompt
-// and store the answer in the project's .env.
+// Env vars are declared by Dockerfile modules too, not only by compose
+// services, so selecting such a module must raise the prompt and store the
+// answer in the project's .env.
 func TestConfigurePromptsModuleEnvVars(t *testing.T) {
+	defer useFakeDocker(&fakeRunner{status: 0})()
+	withEnvModule(t)
+
+	svc := GenerateService{Report: nopReporter{}}
+	prompter := scriptedPrompter{answers: map[string]any{
+		stepKeyWorkspace: "ws",
+		stepKeyMode:      string(types.BuildModeCustom),
+		stepKeySubnet:    "172.46.0.0/16",
+		categoryStepKey(types.UICategoryDevTools): []string{string(envModuleID)},
+		envStepKey("TEST_TOKEN"):                  "tok-123",
+	}}
+
+	cfg, err := svc.Configure(&types.DevcontainerConfig{Env: map[string]string{}}, "/home/user/proj", prompter)
+	if err != nil {
+		t.Fatalf("Configure: %v", err)
+	}
+	if cfg.Env["TEST_TOKEN"] != "tok-123" {
+		t.Errorf("Env[TEST_TOKEN] = %q, want tok-123 (env = %v)", cfg.Env["TEST_TOKEN"], cfg.Env)
+	}
+
+	// An empty answer is a supported state: the module stays selected but no
+	// value is written to the .env.
+	prompter.answers[envStepKey("TEST_TOKEN")] = ""
+	cfg, err = svc.Configure(&types.DevcontainerConfig{Env: map[string]string{}}, "/home/user/proj", prompter)
+	if err != nil {
+		t.Fatalf("Configure: %v", err)
+	}
+	if _, ok := cfg.Env["TEST_TOKEN"]; ok {
+		t.Errorf("an empty answer must stay out of the .env, got %v", cfg.Env)
+	}
+	selected := false
+	for _, m := range cfg.Dockerfile.Modules {
+		if m.ID == envModuleID {
+			selected = true
+		}
+	}
+	if !selected {
+		t.Errorf("the module must stay selected without a value, got %v", cfg.Dockerfile.Modules)
+	}
+}
+
+// Selecting cloudflared must raise no env prompt at all: the connector token is
+// given to `cloudflared tunnel run --token` inside the container.
+func TestConfigureAsksNothingForCloudflared(t *testing.T) {
 	defer useFakeDocker(&fakeRunner{status: 0})()
 
 	svc := GenerateService{Report: nopReporter{}}
@@ -463,35 +531,14 @@ func TestConfigurePromptsModuleEnvVars(t *testing.T) {
 		stepKeyMode:      string(types.BuildModeCustom),
 		stepKeySubnet:    "172.46.0.0/16",
 		categoryStepKey(types.UICategoryDevTools): []string{string(types.ModuleCloudflared)},
-		envStepKey("TUNNEL_TOKEN"):                "tok-123",
 	}}
 
 	cfg, err := svc.Configure(&types.DevcontainerConfig{Env: map[string]string{}}, "/home/user/proj", prompter)
 	if err != nil {
 		t.Fatalf("Configure: %v", err)
 	}
-	if cfg.Env["TUNNEL_TOKEN"] != "tok-123" {
-		t.Errorf("Env[TUNNEL_TOKEN] = %q, want tok-123 (env = %v)", cfg.Env["TUNNEL_TOKEN"], cfg.Env)
-	}
-
-	// Leaving the token empty is the "log in from inside the container" path: the
-	// module stays selected but no value is written to the .env.
-	prompter.answers[envStepKey("TUNNEL_TOKEN")] = ""
-	cfg, err = svc.Configure(&types.DevcontainerConfig{Env: map[string]string{}}, "/home/user/proj", prompter)
-	if err != nil {
-		t.Fatalf("Configure: %v", err)
-	}
-	if _, ok := cfg.Env["TUNNEL_TOKEN"]; ok {
-		t.Errorf("an empty token must stay out of the .env, got %v", cfg.Env)
-	}
-	selected := false
-	for _, m := range cfg.Dockerfile.Modules {
-		if m.ID == types.ModuleCloudflared {
-			selected = true
-		}
-	}
-	if !selected {
-		t.Errorf("cloudflared must stay selected without a token, got %v", cfg.Dockerfile.Modules)
+	if len(cfg.Env) != 0 {
+		t.Errorf("cloudflared must contribute no env var, got %v", cfg.Env)
 	}
 }
 
