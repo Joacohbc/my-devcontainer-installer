@@ -93,12 +93,21 @@ Two properties are load-bearing:
   reaches the `.env` and arrives empty in the container (the `${NAME:-}` default
   keeps compose from warning about it). A module must therefore treat "unset" as
   a supported state, and the module's `Context` has to say what that state *is*
-  rather than treating it as an error — for `cloudflared`, an empty token still
-  leaves the free no-account quick tunnel (`cloudflared tunnel --url …`) and
-  `cloudflared tunnel login`.
+  rather than treating it as an error.
 - **The var is passed, never baked.** It is a compose `environment:` entry, not a
-  Dockerfile `ENV`/`ARG`, so the token stays out of the image and out of the
-  fingerprint — two projects with different tokens still share one image.
+  Dockerfile `ENV`/`ARG`, so the secret stays out of the image and out of the
+  fingerprint — two projects with different values still share one image.
+
+**No shipped module declares one right now.** `cloudflared` was the last, with
+`TUNNEL_TOKEN`; it no longer does, because a connector token is only one of the
+three ways to run a tunnel and the other two need no value from the host at all
+— `cloudflared tunnel run --token <token>` inside the container is the whole of
+what the prompt bought. The mechanism stays (compose services can declare vars
+too, and the next module that genuinely needs one should use it); it is covered
+by tests that register a module of their own in the catalog, in
+`domain/generator_test.go` and `service/generate_wizard_test.go`. Reach for it
+only when the value must come from the *host* per project — not for something
+the user can hand to a command inside the container.
 
 ---
 

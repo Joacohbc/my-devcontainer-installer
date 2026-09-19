@@ -25,14 +25,23 @@ Hay **tres** formas de levantar un túnel, de menos a más configuración:
     puerto al instante. La URL es **efímera**: se muere con el proceso y cambia
     en cada ejecución, así que sirve para una demo puntual o probar un webhook,
     no como dirección estable.
-*   **Túnel con nombre, con token**: el wizard pregunta por el `TUNNEL_TOKEN` al
-    seleccionar el módulo. Lo que respondas se guarda en el `.env` del proyecto y
-    llega al contenedor como variable de entorno, así que `cloudflared tunnel
-    run` ya queda autorizado. Es el único que da una URL fija y es el que usa el
-    resto de esta guía (Red Privada + WARP).
-*   **Túnel con nombre, sin token**: deja la respuesta del wizard vacía y haz el
-    login desde dentro del contenedor con `cloudflared tunnel login` (el
-    certificado queda en `~/.cloudflared`).
+*   **Túnel con nombre, con token de connector**: pasa el token al comando
+    dentro del contenedor,
+
+    ```bash
+    cloudflared tunnel run --token <token>
+    ```
+
+    y el connector queda autorizado contra el túnel que creaste en el dashboard.
+    Es el único que da una URL fija y es el que usa el resto de esta guía (Red
+    Privada + WARP). **La CLI no pregunta por ese token ni lo inyecta**: no hay
+    variable de entorno que rellenar, el token se da aquí (o se exporta a mano
+    como `TUNNEL_TOKEN` en la sesión, que es lo que lee `cloudflared` cuando
+    omites la bandera).
+*   **Túnel con nombre, sin token**: haz el login desde dentro del contenedor con
+    `cloudflared tunnel login` (el certificado queda en `~/.cloudflared`). Es
+    además el único camino que autoriza los comandos de cuenta como
+    `cloudflared tunnel route ip add`.
 
 > **⚠️ Los tres exponen el puerto a internet sin ninguna autenticación por
 > delante**, quick tunnels incluidos: cualquiera con la URL llega a tu servicio.
@@ -43,8 +52,9 @@ Hay **tres** formas de levantar un túnel, de menos a más configuración:
 >
 > Versiones anteriores lo ofrecían como servicio de compose (`--service tunnel`),
 > que levantaba un contenedor `cloudflared` aparte. Ese servicio ya no existe: al
-> abrir un proyecto viejo la CLI lo convierte sola al módulo y conserva el
-> `TUNNEL_TOKEN` del `.env`.
+> abrir un proyecto viejo la CLI lo convierte sola al módulo. El `TUNNEL_TOKEN`
+> que tuvieras en el `.env` sigue ahí y no se toca, pero ya **no** se pasa al
+> contenedor: cópialo a `cloudflared tunnel run --token <token>`.
 
 ## 1. Configuración de Red (Opcional)
 
@@ -57,10 +67,12 @@ La CLI escribe algo como:
 ```bash
 DOCKER_SUBNET=172.25.0.0/28
 DEVCONTAINER_IP=172.25.0.14   # último host válido de la subred
-TUNNEL_TOKEN=tu_token_aqui    # solo si diste un token al módulo 'cloudflared'
 ```
 
-*   **TUNNEL_TOKEN**: Tu token de Cloudflare Tunnel (la CLI lo pregunta al seleccionar el módulo `cloudflared`; si lo dejas vacío no se escribe y usas `cloudflared tunnel login`).
+> **Nota:** el `.env` de un proyecto viejo puede traer todavía un `TUNNEL_TOKEN`.
+> La CLI ya no pregunta por él ni lo pasa al contenedor; queda ahí como dato
+> tuyo, para copiarlo a `cloudflared tunnel run --token`.
+
 *   **DOCKER_SUBNET**: Rango que usará Docker. Default `172.25.0.0/28` (16 IPs). La CLI detecta colisiones y sugiere otra subred libre si hace falta.
 *   **DEVCONTAINER_IP**: IP fija reservada para el contenedor SSH, derivada de la subred. Útil porque queda estable entre reinicios.
 
@@ -75,6 +87,91 @@ Una vez definida tu red (o usando el valor por defecto `172.25.0.0/28`), debes i
 3.  Ve a la pestaña **Private Network**.
 4.  Añade el CIDR exacto que aparece en tu `.env` (ej: **`172.25.0.0/28`**).
 5.  Guarda los cambios.
+
+> **No configures ningún *Public Hostname* en ese túnel.** Es lo único que lo
+> mantiene fuera de internet: la Private Network no crea DNS ni ruta pública, y
+> un Public Hostname sí (y queda abierto a cualquiera, salvo que le pongas una
+> policy de Access delante).
+
+### Alternativa: hacerlo por comando (`cloudflared tunnel route ip`)
+
+Los pasos 1-5 tienen equivalente en CLI, así que la ruta se puede crear (y
+verificar) sin abrir el dashboard. Como el módulo `cloudflared` vive **dentro**
+del devcontainer, el comando se lanza a través de la CLI:
+
+```bash
+devcontainer-cli agent exec -w -- \
+  cloudflared tunnel route ip add 172.25.0.0/28 <tunnel-name-o-uuid>
+```
+
+El CIDR es el `DOCKER_SUBNET` de tu `.env`; `<tunnel-name-o-uuid>` es el túnel
+que ya creaste en el dashboard (o con `cloudflared tunnel create`).
+
+El resto de subcomandos:
+
+| Comando | Qué hace |
+|---|---|
+| `cloudflared tunnel route ip show` | Lista las rutas de la cuenta (alias: `list`) |
+| `cloudflared tunnel route ip get <IP>` | Dice qué túnel sirve esa IP |
+| `cloudflared tunnel route ip delete <CIDR>` | Borra la ruta |
+
+Si usas *virtual networks* para separar subredes que se solapan entre proyectos,
+todos aceptan `--vnet <nombre>`:
+
+```bash
+cloudflared tunnel route ip add --vnet proyecto-a 172.25.0.0/28 mi-tunel
+```
+
+#### Requiere el certificado de origen, no el token del connector
+
+Esto es lo que más confunde: `route ip` es una operación de **gestión a nivel
+cuenta**, y se autentica con el *origin certificate* (`~/.cloudflared/cert.pem`),
+no con el token del connector. Ese token solo autoriza **correr** el túnel; con
+él solo, `route ip add` falla por credenciales.
+
+Para obtener el certificado, desde dentro del contenedor:
+
+```bash
+devcontainer-cli agent exec -w -- cloudflared tunnel login
+```
+
+Imprime una URL: ábrela en el navegador del host, elige la cuenta/zona, y el
+certificado queda en `~/.cloudflared/cert.pem` **dentro del contenedor**. Si lo
+tienes en otra ruta, pásalo con `--origincert <path>`.
+
+> **⚠️ Ese certificado no sobrevive a un recreate.** `~/.cloudflared` no es una
+> entrada del volumen de configuración compartida (`types.SharedConfigEntries`),
+> así que vive en la capa escribible del contenedor: aguanta `stop`/`start`, pero
+> `destroy` o cualquier rebuild lo borran y hay que repetir el login.
+
+En la práctica eso importa menos de lo que parece, porque **la ruta es estado de
+tu cuenta de Cloudflare, no del contenedor**: se crea una vez y sigue viva aunque
+el `cert.pem` desaparezca, y el connector arranca con `tunnel run --token` sin
+necesitar el certificado para nada. Si aun así quieres automatizarlo (recrear el
+proyecto y que la ruta se registre sola), usa la API REST —
+`POST /accounts/{account_id}/teamnet/routes` con un API token de cuenta con
+permiso *Cloudflare Tunnel: Edit* — que no depende de ningún archivo dentro del
+contenedor.
+
+#### Un CIDR, un túnel
+
+Cloudflare no admite dos rutas con el mismo CIDR en la misma cuenta (o en la
+misma virtual network). La CLI elige una subred libre **en tu host**, no en tu
+cuenta de Cloudflare, así que dos proyectos pueden salir ambos con
+`172.25.0.0/28` y el segundo `route ip add` va a fallar. Fija un `DOCKER_SUBNET`
+distinto en el `.env` de cada proyecto antes del primer `up`, o sepáralos con
+`--vnet`.
+
+#### Verificar
+
+```bash
+devcontainer-cli agent exec -w -- cloudflared tunnel route ip show
+```
+
+La ruta debe aparecer apuntando a tu túnel. Lo que mantiene el acceso **privado**
+es que ese túnel no tenga ningún *Public Hostname* configurado: la Private
+Network no crea DNS ni ruta pública, solo la alcanzan los dispositivos con WARP
+enrolado en tu organización (paso 3).
 
 ## 3. Configurar Cliente WARP (Split Tunnels)
 

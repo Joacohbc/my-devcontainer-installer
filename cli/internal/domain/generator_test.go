@@ -8,8 +8,34 @@ import (
 
 	"github.com/goccy/go-yaml"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/catalog"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/modules/dockerfile"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 )
+
+// envModuleID is the id of the module withEnvModule registers.
+const envModuleID = types.ModuleID("test-env-module")
+
+// withEnvModule adds a module declaring a RequiresEnv var to the catalog for the
+// duration of the test. No shipped module declares one — cloudflared, the last
+// that did, now takes its token inside the container — so the pass-through is
+// exercised against a module defined here rather than against whichever module
+// happens to want an env var next.
+func withEnvModule(t *testing.T) {
+	t.Helper()
+	original := catalog.DockerfileModules
+	catalog.DockerfileModules = append(append([]*dockerfile.ModuleSpec{}, original...), &dockerfile.ModuleSpec{
+		ID:         envModuleID,
+		Label:      "Test env module",
+		Category:   types.CategoryInfra,
+		UICategory: types.UICategoryDevTools,
+		RequiresEnv: []types.RequiredEnvVar{
+			{Name: "TEST_TOKEN", Prompt: "Test token (optional)"},
+		},
+		Render: func(map[string]any) string { return "" },
+	})
+	t.Cleanup(func() { catalog.DockerfileModules = original })
+}
 
 func makeConfig(overrides ...func(*types.DevcontainerConfig)) *types.DevcontainerConfig {
 	cfg := &types.DevcontainerConfig{
@@ -1192,8 +1218,9 @@ func TestGenerateCompose_RemovedTunnelServiceErrorPointsAtTheModule(t *testing.T
 // A module's RequiresEnv must reach the devcontainer container, with a "${X:-}"
 // default so an unset token is an empty value rather than a compose warning.
 func TestGenerateCompose_ModuleEnvReachesDevcontainer(t *testing.T) {
+	withEnvModule(t)
 	cfg := makeConfig(func(c *types.DevcontainerConfig) {
-		c.Dockerfile.Modules = []types.SelectedModule{{ID: types.ModuleCloudflared}}
+		c.Dockerfile.Modules = []types.SelectedModule{{ID: envModuleID}}
 	})
 	yml := mustGenerateCompose(t, cfg)
 	var parsed map[string]any
@@ -1202,8 +1229,8 @@ func TestGenerateCompose_ModuleEnvReachesDevcontainer(t *testing.T) {
 	}
 	devSvc := parsed["services"].(map[string]any)["devcontainer-ssh"].(map[string]any)
 	env, _ := devSvc["environment"].([]any)
-	if len(env) != 1 || env[0] != "TUNNEL_TOKEN=${TUNNEL_TOKEN:-}" {
-		t.Errorf("environment = %v, want [TUNNEL_TOKEN=${TUNNEL_TOKEN:-}]", devSvc["environment"])
+	if len(env) != 1 || env[0] != "TEST_TOKEN=${TEST_TOKEN:-}" {
+		t.Errorf("environment = %v, want [TEST_TOKEN=${TEST_TOKEN:-}]", devSvc["environment"])
 	}
 
 	// Without the module there is nothing to pass through, so the key stays out
@@ -1222,18 +1249,19 @@ func TestGenerateCompose_ModuleEnvReachesDevcontainer(t *testing.T) {
 // CollectRequiredEnvVars drives the wizard's env prompts; it must see module
 // declarations, not just service ones, and must not ask twice for one name.
 func TestCollectRequiredEnvVars_ServicesAndModules(t *testing.T) {
+	withEnvModule(t)
 	cfg := makeConfig(func(c *types.DevcontainerConfig) {
 		c.Dockerfile.Modules = []types.SelectedModule{
-			{ID: types.ModuleCloudflared},
-			{ID: types.ModuleCloudflared},
+			{ID: envModuleID},
+			{ID: envModuleID},
 		}
 	})
 	vars := domain.CollectRequiredEnvVars(cfg)
-	if len(vars) != 1 || vars[0].Name != "TUNNEL_TOKEN" {
-		t.Fatalf("CollectRequiredEnvVars = %+v, want one TUNNEL_TOKEN entry", vars)
+	if len(vars) != 1 || vars[0].Name != "TEST_TOKEN" {
+		t.Fatalf("CollectRequiredEnvVars = %+v, want one TEST_TOKEN entry", vars)
 	}
 	if vars[0].Prompt == "" {
-		t.Error("TUNNEL_TOKEN needs a prompt for the wizard to render a step")
+		t.Error("TEST_TOKEN needs a prompt for the wizard to render a step")
 	}
 
 	none := domain.CollectRequiredEnvVars(makeConfig(func(c *types.DevcontainerConfig) {}))
