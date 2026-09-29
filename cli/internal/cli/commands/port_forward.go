@@ -2,6 +2,7 @@ package commands
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -23,9 +24,10 @@ func newPortForwardCommand() *cobra.Command {
 		Use:   "port-forward [port_mapping]",
 		Short: "Forward host ports into a running container over SSH",
 		Long: `devcontainer-cli port-forward — open SSH tunnels between your machine and
-a running container, in either direction. Every listener binds 127.0.0.1, so a
-tunnel is never exposed on another interface. The session stays in the
-foreground; press Ctrl+C to close the tunnels.
+a running container, in either direction. A listener binds 127.0.0.1 unless the
+mapping names another address, so a tunnel is only exposed on another
+interface when you ask for it. The session stays in the foreground; press
+Ctrl+C to close the tunnels.
 
 By default a tunnel goes container -> here: it listens on this machine and
 reaches a port inside the container. Prefix a mapping with 'reverse:' (or pass
@@ -50,6 +52,13 @@ this machine's port, the last always the container's — so only the arrow flips
   reverse:LOCAL:HOST:CONTAINER
                            127.0.0.1:CONTAINER in the container -> HOST:LOCAL,
                            HOST resolved from this machine (e.g. a LAN address)
+  BIND:<any forward form>  the same tunnel, listening on BIND here instead of
+                           127.0.0.1 (an IP of this machine, 0.0.0.0 for every
+                           interface, [::] for IPv6) — like ssh -L BIND:...
+                           Only a forward tunnel takes one: a reverse tunnel
+                           listens inside the container, where its SSH server
+                           confines it to the loopback, so 'reverse:' with a
+                           bind address is rejected.
 
 With no argument it runs an interactive picker: choose any running container,
 enter one or more ports, optionally repeat for other containers, then all tunnels
@@ -76,6 +85,10 @@ are opened in parallel after you confirm.`,
 
   # container:5432 -> a host on your LAN, as seen from this machine
   devcontainer-cli port-forward reverse:5432:192.168.1.20:5432
+
+  # Listen on this machine's 100.102.62.110 (e.g. its Tailscale IP) so other
+  # machines on that network reach container:8000; 0.0.0.0 = every interface
+  devcontainer-cli port-forward 100.102.62.110:8000:8000
 
   # Pin the SSH alias to tunnel through
   devcontainer-cli port-forward 3000 --alias my-custom-host`,
@@ -114,6 +127,9 @@ func addPortForwardFlags(cmd *cobra.Command) {
 }
 
 type parsedMapping struct {
+	// bindAddress is where the tunnel listens on this machine; empty keeps the
+	// loopback default.
+	bindAddress   string
 	localPort     int
 	targetHost    string
 	containerPort int
@@ -163,6 +179,49 @@ func parsePortMapping(mapping, defaultService string, defaultReverse bool) (pars
 	if reverse && defaultService != "" {
 		return parsedMapping{}, fmt.Errorf("--service names a compose service inside the container network, which a reverse tunnel never dials; use the 'reverse:LOCAL:HOST:CONTAINER' form to name a host reachable from this machine")
 	}
+	bind, mapping := splitBindAddress(mapping)
+	if bind != "" && reverse {
+		return parsedMapping{}, fmt.Errorf("a bind address (%s) cannot be used with a reverse tunnel: the container side is bound by its SSH server, which only listens on its own loopback (GatewayPorts=no); drop the address, or forward without 'reverse:'", bind)
+	}
+	parsed, err := parsePortFields(mapping, defaultService, reverse)
+	if err != nil {
+		return parsedMapping{}, err
+	}
+	parsed.bindAddress = bind
+	return parsed, nil
+}
+
+// splitBindAddress strips a leading listen address from a forward spec, the
+// way ssh -L takes one: '0.0.0.0:8000:8000' listens on every interface here,
+// '100.64.0.1:8000:8000' on that address only. It is recognised only as an IP
+// literal (an IPv6 one in brackets), which is what keeps it from colliding with
+// 'LOCAL:HOST:CONTAINER': a local port is never an IP, and a leading host name
+// is not accepted here at all.
+func splitBindAddress(mapping string) (string, string) {
+	if strings.HasPrefix(mapping, "[") {
+		end := strings.Index(mapping, "]:")
+		if end < 0 {
+			return "", mapping
+		}
+		if ip := net.ParseIP(mapping[1:end]); ip == nil || ip.To4() != nil {
+			return "", mapping
+		}
+		return mapping[:end+1], mapping[end+2:]
+	}
+	first, rest, found := strings.Cut(mapping, ":")
+	if !found {
+		return "", mapping
+	}
+	first = strings.TrimSpace(first)
+	if ip := net.ParseIP(first); ip == nil || ip.To4() == nil {
+		return "", mapping
+	}
+	return first, rest
+}
+
+// parsePortFields resolves the port fields of a spec once its direction prefix
+// and bind address are gone.
+func parsePortFields(mapping, defaultService string, reverse bool) (parsedMapping, error) {
 	parts := strings.Split(mapping, ":")
 	for i := range parts {
 		parts[i] = strings.TrimSpace(parts[i])
@@ -458,12 +517,25 @@ func printTunnelPlan(tunnels []service.Tunnel) {
 		}
 		console.Info("  %s  %s  %s → %s:%d  %s",
 			t.ContainerName, tag,
-			console.WarnS("127.0.0.1:%d", t.LocalPort),
+			console.WarnS("%s:%d", t.ListenAddress(), t.LocalPort),
 			t.TargetHost, t.ContainerPort,
 			via)
 	}
 	warnPrivilegedReversePorts(tunnels)
+	warnExposedTunnels(tunnels)
 	console.NewLine()
+}
+
+// warnExposedTunnels says out loud that a tunnel listens beyond the loopback:
+// anything that can reach that address reaches the container port, with no
+// authentication of its own in between.
+func warnExposedTunnels(tunnels []service.Tunnel) {
+	for _, t := range tunnels {
+		if t.Exposed() {
+			console.Warn("Port %d listens on %s, not only on 127.0.0.1: anything that can reach that address reaches the container's port %d.",
+				t.LocalPort, t.ListenAddress(), t.ContainerPort)
+		}
+	}
 }
 
 // privilegedPort is the first port a non-root user may bind.
@@ -520,6 +592,7 @@ func runPortForward(cmd *cobra.Command, args []string) error {
 
 		svc := service.PortForwardService{Report: console}
 		tunnel, err := svc.BuildEphemeralTunnel(service.Tunnel{
+			BindAddress:   mapping.bindAddress,
 			LocalPort:     mapping.localPort,
 			ContainerPort: mapping.containerPort,
 			Reverse:       mapping.reverse,
@@ -580,6 +653,7 @@ func runPortForward(cmd *cobra.Command, args []string) error {
 	}
 
 	tunnel := service.Tunnel{
+		BindAddress:    mapping.bindAddress,
 		LocalPort:      mapping.localPort,
 		ContainerPort:  mapping.containerPort,
 		Reverse:        mapping.reverse,
@@ -623,6 +697,7 @@ func forwardConfiguredPorts(alias, serviceFlag string, reverse, interactive bool
 	tunnels := make([]service.Tunnel, 0, len(mappings))
 	for _, mapping := range mappings {
 		tunnels = append(tunnels, service.Tunnel{
+			BindAddress:    mapping.bindAddress,
 			LocalPort:      mapping.localPort,
 			ContainerPort:  mapping.containerPort,
 			Reverse:        mapping.reverse,

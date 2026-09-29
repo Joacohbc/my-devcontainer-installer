@@ -216,14 +216,18 @@ func newAgentForwardCommand() *cobra.Command {
 		Use:   "forward [port_mapping]",
 		Short: "Forward a port between this machine and the running container over SSH",
 		Long: `devcontainer-cli agent forward — open an SSH tunnel between 127.0.0.1 here and
-a port inside the running container, in either direction.
+a port inside the running container, in either direction. A mapping that starts
+with an IP of this machine ('0.0.0.0:8000:8000') listens there instead of on
+127.0.0.1, so other machines can reach the tunnel.
 
 Same as 'port-forward', with prompting off and ephemeral mode on by default,
 so the port mapping is given as an argument and connects directly via SSH.
 
 By default the tunnel listens here and reaches into the container. Prefix the
 mapping with 'reverse:' (or pass --reverse) to turn it around, so a service
-running on this machine becomes reachable inside the container.
+running on this machine becomes reachable inside the container. A reverse
+tunnel takes no bind address: it listens inside the container, where its SSH
+server keeps it on the loopback.
 
 It stays in the FOREGROUND until interrupted: run it in the background if you
 need to keep working. A port that should always be reachable belongs in the
@@ -236,6 +240,12 @@ project instead — regenerate with 'agent create --ports <spec>'.`,
 
   # Reach a sibling compose service through the container
   devcontainer-cli agent forward 5432:postgres:5432
+
+  # 100.102.62.110:8000 (an IP of this machine) -> container:8000
+  devcontainer-cli agent forward 100.102.62.110:8000:8000
+
+  # Every interface of this machine -> container:8000
+  devcontainer-cli agent forward 0.0.0.0:8000:8000
 
   # container:5432 -> this machine's 5432 (a database running on the host)
   devcontainer-cli agent forward reverse:5432`,

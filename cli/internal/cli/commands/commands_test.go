@@ -826,6 +826,7 @@ func TestParsePortMapping(t *testing.T) {
 		host           string
 		container      int
 		reverse        bool
+		bind           string
 		wantErr        bool
 	}{
 		{in: "3000", local: 3000, host: "localhost", container: 3000},
@@ -848,6 +849,20 @@ func TestParsePortMapping(t *testing.T) {
 		{in: "0", wantErr: true},
 		{in: "70000", wantErr: true},
 		{in: "a:b:c:d", wantErr: true},
+		// A leading IP literal is the bind address, not a port or a host.
+		{in: "100.102.62.110:8000:8000", bind: "100.102.62.110", local: 8000, host: "localhost", container: 8000},
+		{in: "0.0.0.0:8000", bind: "0.0.0.0", local: 8000, host: "localhost", container: 8000},
+		{in: "0.0.0.0:5432:postgres:5432", bind: "0.0.0.0", local: 5432, host: "postgres", container: 5432},
+		{in: "[::1]:8080:80", bind: "[::1]", local: 8080, host: "localhost", container: 80},
+		{in: "0.0.0.0:5432", service: "postgres", bind: "0.0.0.0", local: 5432, host: "postgres", container: 5432},
+		// A reverse tunnel listens in the container, where sshd pins it to
+		// the loopback: a bind address there would be silently ignored.
+		{in: "reverse:0.0.0.0:5432", wantErr: true},
+		{in: "0.0.0.0:5432", defaultReverse: true, wantErr: true},
+		{in: "0.0.0.0:", wantErr: true},
+		{in: "0.0.0.0:1:2:3:4", wantErr: true},
+		// A leading host name is not a bind address; it stays a bad port.
+		{in: "myhost:8000:8000", wantErr: true},
 	}
 	for _, c := range cases {
 		got, err := parsePortMapping(c.in, c.service, c.defaultReverse)
@@ -861,8 +876,8 @@ func TestParsePortMapping(t *testing.T) {
 			t.Errorf("parsePortMapping(%q,%q,%v): unexpected error %v", c.in, c.service, c.defaultReverse, err)
 			continue
 		}
-		if got.localPort != c.local || got.targetHost != c.host || got.containerPort != c.container || got.reverse != c.reverse {
-			t.Errorf("parsePortMapping(%q,%q,%v) = %+v, want local=%d host=%s container=%d reverse=%v", c.in, c.service, c.defaultReverse, got, c.local, c.host, c.container, c.reverse)
+		if got.bindAddress != c.bind || got.localPort != c.local || got.targetHost != c.host || got.containerPort != c.container || got.reverse != c.reverse {
+			t.Errorf("parsePortMapping(%q,%q,%v) = %+v, want bind=%q local=%d host=%s container=%d reverse=%v", c.in, c.service, c.defaultReverse, got, c.bind, c.local, c.host, c.container, c.reverse)
 		}
 	}
 }
