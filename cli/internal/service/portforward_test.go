@@ -132,6 +132,45 @@ func TestTunnelCommand_Reverse(t *testing.T) {
 	}
 }
 
+// A bind address replaces only the loopback in -L's spec, which is what turns
+// 'agent forward 0.0.0.0:8000:8000' into 'ssh -N -L 0.0.0.0:8000:localhost:8000'.
+func TestTunnelCommand_BindAddress(t *testing.T) {
+	target := EphemeralTarget{IP: "172.25.0.14", User: "devuser", KeyPath: "/tmp/testkey"}
+	cmd := tunnelCommand(Tunnel{
+		BindAddress:   "0.0.0.0",
+		LocalPort:     8000,
+		ContainerPort: 8000,
+		TargetHost:    "localhost",
+		Ephemeral:     true,
+		Target:        target,
+	})
+	want := []string{"ssh", "-N", "-L", "0.0.0.0:8000:localhost:8000"}
+	want = append(want, sshdefaults.EphemeralDialArgs(target.KeyPath)...)
+	want = append(want, "devuser@172.25.0.14")
+	if !slices.Equal(cmd.Args, want) {
+		t.Errorf("bind args = %v, want %v", cmd.Args, want)
+	}
+}
+
+func TestTunnelExposed(t *testing.T) {
+	cases := []struct {
+		tunnel Tunnel
+		want   bool
+	}{
+		{Tunnel{}, false},
+		{Tunnel{BindAddress: "127.0.0.1"}, false},
+		{Tunnel{BindAddress: "[::1]"}, false},
+		{Tunnel{BindAddress: "0.0.0.0"}, true},
+		{Tunnel{BindAddress: "100.102.62.110"}, true},
+		{Tunnel{BindAddress: "0.0.0.0", Reverse: true}, false},
+	}
+	for _, c := range cases {
+		if got := c.tunnel.Exposed(); got != c.want {
+			t.Errorf("Exposed(%+v) = %v, want %v", c.tunnel, got, c.want)
+		}
+	}
+}
+
 func TestTunnelDescription(t *testing.T) {
 	forward := Tunnel{LocalPort: 3000, ContainerPort: 80, TargetHost: "localhost"}
 	if got, want := forward.Description(), "3000→localhost:80"; got != want {

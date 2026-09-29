@@ -26,7 +26,7 @@ you waiting on a prompt you cannot answer.
 | `agent create [--temporal]` | Generate + build + start an environment for the current directory (or throwaway with `--temporal`) |
 | `agent exec [-w] -- <cmd>` | Run a command inside the container (use `-w` to run from the workspace directory) |
 | `agent ssh [--ephemeral]` | Open an SSH session into the container (ephemeral by default, bypassing ~/.ssh/config) |
-| `agent forward <ports>` | Tunnel a container port to 127.0.0.1 via direct SSH tunnel (ephemeral by default); `reverse:<port>` tunnels the other way, exposing a host port inside the container |
+| `agent forward <ports>` | Tunnel a container port to 127.0.0.1 (or a leading bind IP, e.g. `0.0.0.0:8000:8000`) via direct SSH tunnel (ephemeral by default); `reverse:<port>` tunnels the other way, exposing a host port inside the container |
 | `agent copy <src> <dest>` | Move files between host and container |
 | `agent list [path]` | List a directory inside the container (--json and -a supported) |
 | `agent context` | Print what the container IS and has installed: its `~/CONTEXT.md` plus a live tool inventory (`--json`) |
@@ -271,6 +271,14 @@ published (e.g. so something outside your control can dial it directly).
     devcontainer-cli agent forward 3000              # 127.0.0.1:3000 -> container:3000
     devcontainer-cli agent forward 8080:80           # 127.0.0.1:8080 -> container:80
     devcontainer-cli agent forward 5432:postgres:5432  # reach a sibling service
+    devcontainer-cli agent forward 0.0.0.0:8000:8000   # listen on every interface here
+
+A leading IP of this machine (`0.0.0.0`, a LAN or Tailscale address) is the
+**bind address**, like `ssh -L`: the tunnel listens there instead of on
+`127.0.0.1`, so other machines can reach it. Only do that when the user asks
+for it — anything that can reach the address reaches the container port. A
+`reverse:` tunnel takes no bind address (its SSH server keeps it on the
+container's loopback), and the CLI rejects the combination.
 
 `agent forward` tunnels over SSH and stays in the **foreground** until
 interrupted, so run it in the background (or in a separate terminal) if you need

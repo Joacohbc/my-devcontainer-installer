@@ -2,8 +2,10 @@ package service
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
+	"strings"
 	"sync"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/sshdefaults"
@@ -16,8 +18,9 @@ type PortForwardService struct {
 	Report Reporter
 }
 
-// tunnelBindAddress keeps a forwarded port on the loopback: a tunnel is for this
-// machine, not for everything that can reach it.
+// tunnelBindAddress keeps a forwarded port on the loopback by default: a tunnel
+// is for this machine, not for everything that can reach it, unless the spec
+// names another address (Tunnel.BindAddress).
 const tunnelBindAddress = "127.0.0.1"
 
 // Tunnel is one resolved port forward over an SSH alias or direct ephemeral
@@ -25,6 +28,10 @@ const tunnelBindAddress = "127.0.0.1"
 // the one inside the container; Reverse is what decides which of the two
 // listens and which is dialed.
 type Tunnel struct {
+	// BindAddress is where a forward (-L) tunnel listens on this machine. Empty
+	// means tunnelBindAddress. A reverse tunnel ignores it: its listener is in
+	// the container, where sshd confines it to the loopback anyway.
+	BindAddress   string
 	LocalPort     int
 	ContainerPort int
 	// Reverse turns the tunnel around: instead of listening on LocalPort here
@@ -91,7 +98,25 @@ func (t Tunnel) forwardSpec() string {
 	if t.Reverse {
 		return fmt.Sprintf("%s:%d:%s:%d", tunnelBindAddress, t.ContainerPort, t.TargetHost, t.LocalPort)
 	}
-	return fmt.Sprintf("%s:%d:%s:%d", tunnelBindAddress, t.LocalPort, t.TargetHost, t.ContainerPort)
+	return fmt.Sprintf("%s:%d:%s:%d", t.ListenAddress(), t.LocalPort, t.TargetHost, t.ContainerPort)
+}
+
+// ListenAddress is the address a forward tunnel listens on here.
+func (t Tunnel) ListenAddress() string {
+	if t.BindAddress == "" {
+		return tunnelBindAddress
+	}
+	return t.BindAddress
+}
+
+// Exposed reports whether the tunnel listens somewhere other than this
+// machine's loopback.
+func (t Tunnel) Exposed() bool {
+	if t.Reverse {
+		return false
+	}
+	ip := net.ParseIP(strings.Trim(t.ListenAddress(), "[]"))
+	return ip == nil || !ip.IsLoopback()
 }
 
 // Description renders the tunnel as an arrow between the listening side and the
