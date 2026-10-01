@@ -10,6 +10,7 @@ import (
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/catalog"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/service"
 	"github.com/spf13/cobra"
 )
 
@@ -252,6 +253,9 @@ func TestRunConfigSkillInstall_ExplicitSkill_InvokesDockerRun(t *testing.T) {
 	if call == nil {
 		t.Fatalf("expected docker run --rm call, got %v", runner.calls)
 	}
+	if !slices.Contains(call, service.DefaultSkillInstallerImage) {
+		t.Errorf("call missing default image %s: %v", service.DefaultSkillInstallerImage, call)
+	}
 	lastArg := call[len(call)-1]
 	if !strings.Contains(lastArg, "firecrawl") {
 		t.Errorf("expected firecrawl in docker run args: %s", lastArg)
@@ -410,9 +414,39 @@ func TestRunAgentSkillInstall_ExplicitSkill_InvokesDockerRun(t *testing.T) {
 	if call == nil {
 		t.Fatalf("expected docker run --rm call, got %v", runner.calls)
 	}
+	if !slices.Contains(call, service.DefaultSkillInstallerImage) {
+		t.Errorf("call missing default image %s: %v", service.DefaultSkillInstallerImage, call)
+	}
 	lastArg := call[len(call)-1]
 	if !strings.Contains(lastArg, "firecrawl") {
 		t.Errorf("expected firecrawl in docker run args: %s", lastArg)
+	}
+}
+
+func TestRunConfigSkillInstall_CustomImage_PassedToRunner(t *testing.T) {
+	runner := &buildStatusRunner{buildStatus: 0}
+	docker.SetRunner(runner)
+	docker.ResetDockerCache()
+	t.Cleanup(func() {
+		docker.ResetRunner()
+		docker.ResetDockerCache()
+	})
+
+	cmd := newConfigSkillInstallCommand()
+	cmd.Flags().Set("dir", t.TempDir())
+	cmd.Flags().Set("no-interactive", "true")
+	cmd.Flags().Set("image", "custom-registry.io/custom-utils:v1")
+
+	if err := runConfigSkillInstall(cmd, []string{"firecrawl"}); err != nil {
+		t.Fatalf("runConfigSkillInstall: %v", err)
+	}
+
+	call := findRecordedCall(runner.calls, "--rm")
+	if call == nil {
+		t.Fatalf("expected docker run --rm call, got %v", runner.calls)
+	}
+	if !slices.Contains(call, "custom-registry.io/custom-utils:v1") {
+		t.Errorf("expected custom image in docker run args, got: %v", call)
 	}
 }
 

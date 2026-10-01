@@ -50,10 +50,9 @@ type SyncResult struct {
 	Missing []string // entries with no config present on the host
 }
 
-// syncHelperImage is the throwaway image used to copy host configs into the
-// volume: the same Ubuntu base every local image builds FROM, so it is usually
-// already present in the daemon.
-const syncHelperImage = "ubuntu:24.04"
+// syncHelperImage is the throwaway utility image used to copy host configs into
+// the volume.
+const syncHelperImage = "ghcr.io/joacohbc/devcontainer-utils:latest"
 
 // syncHelperLibs are the two shell libraries the helper container runs, in load
 // order. The first is the shared-config module itself — the same file the

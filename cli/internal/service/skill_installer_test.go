@@ -72,8 +72,9 @@ func TestSkillInstallService_ExplicitSkills_Success(t *testing.T) {
 	}
 
 	lastArg := call[len(call)-1]
-	if !strings.Contains(lastArg, "npx --yes skills add firecrawl/cli --skill firecrawl") {
-		t.Errorf("unexpected script command: %s", lastArg)
+	wantScript := "npx --yes skills add firecrawl/cli --skill firecrawl"
+	if lastArg != wantScript {
+		t.Errorf("unexpected script command: got %q, want %q", lastArg, wantScript)
 	}
 }
 
@@ -99,14 +100,12 @@ func TestSkillInstallService_ExplicitSkills_MultipleAndGrouped(t *testing.T) {
 	}
 
 	lastArg := call[len(call)-1]
-	if !strings.Contains(lastArg, "npx --yes skills add mattpocock/skills --skill wayfinder") {
-		t.Errorf("expected wayfinder install command in: %s", lastArg)
+	wantScript := "npx --yes skills add mattpocock/skills --skill wayfinder && npx --yes skills add firecrawl/cli --skill firecrawl"
+	if lastArg != wantScript {
+		t.Errorf("unexpected script command: got %q, want %q", lastArg, wantScript)
 	}
-	if !strings.Contains(lastArg, "npx --yes skills add firecrawl/cli --skill firecrawl") {
-		t.Errorf("expected firecrawl install command in: %s", lastArg)
-	}
-	if !strings.Contains(lastArg, " && ") {
-		t.Errorf("expected commands chained with &&: %s", lastArg)
+	if !slices.Contains(call, DefaultSkillInstallerImage) {
+		t.Errorf("call missing default image %s: %v", DefaultSkillInstallerImage, call)
 	}
 }
 
@@ -144,6 +143,9 @@ func TestSkillInstallService_AllFlag_InstallsAllSkills(t *testing.T) {
 	call := r.callContaining("--rm")
 	if call == nil {
 		t.Fatalf("expected docker run --rm call, got %v", r.calls)
+	}
+	if !slices.Contains(call, DefaultSkillInstallerImage) {
+		t.Errorf("call missing default image %s: %v", DefaultSkillInstallerImage, call)
 	}
 
 	lastArg := call[len(call)-1]
@@ -185,10 +187,14 @@ func TestSkillInstallService_ProjectConfig_DefaultsToConfiguredSkills(t *testing
 	if call == nil {
 		t.Fatalf("expected docker run --rm call, got %v", r.calls)
 	}
+	if !slices.Contains(call, DefaultSkillInstallerImage) {
+		t.Errorf("call missing default image %s: %v", DefaultSkillInstallerImage, call)
+	}
 
 	lastArg := call[len(call)-1]
-	if !strings.Contains(lastArg, "npx --yes skills add firecrawl/cli --skill firecrawl") {
-		t.Errorf("unexpected script command: %s", lastArg)
+	wantScript := "npx --yes skills add firecrawl/cli --skill firecrawl"
+	if lastArg != wantScript {
+		t.Errorf("unexpected script command: got %q, want %q", lastArg, wantScript)
 	}
 }
 
@@ -348,9 +354,13 @@ func TestSkillInstallService_EmptySkillIDString_FallsBackToProjectConfig(t *test
 	if call == nil {
 		t.Fatalf("expected docker run --rm call, got %v", r.calls)
 	}
+	if !slices.Contains(call, DefaultSkillInstallerImage) {
+		t.Errorf("call missing default image %s: %v", DefaultSkillInstallerImage, call)
+	}
 	lastArg := call[len(call)-1]
-	if !strings.Contains(lastArg, "firecrawl") {
-		t.Errorf("expected project config skill firecrawl to be installed, got %s", lastArg)
+	wantScript := "npx --yes skills add firecrawl/cli --skill firecrawl"
+	if lastArg != wantScript {
+		t.Errorf("unexpected script command: got %q, want %q", lastArg, wantScript)
 	}
 }
 
@@ -389,9 +399,13 @@ func TestSkillInstallService_CommaSeparatedSkills_Parsed(t *testing.T) {
 	if call == nil {
 		t.Fatalf("expected docker run --rm call, got %v", r.calls)
 	}
+	if !slices.Contains(call, DefaultSkillInstallerImage) {
+		t.Errorf("call missing default image %s: %v", DefaultSkillInstallerImage, call)
+	}
 	lastArg := call[len(call)-1]
-	if !strings.Contains(lastArg, "firecrawl") || !strings.Contains(lastArg, "wayfinder") {
-		t.Errorf("expected both skills in command, got %s", lastArg)
+	wantScript := "npx --yes skills add firecrawl/cli --skill firecrawl && npx --yes skills add mattpocock/skills --skill wayfinder"
+	if lastArg != wantScript {
+		t.Errorf("unexpected script command: got %q, want %q", lastArg, wantScript)
 	}
 }
 

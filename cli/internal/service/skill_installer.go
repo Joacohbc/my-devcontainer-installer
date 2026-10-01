@@ -14,8 +14,8 @@ import (
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
 )
 
-// DefaultSkillInstallerImage is the lightweight Node image used by default.
-const DefaultSkillInstallerImage = "node:22-alpine"
+// DefaultSkillInstallerImage is the lightweight utility image used by default.
+const DefaultSkillInstallerImage = "ghcr.io/joacohbc/devcontainer-utils:latest"
 
 // SkillInstallOptions configures the ephemeral skill installer run.
 type SkillInstallOptions struct {

@@ -77,6 +77,7 @@ func TestSyncAliases_WritesRenderedContentIntoVolume(t *testing.T) {
 		"ENTRY_ID=" + types.SharedConfigAliasID,
 		"ENTRY_CONTENT=" + content,
 		"SC_OWNER=" + hostOwnerString(),
+		syncHelperImage,
 	} {
 		if !sliceHas(run, want) {
 			t.Errorf("helper run missing %q: %v", want, run)
@@ -252,8 +253,8 @@ func TestSyncFromHostForcePassesFlagToHelper(t *testing.T) {
 		t.Fatalf("SyncFromHost: %v", err)
 	}
 	run := r.callContaining("run")
-	if run == nil || !sliceHas(run, "ENTRY_FORCE=1") {
-		t.Errorf("expected ENTRY_FORCE=1 in run call, got %v", run)
+	if run == nil || !sliceHas(run, "ENTRY_FORCE=1") || !sliceHas(run, syncHelperImage) {
+		t.Errorf("expected ENTRY_FORCE=1 and %s in run call, got %v", syncHelperImage, run)
 	}
 }
 
@@ -279,9 +280,10 @@ func TestSyncEntryScriptRunsTheSymlinkPasses(t *testing.T) {
 
 // requireGNUCoreutils skips a test that shells out to syncEntryScript when the
 // local userland is not GNU. The script only ever runs inside syncHelperImage,
-// a pinned Ubuntu, so it is free to use `readlink -m` and friends; executing it
-// against BSD tools (a macOS dev box or CI runner) would assert on an
-// environment that never exists in production. Linux CI still covers it.
+// the devcontainer-utils image (Alpine + GNU coreutils), so it is free to use
+// `readlink -m` and friends; executing it against BSD tools (a macOS dev box
+// or CI runner) would assert on an environment that never exists in production.
+// Linux CI still covers it.
 func requireGNUCoreutils(t *testing.T) {
 	t.Helper()
 	if err := exec.Command("readlink", "-m", "/").Run(); err != nil {
@@ -682,8 +684,8 @@ func TestRestoreFromZip_ParsesRestoredAndSkipped(t *testing.T) {
 	}
 
 	run := r.callContaining("run")
-	if run == nil || !sliceHas(run, "ENTRY_IDS=claude gh") {
-		t.Errorf("expected ENTRY_IDS=claude gh in run call, got %v", run)
+	if run == nil || !sliceHas(run, "ENTRY_IDS=claude gh") || !sliceHas(run, syncHelperImage) {
+		t.Errorf("expected ENTRY_IDS=claude gh and %s in run call, got %v", syncHelperImage, run)
 	}
 }
 
@@ -706,8 +708,8 @@ func TestRestoreFromZip_ForcePassesFlagToHelper(t *testing.T) {
 		t.Fatalf("RestoreFromZip: %v", err)
 	}
 	run := r.callContaining("run")
-	if run == nil || !sliceHas(run, "ENTRY_FORCE=1") {
-		t.Errorf("expected ENTRY_FORCE=1 in run call, got %v", run)
+	if run == nil || !sliceHas(run, "ENTRY_FORCE=1") || !sliceHas(run, syncHelperImage) {
+		t.Errorf("expected ENTRY_FORCE=1 and %s in run call, got %v", syncHelperImage, run)
 	}
 }
 
@@ -741,8 +743,8 @@ func TestRestoreFromZip_ReportsMissingEntriesNotInZip(t *testing.T) {
 	if run == nil || sliceHas(run, "ENTRY_IDS=claude gh") {
 		t.Errorf("expected only the present entry (claude) passed to the helper, got %v", run)
 	}
-	if !sliceHas(run, "ENTRY_IDS=claude") {
-		t.Errorf("expected ENTRY_IDS=claude in run call, got %v", run)
+	if !sliceHas(run, "ENTRY_IDS=claude") || !sliceHas(run, syncHelperImage) {
+		t.Errorf("expected ENTRY_IDS=claude and %s in run call, got %v", syncHelperImage, run)
 	}
 }
 
