@@ -32,7 +32,7 @@ for the full details of any one.
 
 For AI assistants: the 'agent' group is a small, never-interactive command set
 covering the whole loop (agent cli-info, create, exec, connect, forward, copy,
-list, clean), and 'context' reports what a container has inside it.
+list, skill, clean), and 'context' reports what a container has inside it.
 
 Build modes:
   custom    Build the full Dockerfile/compose pipeline locally and tag the

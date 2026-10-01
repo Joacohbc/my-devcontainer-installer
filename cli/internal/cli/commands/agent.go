@@ -39,6 +39,9 @@ container, 'config' for global settings.`,
   devcontainer-cli agent exec -- go test ./...
   devcontainer-cli agent list /home/devuser --json
 
+  # Install agent skills
+  devcontainer-cli agent skill install firecrawl
+
   # Tear it down
   devcontainer-cli agent clean --yes`,
 		SilenceUsage: true,
@@ -54,6 +57,7 @@ container, 'config' for global settings.`,
 		newAgentListCommand(),
 		newAgentContextCommand(),
 		newAgentCleanCommand(),
+		newAgentSkillCommand(),
 	)
 	return cmd
 }
@@ -483,4 +487,53 @@ func runAgentClean(cmd *cobra.Command, _ []string) error {
 		Yes:         yesFlag(cmd),
 		Interactive: interactiveFlag(cmd),
 	})
+}
+
+func newAgentSkillCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "skill",
+		Short: "Manage and install agent skills non-interactively",
+		Long: `devcontainer-cli agent skill — the agent-facing face of skill management.
+
+Subcommands:
+  install [skill-ids...]  Install agent skills at project level in an ephemeral container.`,
+		Example: `  # Install specific skills
+  devcontainer-cli agent skill install firecrawl
+
+  # Install all available skills
+  devcontainer-cli agent skill install --all`,
+		SilenceUsage: true,
+	}
+	cmd.AddCommand(newAgentSkillInstallCommand())
+	return cmd
+}
+
+func newAgentSkillInstallCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "install [skill-ids...]",
+		Short: "Install agent skills at project level in an ephemeral container",
+		Long: `devcontainer-cli agent skill install — install agent skills into the project workspace
+using a temporary lightweight Node container ('npx --yes skills add').
+
+This is the non-interactive agent equivalent of 'config skill install'. If no skill IDs
+are provided, it installs the project's configured skills from devcontainer.config.json.
+If no skills are configured and no arguments are provided, it reports an actionable error without prompting.
+
+Use --all to install all available agent skills (both built-in and user-defined).`,
+		Example: `  # Install specific skills
+  devcontainer-cli agent skill install firecrawl
+
+  # Install all available skills
+  devcontainer-cli agent skill install --all
+
+  # Install skills configured in devcontainer.config.json
+  devcontainer-cli agent skill install`,
+		SilenceUsage:      true,
+		PreRunE:           agentNonInteractive,
+		ValidArgsFunction: completeInstallSkillArgs,
+		RunE:              runConfigSkillInstall,
+	}
+	addSkillInstallFlags(cmd)
+	addInteractiveFlag(cmd)
+	return cmd
 }

@@ -20,7 +20,7 @@
 #
 # Mounts: the volume at /vol, the host home read-only at /host.
 #
-# POSIX sh, not bash: the helper image runs `sh -c`, which on Ubuntu is dash.
+# POSIX sh, not bash: the helper image runs `sh -c` (BusyBox ash in devcontainer-utils).
 # Behaviour is covered by TestSyncEntryScriptFixesSymlinks, which runs the
 # assembled program against a temp tree.
 

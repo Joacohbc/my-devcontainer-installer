@@ -49,20 +49,24 @@ A user-defined id shadows a built-in of the same id. Pass it to
 '--skill <id>' (comma-separated for several).
 
 Subcommands:
-  list          List built-in and user-defined skills.
-  info <id>     Print one skill's full resolved definition.
-  add <id>      Create (or, with --force, overwrite) a user-defined skill.
-  remove <id..> Delete user-defined skills (built-ins cannot be removed).`,
+  list                  List built-in and user-defined skills.
+  info <id>             Print one skill's full resolved definition.
+  add <id>              Create (or, with --force, overwrite) a user-defined skill.
+  remove <id..>         Delete user-defined skills (built-ins cannot be removed).
+  install [skill-ids..] Install agent skills at project level in an ephemeral container.`,
 		Example: `  devcontainer-cli config skill list
   devcontainer-cli config skill info firecrawl
   devcontainer-cli config skill add my-skill --ref owner/repo
   devcontainer-cli config skill remove my-skill
+  devcontainer-cli config skill install firecrawl
+  devcontainer-cli config skill install --all
   devcontainer-cli --with nodejs --skill my-skill`,
 	}
 	cmd.AddCommand(newConfigSkillListCommand())
 	cmd.AddCommand(newConfigSkillInfoCommand())
 	cmd.AddCommand(newConfigSkillAddCommand())
 	cmd.AddCommand(newConfigSkillRemoveCommand())
+	cmd.AddCommand(newConfigSkillInstallCommand())
 	return cmd
 }
 
@@ -399,4 +403,79 @@ func completeAgentSkillArgs(_ *cobra.Command, args []string, toComplete string) 
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
 	return catalog.AgentSkillIDs(domain.SkillDirs()...), cobra.ShellCompDirectiveNoFileComp
+}
+
+func newConfigSkillInstallCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "install [skill-ids...]",
+		Short: "Install agent skills at project level in an ephemeral container",
+		Long: `devcontainer-cli config skill install — install agent skills into the project workspace
+using a temporary lightweight Node container ('npx --yes skills add').
+
+No devcontainer stack or docker-compose services are started. Files written to the
+project are owned by the host user.
+
+If skill IDs are provided as arguments, only those skills are installed.
+If no skill IDs are specified:
+  - If devcontainer.config.json defines configured skills, those are installed.
+  - If interactive and no skills are configured, prompts with a multiselect picker.
+  - If non-interactive and no skills are configured, returns an actionable error.
+
+Use --all to install all available agent skills (both built-in and user-defined).`,
+		Example: `  # Install specific skills
+  devcontainer-cli config skill install firecrawl
+
+  # Install all available skills
+  devcontainer-cli config skill install --all
+
+  # Install skills configured in the current project
+  devcontainer-cli config skill install
+
+  # Target a specific project directory
+  devcontainer-cli config skill install --dir /path/to/project
+
+  # Use a custom container image
+  devcontainer-cli config skill install --image node:22-slim`,
+		SilenceUsage:      true,
+		ValidArgsFunction: completeInstallSkillArgs,
+		RunE:              runConfigSkillInstall,
+	}
+	addSkillInstallFlags(cmd)
+	addInteractiveFlag(cmd)
+	return cmd
+}
+
+func addSkillInstallFlags(cmd *cobra.Command) {
+	cmd.Flags().Bool("all", false, "Install all available agent skills (built-in and user-defined)")
+	cmd.Flags().String("image", service.DefaultSkillInstallerImage, "Docker image to run the skill installer in")
+	cmd.Flags().String("dir", "", "Target project directory (default: current directory)")
+}
+
+func runConfigSkillInstall(cmd *cobra.Command, args []string) error {
+	allSkills, _ := cmd.Flags().GetBool("all")
+	imageName, _ := cmd.Flags().GetString("image")
+	targetDir, _ := cmd.Flags().GetString("dir")
+	isInteractive := interactiveFlag(cmd)
+
+	skillService := service.SkillInstallService{
+		Report: console,
+		Prompt: console,
+	}
+	return skillService.Install(args, service.SkillInstallOptions{
+		Dir:         targetDir,
+		Image:       imageName,
+		All:         allSkills,
+		Interactive: isInteractive,
+	})
+}
+
+func completeInstallSkillArgs(_ *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	allSkillIDs := catalog.AgentSkillIDs(domain.SkillDirs()...)
+	var matchingIDs []string
+	for _, id := range allSkillIDs {
+		if !slices.Contains(args, id) && strings.HasPrefix(id, toComplete) {
+			matchingIDs = append(matchingIDs, id)
+		}
+	}
+	return matchingIDs, cobra.ShellCompDirectiveNoFileComp
 }

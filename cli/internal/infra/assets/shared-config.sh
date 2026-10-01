@@ -13,7 +13,7 @@
 #   caller                        runs in                       needs
 #   ────────────────────────────  ───────────────────────────   ─────────────────
 #   entrypoint.sh                 every managed container       all of it
-#   `config shared sync` helper   a throwaway ubuntu container  the aliases only
+#   `config shared sync` helper   a throwaway utility container the aliases only
 #
 # INTERFACE
 #
@@ -44,7 +44,7 @@
 #               chowning entirely (the sync helper runs as root against a volume
 #               that must end up owned by the host user; a test runs as neither).
 #
-# POSIX sh, not bash: the sync helper runs `sh -c`, which on Ubuntu is dash.
+# POSIX sh, not bash: the sync helper runs `sh -c` (BusyBox ash in devcontainer-utils).
 # Hence `_`-prefixed globals in place of `local`. The entrypoint is bash and
 # sources this file, so anything added here has to stay valid in both.
 

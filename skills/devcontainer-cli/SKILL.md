@@ -30,6 +30,7 @@ you waiting on a prompt you cannot answer.
 | `agent copy <src> <dest>` | Move files between host and container |
 | `agent list [path]` | List a directory inside the container (--json and -a supported) |
 | `agent context` | Print what the container IS and has installed: its `~/CONTEXT.md` plus a live tool inventory (`--json`) |
+| `agent skill install [ids...]` | Install agent skills into the workspace via an ephemeral mini-container (`npx --yes skills add`) |
 | `agent clean` | Destroy the project and remove what it left behind |
 
 Use these first. The plain commands they wrap (`shell`, `ssh`, `port-forward`,
@@ -408,6 +409,7 @@ Global config, profiles and shared logins:
     devcontainer-cli config profile list          # bundles for --profile; [remote]/[local] tag
     devcontainer-cli config profile info <id>     # one profile's full resolved definition
     devcontainer-cli config skill list            # agent skills for --skill; built-in + user-defined
+    devcontainer-cli config skill install [ids...] # install skills at project level in an ephemeral container
     devcontainer-cli config skill add <id> --ref owner/repo   # define your own
     devcontainer-cli config alias set ll "ls -la" # aliases for every container
     devcontainer-cli config alias sync            # apply them without a rebuild
