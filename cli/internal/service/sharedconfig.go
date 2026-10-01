@@ -244,6 +244,11 @@ func hostOwnerString() string {
 	return ""
 }
 
+// HostOwnerString returns "uid:gid" for the current host user.
+func HostOwnerString() string {
+	return hostOwnerString()
+}
+
 // stageOutScript copies each requested entry from the volume (/vol) into the
 // host-mounted staging dir (/stage) for zipping, one docker run for every
 // entry in $ENTRY_IDS (space-separated) rather than one run per entry.
