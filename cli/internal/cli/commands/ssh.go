@@ -2,6 +2,7 @@ package commands
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/sshdefaults"
@@ -68,6 +69,9 @@ when the session ends.`,
   # Connect through an existing SSH connection to a remote Docker host
   devcontainer-cli ssh --via me@docker-host --container dc-ssh
 
+  # Connect directly without modifying ~/.ssh/config (ephemeral mode)
+  devcontainer-cli ssh --ephemeral --via me@docker-host -c dc-ssh
+
   # Run ON the Docker host: print the snippet to paste on the connecting machine
   devcontainer-cli ssh --setup-external me@docker-host
 
@@ -116,7 +120,14 @@ func runSsh(cmd *cobra.Command, args []string) error {
 	}
 
 	via, _ := cmd.Flags().GetString("via")
-	if ephemeral, _ := cmd.Flags().GetBool("ephemeral"); ephemeral && via == "" {
+	containerFlag, _ := cmd.Flags().GetString("container")
+	hasContainer := cmd.Flags().Changed("container") && strings.TrimSpace(containerFlag) != ""
+	if via != "" && !hasContainer {
+		return fmt.Errorf("--via requires --container <name>: there is no local compose project describing a container on a remote host")
+	}
+
+	isEphemeral, _ := cmd.Flags().GetBool("ephemeral")
+	if isEphemeral {
 		containerName, err := resolveContainer(cmd)
 		if err != nil {
 			return err
@@ -126,7 +137,7 @@ func runSsh(cmd *cobra.Command, args []string) error {
 		user, _ := cmd.Flags().GetString("user")
 
 		sshSvc := service.SshService{Report: console}
-		return sshSvc.ConnectEphemeral(containerName, user, keyPath, args)
+		return sshSvc.ConnectEphemeral(containerName, user, keyPath, via, args)
 	}
 
 	interactive := interactiveFlag(cmd)
@@ -137,17 +148,12 @@ func runSsh(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	containerExplicit := cmd.Flags().Changed("container")
-	if via != "" && !containerExplicit {
-		return fmt.Errorf("--via requires --container <name>: there is no local compose project describing a container on a remote host")
-	}
-
 	var workspace, containerName string
 	kind := sshdefaults.KindWorkspace
 	ref := ""
 
-	if containerExplicit {
-		containerName, _ = cmd.Flags().GetString("container")
+	if hasContainer {
+		containerName = containerFlag
 		kind = sshdefaults.KindContainer
 		ref = containerName
 	} else {

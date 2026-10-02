@@ -89,6 +89,28 @@ func TestTunnelCommand_AliasAndEphemeral(t *testing.T) {
 	}
 }
 
+func TestTunnelCommand_Ephemeral_WithVia(t *testing.T) {
+	ephemeralTunnel := Tunnel{
+		LocalPort:     8080,
+		ContainerPort: 80,
+		TargetHost:    "localhost",
+		Ephemeral:     true,
+		Target: EphemeralTarget{
+			IP:      "172.20.0.5",
+			User:    "devuser",
+			KeyPath: "/home/devuser/.config/devcontainer-cli/id_ed25519",
+			Via:     "jumpuser@remote-host",
+		},
+	}
+	ephCmd := tunnelCommand(ephemeralTunnel)
+	expectedArgs := []string{"ssh", "-N", "-L", "127.0.0.1:8080:localhost:80", "-J", "jumpuser@remote-host"}
+	expectedArgs = append(expectedArgs, sshdefaults.EphemeralDialArgs(ephemeralTunnel.Target.KeyPath)...)
+	expectedArgs = append(expectedArgs, "devuser@172.20.0.5")
+	if !slices.Equal(ephCmd.Args, expectedArgs) {
+		t.Errorf("ephemeral tunnel with via args = %v, want %v", ephCmd.Args, expectedArgs)
+	}
+}
+
 // A reverse tunnel is the same ssh process with -R and the two ports swapped:
 // the container binds ContainerPort and the connection is dialed from here to
 // TargetHost:LocalPort.

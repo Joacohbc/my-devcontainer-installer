@@ -287,6 +287,7 @@ type EphemeralTarget struct {
 	IP      string
 	User    string
 	KeyPath string
+	Via     string
 }
 
 // Destination renders the target as ssh's user@host argument.
@@ -309,26 +310,38 @@ const noNetworkIPFallback = "127.0.0.1"
 // local ~/.ssh/config is left alone; it cannot mean the target has no way to
 // authenticate us. The install script is idempotent (it appends then sort -u's),
 // so repeating it on a container that already trusts the key is a no-op.
-func (s SshService) EnsureEphemeralAccess(containerName, user, keyPath string) (EphemeralTarget, error) {
-	state, ip, err := s.ContainerLiveness(containerName)
-	if err != nil {
-		return EphemeralTarget{}, err
-	}
-	if state == TargetAbsent {
-		return EphemeralTarget{}, fmt.Errorf("container '%s' not found", containerName)
-	}
-	if state == TargetStopped {
-		return EphemeralTarget{}, fmt.Errorf("container '%s' is not running; start it with 'devcontainer-cli start'", containerName)
-	}
-	if ip == "" {
-		ip = noNetworkIPFallback
-	}
-	if user == "" {
-		user = sshdefaults.User
-	}
-	target := EphemeralTarget{IP: ip, User: user, KeyPath: domain.ResolveSSHKeyPath(keyPath)}
+func (s SshService) EnsureEphemeralAccess(containerName, user, keyPath, via string) (EphemeralTarget, error) {
+	var target EphemeralTarget
+	err := WithHostOverride(via, func() error {
+		state, ip, err := s.ContainerLiveness(containerName)
+		if err != nil {
+			return err
+		}
+		if state == TargetAbsent {
+			return fmt.Errorf("container '%s' not found", containerName)
+		}
+		if state == TargetStopped {
+			return fmt.Errorf("container '%s' is not running; start it with 'devcontainer-cli start'", containerName)
+		}
+		if ip == "" && via != "" {
+			return fmt.Errorf("could not determine network IP for container '%s' on remote host '%s'", containerName, via)
+		}
+		if ip == "" {
+			ip = noNetworkIPFallback
+		}
+		if user == "" {
+			user = sshdefaults.User
+		}
+		target = EphemeralTarget{
+			IP:      ip,
+			User:    user,
+			KeyPath: domain.ResolveSSHKeyPath(keyPath),
+			Via:     via,
+		}
 
-	if err := s.trustManagedKey(containerName, target); err != nil {
+		return s.trustManagedKey(containerName, target)
+	})
+	if err != nil {
 		return EphemeralTarget{}, err
 	}
 	return target, nil
@@ -354,13 +367,18 @@ func (s SshService) trustManagedKey(containerName string, target EphemeralTarget
 
 // ConnectEphemeral opens an SSH session without writing to ~/.ssh/config or
 // resolving a managed alias, dialing the container's own address directly.
-func (s SshService) ConnectEphemeral(containerName, user, keyPath string, args []string) error {
-	target, err := s.EnsureEphemeralAccess(containerName, user, keyPath)
+func (s SshService) ConnectEphemeral(containerName, user, keyPath, via string, args []string) error {
+	target, err := s.EnsureEphemeralAccess(containerName, user, keyPath, via)
 	if err != nil {
 		return err
 	}
 
-	sshArgs := append(sshdefaults.EphemeralDialArgs(target.KeyPath), target.Destination())
+	var sshArgs []string
+	if target.Via != "" {
+		sshArgs = append(sshArgs, "-J", target.Via)
+	}
+	sshArgs = append(sshArgs, sshdefaults.EphemeralDialArgs(target.KeyPath)...)
+	sshArgs = append(sshArgs, target.Destination())
 	sshArgs = append(sshArgs, args...)
 
 	c := exec.Command("ssh", sshArgs...)
