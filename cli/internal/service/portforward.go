@@ -58,7 +58,7 @@ type Tunnel struct {
 // `ssh --setup` run still accepts the tunnel instead of refusing the key.
 func (s PortForwardService) BuildEphemeralTunnel(t Tunnel, user, keyPath string) (Tunnel, error) {
 	sshSvc := SshService{Report: s.Report}
-	target, err := sshSvc.EnsureEphemeralAccess(t.ContainerName, user, keyPath)
+	target, err := sshSvc.EnsureEphemeralAccess(t.ContainerName, user, keyPath, "")
 	if err != nil {
 		return Tunnel{}, err
 	}
@@ -73,6 +73,9 @@ func (s PortForwardService) BuildEphemeralTunnel(t Tunnel, user, keyPath string)
 func tunnelCommand(t Tunnel) *exec.Cmd {
 	if t.Ephemeral {
 		args := []string{"-N", t.forwardFlag(), t.forwardSpec()}
+		if t.Target.Via != "" {
+			args = append(args, "-J", t.Target.Via)
+		}
 		args = append(args, sshdefaults.EphemeralDialArgs(t.Target.KeyPath)...)
 		args = append(args, t.Target.Destination())
 		return exec.Command("ssh", args...)

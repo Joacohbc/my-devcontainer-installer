@@ -954,6 +954,76 @@ func TestRunSsh_ViaRequiresContainer(t *testing.T) {
 	}
 }
 
+func TestRunSsh_ViaRequiresContainer_Ephemeral(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	cmd := newSshCommand()
+	if err := cmd.Flags().Parse([]string{"--ephemeral", "--via", "me@docker-host"}); err != nil {
+		t.Fatalf("parse flags: %v", err)
+	}
+	err := runSsh(cmd, nil)
+	if err == nil || !strings.Contains(err.Error(), "--container") {
+		t.Errorf("runSsh error = %v, want an error requiring --container", err)
+	}
+}
+
+func TestRunAgentSsh_ViaRequiresContainer(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	cmd := newAgentSshCommand()
+	if err := cmd.Flags().Parse([]string{"--via", "me@docker-host"}); err != nil {
+		t.Fatalf("parse flags: %v", err)
+	}
+	if cmd.PreRunE != nil {
+		if err := cmd.PreRunE(cmd, nil); err != nil {
+			t.Fatalf("PreRunE: %v", err)
+		}
+	}
+	err := cmd.RunE(cmd, nil)
+	if err == nil || !strings.Contains(err.Error(), "--container") {
+		t.Errorf("agent ssh error = %v, want an error requiring --container", err)
+	}
+}
+
+func TestRunSsh_ViaRequiresContainer_EmptyContainer(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	cmd := newSshCommand()
+	if err := cmd.Flags().Parse([]string{"--via", "me@docker-host", "--container", "   "}); err != nil {
+		t.Fatalf("parse flags: %v", err)
+	}
+	err := runSsh(cmd, nil)
+	if err == nil || !strings.Contains(err.Error(), "--container") {
+		t.Errorf("runSsh error = %v, want an error requiring --container", err)
+	}
+}
+
+func TestRunSsh_ViaRequiresContainer_Ephemeral_EmptyContainer(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	cmd := newSshCommand()
+	if err := cmd.Flags().Parse([]string{"--ephemeral", "--via", "me@docker-host", "--container", ""}); err != nil {
+		t.Fatalf("parse flags: %v", err)
+	}
+	err := runSsh(cmd, nil)
+	if err == nil || !strings.Contains(err.Error(), "--container") {
+		t.Errorf("runSsh error = %v, want an error requiring --container", err)
+	}
+}
+
+func TestRunAgentSsh_ViaRequiresContainer_EmptyContainer(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	cmd := newAgentSshCommand()
+	if err := cmd.Flags().Parse([]string{"--via", "me@docker-host", "--container", ""}); err != nil {
+		t.Fatalf("parse flags: %v", err)
+	}
+	if cmd.PreRunE != nil {
+		if err := cmd.PreRunE(cmd, nil); err != nil {
+			t.Fatalf("PreRunE: %v", err)
+		}
+	}
+	err := cmd.RunE(cmd, nil)
+	if err == nil || !strings.Contains(err.Error(), "--container") {
+		t.Errorf("agent ssh error = %v, want an error requiring --container", err)
+	}
+}
+
 func TestDestroyCommandRegistered(t *testing.T) {
 	root := NewRootCommand("test")
 	destroyCmd := findSubcommand(root, "destroy")

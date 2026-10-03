@@ -93,10 +93,12 @@ type cmdRoutingRunner struct {
 	inspectOut string
 	psStatus   int
 	calls      [][]string
+	envs       []map[string]string
 }
 
-func (r *cmdRoutingRunner) Run(_ context.Context, args []string, _ string, _ string, _ map[string]string) (int, string, string) {
+func (r *cmdRoutingRunner) Run(_ context.Context, args []string, _ string, _ string, env map[string]string) (int, string, string) {
 	r.calls = append(r.calls, args)
+	r.envs = append(r.envs, env)
 	if len(args) >= 2 && args[1] == "version" {
 		return 0, "27.0.0", ""
 	}
@@ -109,6 +111,21 @@ func (r *cmdRoutingRunner) Run(_ context.Context, args []string, _ string, _ str
 		}
 	}
 	return 0, "", ""
+}
+
+func (r *cmdRoutingRunner) allCallsHadEnv(key, value string) bool {
+	if len(r.calls) == 0 {
+		return false
+	}
+	for i, call := range r.calls {
+		if len(call) >= 2 && call[1] == "version" {
+			continue
+		}
+		if i >= len(r.envs) || r.envs[i] == nil || r.envs[i][key] != value {
+			return false
+		}
+	}
+	return true
 }
 
 // sawKeyInstall reports whether the runner was asked to pipe a public key into
@@ -353,7 +370,7 @@ exit 0`)
 	}
 
 	svc := SshService{Report: nopReporter{}}
-	if err := svc.ConnectEphemeral("c1", "", keyPath, []string{"echo", "hi"}); err != nil {
+	if err := svc.ConnectEphemeral("c1", "", keyPath, "", []string{"echo", "hi"}); err != nil {
 		t.Errorf("ConnectEphemeral ok: %v", err)
 	}
 
@@ -376,7 +393,211 @@ exit 0`)
 		t.Error("ConnectEphemeral must install the public key in the container")
 	}
 
-	if err := svc.ConnectEphemeral("absent", "", keyPath, nil); err == nil {
+	if err := svc.ConnectEphemeral("absent", "", keyPath, "", nil); err == nil {
 		t.Error("expected error for absent container")
+	}
+}
+
+func TestSshConnectEphemeral_WithVia(t *testing.T) {
+	argsFile := filepath.Join(t.TempDir(), "args")
+	writeFakeSSH(t, `echo "$@" > `+argsFile+`
+exit 0`)
+	ps := `{"Names":"c1","Image":"img1","Status":"Up","State":"running","Labels":"","Ports":""}`
+	runner := &cmdRoutingRunner{psOut: ps, inspectOut: "bridge 172.25.0.14\n"}
+	defer useFakeDocker(runner)()
+
+	keyPath := filepath.Join(t.TempDir(), "id_devcontainer")
+	if err := os.WriteFile(keyPath, []byte("private"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(keyPath+".pub", []byte("ssh-ed25519 AAAA test\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	svc := SshService{Report: nopReporter{}}
+	viaHost := "jumpuser@remote-host"
+	if err := svc.ConnectEphemeral("c1", "", keyPath, viaHost, []string{"uname", "-a"}); err != nil {
+		t.Errorf("ConnectEphemeral with via: %v", err)
+	}
+
+	got, err := os.ReadFile(argsFile)
+	if err != nil {
+		t.Fatalf("fake ssh recorded no invocation: %v", err)
+	}
+	line := string(got)
+	if !strings.Contains(line, "-J "+viaHost) {
+		t.Errorf("ssh args = %q, want -J %s", line, viaHost)
+	}
+	if !strings.Contains(line, "-p "+sshdefaults.Port+" ") {
+		t.Errorf("ssh args = %q, want it to dial port %s", line, sshdefaults.Port)
+	}
+	if !strings.Contains(line, "devuser@172.25.0.14") {
+		t.Errorf("ssh args = %q, want devuser@172.25.0.14", line)
+	}
+	if !strings.Contains(line, "uname -a") {
+		t.Errorf("ssh args = %q, want uname -a", line)
+	}
+	if !runner.sawKeyInstall() {
+		t.Error("ConnectEphemeral must install the public key in the container")
+	}
+	wantEnv := "ssh://" + viaHost
+	if !runner.allCallsHadEnv("DOCKER_HOST", wantEnv) {
+		t.Errorf("expected docker calls to use DOCKER_HOST=%s, recorded envs: %v", wantEnv, runner.envs)
+	}
+}
+
+func TestEnsureEphemeralAccess_ViaMissingIP(t *testing.T) {
+	ps := `{"Names":"c1","Image":"img1","Status":"Up","State":"running","Labels":"","Ports":""}`
+	runner := &cmdRoutingRunner{psOut: ps, inspectOut: ""}
+	defer useFakeDocker(runner)()
+
+	keyPath := filepath.Join(t.TempDir(), "id_devcontainer")
+	if err := os.WriteFile(keyPath, []byte("private"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(keyPath+".pub", []byte("ssh-ed25519 AAAA test\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	svc := SshService{Report: nopReporter{}}
+	_, err := svc.EnsureEphemeralAccess("c1", "", keyPath, "jumpuser@remote-host")
+	if err == nil {
+		t.Fatal("expected error when container has no network IP on remote host")
+	}
+	wantMsg := "could not determine network IP for container 'c1' on remote host 'jumpuser@remote-host'"
+	if !strings.Contains(err.Error(), wantMsg) {
+		t.Errorf("error = %q, want it to contain %q", err.Error(), wantMsg)
+	}
+}
+
+func TestEnsureEphemeralAccess_LocalMissingIPFallsBack(t *testing.T) {
+	ps := `{"Names":"c1","Image":"img1","Status":"Up","State":"running","Labels":"","Ports":""}`
+	runner := &cmdRoutingRunner{psOut: ps, inspectOut: ""}
+	defer useFakeDocker(runner)()
+
+	keyPath := filepath.Join(t.TempDir(), "id_devcontainer")
+	if err := os.WriteFile(keyPath, []byte("private"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(keyPath+".pub", []byte("ssh-ed25519 AAAA test\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	svc := SshService{Report: nopReporter{}}
+	target, err := svc.EnsureEphemeralAccess("c1", "", keyPath, "")
+	if err != nil {
+		t.Fatalf("EnsureEphemeralAccess: %v", err)
+	}
+	if target.IP != "127.0.0.1" {
+		t.Errorf("target.IP = %q, want %q", target.IP, "127.0.0.1")
+	}
+	if target.Via != "" {
+		t.Errorf("target.Via = %q, want empty", target.Via)
+	}
+}
+
+func TestEnsureEphemeralAccess_ViaAbsentContainer(t *testing.T) {
+	ps := `{"Names":"c1","Image":"img1","Status":"Up","State":"running","Labels":"","Ports":""}`
+	runner := &cmdRoutingRunner{psOut: ps, inspectOut: ""}
+	defer useFakeDocker(runner)()
+
+	keyPath := filepath.Join(t.TempDir(), "id_devcontainer")
+	if err := os.WriteFile(keyPath, []byte("private"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(keyPath+".pub", []byte("ssh-ed25519 AAAA test\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	svc := SshService{Report: nopReporter{}}
+	_, err := svc.EnsureEphemeralAccess("absent-c", "", keyPath, "jumpuser@remote-host")
+	if err == nil || !strings.Contains(err.Error(), "not found") {
+		t.Errorf("error = %v, want container not found", err)
+	}
+}
+
+func TestEnsureEphemeralAccess_ViaStoppedContainer(t *testing.T) {
+	ps := `{"Names":"stopped-c","Image":"img1","Status":"Exited (0)","State":"exited","Labels":"","Ports":""}`
+	runner := &cmdRoutingRunner{psOut: ps, inspectOut: ""}
+	defer useFakeDocker(runner)()
+
+	keyPath := filepath.Join(t.TempDir(), "id_devcontainer")
+	if err := os.WriteFile(keyPath, []byte("private"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(keyPath+".pub", []byte("ssh-ed25519 AAAA test\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	svc := SshService{Report: nopReporter{}}
+	_, err := svc.EnsureEphemeralAccess("stopped-c", "", keyPath, "jumpuser@remote-host")
+	if err == nil || !strings.Contains(err.Error(), "not running") {
+		t.Errorf("error = %v, want container not running", err)
+	}
+}
+
+func TestEnsureEphemeralAccess_ViaUnreachableDaemon(t *testing.T) {
+	runner := &cmdRoutingRunner{psStatus: 1}
+	defer useFakeDocker(runner)()
+
+	keyPath := filepath.Join(t.TempDir(), "id_devcontainer")
+	if err := os.WriteFile(keyPath, []byte("private"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(keyPath+".pub", []byte("ssh-ed25519 AAAA test\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	svc := SshService{Report: nopReporter{}}
+	_, err := svc.EnsureEphemeralAccess("c1", "", keyPath, "jumpuser@remote-host")
+	if err == nil {
+		t.Error("expected error when remote daemon is unreachable")
+	}
+}
+
+func TestEnsureEphemeralAccess_CustomUserAndKey(t *testing.T) {
+	ps := `{"Names":"c1","Image":"img1","Status":"Up","State":"running","Labels":"","Ports":""}`
+	runner := &cmdRoutingRunner{psOut: ps, inspectOut: "bridge 172.25.0.14\n"}
+	defer useFakeDocker(runner)()
+
+	keyPath := filepath.Join(t.TempDir(), "id_devcontainer")
+	if err := os.WriteFile(keyPath, []byte("private"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(keyPath+".pub", []byte("ssh-ed25519 AAAA test\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	svc := SshService{Report: nopReporter{}}
+	target, err := svc.EnsureEphemeralAccess("c1", "customuser", keyPath, "jumpuser@remote-host")
+	if err != nil {
+		t.Fatalf("EnsureEphemeralAccess: %v", err)
+	}
+	if target.User != "customuser" {
+		t.Errorf("target.User = %q, want customuser", target.User)
+	}
+	if target.Destination() != "customuser@172.25.0.14" {
+		t.Errorf("target.Destination = %q, want customuser@172.25.0.14", target.Destination())
+	}
+}
+
+func TestSshConnectEphemeral_WithVia_PropagatesExitCode(t *testing.T) {
+	writeFakeSSH(t, "exit 12")
+	ps := `{"Names":"c1","Image":"img1","Status":"Up","State":"running","Labels":"","Ports":""}`
+	runner := &cmdRoutingRunner{psOut: ps, inspectOut: "bridge 172.25.0.14\n"}
+	defer useFakeDocker(runner)()
+
+	keyPath := filepath.Join(t.TempDir(), "id_devcontainer")
+	if err := os.WriteFile(keyPath, []byte("private"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(keyPath+".pub", []byte("ssh-ed25519 AAAA test\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	svc := SshService{Report: nopReporter{}}
+	err := svc.ConnectEphemeral("c1", "", keyPath, "jumpuser@remote-host", []string{"cmd"})
+	if err == nil || !strings.Contains(err.Error(), "code 12") {
+		t.Errorf("ConnectEphemeral error = %v, want exit code 12", err)
 	}
 }
