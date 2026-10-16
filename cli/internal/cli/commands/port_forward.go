@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"path/filepath"
 	"regexp"
 	"slices"
 	"strconv"
@@ -342,14 +341,28 @@ func parseSSHConfigContent(content string) []string {
 	return hosts
 }
 
+// getSSHAliases lists the Host aliases of both SSH config files: the user's own
+// and the CLI-owned one that `ssh --setup` writes its blocks to.
 func getSSHAliases() []string {
-	home, _ := os.UserHomeDir()
-	p := filepath.Join(home, ".ssh", "config")
-	data, err := os.ReadFile(p)
-	if err != nil {
-		return nil
+	return sshAliasesFromFiles(domain.UserSSHConfigPath(), domain.ResolveSSHConfigPath(""))
+}
+
+func sshAliasesFromFiles(paths ...string) []string {
+	var aliases []string
+	seen := map[string]bool{}
+	for _, path := range paths {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		for _, alias := range parseSSHConfigContent(string(data)) {
+			if !seen[alias] {
+				seen[alias] = true
+				aliases = append(aliases, alias)
+			}
+		}
 	}
-	return parseSSHConfigContent(string(data))
+	return aliases
 }
 
 func ownSSHAlias(containerName string, aliases []string) string {

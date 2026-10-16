@@ -2764,3 +2764,24 @@ func TestResolveSubnet(t *testing.T) {
 		})
 	}
 }
+
+// ssh --setup writes its Host blocks to the CLI-owned file, not ~/.ssh/config,
+// so port-forward has to look in both to find the alias it just created.
+func TestSSHAliasesFromFiles_readsEveryFileAndDeduplicates(t *testing.T) {
+	dir := t.TempDir()
+	userConfig := filepath.Join(dir, "config")
+	managedConfig := filepath.Join(dir, "devcontainer-cli.config")
+	if err := os.WriteFile(userConfig, []byte("Host work\n    HostName work.example\nHost proj\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(managedConfig, []byte("Host proj\n    Port 38011\nHost other *.wild\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	got := sshAliasesFromFiles(userConfig, filepath.Join(dir, "missing"), managedConfig)
+
+	want := []string{"work", "proj", "other"}
+	if !slices.Equal(got, want) {
+		t.Errorf("aliases = %v, want %v", got, want)
+	}
+}
