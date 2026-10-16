@@ -14,10 +14,10 @@ func init() { register(newComposeCommand()) }
 
 func newComposeCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "compose [docker compose args...]",
+		Use:     "compose [compose args...]",
 		Aliases: []string{"dc"},
-		Short:   "Run any docker compose command against the project's stack",
-		Long: `devcontainer-cli compose (alias: dc) — a passthrough to 'docker compose' scoped
+		Short:   "Run any compose command against the project's stack",
+		Long: `devcontainer-cli compose (alias: dc) — a passthrough to '<engine> compose' (docker or podman) scoped
 to the current project. Every argument is forwarded verbatim after
 '-f .dc_<workspace>/build/docker-compose.yml --env-file .dc_<workspace>/build/.env'.
 
@@ -25,7 +25,7 @@ Use it as the escape hatch for anything the curated wrappers (start/stop/restart
 logs, status, copy) don't cover — 'exec', 'ps', 'top', 'config', 'kill', 'run',
 'port', … — reaching every service in the stack, database services included,
 without retyping the compose file and env-file paths. Because arguments pass
-straight through, use flags exactly as docker compose expects them (e.g.
+straight through, use flags exactly as compose expects them (e.g.
 'compose exec -it postgres psql').`,
 		Example: `  # Open psql in the postgres service
   devcontainer-cli dc exec -it postgres psql -U devuser

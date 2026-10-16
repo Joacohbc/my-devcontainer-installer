@@ -128,7 +128,7 @@ func detectMode(f *setupSshFlags) sshdefaults.Mode {
 
 func checkPrereqs(mode sshdefaults.Mode) error {
 	ssh := service.SshService{Report: console}
-	for _, tool := range []string{"ssh", "ssh-keygen", "docker"} {
+	for _, tool := range []string{"ssh", "ssh-keygen", service.EngineBinary()} {
 		if !ssh.CommandExists(tool) {
 			return fmt.Errorf("missing tool: %s", tool)
 		}
@@ -164,7 +164,7 @@ func ensureStack(ssh service.SshService, f *setupSshFlags) error {
 
 	proceed := true
 	if !f.assumeYes {
-		ok, err := console.ConfirmDefault("Start it now with docker compose up -d?", true)
+		ok, err := console.ConfirmDefault("Start it now with compose up -d?", true)
 		if err != nil {
 			return err
 		}

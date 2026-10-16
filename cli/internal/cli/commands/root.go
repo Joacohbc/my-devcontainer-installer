@@ -13,8 +13,11 @@ func NewRootCommand(v string) *cobra.Command {
 	version = v
 	root := &cobra.Command{
 		Use:   "devcontainer-cli",
-		Short: "Generate and manage reproducible Docker devcontainers",
-		Long: `devcontainer-cli — generate and manage reproducible Docker devcontainers.
+		Short: "Generate and manage reproducible devcontainers on Docker or Podman",
+		Long: `devcontainer-cli — generate and manage reproducible devcontainers on Docker or Podman.
+
+The container engine is picked automatically (docker when it answers, otherwise
+podman). Pin one with 'config engine' or the DEVCONTAINER_ENGINE variable.
 
 Run with no subcommand to (re)generate the Dockerfile, docker-compose.yml and
 .env for the current directory and then build/start the stack. Interactively it

@@ -20,7 +20,7 @@ func newRunCommand() *cobra.Command {
 image, without generating a Dockerfile, compose file or any project files.
 
 This is the fast path for a throwaway environment: it pulls the ghcr.io image
-for the chosen profile and runs it directly with 'docker run'. Interactively it
+for the chosen profile and runs it directly with '<engine> run' (docker or podman). Interactively it
 always prompts for the container name, plus the profile, volumes, ports,
 whether to mount the shared config volume and which AI installer scripts to
 copy; with --no-interactive every value must come from a flag (--profile

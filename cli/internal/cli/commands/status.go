@@ -21,7 +21,7 @@ func newStatusCommand() *cobra.Command {
 		Short: "Show a status table for the project's containers",
 		Long: `devcontainer-cli status — print a compact table of the current project's
 containers with their service, name, state, published ports and image (similar
-to 'docker compose ps'). Services that exist in the compose file but have no
+to '<engine> compose ps'). Services that exist in the compose file but have no
 container yet are shown as "not created".
 
 For an exhaustive per-container report use 'info' instead. --container narrows to

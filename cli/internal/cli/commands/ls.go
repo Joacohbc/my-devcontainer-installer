@@ -13,7 +13,7 @@ func newLsCommand() *cobra.Command {
 		Use:   "ls [container_path]",
 		Short: "List files inside the devcontainer",
 		Long: `devcontainer-cli ls — list files and directories inside the running devcontainer,
-a convenience wrapper over 'ls' run via docker exec.
+a convenience wrapper over 'ls' run via '<engine> exec'.
 
 The optional path is interpreted inside the container and defaults to the current
 working directory there; paths tab-complete in real time. -a shows hidden entries

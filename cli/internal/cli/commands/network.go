@@ -18,7 +18,7 @@ func newNetworkCommand() *cobra.Command {
 		Long: `devcontainer-cli network — wire arbitrary containers onto the current project's
 workspace network so they can talk to the devcontainer.
 
-The workspace network is the managed bridge network docker compose created for
+The workspace network is the managed bridge network compose created for
 the project (named "<workspace>-network"). Any existing container — managed by
 this CLI or not — can be attached to it and will then reach the devcontainer by
 service name (and vice-versa), without being recreated.

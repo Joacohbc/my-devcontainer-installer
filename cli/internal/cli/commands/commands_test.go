@@ -370,7 +370,35 @@ func TestParseGenFlags_Ports(t *testing.T) {
 	}
 }
 
+// useEngine pins the container engine for the test and restores auto after it.
+func useEngine(t *testing.T, name string) {
+	t.Helper()
+	t.Setenv(domain.EngineEnvVar, name)
+	if err := service.ApplyEnginePreference(); err != nil {
+		t.Fatalf("ApplyEnginePreference: %v", err)
+	}
+	t.Cleanup(func() {
+		t.Setenv(domain.EngineEnvVar, "auto")
+		_ = service.ApplyEnginePreference()
+	})
+}
+
+func TestCleanupInstructionLines_podman(t *testing.T) {
+	useEngine(t, "podman")
+	out := strings.Join(cleanupInstructionLines(&types.DevcontainerConfig{Workspace: "myws"}), "\n")
+
+	for _, raw := range []string{"podman compose down -v", "podman image prune -a", "podman ps -a"} {
+		if !strings.Contains(out, raw) {
+			t.Errorf("expected the podman equivalent %q", raw)
+		}
+	}
+	if strings.Contains(out, "docker") {
+		t.Errorf("podman cheat-sheet still mentions docker:\n%s", out)
+	}
+}
+
 func TestCleanupInstructionLines(t *testing.T) {
+	useEngine(t, "docker")
 	cfg := &types.DevcontainerConfig{Workspace: "myws"}
 	out := strings.Join(cleanupInstructionLines(cfg), "\n")
 

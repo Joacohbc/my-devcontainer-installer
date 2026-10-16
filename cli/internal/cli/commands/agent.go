@@ -28,7 +28,7 @@ services, profiles, skills, how to add your own scripts — so a create command
 can be composed without guessing at ids.
 
 The human commands stay available and are the escape hatch: 'compose' for any
-compose verb, 'ssh --via' for another Docker host, 'run' for a throwaway
+compose verb, 'ssh --via' for another container host, 'run' for a throwaway
 container, 'config' for global settings.`,
 		Example: `  # Read the catalogue, then create an environment from it
   devcontainer-cli agent cli-info --json
@@ -99,7 +99,7 @@ a real tty, a tool that shells out to ssh).`,
 		Example: `  # Run a command over SSH
   devcontainer-cli agent ssh -- go version
 
-  # Reach the container on another Docker host
+  # Reach the container on another container host
   devcontainer-cli agent ssh --via me@docker-host -c mycontainer -- uname -a`,
 		SilenceUsage: true,
 		PreRunE:      agentSshDefaults,
@@ -120,7 +120,7 @@ func addAgentSshFlags(cmd *cobra.Command) {
 	addInteractiveFlag(cmd)
 	addContainerFlag(cmd)
 	cmd.Flags().Bool("ephemeral", false, "Connect directly via SSH without modifying ~/.ssh/config or relying on existing Host blocks (default true for agent)")
-	cmd.Flags().String("via", "", "Reach the container through an existing SSH connection to its Docker host (requires --container): USER@HOST or an ssh-config alias")
+	cmd.Flags().String("via", "", "Reach the container through an existing SSH connection to its container host (requires --container): USER@HOST or an ssh-config alias")
 	cmd.Flags().String("key", "", "Private key path (default: the shared managed key under the CLI config dir)")
 	cmd.Flags().String("user", sshdefaults.User, "SSH user inside the container")
 
@@ -190,7 +190,7 @@ func addAgentExecFlags(cmd *cobra.Command) {
 	cmd.Flags().String("user", "", "User to run the command as; always honoured, but only an interactive shell defaults it to devuser")
 	cmd.Flags().BoolP("no-tty", "T", false, "Disable pseudo-TTY allocation (use when piping output to a file, e.g. a DB dump)")
 	cmd.Flags().BoolP("workdir", "w", false, "Run in the project's workspace mount instead of the container default; only the devcontainer has that directory, so a database container needs it left off")
-	cmd.Flags().String("via", "", "Reach the container through an existing SSH connection to its Docker host (requires --container): USER@HOST or an ssh-config alias")
+	cmd.Flags().String("via", "", "Reach the container through an existing SSH connection to its container host (requires --container): USER@HOST or an ssh-config alias")
 	addContainerFlag(cmd)
 	addInteractiveFlag(cmd)
 
@@ -406,7 +406,7 @@ database", "is pnpm installed" without guessing or probing.
 
 Prefer --json when the answer feeds a decision rather than a human.
 
-It reports what is INSIDE the container. For Docker metadata (image, mounts,
+It reports what is INSIDE the container. For engine metadata (image, mounts,
 port bindings) use 'status'; for this CLI's own catalogue of what a project
 could be built with, 'agent cli-info'.`,
 		Example: `  # The current project's container

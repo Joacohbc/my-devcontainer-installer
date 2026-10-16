@@ -22,7 +22,7 @@ from the modules and services that project selected, so it names the actual
 package managers, versions and database endpoints — followed by the detected
 tools with their versions and the reachable services.
 
-Unlike 'info', which reports Docker metadata (image, ports, mounts), this
+Unlike 'info', which reports engine metadata (image, ports, mounts), this
 reports what is inside the container. Inside a container the same report is one
 command away: 'get-devcontainer-context'.`,
 		Example: `  # Human-readable report for the current project's container

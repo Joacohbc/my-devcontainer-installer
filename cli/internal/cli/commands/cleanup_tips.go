@@ -6,6 +6,7 @@ import (
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/service"
 	"github.com/spf13/cobra"
 )
 
@@ -19,7 +20,7 @@ func newCleanupTipsCommand() *cobra.Command {
 commands for the current project.
 
 It prints, but never runs, the relevant commands: each task shows the native
-devcontainer-cli command first and, where useful, the raw 'docker' command it
+devcontainer-cli command first and, where useful, the raw container-engine command (docker or podman) it
 wraps (using this project's managed labels). Handy when you want to clean up by
 hand or understand what the CLI does under the hood.
 
@@ -49,14 +50,18 @@ func printCleanupInstructions(config *types.DevcontainerConfig) {
 }
 
 // cleanupInstructionLines builds the cleanup/update cheat-sheet. Each task lists
-// the native devcontainer-cli command first and, where useful, the raw docker
-// command it runs under the hood (prefixed "└ docker:") for users who prefer to
-// drive docker directly.
+// the native devcontainer-cli command first and, where useful, the raw engine
+// command it runs under the hood (prefixed "└ docker:" or "└ podman:") for users
+// who prefer to drive the engine directly.
 func cleanupInstructionLines(config *types.DevcontainerConfig) []string {
 	projectID := types.ProjectID(config)
 	bar := console.Subtle(strings.Repeat("─", 64))
 	cli := func(c string) string { return "   $ " + c }
-	docker := func(c string) string { return console.Subtle("     └ docker: " + c) }
+	engine := service.EngineBinary()
+	// The commands below are written for docker; podman takes the same verbs.
+	docker := func(c string) string {
+		return console.Subtle("     └ " + engine + ": " + engine + strings.TrimPrefix(c, "docker"))
+	}
 	allFilter := fmt.Sprintf(`--filter "label=%s=true"`, types.LabelManaged)
 	projFilter := fmt.Sprintf(`--filter "label=%s=%s"`, types.LabelProject, projectID)
 
@@ -66,7 +71,7 @@ func cleanupInstructionLines(config *types.DevcontainerConfig) []string {
 		console.Subtle("Every image, container, volume and network created by this CLI is tagged with:"),
 		console.Subtle(fmt.Sprintf("  %s=true", types.LabelManaged)),
 		console.Subtle(fmt.Sprintf("  %s=%s", types.LabelProject, projectID)),
-		console.Subtle("Each task below shows the native command and the docker it wraps."),
+		console.Subtle("Each task below shows the native command and the " + engine + " it wraps."),
 		"",
 		console.Bold("List resources of THIS project:"),
 		cli("devcontainer-cli ls"),

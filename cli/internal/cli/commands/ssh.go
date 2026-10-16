@@ -23,7 +23,7 @@ func newSshCommand() *cobra.Command {
 		Long: `devcontainer-cli ssh — connect to the project's devcontainer over SSH, and
 own the whole SSH lifecycle (this is where 'setup-ssh' used to live).
 
-Unlike 'shell' (a 'docker exec' wrapper), this opens a genuine SSH session, so
+Unlike 'shell' (a '<engine> exec' wrapper), this opens a genuine SSH session, so
 it exercises the same path a human or tool connecting via 'ssh <alias>' would.
 The first time, it configures access automatically (generate/install the shared
 key, append a Host block to the CLI's own SSH config) before connecting — no
@@ -36,11 +36,11 @@ instead (loose mode); the managed alias is then keyed by that container's name
 rather than the workspace.
 
 Pass --via USER@HOST (with --container) to reach a container on a different
-Docker host through an existing SSH connection to it. Only the shared key's
+container host through an existing SSH connection to it. Only the shared key's
 PUBLIC half ever leaves this machine. --via only needs to be given once: the
 alias remembers the jump target for future reconnects.
 
-Pass --setup-external USER@HOST when this CLI runs ON the Docker host: instead of
+Pass --setup-external USER@HOST when this CLI runs ON the container host: instead of
 connecting, it prints a self-contained snippet (containing the PRIVATE key) to
 paste on the machine you connect FROM, which sets up a ProxyCommand jump there.
 
@@ -66,13 +66,13 @@ when the session ends.`,
   # Connect to a specific container instead of the project's own devcontainer
   devcontainer-cli ssh --container dc-ssh
 
-  # Connect through an existing SSH connection to a remote Docker host
+  # Connect through an existing SSH connection to a remote container host
   devcontainer-cli ssh --via me@docker-host --container dc-ssh
 
   # Connect directly without modifying ~/.ssh/config (ephemeral mode)
   devcontainer-cli ssh --ephemeral --via me@docker-host -c dc-ssh
 
-  # Run ON the Docker host: print the snippet to paste on the connecting machine
+  # Run ON the container host: print the snippet to paste on the connecting machine
   devcontainer-cli ssh --setup-external me@docker-host
 
   # Also forward ports 3000 and 8080 for the session
@@ -93,8 +93,8 @@ func addSshFlags(cmd *cobra.Command) {
 	addInteractiveFlag(cmd)
 	addContainerFlag(cmd)
 	cmd.Flags().Bool("setup", false, "Re-run the SSH access setup (key + Host block) before connecting, even if an alias already exists")
-	cmd.Flags().String("setup-external", "", "Run on the Docker host: print a paste-on-the-client snippet (ProxyCommand jump) instead of connecting: USER@HOST")
-	cmd.Flags().String("via", "", "Reach the container through an existing SSH connection to its Docker host (requires --container): USER@HOST or an ssh-config alias")
+	cmd.Flags().String("setup-external", "", "Run on the container host: print a paste-on-the-client snippet (ProxyCommand jump) instead of connecting: USER@HOST")
+	cmd.Flags().String("via", "", "Reach the container through an existing SSH connection to its container host (requires --container): USER@HOST or an ssh-config alias")
 	cmd.Flags().String("key", "", "Private key path (default: the shared managed key under the CLI config dir)")
 	cmd.Flags().String("user", sshdefaults.User, "SSH user inside the container")
 	cmd.Flags().Bool("forward", false, "Also open SSH port-forwarding tunnels for the session (prompted when interactive and omitted)")

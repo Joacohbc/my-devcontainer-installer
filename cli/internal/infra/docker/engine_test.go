@@ -195,3 +195,43 @@ func TestHostOverride_usesTheEnginesRemoteHostVariable(t *testing.T) {
 		}
 	}
 }
+
+func TestPodmanEngine_failedComposePrintsTheProviderHint(t *testing.T) {
+	useRunner(t, &argMockRunner{versionStatus: 0, otherStatus: 1})
+	var hint strings.Builder
+	defer docker.CaptureComposeHint(&hint)()
+
+	docker.SetEngine(docker.EnginePodman)
+	if status, _ := docker.DockerCompose("/tmp/dc.yml", []string{"up"}, nil); status != 1 {
+		t.Fatalf("status = %d, want 1", status)
+	}
+	for _, want := range []string{"podman.socket", "PODMAN_COMPOSE_PROVIDER"} {
+		if !strings.Contains(hint.String(), want) {
+			t.Errorf("hint = %q, want it to mention %s", hint.String(), want)
+		}
+	}
+}
+
+func TestDockerEngine_failedComposePrintsNoPodmanHint(t *testing.T) {
+	useRunner(t, &argMockRunner{versionStatus: 0, otherStatus: 1})
+	var hint strings.Builder
+	defer docker.CaptureComposeHint(&hint)()
+
+	docker.SetEngine(docker.EngineDocker)
+	docker.DockerCompose("/tmp/dc.yml", []string{"up"}, nil)
+	if hint.Len() != 0 {
+		t.Errorf("docker compose failure printed %q, want nothing", hint.String())
+	}
+}
+
+func TestPodmanEngine_successfulComposePrintsNoHint(t *testing.T) {
+	useRunner(t, &argMockRunner{versionStatus: 0, otherStatus: 0})
+	var hint strings.Builder
+	defer docker.CaptureComposeHint(&hint)()
+
+	docker.SetEngine(docker.EnginePodman)
+	docker.DockerCompose("/tmp/dc.yml", []string{"up"}, nil)
+	if hint.Len() != 0 {
+		t.Errorf("successful compose printed %q, want nothing", hint.String())
+	}
+}

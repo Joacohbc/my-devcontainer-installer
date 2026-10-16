@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
@@ -168,8 +169,23 @@ func DockerCompose(composeFile string, args []string, opts *ComposeOptions) (int
 		env = opts.Env
 	}
 	status, _, _ := defaultRunner.Run(getContext(), cmdArgs, "inherit", cwd, env)
+	if status != 0 && IsPodman() {
+		fmt.Fprintln(composeHintOutput, podmanComposeHint)
+	}
 	return status, nil
 }
+
+// podmanComposeHint is printed when `podman compose` fails. Unlike Docker's
+// plugin, it is a thin wrapper over an external provider, and the commonest
+// reason for it failing has nothing to do with the compose file: the provider
+// (docker-compose) talks to the Podman API socket, which is not running unless
+// something started it.
+const podmanComposeHint = "hint: `podman compose` delegates to docker-compose or podman-compose. " +
+	"If it could not connect to the API, start the socket (systemctl --user enable --now podman.socket), " +
+	"or pick the provider with PODMAN_COMPOSE_PROVIDER=podman-compose."
+
+// composeHintOutput is where the hint goes; a variable so tests can capture it.
+var composeHintOutput io.Writer = os.Stderr
 
 func DockerComposeOrThrow(composeFile string, args []string, opts *ComposeOptions) error {
 	status, err := DockerCompose(composeFile, args, opts)

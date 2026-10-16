@@ -11,7 +11,7 @@ func newCleanCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "clean",
 		Short: "Clean up CLI-managed resources and stale configuration entries",
-		Long: `devcontainer-cli clean — unified cleanup command for Docker resources and configuration entries.
+		Long: `devcontainer-cli clean — unified cleanup command for container-engine resources and configuration entries.
 
 Run with no subcommand to interactively select cleanup actions or pass --all / --yes
 to sweep across all categories at once.
@@ -21,8 +21,8 @@ Subcommands:
   clean containers   Remove CLI-managed containers (by name, non-running, or --all).
   clean images       Remove CLI-managed images (by reference, unused, or --all).
   clean ssh          Prune stale SSH config blocks and the host keys they pinned.
-  clean networks     Remove CLI-managed Docker networks.
-  clean volumes      Remove CLI-managed Docker volumes (--shared includes shared tool config).
+  clean networks     Remove CLI-managed networks.
+  clean volumes      Remove CLI-managed volumes (--shared includes shared tool config).
   clean all          Sweep every category (catalog, containers, images, ssh, networks, volumes).`,
 		Example: `  # Interactive clean picker
   devcontainer-cli clean
@@ -175,8 +175,8 @@ func newCleanSshCommand() *cobra.Command {
 (a workspace or a specific container). This command scans those markers and removes blocks whose target is gone,
 plus any duplicated or orphaned marker left behind by an interrupted write — those are always removed regardless
 of whether the target they name happens to still be alive, since no command can resolve a block like that anyway.
-A --via block's container is checked against the remote Docker host it was set up through, not this machine's;
-listings mark those with "[via <host> — remote container, not managed on this machine's Docker]" so they're never
+A --via block's container is checked against the remote container host it was set up through, not this machine's;
+listings mark those with "[via <host> — remote container, not managed on this machine's engine]" so they're never
 mistaken for an ordinary local one. If that remote host can't be reached right now (its jump SSH connection was
 removed or renamed, the machine is off, ...) its blocks are never auto-removed, but they are listed separately as
 unverified — in interactive mode you can still select them for removal if you know they're really gone;
@@ -223,7 +223,7 @@ func newCleanNetworksCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "networks",
 		Aliases: []string{"network"},
-		Short:   "Remove CLI-managed Docker networks",
+		Short:   "Remove CLI-managed networks",
 		Long: `devcontainer-cli clean networks — remove CLI-managed bridge networks that no container is attached to.
 --all removes every managed network, even ones in use.`,
 		SilenceUsage: true,
@@ -249,7 +249,7 @@ func newCleanVolumesCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "volumes",
 		Aliases: []string{"volume"},
-		Short:   "Remove CLI-managed Docker volumes (--shared includes shared tool config)",
+		Short:   "Remove CLI-managed volumes (--shared includes shared tool config)",
 		Long: `devcontainer-cli clean volumes — remove CLI-managed volumes that no container is using.
 --all removes every managed volume, and --shared also drops the global shared tool-config volume.`,
 		SilenceUsage: true,

@@ -16,7 +16,7 @@ func newShellCommand() *cobra.Command {
 		Use:   "shell [flags] [-- command args...]",
 		Short: "Open a shell (or run a command) in the devcontainer",
 		Long: `devcontainer-cli shell — open an interactive shell in the running devcontainer,
-or run a one-off command in it. A convenience wrapper over 'docker exec -it'.
+or run a one-off command in it. A convenience wrapper over '<engine> exec -it' (docker or podman).
 
 With no command after '--' it opens a login shell. Anything after '--' is run
 inside the container instead and its exit code is propagated, which makes 'shell'
@@ -29,7 +29,7 @@ Pass -T when piping a command's output to a file so the stream isn't mangled.
 
 An explicit command is exec'd directly, NOT through a shell. That is enough for
 most of them: the image declares its toolchain PATH as environment (uv, node,
-pnpm, cargo, bun, go, ~/.local/bin), which a bare 'docker exec' inherits. Wrap a
+pnpm, cargo, bun, go, ~/.local/bin), which a bare '<engine> exec' inherits. Wrap a
 command in a login bash — 'shell -- bash -lc "cd /srv && ./build.sh | tee log"' —
 when it needs pipes, '&&', globs or 'cd', or the container's pip/npm shell
 indirections. Use bash, not zsh: a non-interactive 'zsh -lc' skips ~/.zshrc.
@@ -44,9 +44,9 @@ the project's workspace mount instead, which is what a build or a test command
 almost always wants and what saves wrapping one in a login bash just to 'cd'.
 
 Pass --via USER@HOST (with --container) to reach a container on a different
-Docker host through an existing SSH connection to it — unlike 'ssh --via' this
+container host through an existing SSH connection to it — unlike 'ssh --via' this
 needs nothing installed or configured in the container itself, since it rides
-entirely on the 'docker exec' channel (no ssh-into-container step).`,
+entirely on the '<engine> exec' channel (no ssh-into-container step).`,
 		Example: `  # Interactive shell as devuser
   devcontainer-cli shell
 
@@ -65,7 +65,7 @@ entirely on the 'docker exec' channel (no ssh-into-container step).`,
   # Pipe a DB dump out without a TTY
   devcontainer-cli shell -c <ws>-postgres -T -- pg_dump -U devuser devdb > dump.sql
 
-  # Shell into a container on a different Docker host
+  # Shell into a container on a different container host
   devcontainer-cli shell --via me@docker-host -c dc-ssh`,
 		RunE: runShell,
 	}
@@ -80,7 +80,7 @@ func addShellFlags(cmd *cobra.Command) {
 	cmd.Flags().String("type", "", "Shell to open: bash, zsh or sh (interactive shell defaults to zsh)")
 	cmd.Flags().BoolP("no-tty", "T", false, "Disable pseudo-TTY allocation (use when piping output to a file, e.g. a DB dump)")
 	cmd.Flags().BoolP("workdir", "w", false, "Run in the project's workspace mount instead of the container default; only the devcontainer has that directory, so a database container needs it left off")
-	cmd.Flags().String("via", "", "Reach the container through an existing SSH connection to its Docker host (requires --container): USER@HOST or an ssh-config alias")
+	cmd.Flags().String("via", "", "Reach the container through an existing SSH connection to its container host (requires --container): USER@HOST or an ssh-config alias")
 	addContainerFlag(cmd)
 
 	_ = cmd.RegisterFlagCompletionFunc("type", staticCompletion("bash", "zsh", "sh"))

@@ -83,7 +83,7 @@ func addAgentCreateFlags(cmd *cobra.Command) {
 	f.String(flagSkillsMode, "", "How the project's agent skills get installed: manual (default — you run 'install-skills') or auto (on every container start, writing into the workspace unprompted)")
 	f.Bool(flagNoInteractive, false, "Fail if any value is missing instead of prompting")
 	f.Bool(flagForce, false, "Overwrite existing files without prompting")
-	f.Bool(flagBuild, false, "Run 'docker compose build/pull' after generating")
+	f.Bool(flagBuild, false, "Run 'compose build/pull' (docker or podman) after generating")
 	f.Bool(flagNoBuild, false, "Skip the build/pull step after generating")
 
 	completeProfileFunc := func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {

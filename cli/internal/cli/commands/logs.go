@@ -13,7 +13,7 @@ func newLogsCommand() *cobra.Command {
 		Use:   "logs [service]",
 		Short: "View logs from the project's containers",
 		Long: `devcontainer-cli logs — view container logs for the current project, a thin
-wrapper over 'docker compose logs'.
+wrapper over '<engine> compose logs'.
 
 With no argument it shows logs for every service in the project; pass a service
 name to limit it to one. Use --container to read a single container's logs

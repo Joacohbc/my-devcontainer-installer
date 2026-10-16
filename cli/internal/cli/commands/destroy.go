@@ -20,7 +20,7 @@ func newDestroyCommand() *cobra.Command {
 		Long: `devcontainer-cli destroy — completely remove the current project. This is the
 nuclear option and cannot be undone.
 
-It runs 'docker compose down -v' (removing containers, the network AND the named
+It runs '<engine> compose down -v' (removing containers, the network AND the named
 volumes, so all data is deleted), then deletes the generated .dc_<workspace>/
 directory and the devcontainer.config.json. After this the project is gone and
 would have to be regenerated from scratch. Use 'down' instead if you only want

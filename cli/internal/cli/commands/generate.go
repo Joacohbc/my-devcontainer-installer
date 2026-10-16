@@ -67,7 +67,7 @@ func addGenerateFlags(cmd *cobra.Command) {
 	f.Bool(flagNonInteractive, false, "Alias for --no-interactive")
 	f.Bool(flagForcePrompt, false, "Prompt even if config file exists")
 	f.Bool(flagForce, false, "Overwrite existing files without prompting")
-	f.Bool(flagBuild, false, "Run 'docker compose build/pull' after generating")
+	f.Bool(flagBuild, false, "Run 'compose build/pull' (docker or podman) after generating")
 	f.Bool(flagNoBuild, false, "Skip the build/pull step after generating")
 	f.BoolP(flagVersion, "v", false, "Print the CLI version")
 
@@ -524,9 +524,9 @@ func validateConfig(cwd string, config *types.DevcontainerConfig, flags *genFlag
 		}
 		if resolved != config.Compose.Subnet {
 			if config.Compose.Subnet == domain.DefaultSubnet {
-				console.Info("Subnet %s is taken by another Docker network; using %s instead.", config.Compose.Subnet, resolved)
+				console.Info("Subnet %s is taken by another network; using %s instead.", config.Compose.Subnet, resolved)
 			} else {
-				console.Warn("Subnet %s is taken by another Docker network; using %s instead.", config.Compose.Subnet, resolved)
+				console.Warn("Subnet %s is taken by another network; using %s instead.", config.Compose.Subnet, resolved)
 			}
 			config.Compose.Subnet = resolved
 		}
@@ -534,7 +534,7 @@ func validateConfig(cwd string, config *types.DevcontainerConfig, flags *genFlag
 
 	conflicts := svc.NameConflicts(config)
 	if len(conflicts) > 0 {
-		console.Warn("\nDocker name conflicts detected:")
+		console.Warn("\nName conflicts detected:")
 		for _, c := range conflicts {
 			console.Warn("   - %s '%s' already exists (project: %s)", c.Kind, c.Name, c.Owner)
 		}
@@ -547,7 +547,7 @@ func validateConfig(cwd string, config *types.DevcontainerConfig, flags *genFlag
 				return fmt.Errorf("aborted due to name conflicts. Change workspace name or remove existing resources")
 			}
 		} else {
-			return fmt.Errorf("docker name conflicts. Change workspace name or remove existing resources")
+			return fmt.Errorf("name conflicts. Change workspace name or remove existing resources")
 		}
 	}
 	return nil
@@ -968,10 +968,10 @@ func resolveSubnet(subnet string, used []domain.CidrRange, interactive bool) (st
 	}
 	free := domain.FindFreeSubnet(subnet, used)
 	if free == subnet {
-		return "", fmt.Errorf("subnet %s overlaps with existing Docker network %s and no free subnet is available. Remove the conflicting network", subnet, domain.FormatCidr(*clash))
+		return "", fmt.Errorf("subnet %s overlaps with existing network %s and no free subnet is available. Remove the conflicting network", subnet, domain.FormatCidr(*clash))
 	}
 	if subnet != domain.DefaultSubnet && !interactive {
-		return "", fmt.Errorf("subnet %s overlaps with existing Docker network %s. Set subnet to %s in devcontainer.config.json or remove the conflicting network", subnet, domain.FormatCidr(*clash), free)
+		return "", fmt.Errorf("subnet %s overlaps with existing network %s. Set subnet to %s in devcontainer.config.json or remove the conflicting network", subnet, domain.FormatCidr(*clash), free)
 	}
 	return free, nil
 }

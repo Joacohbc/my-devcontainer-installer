@@ -18,7 +18,7 @@ func newCopyCommand() *cobra.Command {
 		Aliases: []string{"cp"},
 		Short:   "Copy files or directories between the host and the container",
 		Long: `devcontainer-cli copy — copy a file or directory between the host and the
-running devcontainer (a friendlier 'docker cp' that resolves the container for
+running devcontainer (a friendlier '<engine> cp' that resolves the container for
 you).
 
 Prefix a path with ':' to mean "inside the container"; the container is resolved

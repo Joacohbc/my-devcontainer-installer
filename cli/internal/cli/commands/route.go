@@ -20,7 +20,7 @@ func newRouteCommand() *cobra.Command {
 		Use:   "route",
 		Short: "Manage local domain routing for devcontainers via global Caddy proxy",
 		Long: `devcontainer-cli route — dynamically map local subdomains (<name>.devcli.localhost)
-directly to devcontainer services over Docker's internal network using a global Caddy router.
+directly to devcontainer services over the engine's internal network using a global Caddy router.
 
 Subcommands:
   route add <port>       Route a domain to a container port in foreground (cleans up on Ctrl+C)
