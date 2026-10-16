@@ -8,6 +8,7 @@ import (
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
 )
 
 func TestConfigGlobalDefaultsRoundTrip(t *testing.T) {
@@ -223,5 +224,79 @@ func TestConfigExportYAML(t *testing.T) {
 
 	if _, err := svc.ExportConfigYAML(t.TempDir()); err == nil {
 		t.Error("expected error exporting from a dir with no config")
+	}
+}
+
+func TestConfigEngineRoundTrip(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	svc := ConfigService{Report: nopReporter{}}
+
+	value, customized, err := svc.GetGlobalDefault("engine")
+	if err != nil || customized || value != docker.PreferenceAuto {
+		t.Fatalf("fresh engine = %q customized=%v err=%v; want auto uncustomized", value, customized, err)
+	}
+
+	if err := svc.SetGlobalDefault("engine", " Podman "); err != nil {
+		t.Fatalf("SetGlobalDefault: %v", err)
+	}
+	value, customized, _ = svc.GetGlobalDefault("engine")
+	if value != docker.PreferencePodman || !customized {
+		t.Errorf("after set: value=%q customized=%v", value, customized)
+	}
+
+	if err := svc.UnsetGlobalDefault("engine"); err != nil {
+		t.Fatalf("UnsetGlobalDefault: %v", err)
+	}
+	value, customized, _ = svc.GetGlobalDefault("engine")
+	if value != docker.PreferenceAuto || customized {
+		t.Errorf("after unset: value=%q customized=%v", value, customized)
+	}
+}
+
+func TestConfigEngineRejectsUnknownEngine(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	svc := ConfigService{Report: nopReporter{}}
+
+	err := svc.SetGlobalDefault("engine", "containerd")
+	if err == nil || !strings.Contains(err.Error(), "invalid engine") {
+		t.Fatalf("SetGlobalDefault(containerd) error = %v, want an invalid-engine error", err)
+	}
+	if value, customized, _ := svc.GetGlobalDefault("engine"); customized {
+		t.Errorf("a rejected value was stored: %q", value)
+	}
+}
+
+func TestApplyEnginePreference_followsEnvThenConfig(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv(domain.EngineEnvVar, "")
+	defer useFakeDocker(&fakeRunner{})()
+	svc := ConfigService{Report: nopReporter{}}
+
+	if err := svc.SetGlobalDefault("engine", "podman"); err != nil {
+		t.Fatalf("SetGlobalDefault: %v", err)
+	}
+	if err := ApplyEnginePreference(); err != nil {
+		t.Fatalf("ApplyEnginePreference: %v", err)
+	}
+	if got := docker.CurrentEngine(); got != docker.EnginePodman {
+		t.Errorf("engine from config = %+v, want podman", got)
+	}
+
+	t.Setenv(domain.EngineEnvVar, "docker")
+	if err := ApplyEnginePreference(); err != nil {
+		t.Fatalf("ApplyEnginePreference: %v", err)
+	}
+	if got := docker.CurrentEngine(); got != docker.EngineDocker {
+		t.Errorf("engine from env = %+v, want docker (env beats config)", got)
+	}
+}
+
+func TestApplyEnginePreference_reportsAnInvalidValue(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv(domain.EngineEnvVar, "lxc")
+	defer useFakeDocker(&fakeRunner{})()
+
+	if err := ApplyEnginePreference(); err == nil {
+		t.Error("ApplyEnginePreference accepted an unknown engine")
 	}
 }

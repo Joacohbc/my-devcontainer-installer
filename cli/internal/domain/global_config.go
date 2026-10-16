@@ -30,6 +30,20 @@ type GlobalConfig struct {
 	// directory is not a repository yet. Off by default: the directory is the
 	// user's, and creating a repository in it is not something to do unasked.
 	GitInit bool `json:"gitInit,omitempty"`
+	// Engine picks the container engine every command drives: "docker",
+	// "podman", or empty / "auto" to use whichever answers (docker first).
+	Engine string `json:"engine,omitempty"`
+}
+
+const EngineEnvVar = "DEVCONTAINER_ENGINE"
+
+// ResolveEnginePreference returns the engine preference to apply, with
+// precedence DEVCONTAINER_ENGINE → `config engine` → "" (auto-detect).
+func ResolveEnginePreference() string {
+	if fromEnv := strings.TrimSpace(os.Getenv(EngineEnvVar)); fromEnv != "" {
+		return fromEnv
+	}
+	return LoadGlobalConfig().Engine
 }
 
 // GitInitEnabled reports whether generate may offer to initialise a repository.

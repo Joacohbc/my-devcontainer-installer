@@ -32,6 +32,9 @@ Subcommands:
                       ~/.ssh/config, which the CLI otherwise leaves alone).
   git-init            Whether generate offers to 'git init' a project directory
                       that is not a repository yet (true/false, default false).
+  engine              Container engine to drive: docker, podman or auto
+                      (default auto: docker when it answers, otherwise podman).
+                      DEVCONTAINER_ENGINE overrides it for one invocation.
   alias               Your own shell aliases, applied to every container.
   profile             List/create/copy/remove reusable profiles (module
                       bundles + custom scripts). Aliased as 'preset'.
@@ -56,6 +59,7 @@ Config file: ` + domain.GlobalConfigPath(),
 	cmd.AddCommand(newConfigKeyCommand("db-password", "DB password"))
 	cmd.AddCommand(newConfigSSHKeyCommand())
 	cmd.AddCommand(newConfigKeyCommand("ssh-config-file", "CLI-managed SSH config file"))
+	cmd.AddCommand(newConfigEngineCommand())
 	cmd.AddCommand(newConfigAliasCommand())
 	cmd.AddCommand(newConfigExportCommand())
 	cmd.AddCommand(newConfigImportCommand())
@@ -84,6 +88,31 @@ func newConfigKeyCommand(key, description string) *cobra.Command {
 		},
 	}
 	cmd.Flags().Bool("unset", false, fmt.Sprintf("Remove the %s key (revert to default)", key))
+	return cmd
+}
+
+func newConfigEngineCommand() *cobra.Command {
+	cmd := newConfigKeyCommand("engine", "container engine (docker, podman or auto)")
+	cmd.Long = `devcontainer-cli config engine — choose which container engine every command
+drives: docker, podman, or auto.
+
+With auto (the default) the first engine that answers wins, docker before
+podman. Pin one when both are installed, or when 'docker' on this machine is
+only a shim over podman. The environment variable DEVCONTAINER_ENGINE overrides
+the stored value for a single invocation.
+
+With no argument it prints the current value; with a value it stores it; with
+--unset it reverts to auto.`
+	cmd.Example = `  devcontainer-cli config engine            # print current value
+  devcontainer-cli config engine podman     # always drive podman
+  devcontainer-cli config engine --unset    # back to auto-detection
+  DEVCONTAINER_ENGINE=docker devcontainer-cli up`
+	cmd.ValidArgsFunction = func(_ *cobra.Command, args []string, _ string) ([]string, cobra.ShellCompDirective) {
+		if len(args) > 0 {
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		}
+		return service.EnginePreferences(), cobra.ShellCompDirectiveNoFileComp
+	}
 	return cmd
 }
 

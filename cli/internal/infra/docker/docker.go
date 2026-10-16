@@ -39,6 +39,8 @@ var (
 	hostOverride string
 )
 
+const engineVersionFormat = "{{.Client.Version}}"
+
 func SetContext(ctx context.Context) {
 	globalMu.Lock()
 	defer globalMu.Unlock()
@@ -54,10 +56,11 @@ func getContext() context.Context {
 	return globalCtx
 }
 
-// SetHostOverride points every subsequent docker invocation at a remote
+// SetHostOverride points every subsequent engine invocation at a remote
 // daemon reached over ssh: host is "user@host" or an existing ssh-config
-// alias, rendered as DOCKER_HOST=ssh://<host> — Docker's own ssh transport
-// does the tunneling. Pair with ResetHostOverride (typically via defer).
+// alias, rendered as ssh://<host> in the engine's own remote-host variable
+// (Engine.RemoteHostVar) — the engine's ssh transport does the tunneling.
+// Pair with ResetHostOverride (typically via defer).
 func SetHostOverride(host string) {
 	hostMu.Lock()
 	defer hostMu.Unlock()
@@ -80,7 +83,7 @@ func hostOverrideEnv() map[string]string {
 	if host == "" {
 		return nil
 	}
-	return map[string]string{"DOCKER_HOST": "ssh://" + host}
+	return map[string]string{CurrentEngine().RemoteHostVar: "ssh://" + host}
 }
 
 func IsDockerAvailable() bool {
@@ -88,21 +91,26 @@ func IsDockerAvailable() bool {
 	if ctx.Err() != nil {
 		return false
 	}
+	engine := CurrentEngine()
 	availMu.Lock()
 	defer availMu.Unlock()
 	if availCache != nil {
 		return *availCache
 	}
+	isAvailable := probeEngine(ctx, engine)
+	if ctx.Err() == nil {
+		availCache = &isAvailable
+	}
+	return isAvailable
+}
+
+func probeEngine(ctx context.Context, engine Engine) bool {
 	status, _, _ := defaultRunner.Run(
 		ctx,
-		[]string{"docker", "version", "--format", "{{.Client.Version}}"},
+		[]string{engine.Binary, "version", "--format", engineVersionFormat},
 		"pipe", "", nil,
 	)
-	result := status == 0
-	if ctx.Err() == nil {
-		availCache = &result
-	}
-	return result
+	return status == 0
 }
 
 func ResetDockerCache() {
@@ -112,10 +120,10 @@ func ResetDockerCache() {
 }
 
 func EnsureDocker() error {
-	if !IsDockerAvailable() {
-		return fmt.Errorf("docker is not installed or the daemon is not running")
+	if IsDockerAvailable() {
+		return nil
 	}
-	return nil
+	return unavailableError(CurrentEngine())
 }
 
 // DockerInherit runs a docker command inheriting the parent process's standard streams
@@ -125,7 +133,7 @@ func DockerInherit(args []string) (int, error) {
 	if err := EnsureDocker(); err != nil {
 		return 1, err
 	}
-	fullArgs := append([]string{"docker"}, args...)
+	fullArgs := append([]string{CurrentEngine().Binary}, args...)
 	status, _, _ := defaultRunner.Run(getContext(), fullArgs, "inherit", "", hostOverrideEnv())
 	return status, nil
 }
@@ -138,7 +146,7 @@ func DockerCapture(args []string) (status int, stdout, stderr string, err error)
 	if err = EnsureDocker(); err != nil {
 		return 1, "", "", err
 	}
-	fullArgs := append([]string{"docker"}, args...)
+	fullArgs := append([]string{CurrentEngine().Binary}, args...)
 	status, stdout, stderr = defaultRunner.Run(getContext(), fullArgs, "pipe", "", hostOverrideEnv())
 	return status, stdout, stderr, nil
 }
@@ -152,7 +160,7 @@ func DockerCompose(composeFile string, args []string, opts *ComposeOptions) (int
 	if err := EnsureDocker(); err != nil {
 		return 1, err
 	}
-	cmdArgs := append([]string{"docker", "compose", "-f", composeFile}, args...)
+	cmdArgs := append([]string{CurrentEngine().Binary, "compose", "-f", composeFile}, args...)
 	cwd := ""
 	var env map[string]string
 	if opts != nil {
@@ -169,7 +177,7 @@ func DockerComposeOrThrow(composeFile string, args []string, opts *ComposeOption
 		return err
 	}
 	if status != 0 {
-		return fmt.Errorf("docker compose -f %s %s failed", composeFile, strings.Join(args, " "))
+		return fmt.Errorf("%s compose -f %s %s failed", CurrentEngine().Name, composeFile, strings.Join(args, " "))
 	}
 	return nil
 }
@@ -234,7 +242,7 @@ func DockerExecStdin(input []byte, args []string) (int, error) {
 	}
 	ctx := getContext()
 	if _, ok := defaultRunner.(*DefaultRunner); ok {
-		fullArgs := append([]string{"docker"}, args...)
+		fullArgs := append([]string{CurrentEngine().Binary}, args...)
 		cmd := exec.CommandContext(ctx, fullArgs[0], fullArgs[1:]...)
 		if env := hostOverrideEnv(); env != nil {
 			cmd.Env = mergeEnv(env)
@@ -251,7 +259,7 @@ func DockerExecStdin(input []byte, args []string) (int, error) {
 		return 0, nil
 	}
 	// Mock fallback for testing
-	fullArgs := append([]string{"docker"}, args...)
+	fullArgs := append([]string{CurrentEngine().Binary}, args...)
 	status, _, _ := defaultRunner.Run(ctx, fullArgs, "pipe", "", hostOverrideEnv())
 	return status, nil
 }

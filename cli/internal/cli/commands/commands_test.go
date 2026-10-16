@@ -720,6 +720,24 @@ func TestConfigCommand_HasSSHConfigFileSubcommand(t *testing.T) {
 	}
 }
 
+func TestConfigCommand_EngineSubcommandCompletesEngines(t *testing.T) {
+	root := NewRootCommand("test")
+	sub := findSubcommand(findSubcommand(root, "config"), "engine")
+	if sub == nil {
+		t.Fatal("expected 'config engine' command to be registered")
+	}
+	if sub.Flags().Lookup("unset") == nil {
+		t.Error("expected config engine flag --unset")
+	}
+	got, _ := sub.ValidArgsFunction(sub, nil, "")
+	if want := []string{"auto", "docker", "podman"}; !slices.Equal(got, want) {
+		t.Errorf("config engine completion = %v, want %v", got, want)
+	}
+	if more, _ := sub.ValidArgsFunction(sub, []string{"podman"}, ""); len(more) != 0 {
+		t.Errorf("config engine offered %v after its value was given", more)
+	}
+}
+
 func TestContextCommand_Flags(t *testing.T) {
 	root := NewRootCommand("test")
 	ctx := findSubcommand(root, "context")

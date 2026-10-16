@@ -120,9 +120,9 @@ func defaultForField(f Field) any {
 // inspect_test.go).
 func useFakeDocker(r docker.Runner) func() {
 	docker.SetRunner(r)
-	docker.ResetDockerCache()
+	docker.ResetEngine()
 	return func() {
 		docker.ResetRunner()
-		docker.ResetDockerCache()
+		docker.ResetEngine()
 	}
 }

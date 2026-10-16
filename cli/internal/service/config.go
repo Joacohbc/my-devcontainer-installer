@@ -10,11 +10,14 @@ import (
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/catalog"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/modules/skills"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
 )
 
 // gitInitKey is the only boolean global key; it is spelled as a string like the
 // others so it goes through the same get/set/unset command.
 const gitInitKey = "git-init"
+
+const engineKey = "engine"
 
 // ConfigService reads and writes global CLI config keys and project config
 // import/export. It owns validation, persistence and success reporting; the cli
@@ -59,6 +62,8 @@ func (s ConfigService) GetGlobalDefault(key string) (value string, customized bo
 		return defaulted(globalDefaults(cfg).SSHConfigFile, domain.DefaultManagedSSHConfigPath())
 	case gitInitKey:
 		return strconv.FormatBool(cfg.GitInit), cfg.GitInit, nil
+	case engineKey:
+		return defaulted(cfg.Engine, docker.PreferenceAuto)
 	}
 	return "", false, fmt.Errorf("unknown config key: %s", key)
 }
@@ -87,6 +92,13 @@ func (s ConfigService) SetGlobalDefault(key, value string) error {
 			return fmt.Errorf("invalid %s value %q: expected true or false", gitInitKey, value)
 		}
 		cfg.GitInit = enabled
+	case engineKey:
+		preference, perr := docker.ParseEnginePreference(value)
+		if perr != nil {
+			return perr
+		}
+		cfg.Engine = preference
+		value = preference
 	default:
 		return fmt.Errorf("unknown config key: %s", key)
 	}
@@ -124,6 +136,9 @@ func (s ConfigService) UnsetGlobalDefault(key string) error {
 	case gitInitKey:
 		cfg.GitInit = false
 		fallback = "false"
+	case engineKey:
+		cfg.Engine = ""
+		fallback = docker.PreferenceAuto
 	default:
 		return fmt.Errorf("unknown config key: %s", key)
 	}
@@ -236,4 +251,21 @@ func (s ConfigService) Profiles() []catalog.Profile {
 // AgentSkills returns the built-in and user-defined agent skills.
 func (s ConfigService) AgentSkills() []*skills.Spec {
 	return catalog.AllAgentSkills(domain.SkillDirs()...)
+}
+
+// EnginePreferences lists the values `config engine` accepts, for completion.
+func EnginePreferences() []string { return docker.EnginePreferences() }
+
+// ApplyEnginePreference points the infra layer at the engine the user asked
+// for (DEVCONTAINER_ENGINE, then `config engine`). It only records the
+// preference: probing the installed engines waits until a command actually
+// needs one, so commands that never touch a container pay nothing for it.
+// An invalid stored value is reported rather than silently ignored.
+func ApplyEnginePreference() error {
+	preference, err := docker.ParseEnginePreference(domain.ResolveEnginePreference())
+	if err != nil {
+		return err
+	}
+	docker.SetEnginePreference(preference)
+	return nil
 }
