@@ -207,6 +207,14 @@ func genKey(ssh service.SshService, keyPath string) error {
 
 // containerIP resolves a single usable IP for the container, prompting to choose
 // when the container is attached to more than one network.
+func containerEndpoint(ssh service.SshService, container string, f *setupSshFlags) (sshdefaults.Endpoint, error) {
+	if published, isPublished := ssh.PublishedEndpoint(container); isPublished {
+		return published, nil
+	}
+	ip, err := containerIP(ssh, container, f)
+	return sshdefaults.Endpoint{Host: ip}, err
+}
+
 func containerIP(ssh service.SshService, container string, f *setupSshFlags) (string, error) {
 	entries, err := ssh.ContainerIPs(container)
 	if err != nil {
@@ -232,6 +240,11 @@ func containerIP(ssh service.SshService, container string, f *setupSshFlags) (st
 
 type installResult struct {
 	hostname string
+	port     string
+}
+
+func (r installResult) endpoint() sshdefaults.Endpoint {
+	return sshdefaults.Endpoint{Host: r.hostname, Port: r.port}
 }
 
 func installKey(ssh service.SshService, f *setupSshFlags, mode sshdefaults.Mode) (installResult, error) {
@@ -247,14 +260,14 @@ func installKey(ssh service.SshService, f *setupSshFlags, mode sshdefaults.Mode)
 	// for this connection. buildConfigBlock re-resolves the IP live on every
 	// connect rather than using this one.
 	if mode == sshdefaults.ModeLocal || f.via != "" {
-		ip, ierr := containerIP(ssh, f.container, f)
+		endpoint, ierr := containerEndpoint(ssh, f.container, f)
 		if ierr != nil {
 			return installResult{}, ierr
 		}
-		if ip == "" {
+		if endpoint.Host == "" {
 			return installResult{}, fmt.Errorf("could not resolve container IP")
 		}
-		console.Log(fmt.Sprintf("Installing public key into %s (%s) via docker exec...", f.container, ip))
+		console.Log(fmt.Sprintf("Installing public key into %s (%s) via %s exec...", f.container, endpoint.Host, service.EngineBinary()))
 		if err := ssh.InstallKeyLocal(service.InstallKeySpec{
 			PublicKey: pub,
 			User:      f.user,
@@ -263,10 +276,10 @@ func installKey(ssh service.SshService, f *setupSshFlags, mode sshdefaults.Mode)
 		}); err != nil {
 			return installResult{}, err
 		}
-		return installResult{hostname: ip}, nil
+		return installResult{hostname: endpoint.Host, port: endpoint.Port}, nil
 	}
 
-	console.Log(fmt.Sprintf("Installing public key into %s via docker exec...", f.container))
+	console.Log(fmt.Sprintf("Installing public key into %s via %s exec...", f.container, service.EngineBinary()))
 	if err := ssh.InstallKeyLocal(service.InstallKeySpec{
 		PublicKey: pub,
 		User:      f.user,
@@ -295,6 +308,8 @@ func buildConfigBlock(mode sshdefaults.Mode, f *setupSshFlags, inst installResul
 		User:           f.user,
 		KeyPath:        f.key,
 		Hostname:       inst.hostname,
+		Port:           inst.port,
+		EngineBinary:   service.EngineBinary(),
 		Remote:         remote,
 		Container:      f.container,
 		KnownHostsFile: f.knownHosts,
@@ -316,7 +331,7 @@ func buildConfigBlock(mode sshdefaults.Mode, f *setupSshFlags, inst installResul
 // pinning under the IP there would never be consulted.
 func pinHostKeys(ssh service.SshService, f *setupSshFlags, inst installResult) {
 	host := inst.hostname
-	if f.via != "" {
+	if f.via != "" || inst.endpoint().IsPublished() {
 		host = f.alias
 	}
 	if host == "" {

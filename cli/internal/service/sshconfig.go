@@ -278,8 +278,28 @@ func optionKeyword(line string) string {
 // there is no such block or it sets no HostName (a ProxyCommand block, where ssh
 // falls back to the alias itself).
 func HostNameForAlias(content, alias string) string {
+	return optionValueForAlias(content, alias, "HostName")
+}
+
+// PortForAlias returns the Port the Host block for alias sets, or "" when it
+// sets none (ssh then dials the stock 22).
+func PortForAlias(content, alias string) string {
+	return optionValueForAlias(content, alias, "Port")
+}
+
+// PinnedHostForAlias returns the name the block's host keys are recorded under
+// in known_hosts: its HostKeyAlias when it sets one, otherwise its HostName.
+// "" means the block dials by its own alias (a ProxyCommand block).
+func PinnedHostForAlias(content, alias string) string {
+	if hostKeyAlias := optionValueForAlias(content, alias, "HostKeyAlias"); hostKeyAlias != "" {
+		return hostKeyAlias
+	}
+	return HostNameForAlias(content, alias)
+}
+
+func optionValueForAlias(content, alias, keyword string) string {
 	for _, line := range strings.Split(ExtractHostBlock(content, alias), "\n") {
-		if !strings.EqualFold(optionKeyword(line), "HostName") {
+		if !strings.EqualFold(optionKeyword(line), keyword) {
 			continue
 		}
 		fields := strings.Fields(line)
@@ -817,10 +837,31 @@ func (s SshService) AliasHostName(alias string) (string, error) {
 	return HostNameForAlias(content, alias), nil
 }
 
-// ManagedHostName returns the address the managed block for kind + ref dials:
-// its alias' HostName. It reads the config once, and yields "" when the config,
-// the block, or its HostName is absent (a ProxyCommand block sets none). Callers
-// use it to learn what a block had pinned *before* removing it.
+// AliasEndpoint returns the address and port the Host block for alias dials; the
+// port is empty when the block sets none.
+func (s SshService) AliasEndpoint(alias string) (sshdefaults.Endpoint, error) {
+	content, err := s.managedAndUserConfigs()
+	if err != nil {
+		return sshdefaults.Endpoint{}, err
+	}
+	return sshdefaults.Endpoint{Host: HostNameForAlias(content, alias), Port: PortForAlias(content, alias)}, nil
+}
+
+// AliasPinnedHost returns the name the block for alias has its host keys
+// recorded under (see PinnedHostForAlias). It reads BOTH configs.
+func (s SshService) AliasPinnedHost(alias string) (string, error) {
+	content, err := s.managedAndUserConfigs()
+	if err != nil {
+		return "", err
+	}
+	return PinnedHostForAlias(content, alias), nil
+}
+
+// ManagedHostName returns the name the managed block for kind + ref has its host
+// keys recorded under: its HostKeyAlias, or else its HostName. It reads the
+// config once, and yields "" when the config, the block, or both are absent (a
+// ProxyCommand block sets neither). Callers use it to learn what a block had
+// pinned *before* removing it.
 func (s SshService) ManagedHostName(kind sshdefaults.Kind, ref string) (string, error) {
 	path, err := managedConfigPath()
 	if err != nil {
@@ -838,17 +879,18 @@ func (s SshService) ManagedHostName(kind sshdefaults.Kind, ref string) (string, 
 	if !ok {
 		return "", nil
 	}
-	return HostNameForAlias(content, alias), nil
+	return PinnedHostForAlias(content, alias), nil
 }
 
-// SetManagedHostName rewrites the HostName of the managed block for alias to
-// hostName, reporting whether anything changed. It only ever updates an existing
-// HostName line: a block that dials by name (a ProxyCommand block, which has
-// none) keeps its transport untouched. This is what keeps a local block anchored
-// to the container name — the block records the container's address, but that
-// cached address is refreshed from the name whenever a recreated container comes
-// back on a different IP.
-func (s SshService) SetManagedHostName(alias, hostName string) (changed bool, err error) {
+// SetManagedEndpoint rewrites the address the managed block for alias dials to
+// endpoint, reporting whether anything changed. It only ever updates a block
+// that already has a HostName line: a block that dials by name (a ProxyCommand
+// block, which has none) keeps its transport untouched. This is what keeps a
+// local block anchored to the container name — the block records the container's
+// address (or the host port its sshd is published on), but that cached address
+// is refreshed from the name whenever a recreated container comes back on a
+// different one.
+func (s SshService) SetManagedEndpoint(alias string, endpoint sshdefaults.Endpoint) (changed bool, err error) {
 	path, err := managedConfigPath()
 	if err != nil {
 		return false, err
@@ -860,7 +902,7 @@ func (s SshService) SetManagedHostName(alias, hostName string) (changed bool, er
 		}
 		return false, err
 	}
-	content, changed := setHostNameOption(string(data), alias, hostName)
+	content, changed := setEndpointOptions(string(data), alias, endpoint)
 	if !changed {
 		return false, nil
 	}
@@ -870,27 +912,43 @@ func (s SshService) SetManagedHostName(alias, hostName string) (changed bool, er
 	return true, nil
 }
 
-// setHostNameOption returns content with the HostName of alias' block set to
-// hostName, and whether it changed. A block with no HostName line is left as-is:
-// adding one to a ProxyCommand block would change how it connects.
-func setHostNameOption(content, alias, hostName string) (string, bool) {
+const blockOptionIndent = "    "
+
+// setEndpointOptions returns content with alias' block dialing endpoint, and
+// whether it changed. The block's HostName is replaced; its Port and
+// HostKeyAlias lines are dropped and, when the endpoint is a published port,
+// written again right below HostName. A block with no HostName line is left
+// as-is: adding one to a ProxyCommand block would change how it connects.
+func setEndpointOptions(content, alias string, endpoint sshdefaults.Endpoint) (string, bool) {
 	lines := strings.Split(content, "\n")
 	start, end := hostBlockRange(lines, alias)
 	if start < 0 {
 		return content, false
 	}
-	for i := start + 1; i < end; i++ {
-		if !strings.EqualFold(optionKeyword(lines[i]), "HostName") {
+	block := make([]string, 0, end-start+2)
+	block = append(block, lines[start])
+	hasHostName := false
+	for _, line := range lines[start+1 : end] {
+		switch strings.ToLower(optionKeyword(line)) {
+		case "port", "hostkeyalias":
 			continue
+		case "hostname":
+			hasHostName = true
+			block = append(block, blockOptionIndent+"HostName "+endpoint.Host)
+			if endpoint.IsPublished() {
+				block = append(block,
+					blockOptionIndent+"Port "+endpoint.PortOrDefault(),
+					blockOptionIndent+"HostKeyAlias "+alias)
+			}
+		default:
+			block = append(block, line)
 		}
-		if fields := strings.Fields(lines[i]); len(fields) >= 2 && fields[1] == hostName {
-			return content, false
-		}
-		indent := lines[i][:len(lines[i])-len(strings.TrimLeft(lines[i], " \t"))]
-		lines[i] = indent + "HostName " + hostName
-		return strings.Join(lines, "\n"), true
 	}
-	return content, false
+	if !hasHostName {
+		return content, false
+	}
+	updated := strings.Join(slices.Concat(lines[:start], block, lines[end:]), "\n")
+	return updated, updated != content
 }
 
 // HostIsReferenced reports whether any Host block still dials host. It guards

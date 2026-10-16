@@ -132,3 +132,27 @@ func enginePreferenceIsAuto() bool {
 func IsPodman() bool {
 	return CurrentEngine().Name == EnginePodman.Name
 }
+
+const (
+	podmanRootlessFormat = "{{.Host.Security.Rootless}}"
+	podmanSocketFormat   = "{{.Host.RemoteSocket.Path}}"
+)
+
+func IsRootless() bool {
+	return podmanInfo(podmanRootlessFormat) == "true"
+}
+
+func HostSocketPath() string {
+	return strings.TrimPrefix(podmanInfo(podmanSocketFormat), "unix://")
+}
+
+func podmanInfo(format string) string {
+	if !IsPodman() {
+		return ""
+	}
+	status, stdout, _, err := DockerCapture([]string{"info", "--format", format})
+	if err != nil || status != 0 {
+		return ""
+	}
+	return strings.TrimSpace(stdout)
+}

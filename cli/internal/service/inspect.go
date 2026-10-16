@@ -9,9 +9,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/assets"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/sshdefaults"
 )
 
 // ContainerState represents the execution state of a container.
@@ -496,6 +498,42 @@ func (s InspectService) ContainerNetworkIPs(name string) ([]NetworkIP, error) {
 	return result, nil
 }
 
+const publishedPortsFormat = "{{json .NetworkSettings.Ports}}"
+
+type publishedBinding struct {
+	HostIP   string `json:"HostIp"`
+	HostPort string `json:"HostPort"`
+}
+
+// PublishedTCPPort returns the host address and port the engine publishes
+// containerPort on, or ("", "") when it is not published or the answer cannot
+// be read. A wildcard bind (0.0.0.0, ::, or none) is reported as the loopback,
+// which is where the machine that published it reaches it.
+func (s InspectService) PublishedTCPPort(name, containerPort string) (hostIP, hostPort string) {
+	status, stdout, _, err := docker.DockerCapture([]string{"inspect", "-f", publishedPortsFormat, name})
+	if err != nil || status != 0 {
+		return "", ""
+	}
+	var bindingsByPort map[string][]publishedBinding
+	if err := json.Unmarshal([]byte(strings.TrimSpace(stdout)), &bindingsByPort); err != nil {
+		return "", ""
+	}
+	for _, binding := range bindingsByPort[containerPort+"/tcp"] {
+		if binding.HostPort != "" {
+			return reachableHostIP(binding.HostIP), binding.HostPort
+		}
+	}
+	return "", ""
+}
+
+func reachableHostIP(boundIP string) string {
+	switch boundIP {
+	case "", "0.0.0.0", "::", "[::]":
+		return sshdefaults.LoopbackHost
+	}
+	return boundIP
+}
+
 // ContainerNames returns every container name known to the daemon (running or
 // stopped), or nil if docker is unavailable. Used for shell completion.
 func (s InspectService) ContainerNames() []string {
@@ -577,13 +615,40 @@ type Container struct {
 	Workspace string // workspace name, "standalone" for quick-run, "" if unmanaged
 }
 
+// dockerPSLine is one row of `ps --format '{{json .}}'`, normalised to the
+// shape Docker prints so the rest of the service does not care which engine
+// answered (see domain.ParseLabelsJSON and friends).
 type dockerPSLine struct {
-	Names  string `json:"Names"`
-	Image  string `json:"Image"`
-	Status string `json:"Status"`
-	State  string `json:"State"`
-	Labels string `json:"Labels"`
-	Ports  string `json:"Ports"`
+	Names  string
+	Image  string
+	Status string
+	State  string
+	Labels string
+	Ports  string
+}
+
+func (l *dockerPSLine) UnmarshalJSON(data []byte) error {
+	var wire struct {
+		Names  json.RawMessage
+		Image  string
+		Status string
+		State  string
+		Labels json.RawMessage
+		Ports  json.RawMessage
+	}
+	if err := json.Unmarshal(data, &wire); err != nil {
+		return err
+	}
+	l.Names = strings.Join(domain.ParseNamesJSON(wire.Names), ",")
+	l.Image = wire.Image
+	l.Status = wire.Status
+	if l.Status == "" {
+		l.Status = wire.State
+	}
+	l.State = wire.State
+	l.Labels = domain.FlattenLabels(domain.ParseLabelsJSON(wire.Labels))
+	l.Ports = domain.ParsePortsJSON(wire.Ports)
+	return nil
 }
 
 func parsePSLines(stdout string) []dockerPSLine {
@@ -623,26 +688,20 @@ func (s InspectService) ListAll() []Container {
 // for managed devcontainers this label carries the workspace name.
 const composeProjectLabel = "com.docker.compose.project"
 
-// parseLabels turns docker's comma-separated "k=v,k=v" label string into a map.
-func parseLabels(s string) map[string]string {
-	out := map[string]string{}
-	for _, pair := range strings.Split(s, ",") {
-		pair = strings.TrimSpace(pair)
-		if pair == "" {
-			continue
-		}
-		k, v, _ := strings.Cut(pair, "=")
-		out[strings.TrimSpace(k)] = strings.TrimSpace(v)
-	}
-	return out
-}
+// podmanComposeProjectLabel is the project label podman-compose has always set;
+// the docker-compatible one above arrived later, so it is read as a fallback.
+const podmanComposeProjectLabel = "io.podman.compose.project"
+
+var composeProjectLabels = []string{composeProjectLabel, podmanComposeProjectLabel}
 
 // deriveWorkspace returns the workspace name for a managed devcontainer (from the
 // compose project label), "standalone" for a quick-run container, or "" when the
 // container is not CLI-managed.
 func deriveWorkspace(labels map[string]string) string {
-	if proj := labels[composeProjectLabel]; proj != "" {
-		return proj
+	for _, label := range composeProjectLabels {
+		if project := labels[label]; project != "" {
+			return project
+		}
 	}
 	if _, ok := labels[types.LabelQuickRun]; ok {
 		return "standalone"
@@ -666,7 +725,7 @@ func (s InspectService) ListContainers(managedOnly bool) ([]Container, error) {
 		return nil, err
 	}
 	if status != 0 {
-		return nil, fmt.Errorf("docker ps exited with status %d", status)
+		return nil, fmt.Errorf("%s ps exited with status %d", docker.CurrentEngine().Name, status)
 	}
 	if strings.TrimSpace(stdout) == "" {
 		return nil, nil
@@ -674,7 +733,7 @@ func (s InspectService) ListContainers(managedOnly bool) ([]Container, error) {
 
 	var out []Container
 	for _, l := range parsePSLines(stdout) {
-		labels := parseLabels(l.Labels)
+		labels := domain.ParseLabelPairs(l.Labels)
 		out = append(out, Container{
 			Name:      l.Names,
 			Image:     l.Image,

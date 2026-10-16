@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -12,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
 )
 
 type routerTestRunner struct {
@@ -463,5 +465,104 @@ func TestStopRouter(t *testing.T) {
 	}
 	if runner.callContaining("rm") == nil {
 		t.Error("expected 'docker rm' for devcli-router")
+	}
+}
+
+type podmanInfoRunner struct {
+	*routerTestRunner
+	rootless string
+}
+
+func (r podmanInfoRunner) Run(ctx context.Context, args []string, stdio string, cwd string, env map[string]string) (int, string, string) {
+	if args[0] == "podman" && slices.Contains(args, "info") {
+		return 0, r.rootless + "\n", ""
+	}
+	return r.routerTestRunner.Run(ctx, args, stdio, cwd, env)
+}
+
+func routerOnPodman(t *testing.T, rootless string, unprivilegedPortStart string) (RouterService, *routerTestRunner) {
+	t.Helper()
+	runner := &routerTestRunner{}
+	t.Cleanup(useFakeDocker(podmanInfoRunner{routerTestRunner: runner, rootless: rootless}))
+	docker.SetEnginePreference(docker.PreferencePodman)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	t.Cleanup(server.Close)
+
+	startPath := filepath.Join(t.TempDir(), "ip_unprivileged_port_start")
+	if err := os.WriteFile(startPath, []byte(unprivilegedPortStart+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return RouterService{
+		Report:                    nopReporter{},
+		AdminURL:                  server.URL,
+		HTTPClient:                server.Client(),
+		UnprivilegedPortStartPath: startPath,
+	}, runner
+}
+
+func TestEnsureRouterRunning_RootlessPodmanExplainsTheSysctlWhenPortsAreReserved(t *testing.T) {
+	svc, runner := routerOnPodman(t, "true", "1024")
+
+	err := svc.EnsureRouterRunning(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "ip_unprivileged_port_start=80") {
+		t.Fatalf("EnsureRouterRunning error = %v, want one naming the sysctl", err)
+	}
+	if runner.callContaining("run") != nil {
+		t.Error("no container may be created when the ports cannot be published")
+	}
+}
+
+func TestEnsureRouterRunning_RootlessPodmanProceedsOnceThePortsAreAllowed(t *testing.T) {
+	svc, runner := routerOnPodman(t, "true", "80")
+
+	if err := svc.EnsureRouterRunning(context.Background()); err != nil {
+		t.Fatalf("EnsureRouterRunning failed: %v", err)
+	}
+	if runner.callContaining("run") == nil {
+		t.Error("expected the router container to be created")
+	}
+}
+
+func TestEnsureRouterRunning_RootfulPodmanIgnoresTheUnprivilegedPortLimit(t *testing.T) {
+	svc, runner := routerOnPodman(t, "false", "1024")
+
+	if err := svc.EnsureRouterRunning(context.Background()); err != nil {
+		t.Fatalf("EnsureRouterRunning failed: %v", err)
+	}
+	if runner.callContaining("run") == nil {
+		t.Error("expected the router container to be created")
+	}
+}
+
+func TestEnsureRouterRunning_PodmanPullsTheQualifiedRouterImage(t *testing.T) {
+	svc, runner := routerOnPodman(t, "false", "1024")
+
+	if err := svc.EnsureRouterRunning(context.Background()); err != nil {
+		t.Fatalf("EnsureRouterRunning failed: %v", err)
+	}
+	if runner.callContaining("docker.io/library/caddy:alpine") == nil {
+		t.Errorf("podman run must use the qualified image, calls: %v", runner.calls)
+	}
+}
+
+func TestEnsureRouterRunning_DockerKeepsTheShortRouterImage(t *testing.T) {
+	runner := &routerTestRunner{}
+	defer useFakeDocker(runner)()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer server.Close()
+	svc := RouterService{Report: nopReporter{}, AdminURL: server.URL, HTTPClient: server.Client()}
+
+	if err := svc.EnsureRouterRunning(context.Background()); err != nil {
+		t.Fatalf("EnsureRouterRunning failed: %v", err)
+	}
+	if runner.callContaining(domain.RouterImage) == nil {
+		t.Errorf("docker run must use %q unchanged, calls: %v", domain.RouterImage, runner.calls)
 	}
 }

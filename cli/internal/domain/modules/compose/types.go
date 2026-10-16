@@ -69,6 +69,8 @@ type ServiceDef struct {
 	Command       string   `yaml:"command,omitempty"`
 	Restart       string   `yaml:"restart,omitempty"`
 	Privileged    bool     `yaml:"privileged,omitempty"`
+	UsernsMode    string   `yaml:"userns_mode,omitempty"`
+	User          string   `yaml:"user,omitempty"`
 	Environment   any      `yaml:"environment,omitempty"`
 	Volumes       []string `yaml:"volumes,omitempty"`
 	Ports         []string `yaml:"ports,omitempty"`

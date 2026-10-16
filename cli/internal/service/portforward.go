@@ -7,8 +7,6 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
-
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/sshdefaults"
 )
 
 // PortForwardService opens SSH tunnels into containers. The cli resolves the
@@ -76,7 +74,7 @@ func tunnelCommand(t Tunnel) *exec.Cmd {
 		if t.Target.Via != "" {
 			args = append(args, "-J", t.Target.Via)
 		}
-		args = append(args, sshdefaults.EphemeralDialArgs(t.Target.KeyPath)...)
+		args = append(args, t.Target.DialArgs()...)
 		args = append(args, t.Target.Destination())
 		return exec.Command("ssh", args...)
 	}

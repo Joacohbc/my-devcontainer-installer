@@ -26,36 +26,44 @@ func (s NetworkService) EnsureDocker() error { return docker.EnsureDocker() }
 // compose's project label for the workspace; an error is returned when none
 // exists (the workspace has not been brought up yet).
 func (s NetworkService) ResolveNetwork(workspace string) (string, error) {
+	for _, projectLabel := range composeProjectLabels {
+		names, err := s.managedNetworksOfProject(projectLabel, workspace)
+		if err != nil {
+			return "", err
+		}
+		if len(names) > 0 {
+			return pickWorkspaceNetwork(workspace, names), nil
+		}
+	}
+	return "", fmt.Errorf("no managed network found for workspace %q; bring it up first with 'devcontainer-cli up'", workspace)
+}
+
+func (s NetworkService) managedNetworksOfProject(projectLabel, workspace string) ([]string, error) {
 	status, stdout, _, err := docker.DockerCapture([]string{
 		"network", "ls",
 		"--filter", managedFilter,
-		"--filter", "label=com.docker.compose.project=" + workspace,
+		"--filter", "label=" + projectLabel + "=" + workspace,
 		"--format", "{{.Name}}",
 	})
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	if status != 0 {
-		return "", fmt.Errorf("docker network ls failed")
+		return nil, fmt.Errorf("%s network ls failed", docker.CurrentEngine().Name)
 	}
+	return splitNonEmptyLines(stdout), nil
+}
 
-	names := splitNonEmptyLines(stdout)
-	switch len(names) {
-	case 0:
-		return "", fmt.Errorf("no managed network found for workspace %q; bring it up first with 'devcontainer-cli up'", workspace)
-	case 1:
-		return names[0], nil
-	default:
-		// More than one managed network claims the project: prefer the
-		// conventional "<workspace>-network" compose key as a tie-breaker.
-		want := workspace + "-network"
-		for _, n := range names {
-			if strings.HasSuffix(n, want) {
-				return n, nil
-			}
+// pickWorkspaceNetwork prefers the conventional "<workspace>-network" compose
+// key when more than one managed network claims the project.
+func pickWorkspaceNetwork(workspace string, names []string) string {
+	want := workspace + "-network"
+	for _, name := range names {
+		if strings.HasSuffix(name, want) {
+			return name
 		}
-		return names[0], nil
 	}
+	return names[0]
 }
 
 // Connect attaches each container to the workspace network, registering the

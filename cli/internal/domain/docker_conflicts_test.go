@@ -22,6 +22,12 @@ func configForConflicts(t *testing.T) (*types.DevcontainerConfig, []string, stri
 	return cfg, containers, network
 }
 
+// labeled renders one resource line the way `--format '{{.Names}}\t{{json .Labels}}'`
+// prints it: the name, a tab, then the labels as a JSON object.
+func labeled(name, project string) string {
+	return name + "\t{\"" + types.LabelProject + "\":\"" + project + "\"}\n"
+}
+
 func argsContain(args []string, want string) bool {
 	for _, a := range args {
 		if a == want {
@@ -42,7 +48,7 @@ func TestFindConflicts_ForeignContainerIsConflict(t *testing.T) {
 	cfg, containers, _ := configForConflicts(t)
 	capture := func(args []string) (int, string, string) {
 		if argsContain(args, "container") {
-			return 0, containers[0] + "\tsome-other-project\n", ""
+			return 0, labeled(containers[0], "some-other-project"), ""
 		}
 		return 0, "", ""
 	}
@@ -60,7 +66,7 @@ func TestFindConflicts_SameProjectIsNotConflict(t *testing.T) {
 	project := types.ProjectID(cfg)
 	capture := func(args []string) (int, string, string) {
 		if argsContain(args, "container") {
-			return 0, containers[0] + "\t" + project + "\n", ""
+			return 0, labeled(containers[0], project), ""
 		}
 		return 0, "", ""
 	}
@@ -73,7 +79,7 @@ func TestFindConflicts_ForeignNetworkIsConflict(t *testing.T) {
 	cfg, _, network := configForConflicts(t)
 	capture := func(args []string) (int, string, string) {
 		if argsContain(args, "network") {
-			return 0, network + "\tother-project\n", ""
+			return 0, labeled(network, "other-project"), ""
 		}
 		return 0, "", ""
 	}
@@ -93,8 +99,8 @@ func TestFindConflicts_UnlabeledOwnerFallback(t *testing.T) {
 	cfg, containers, _ := configForConflicts(t)
 	capture := func(args []string) (int, string, string) {
 		if argsContain(args, "container") {
-			// No label column -> empty owner.
-			return 0, containers[0] + "\n", ""
+			// Podman prints {} for a container with no labels at all.
+			return 0, containers[0] + "\t{}\n", ""
 		}
 		return 0, "", ""
 	}
@@ -102,4 +108,22 @@ func TestFindConflicts_UnlabeledOwnerFallback(t *testing.T) {
 	if len(conflicts) != 1 || !strings.Contains(conflicts[0].Owner, "no label") {
 		t.Errorf("expected fallback owner for unlabeled resource, got %+v", conflicts)
 	}
+}
+
+// Docker flattens `{{json .Labels}}` of a network listing into a "k=v,k=v"
+// string; the owner must be found in that spelling too.
+func TestFindConflicts_FlattenedLabelsAreRead(t *testing.T) {
+	cfg, _, network := configForConflicts(t)
+	capture := func(args []string) (int, string, string) {
+		if argsContain(args, "network") {
+			return 0, network + "\t\"a=b," + types.LabelProject + "=other-project\"\n", ""
+		}
+		return 0, "", ""
+	}
+	for _, c := range domain.FindConflicts(cfg, true, capture) {
+		if c.Kind == "network" && c.Owner == "other-project" {
+			return
+		}
+	}
+	t.Error("expected the flattened label string to yield the owner")
 }

@@ -269,3 +269,7 @@ func ApplyEnginePreference() error {
 	docker.SetEnginePreference(preference)
 	return nil
 }
+
+// EngineBinary is the CLI of the engine in use ("docker" or "podman"), for the
+// places that write a command into a file another machine will run.
+func EngineBinary() string { return docker.CurrentEngine().Binary }

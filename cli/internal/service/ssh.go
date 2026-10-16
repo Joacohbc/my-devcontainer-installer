@@ -58,31 +58,54 @@ const (
 
 // ContainerLiveness reports a container's state by name, read from whatever
 // docker daemon is currently in scope — the local one, or a --via daemon when
-// called under WithHostOverride. When running it also returns the container's
-// first network address, so a caller can refresh a block that dials by IP. A
-// non-nil error means the daemon itself could not be queried (an unreachable
-// --via host), which is distinct from a reachable daemon that has no such
-// container (TargetAbsent, nil): the first must not be treated as stale.
-func (s SshService) ContainerLiveness(name string) (state TargetState, ip string, err error) {
+// called under WithHostOverride. When running it also returns where its sshd is
+// reachable (see ContainerEndpoint), so a caller can refresh a block that dials
+// by address. A non-nil error means the daemon itself could not be queried (an
+// unreachable --via host), which is distinct from a reachable daemon that has no
+// such container (TargetAbsent, nil): the first must not be treated as stale.
+func (s SshService) ContainerLiveness(name string) (state TargetState, endpoint sshdefaults.Endpoint, err error) {
 	inspectSvc := InspectService{Report: s.Report}
 	containers, err := inspectSvc.ListContainers(false)
 	if err != nil {
-		return TargetAbsent, "", err
+		return TargetAbsent, sshdefaults.Endpoint{}, err
 	}
 	for _, c := range containers {
 		if c.Name != name {
 			continue
 		}
 		if c.State != string(StateRunning) {
-			return TargetStopped, "", nil
+			return TargetStopped, sshdefaults.Endpoint{}, nil
 		}
-		ips, ipErr := inspectSvc.ContainerNetworkIPs(name)
-		if ipErr != nil || len(ips) == 0 {
-			return TargetRunning, "", nil
-		}
-		return TargetRunning, ips[0].IP, nil
+		return TargetRunning, s.ContainerEndpoint(name), nil
 	}
-	return TargetAbsent, "", nil
+	return TargetAbsent, sshdefaults.Endpoint{}, nil
+}
+
+// PublishedEndpoint returns the host port the engine publishes the container's
+// sshd on, if it does.
+func (s SshService) PublishedEndpoint(name string) (endpoint sshdefaults.Endpoint, isPublished bool) {
+	hostIP, hostPort := InspectService{Report: s.Report}.PublishedTCPPort(name, sshdefaults.Port)
+	if hostPort == "" {
+		return sshdefaults.Endpoint{}, false
+	}
+	return sshdefaults.Endpoint{Host: hostIP, Port: hostPort}, true
+}
+
+// ContainerEndpoint returns where a running container's sshd can be dialed: the
+// host port the engine published it on when there is one — the only way in with
+// a rootless engine, whose container addresses are not routable from the host —
+// otherwise the container's first network address on the stock port. The zero
+// Endpoint means neither could be found.
+func (s SshService) ContainerEndpoint(name string) sshdefaults.Endpoint {
+	if published, isPublished := s.PublishedEndpoint(name); isPublished {
+		return published
+	}
+	inspectSvc := InspectService{Report: s.Report}
+	ips, err := inspectSvc.ContainerNetworkIPs(name)
+	if err != nil || len(ips) == 0 {
+		return sshdefaults.Endpoint{}
+	}
+	return sshdefaults.Endpoint{Host: ips[0].IP}
 }
 
 // ComposeUp brings the stack up detached.
@@ -284,7 +307,10 @@ func (s SshService) Connect(alias string, args []string) error {
 // EphemeralTarget is a container resolved for a direct SSH dial: where to
 // connect, as whom, and with which key — already trusted there.
 type EphemeralTarget struct {
-	IP      string
+	IP string
+	// Port is the published host port sshd is reached through; empty means the
+	// stock port on IP.
+	Port    string
 	User    string
 	KeyPath string
 	Via     string
@@ -293,6 +319,11 @@ type EphemeralTarget struct {
 // Destination renders the target as ssh's user@host argument.
 func (t EphemeralTarget) Destination() string {
 	return fmt.Sprintf("%s@%s", t.User, t.IP)
+}
+
+// DialArgs are the ssh flags that dial the target without a managed Host block.
+func (t EphemeralTarget) DialArgs() []string {
+	return sshdefaults.EphemeralDialArgsForPort(t.KeyPath, sshdefaults.Endpoint{Port: t.Port}.PortOrDefault())
 }
 
 // noNetworkIPFallback is what an ephemeral dial falls back to when the daemon
@@ -313,10 +344,11 @@ const noNetworkIPFallback = "127.0.0.1"
 func (s SshService) EnsureEphemeralAccess(containerName, user, keyPath, via string) (EphemeralTarget, error) {
 	var target EphemeralTarget
 	err := WithHostOverride(via, func() error {
-		state, ip, err := s.ContainerLiveness(containerName)
+		state, endpoint, err := s.ContainerLiveness(containerName)
 		if err != nil {
 			return err
 		}
+		ip := endpoint.Host
 		if state == TargetAbsent {
 			return fmt.Errorf("container '%s' not found", containerName)
 		}
@@ -334,6 +366,7 @@ func (s SshService) EnsureEphemeralAccess(containerName, user, keyPath, via stri
 		}
 		target = EphemeralTarget{
 			IP:      ip,
+			Port:    endpoint.Port,
 			User:    user,
 			KeyPath: domain.ResolveSSHKeyPath(keyPath),
 			Via:     via,
@@ -377,7 +410,7 @@ func (s SshService) ConnectEphemeral(containerName, user, keyPath, via string, a
 	if target.Via != "" {
 		sshArgs = append(sshArgs, "-J", target.Via)
 	}
-	sshArgs = append(sshArgs, sshdefaults.EphemeralDialArgs(target.KeyPath)...)
+	sshArgs = append(sshArgs, target.DialArgs()...)
 	sshArgs = append(sshArgs, target.Destination())
 	sshArgs = append(sshArgs, args...)
 

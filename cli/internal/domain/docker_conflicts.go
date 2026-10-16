@@ -50,9 +50,9 @@ func listExistingDockerResources(kind string, capture CaptureFunc) map[string]st
 	labelKey := types.LabelProject
 	var args []string
 	if kind == "container" {
-		args = []string{"container", "ls", "-a", "--format", `{{.Names}}\t{{.Label "` + labelKey + `"}}`}
+		args = []string{"container", "ls", "-a", "--format", `{{.Names}}\t{{json .Labels}}`}
 	} else {
-		args = []string{"network", "ls", "--format", `{{.Name}}\t{{.Label "` + labelKey + `"}}`}
+		args = []string{"network", "ls", "--format", `{{.Name}}\t{{json .Labels}}`}
 	}
 	_, stdout, _ := capture(args)
 	resources := make(map[string]string)
@@ -62,7 +62,7 @@ func listExistingDockerResources(kind string, capture CaptureFunc) map[string]st
 		}
 		parts := strings.SplitN(line, "\t", 2)
 		if len(parts) == 2 {
-			resources[parts[0]] = parts[1]
+			resources[parts[0]] = ParseLabelsJSON([]byte(parts[1]))[labelKey]
 		} else {
 			resources[parts[0]] = ""
 		}

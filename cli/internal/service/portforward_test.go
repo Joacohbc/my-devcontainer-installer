@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/sshdefaults"
@@ -256,5 +257,20 @@ func TestBuildEphemeralTunnel(t *testing.T) {
 	}
 	if !reverse.Reverse || !reverse.Ephemeral {
 		t.Errorf("reverse ephemeral tunnel = %+v, want both Reverse and Ephemeral", reverse)
+	}
+}
+
+func TestTunnelCommand_Ephemeral_DialsAPublishedPort(t *testing.T) {
+	tunnel := Tunnel{
+		LocalPort:     8080,
+		ContainerPort: 80,
+		TargetHost:    "localhost",
+		Ephemeral:     true,
+		Target:        EphemeralTarget{IP: "127.0.0.1", Port: "41234", User: "devuser", KeyPath: "/k"},
+	}
+
+	args := strings.Join(tunnelCommand(tunnel).Args, " ")
+	if !strings.Contains(args, "-p 41234") || !strings.HasSuffix(args, "devuser@127.0.0.1") {
+		t.Errorf("tunnel args = %q, want -p 41234 and devuser@127.0.0.1", args)
 	}
 }

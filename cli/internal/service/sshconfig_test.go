@@ -1070,7 +1070,7 @@ func TestManagedViaHostMissingConfig(t *testing.T) {
 	}
 }
 
-func TestSetManagedHostName(t *testing.T) {
+func TestSetManagedEndpoint(t *testing.T) {
 	home := t.TempDir()
 	setHomeDir(t, home)
 	if err := os.MkdirAll(filepath.Join(home, ".ssh"), 0o700); err != nil {
@@ -1089,25 +1089,99 @@ func TestSetManagedHostName(t *testing.T) {
 
 	svc := SshService{Report: nopReporter{}}
 
-	changed, err := svc.SetManagedHostName("api", "172.25.1.99")
+	changed, err := svc.SetManagedEndpoint("api", sshdefaults.Endpoint{Host: "172.25.1.99"})
 	if err != nil || !changed {
-		t.Fatalf("SetManagedHostName(api) = %v,%v, want true,nil", changed, err)
+		t.Fatalf("SetManagedEndpoint(api) = %v,%v, want true,nil", changed, err)
 	}
 	if got := HostNameForAlias(readFile(t, path), "api"); got != "172.25.1.99" {
 		t.Errorf("HostName after update = %q, want 172.25.1.99", got)
 	}
 
 	// Idempotent: setting the same address changes nothing.
-	if changed, err := svc.SetManagedHostName("api", "172.25.1.99"); err != nil || changed {
-		t.Errorf("SetManagedHostName(api, same) = %v,%v, want false,nil", changed, err)
+	if changed, err := svc.SetManagedEndpoint("api", sshdefaults.Endpoint{Host: "172.25.1.99"}); err != nil || changed {
+		t.Errorf("SetManagedEndpoint(api, same) = %v,%v, want false,nil", changed, err)
 	}
 
 	// A ProxyCommand block has no HostName line; it must not gain one.
-	if changed, err := svc.SetManagedHostName("dc-ssh", "10.0.0.9"); err != nil || changed {
-		t.Errorf("SetManagedHostName(dc-ssh) = %v,%v, want false,nil (no HostName to update)", changed, err)
+	if changed, err := svc.SetManagedEndpoint("dc-ssh", sshdefaults.Endpoint{Host: "10.0.0.9"}); err != nil || changed {
+		t.Errorf("SetManagedEndpoint(dc-ssh) = %v,%v, want false,nil (no HostName to update)", changed, err)
 	}
 	if got := HostNameForAlias(readFile(t, path), "dc-ssh"); got != "" {
 		t.Errorf("dc-ssh gained a HostName %q, want none", got)
+	}
+}
+
+func TestSetManagedEndpoint_publishedPortAddsPortAndKeyAlias(t *testing.T) {
+	home := t.TempDir()
+	setHomeDir(t, home)
+	if err := os.MkdirAll(filepath.Join(home, ".ssh"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	cfg := "# devcontainer-cli:managed v=1 kind=workspace ref=api-3f9a alias=api\n" +
+		"Host api\n    HostName 172.25.1.30\n    User devuser\n    IdentityFile k\n"
+	path := managedSSHConfig(home)
+	if err := os.WriteFile(path, []byte(cfg), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	svc := SshService{Report: nopReporter{}}
+
+	published := sshdefaults.Endpoint{Host: "127.0.0.1", Port: "41234"}
+	if changed, err := svc.SetManagedEndpoint("api", published); err != nil || !changed {
+		t.Fatalf("SetManagedEndpoint(published) = %v,%v, want true,nil", changed, err)
+	}
+	content := readFile(t, path)
+	for _, want := range []string{"HostName 127.0.0.1", "Port 41234", "HostKeyAlias api", "User devuser", "IdentityFile k"} {
+		if !strings.Contains(content, want) {
+			t.Errorf("block after publishing lacks %q:\n%s", want, content)
+		}
+	}
+	if got := PinnedHostForAlias(content, "api"); got != "api" {
+		t.Errorf("PinnedHostForAlias = %q, want the alias (keys are keyed by HostKeyAlias)", got)
+	}
+	if changed, err := svc.SetManagedEndpoint("api", published); err != nil || changed {
+		t.Errorf("SetManagedEndpoint(same) = %v,%v, want false,nil", changed, err)
+	}
+
+	moved := sshdefaults.Endpoint{Host: "127.0.0.1", Port: "50000"}
+	if _, err := svc.SetManagedEndpoint("api", moved); err != nil {
+		t.Fatal(err)
+	}
+	if got := PortForAlias(readFile(t, path), "api"); got != "50000" {
+		t.Errorf("Port after the container moved = %q, want 50000", got)
+	}
+	if strings.Count(readFile(t, path), "HostKeyAlias") != 1 {
+		t.Errorf("HostKeyAlias must not be duplicated:\n%s", readFile(t, path))
+	}
+
+	if _, err := svc.SetManagedEndpoint("api", sshdefaults.Endpoint{Host: "172.25.1.30"}); err != nil {
+		t.Fatal(err)
+	}
+	content = readFile(t, path)
+	if strings.Contains(content, "Port ") || strings.Contains(content, "HostKeyAlias") {
+		t.Errorf("going back to the container IP must drop Port/HostKeyAlias:\n%s", content)
+	}
+	if got := PinnedHostForAlias(content, "api"); got != "172.25.1.30" {
+		t.Errorf("PinnedHostForAlias = %q, want the HostName again", got)
+	}
+}
+
+func TestPortForAlias_andPinnedHostForAlias(t *testing.T) {
+	content := "Host plain\n    HostName 10.0.0.2\n\nHost viaonly\n    ProxyCommand ssh h nc\n\nHost pub\n    HostName 127.0.0.1\n    Port 2200\n    HostKeyAlias pub\n"
+	cases := []struct {
+		alias, wantPort, wantPinned string
+	}{
+		{"plain", "", "10.0.0.2"},
+		{"viaonly", "", ""},
+		{"pub", "2200", "pub"},
+		{"missing", "", ""},
+	}
+	for _, c := range cases {
+		if got := PortForAlias(content, c.alias); got != c.wantPort {
+			t.Errorf("PortForAlias(%s) = %q, want %q", c.alias, got, c.wantPort)
+		}
+		if got := PinnedHostForAlias(content, c.alias); got != c.wantPinned {
+			t.Errorf("PinnedHostForAlias(%s) = %q, want %q", c.alias, got, c.wantPinned)
+		}
 	}
 }
 

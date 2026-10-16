@@ -2,6 +2,7 @@ package domain
 
 import (
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"net/netip"
 	"strings"
@@ -128,9 +129,8 @@ func LastHost(cidr string) (string, bool) {
 	return Uint32ToAddr(ip).String(), true
 }
 
-// ListUsedSubnets queries Docker (via the injected capture func) for the CIDR
-// ranges already allocated to existing networks on the daemon
-// occupies, except the ones named in ignoreNetworks. A project must ignore its
+// ListUsedSubnets queries the engine (via the injected capture func) for the
+// CIDR ranges the networks on the daemon occupy, except the ones named in ignoreNetworks. A project must ignore its
 // own network: regenerating a project whose stack is up would otherwise find
 // its own subnet taken and move the project onto a different one on every run.
 func ListUsedSubnets(capture CaptureFunc, ignoreNetworks ...string) []CidrRange {
@@ -157,37 +157,55 @@ func listUsedSubnets(capture CaptureFunc, ignored map[string]bool) []CidrRange {
 	if len(ids) == 0 {
 		return nil
 	}
-	args := append([]string{"network", "inspect", "--format", "{{$name := .Name}}{{range .IPAM.Config}}{{$name}} {{.Subnet}}\n{{end}}"}, ids...)
-	status, stdout, _ := capture(args)
+	status, stdout, _ := capture(append([]string{"network", "inspect"}, ids...))
 	if status != 0 {
 		return nil
 	}
 	var out []CidrRange
-	for _, line := range strings.Split(stdout, "\n") {
-		name, cidr, ok := splitNetworkSubnet(line)
-		if !ok || ignored[name] {
+	for _, network := range parseNetworkInspect(stdout) {
+		if ignored[network.Name] {
 			continue
 		}
-		if c, parsed := ParseCidr(cidr); parsed {
-			out = append(out, *c)
-		}
+		out = append(out, network.subnets()...)
 	}
 	return out
 }
 
-// splitNetworkSubnet parses one "<network> <cidr>" line. A line carrying only a
-// CIDR is accepted with an empty name, so a network listing produced by an
-// older format still counts as used rather than being silently dropped.
-func splitNetworkSubnet(line string) (name, cidr string, ok bool) {
-	fields := strings.Fields(strings.TrimSpace(line))
-	switch len(fields) {
-	case 0:
-		return "", "", false
-	case 1:
-		return "", fields[0], true
-	default:
-		return fields[0], fields[1], true
+// inspectedNetwork is the part of `network inspect` this package reads. Docker
+// lists a network's subnets under IPAM.Config and Podman under subnets; the
+// JSON decoder matches field names case-insensitively, so the same type reads
+// both spellings of the keys.
+type inspectedNetwork struct {
+	Name string
+	IPAM struct {
+		Config []struct{ Subnet string }
 	}
+	Subnets []struct{ Subnet string }
+}
+
+func parseNetworkInspect(stdout string) []inspectedNetwork {
+	var networks []inspectedNetwork
+	if err := json.Unmarshal([]byte(stdout), &networks); err != nil {
+		return nil
+	}
+	return networks
+}
+
+func (n inspectedNetwork) subnets() []CidrRange {
+	var cidrs []string
+	for _, config := range n.IPAM.Config {
+		cidrs = append(cidrs, config.Subnet)
+	}
+	for _, subnet := range n.Subnets {
+		cidrs = append(cidrs, subnet.Subnet)
+	}
+	var ranges []CidrRange
+	for _, cidr := range cidrs {
+		if parsed, isValid := ParseCidr(cidr); isValid {
+			ranges = append(ranges, *parsed)
+		}
+	}
+	return ranges
 }
 
 func subnetCandidates() []string {

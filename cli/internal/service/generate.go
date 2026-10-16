@@ -19,6 +19,14 @@ import (
 // local-cached image bakes them (matching the workspace owner without a runtime
 // remap). They are transient — resolved fresh on every Plan, never persisted —
 // and only set when not already provided (so callers/tests can override).
+func resolveEngineTraits(config *types.DevcontainerConfig) {
+	config.Engine = types.EngineTraits{
+		IsPodman:   docker.IsPodman(),
+		IsRootless: docker.IsRootless(),
+		SocketPath: docker.HostSocketPath(),
+	}
+}
+
 func resolveHostBuildIDs(config *types.DevcontainerConfig) {
 	if config.BuildUID == 0 {
 		config.BuildUID = os.Getuid()
@@ -90,6 +98,7 @@ type GeneratePlan struct {
 // fingerprint reflects the scripts baked into the image.
 func (s GenerateService) Plan(config *types.DevcontainerConfig, copyContents map[string]string) (GeneratePlan, error) {
 	resolveHostBuildIDs(config)
+	resolveEngineTraits(config)
 
 	dockerfile, err := domain.GenerateDockerfile(config)
 	if err != nil {

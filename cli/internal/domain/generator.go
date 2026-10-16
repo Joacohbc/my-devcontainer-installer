@@ -43,7 +43,11 @@ func GenerateDockerfile(config *types.DevcontainerConfig) (string, error) {
 		fragments = append(fragments, customScripts)
 	}
 	fragments = append(fragments, types.DockerfileLabelBlock(config))
-	return types.GeneratedHeader + "\n\n" + strings.Join(fragments, "\n\n") + "\n", nil
+	contents := types.GeneratedHeader + "\n\n" + strings.Join(fragments, "\n\n") + "\n"
+	if config.Engine.QualifiesShortNames() {
+		contents = qualifyFromInstructions(contents)
+	}
+	return contents, nil
 }
 
 // renderEnvironmentBlocks turns every resolved module's declared environment
@@ -477,6 +481,9 @@ func (c composeContext) renderService(svc *compose.ServiceSpec) (string, *compos
 	if isDevcontainer {
 		c.configureDevcontainer(rendered)
 	}
+	if !isDevcontainer && c.config.Engine.QualifiesShortNames() {
+		rendered.Image = QualifyImageReference(rendered.Image)
+	}
 
 	baseContainer := rendered.ContainerName
 	if baseContainer == "" {
@@ -524,7 +531,14 @@ func (c composeContext) configureDevcontainer(rendered *compose.ServiceDef) {
 	rendered.DependsOn = c.databaseDependencies()
 
 	if c.dockerOutsideDockerEnabled() {
-		rendered.Volumes = append(rendered.Volumes, "/var/run/docker.sock:/var/run/docker.sock")
+		rendered.Volumes = append(rendered.Volumes, c.config.Engine.HostSocketPath()+":"+types.DockerSocketPath)
+	}
+	if c.config.Engine.MapsHostUserIntoContainer() {
+		rendered.UsernsMode = types.KeepIDUserNamespace
+		rendered.User = types.RootUser
+	}
+	if c.config.Engine.PublishesSSHOnLoopback() {
+		rendered.Ports = append(rendered.Ports, types.SSHLoopbackPublishing)
 	}
 	// User-defined extra mounts are appended verbatim; named-volume sources are
 	// declared in the top-level volumes section (see volumes()).

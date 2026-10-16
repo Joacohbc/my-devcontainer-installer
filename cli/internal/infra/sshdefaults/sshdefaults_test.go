@@ -388,3 +388,112 @@ func TestBuildConfigBlock_NoHostKeyOptionsWhenUnset(t *testing.T) {
 		t.Errorf("did not expect host-key options when KnownHostsFile is empty:\n%s", got)
 	}
 }
+
+func TestBuildConfigBlock_RemoteDockerKeepsTheOriginalProxyCommand(t *testing.T) {
+	got, err := sshdefaults.BuildConfigBlock(sshdefaults.ConfigBlockOptions{
+		Mode:      sshdefaults.ModeRemote,
+		Alias:     "devcontainer",
+		User:      "devuser",
+		KeyPath:   "k",
+		Remote:    "myhost",
+		Container: "ws-devcontainer-ssh",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := `ProxyCommand ssh myhost "nc -q0 \$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{\"\n\"}}{{end}}' ws-devcontainer-ssh | head -n1) 22"`
+	if !strings.Contains(got, want) {
+		t.Errorf("docker ProxyCommand changed shape:\n%s\nwant line:\n%s", got, want)
+	}
+}
+
+func TestBuildConfigBlock_RemotePodmanPrefersAPublishedPort(t *testing.T) {
+	got, err := sshdefaults.BuildConfigBlock(sshdefaults.ConfigBlockOptions{
+		Mode:         sshdefaults.ModeRemote,
+		Alias:        "devcontainer",
+		User:         "devuser",
+		KeyPath:      "k",
+		Remote:       "me@myhost",
+		Container:    "ws-devcontainer-ssh",
+		EngineBinary: "podman",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, fragment := range []string{
+		`ProxyCommand ssh me@myhost "p=\$(podman port ws-devcontainer-ssh 22 2>/dev/null | head -n1 | sed 's/.*://');`,
+		`if [ \$p ]; then nc -q0 127.0.0.1 \$p;`,
+		`else nc -q0 \$(podman inspect -f '`,
+		`ws-devcontainer-ssh | head -n1) 22; fi"`,
+	} {
+		if !strings.Contains(got, fragment) {
+			t.Errorf("podman ProxyCommand missing %q:\n%s", fragment, got)
+		}
+	}
+	if strings.Contains(got, "docker") {
+		t.Errorf("podman block must not mention docker:\n%s", got)
+	}
+}
+
+func TestBuildConfigBlock_LocalPublishedPortPinsKeysUnderTheAlias(t *testing.T) {
+	got, err := sshdefaults.BuildConfigBlock(sshdefaults.ConfigBlockOptions{
+		Mode:     sshdefaults.ModeLocal,
+		Alias:    "myws",
+		User:     "devuser",
+		KeyPath:  "k",
+		Hostname: "127.0.0.1",
+		Port:     "41234",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := "Host myws\n    HostName 127.0.0.1\n    Port 41234\n    HostKeyAlias myws\n    User devuser"
+	if !strings.HasPrefix(got, want) {
+		t.Errorf("published-port block =\n%s\nwant it to start with\n%s", got, want)
+	}
+}
+
+func TestBuildConfigBlock_LocalStockPortRendersNoPortLines(t *testing.T) {
+	for _, port := range []string{"", sshdefaults.Port} {
+		got, err := sshdefaults.BuildConfigBlock(sshdefaults.ConfigBlockOptions{
+			Mode: sshdefaults.ModeLocal, Alias: "myws", User: "devuser", KeyPath: "k", Hostname: "172.25.0.2", Port: port,
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if strings.Contains(got, "Port ") || strings.Contains(got, "HostKeyAlias") {
+			t.Errorf("port %q must not add Port/HostKeyAlias lines:\n%s", port, got)
+		}
+	}
+}
+
+func TestEphemeralDialArgsForPort_dialsThePublishedPort(t *testing.T) {
+	args := strings.Join(sshdefaults.EphemeralDialArgsForPort("/keys/k", "41234"), " ")
+	if !strings.Contains(args, "-p 41234") || strings.Contains(args, "-p 22") {
+		t.Errorf("EphemeralDialArgsForPort = %q, want -p 41234", args)
+	}
+	stock := strings.Join(sshdefaults.EphemeralDialArgs("/keys/k"), " ")
+	if !strings.Contains(stock, "-p "+sshdefaults.Port) {
+		t.Errorf("EphemeralDialArgs = %q, want the stock port", stock)
+	}
+}
+
+func TestEndpoint(t *testing.T) {
+	cases := []struct {
+		endpoint      sshdefaults.Endpoint
+		wantPort      string
+		wantPublished bool
+	}{
+		{sshdefaults.Endpoint{Host: "172.25.0.2"}, "22", false},
+		{sshdefaults.Endpoint{Host: "172.25.0.2", Port: "22"}, "22", false},
+		{sshdefaults.Endpoint{Host: "127.0.0.1", Port: "41234"}, "41234", true},
+	}
+	for _, c := range cases {
+		if got := c.endpoint.PortOrDefault(); got != c.wantPort {
+			t.Errorf("%+v PortOrDefault = %q, want %q", c.endpoint, got, c.wantPort)
+		}
+		if got := c.endpoint.IsPublished(); got != c.wantPublished {
+			t.Errorf("%+v IsPublished = %v, want %v", c.endpoint, got, c.wantPublished)
+		}
+	}
+}

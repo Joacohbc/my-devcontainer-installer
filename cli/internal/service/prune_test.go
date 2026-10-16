@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -640,4 +641,42 @@ func TestConfirmDestructive(t *testing.T) {
 			t.Fatalf("got ok=%v err=%v, want false/nil", ok, err)
 		}
 	})
+}
+
+// networkListRunner answers `network ls` with the managed networks and `ps`
+// with whatever the running containers report for {{json .Networks}}.
+type networkListRunner struct{ psNetworks string }
+
+func (r networkListRunner) Run(_ context.Context, args []string, _ string, _ string, _ map[string]string) (int, string, string) {
+	switch {
+	case len(args) >= 2 && args[1] == "version":
+		return 0, "27.0.0", ""
+	case len(args) >= 2 && args[1] == "network":
+		return 0, "busy\nidle", ""
+	case len(args) >= 2 && args[1] == "ps":
+		return 0, r.psNetworks, ""
+	}
+	return 0, "", ""
+}
+
+// A network with a running container attached must survive the unused-only
+// selection, whichever way the engine spells the container's networks:
+// Docker flattens them into one comma-separated string, Podman prints an array.
+func TestPruneSelectNetworksKeepsNetworksWithRunningContainers(t *testing.T) {
+	cases := map[string]string{
+		"docker": "\"busy,other\"\n\"\"\n",
+		"podman": "[\"busy\",\"other\"]\n[]\n",
+	}
+	for name, psNetworks := range cases {
+		restore := useFakeDocker(networkListRunner{psNetworks: psNetworks})
+		networks, anyExist := PruneService{Report: nopReporter{}}.SelectNetworks(false)
+		restore()
+
+		if !anyExist {
+			t.Fatalf("%s: expected anyExist=true", name)
+		}
+		if len(networks) != 1 || networks[0].Name != "idle" {
+			t.Errorf("%s: unused networks = %+v, want only idle", name, networks)
+		}
+	}
 }

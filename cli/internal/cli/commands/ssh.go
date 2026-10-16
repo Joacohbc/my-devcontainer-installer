@@ -236,10 +236,10 @@ func refreshExistingTarget(ssh service.SshService, alias, containerName string) 
 	via, _ := ssh.ManagedViaHost(alias)
 
 	var state service.TargetState
-	var ip string
+	var endpoint sshdefaults.Endpoint
 	var liveErr error
 	_ = service.WithHostOverride(via, func() error {
-		state, ip, liveErr = ssh.ContainerLiveness(containerName)
+		state, endpoint, liveErr = ssh.ContainerLiveness(containerName)
 		return nil
 	})
 	if liveErr != nil {
@@ -259,45 +259,75 @@ func refreshExistingTarget(ssh service.SshService, alias, containerName string) 
 		return nil
 	}
 
-	refreshLocalHostName(ssh, alias, containerName, ip)
+	refreshLocalEndpoint(ssh, alias, containerName, endpoint)
 	pinExistingHostKeys(ssh, alias, containerName, via)
 	return nil
 }
 
-// refreshLocalHostName rewrites a local block's HostName when the container has
-// come back on a new IP, so the alias tracks the container by name. It is a no-op
-// for a --via/ProxyCommand block (no HostName to update) and when the address is
-// already current. The stale address' host key is forgotten so it cannot linger.
-func refreshLocalHostName(ssh service.SshService, alias, containerName, ip string) {
-	if ip == "" {
+// refreshLocalEndpoint rewrites a local block's address when the container has
+// come back somewhere else — a new IP, or a new published port — so the alias
+// tracks the container by name. It is a no-op for a --via/ProxyCommand block (no
+// HostName to update) and when the address is already current. Host keys pinned
+// under the stale address are forgotten so they cannot linger.
+func refreshLocalEndpoint(ssh service.SshService, alias, containerName string, endpoint sshdefaults.Endpoint) {
+	if endpoint.Host == "" {
 		return
 	}
-	current, err := ssh.AliasHostName(alias)
-	if err != nil || current == "" || current == ip {
+	current, err := ssh.AliasEndpoint(alias)
+	if err != nil || current.Host == "" || sameEndpoint(current, endpoint) {
 		return
 	}
-	changed, err := ssh.SetManagedHostName(alias, ip)
+	changed, err := ssh.SetManagedEndpoint(alias, endpoint)
 	if err != nil {
-		console.Debug("could not refresh HostName for '%s': %v", alias, err)
+		console.Debug("could not refresh the address for '%s': %v", alias, err)
 		return
 	}
 	if !changed {
 		return
 	}
-	console.Info("Container '%s' is now at %s; updated Host '%s'.", containerName, ip, alias)
-	if _, err := ssh.ForgetHostKeys([]string{current}); err != nil {
-		console.Debug("could not forget stale host key %s: %v", current, err)
+	console.Info("Container '%s' is now at %s; updated Host '%s'.", containerName, endpointLabel(endpoint), alias)
+	staleKeyName := staleHostKeyName(alias, current, endpoint)
+	if staleKeyName == "" {
+		return
+	}
+	if _, err := ssh.ForgetHostKeys([]string{staleKeyName}); err != nil {
+		console.Debug("could not forget stale host key %s: %v", staleKeyName, err)
 	}
 }
 
-// pinExistingHostKeys re-pins the container's current host keys under the identity
-// ssh verifies for the block: the HostName (a local block's current IP) read from
-// the local daemon, or — for a --via/ProxyCommand block, which has no HostName —
-// the alias itself, read through the --via daemon. Pinning a --via block under an
-// IP would never be consulted, which is what kept a rebuilt --via container
-// aborting with "REMOTE HOST IDENTIFICATION HAS CHANGED".
+func sameEndpoint(a, b sshdefaults.Endpoint) bool {
+	return a.Host == b.Host && a.PortOrDefault() == b.PortOrDefault()
+}
+
+func endpointLabel(endpoint sshdefaults.Endpoint) string {
+	if !endpoint.IsPublished() {
+		return endpoint.Host
+	}
+	return endpoint.Host + ":" + endpoint.Port
+}
+
+// staleHostKeyName is the known_hosts name the previous address had its keys
+// under that the next one will not reuse. A published port is keyed by the
+// alias and stays keyed by it, so only a switch to or from one leaves a stale
+// name behind.
+func staleHostKeyName(alias string, previous, next sshdefaults.Endpoint) string {
+	if !previous.IsPublished() {
+		return previous.Host
+	}
+	if next.IsPublished() {
+		return ""
+	}
+	return alias
+}
+
+// pinExistingHostKeys re-pins the container's current host keys under the name
+// ssh verifies for the block: its HostKeyAlias or HostName read from the local
+// config, or — for a --via/ProxyCommand block, which has neither — the alias
+// itself, read through the --via daemon. Pinning a --via block under an IP would
+// never be consulted, which is what kept a rebuilt --via container aborting with
+// "REMOTE HOST IDENTIFICATION HAS CHANGED".
 func pinExistingHostKeys(ssh service.SshService, alias, containerName, via string) {
-	host, err := ssh.AliasHostName(alias)
+	host, err := ssh.AliasPinnedHost(alias)
 	if err != nil {
 		return
 	}

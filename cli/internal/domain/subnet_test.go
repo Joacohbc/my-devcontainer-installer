@@ -108,8 +108,17 @@ func TestFormatCidr(t *testing.T) {
 	}
 }
 
-// fakeNetworkCapture replies to the two docker calls ListUsedSubnets makes: the
-// id listing and the inspect that prints one "<network> <cidr>" line per range.
+// Docker prints a network's ranges under IPAM.Config; Podman prints them under
+// subnets, with lower-case keys. Both must count as used.
+const (
+	dockerNetworks = `[{"Name":"bridge","IPAM":{"Config":[{"Subnet":"172.17.0.0/16","Gateway":"172.17.0.1"}]}},
+		{"Name":"api-network","IPAM":{"Config":[{"Subnet":"172.25.0.0/28"}]}}]`
+	podmanNetworks = `[{"name":"podman","subnets":[{"subnet":"10.88.0.0/16","gateway":"10.88.0.1"}]},
+		{"name":"api-network","subnets":[{"subnet":"172.25.0.0/28"}]}]`
+)
+
+// fakeNetworkCapture replies to the two calls ListUsedSubnets makes: the id
+// listing and the unformatted inspect of those ids.
 func fakeNetworkCapture(inspectOutput string) domain.CaptureFunc {
 	return func(args []string) (int, string, string) {
 		if len(args) > 1 && args[1] == "ls" {
@@ -120,9 +129,11 @@ func fakeNetworkCapture(inspectOutput string) domain.CaptureFunc {
 }
 
 func TestListUsedSubnets(t *testing.T) {
-	used := domain.ListUsedSubnets(fakeNetworkCapture("bridge 172.17.0.0/16\napi-network 172.25.0.0/28\n"))
-	if len(used) != 2 {
-		t.Fatalf("expected both networks to count as used, got %v", used)
+	for name, inspect := range map[string]string{"docker": dockerNetworks, "podman": podmanNetworks} {
+		used := domain.ListUsedSubnets(fakeNetworkCapture(inspect))
+		if len(used) != 2 {
+			t.Errorf("%s: expected both networks to count as used, got %v", name, used)
+		}
 	}
 }
 
@@ -130,23 +141,27 @@ func TestListUsedSubnets(t *testing.T) {
 // for, so counting it would move the project off its own range on every
 // regeneration.
 func TestListUsedSubnetsIgnoresNamedNetworks(t *testing.T) {
-	inspect := "bridge 172.17.0.0/16\napi-network 172.25.0.0/28\n"
-	used := domain.ListUsedSubnets(fakeNetworkCapture(inspect), "api-network")
-	if len(used) != 1 {
-		t.Fatalf("expected the ignored network to be excluded, got %v", used)
+	cases := map[string]struct{ inspect, other string }{
+		"docker": {dockerNetworks, "172.17.0.0/16"},
+		"podman": {podmanNetworks, "10.88.0.0/16"},
 	}
-	if domain.FormatCidr(used[0]) != "172.17.0.0/16" {
-		t.Errorf("expected the other network to survive, got %s", domain.FormatCidr(used[0]))
-	}
-	if domain.SubnetConflict("172.25.0.0/28", used) != nil {
-		t.Error("the project's own subnet must not conflict with itself")
+	for name, c := range cases {
+		used := domain.ListUsedSubnets(fakeNetworkCapture(c.inspect), "api-network")
+		if len(used) != 1 {
+			t.Fatalf("%s: expected the ignored network to be excluded, got %v", name, used)
+		}
+		if domain.FormatCidr(used[0]) != c.other {
+			t.Errorf("%s: expected the other network to survive, got %s", name, domain.FormatCidr(used[0]))
+		}
+		if domain.SubnetConflict("172.25.0.0/28", used) != nil {
+			t.Errorf("%s: the project's own subnet must not conflict with itself", name)
+		}
 	}
 }
 
-func TestListUsedSubnetsAcceptsSubnetOnlyLines(t *testing.T) {
-	used := domain.ListUsedSubnets(fakeNetworkCapture("172.25.0.0/28\n"), "api-network")
-	if len(used) != 1 {
-		t.Fatalf("a line carrying only a CIDR must still count as used, got %v", used)
+func TestListUsedSubnetsToleratesUnreadableOutput(t *testing.T) {
+	if used := domain.ListUsedSubnets(fakeNetworkCapture("not json")); len(used) != 0 {
+		t.Errorf("unreadable inspect output must yield no ranges, got %v", used)
 	}
 }
 

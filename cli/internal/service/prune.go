@@ -884,20 +884,27 @@ func listCliNetworks() []LocalNetwork {
 	return out
 }
 
+// networksInUse reports which of names have a running container attached.
+// It asks the containers which networks they are on rather than inspecting the
+// networks: Podman's network inspect has no list of attached containers.
 func networksInUse(names []string) map[string]bool {
 	if len(names) == 0 {
 		return nil
 	}
-	args := append([]string{"network", "inspect", "-f", "{{.Name}} {{len .Containers}}"}, names...)
-	status, stdout, _, err := docker.DockerCapture(args)
+	status, stdout, _, err := docker.DockerCapture([]string{"ps", "--format", "{{json .Networks}}"})
 	if err != nil || status != 0 {
 		return nil
 	}
+	candidate := make(map[string]bool, len(names))
+	for _, name := range names {
+		candidate[name] = true
+	}
 	set := map[string]bool{}
-	for _, line := range strings.Split(strings.TrimSpace(stdout), "\n") {
-		fields := strings.Fields(line)
-		if len(fields) == 2 && fields[1] != "0" {
-			set[fields[0]] = true
+	for _, line := range strings.Split(stdout, "\n") {
+		for _, network := range domain.ParseNamesJSON([]byte(strings.TrimSpace(line))) {
+			if candidate[network] {
+				set[network] = true
+			}
 		}
 	}
 	return set

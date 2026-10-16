@@ -38,6 +38,29 @@ const (
 	MarkerVersion = "1"
 )
 
+// LoopbackHost is where a published sshd is reachable from the machine that
+// published it.
+const LoopbackHost = "127.0.0.1"
+
+// Endpoint is the address a client dials to reach a container's sshd: either the
+// container's own IP on the stock port, or a host port the engine published it
+// on when the container's IP is not routable from the host (rootless engines).
+type Endpoint struct {
+	Host string
+	Port string
+}
+
+func (e Endpoint) PortOrDefault() string {
+	if e.Port == "" {
+		return Port
+	}
+	return e.Port
+}
+
+// IsPublished reports whether the endpoint is a host port rather than the
+// container's own sshd port.
+func (e Endpoint) IsPublished() bool { return e.PortOrDefault() != Port }
+
 // Kind identifies what a managed SSH block targets, which decides how clean-ssh
 // checks whether the target still exists. The type — not a comment — enumerates
 // the valid values.
@@ -75,8 +98,14 @@ func ManagedComment(kind Kind, ref, alias, host string) string {
 // both dialed a port the container never listened on while the managed block
 // dialed the right one.
 func EphemeralDialArgs(keyPath string) []string {
+	return EphemeralDialArgsForPort(keyPath, Port)
+}
+
+// EphemeralDialArgsForPort is EphemeralDialArgs for a container whose sshd is
+// reached through a published host port instead of its own port 22.
+func EphemeralDialArgsForPort(keyPath, port string) []string {
 	options := append(ephemeralHostKeyOptions(), ConfigOption{Keyword: "LogLevel", Value: "ERROR"})
-	return append([]string{"-i", keyPath, "-p", Port}, OptionFlags(options)...)
+	return append([]string{"-i", keyPath, "-p", port}, OptionFlags(options)...)
 }
 
 // ephemeralHostKeyOptions is the host-key policy of a dial that leaves no trace:
@@ -192,6 +221,15 @@ type ConfigBlockOptions struct {
 	// Hostname is the target for "HostName": required in ModeLocal (the container
 	// IP); unused in ModeRemote.
 	Hostname string
+	// Port, in ModeLocal, is the port to dial when it is not the container's own
+	// sshd port (a rootless engine publishes sshd on a host port). A non-default
+	// port also pins host keys under the block's alias (HostKeyAlias), because
+	// every such block shares the loopback address and only the alias tells them
+	// apart. Empty or the stock port renders nothing.
+	Port string
+	// EngineBinary is the container engine's CLI ("docker" or "podman") that a
+	// ModeRemote ProxyCommand runs on the remote host. Empty means docker.
+	EngineBinary string
 	// Remote is the "USER@HOST" (or ssh-config alias) of the docker host used in
 	// the ProxyCommand ssh hop, and also — when Kind/Ref are set — the marker's
 	// "host=" field; required in ModeRemote, unused otherwise.
@@ -292,10 +330,10 @@ func buildStanza(opts ConfigBlockOptions) (string, error) {
 			return "", fmt.Errorf("hostname required for local mode")
 		}
 		stanza := fmt.Sprintf(`Host %s
-    HostName %s
+    HostName %s%s
     User %s
     IdentityFile %s
-    IdentitiesOnly yes`, opts.Alias, opts.Hostname, opts.User, opts.KeyPath)
+    IdentitiesOnly yes`, opts.Alias, opts.Hostname, publishedPortLines(opts), opts.User, opts.KeyPath)
 		return withHostKeyOptions(stanza, opts.KnownHostsFile), nil
 
 	case ModeRemote:
@@ -305,20 +343,48 @@ func buildStanza(opts ConfigBlockOptions) (string, error) {
 		if opts.Container == "" {
 			return "", fmt.Errorf("container required for remote mode")
 		}
-		// The ProxyCommand is wrapped in double quotes, so the command
-		// substitution and the format's inner quotes must be escaped: \$ keeps the
-		// docker inspect running on the remote host (not the local machine), and \"
-		// stops the format's quotes from closing the ProxyCommand string. The IP
-		// format itself carries Go-template-looking {{ }} braces, which is why this
-		// stays plain Sprintf — feeding it through text/template would collide.
-		escapedFormat := strings.ReplaceAll(DockerIPFormat, `"`, `\"`)
-		ipExpr := fmt.Sprintf(`\$(docker inspect -f '%s' %s | head -n1)`, escapedFormat, opts.Container)
 		stanza := fmt.Sprintf(`Host %s
     User %s
     IdentityFile %s
     IdentitiesOnly yes
-    ProxyCommand ssh %s "nc -q0 %s %s"`, opts.Alias, opts.User, opts.KeyPath, opts.Remote, ipExpr, Port)
+    ProxyCommand ssh %s "%s"`, opts.Alias, opts.User, opts.KeyPath, opts.Remote, proxyDialCommand(opts))
 		return withHostKeyOptions(stanza, opts.KnownHostsFile), nil
 	}
 	return "", fmt.Errorf("unknown mode %q", opts.Mode)
+}
+
+func publishedPortLines(opts ConfigBlockOptions) string {
+	if (Endpoint{Port: opts.Port}).PortOrDefault() == Port {
+		return ""
+	}
+	return fmt.Sprintf("\n    Port %s\n    HostKeyAlias %s", opts.Port, opts.Alias)
+}
+
+const defaultEngineBinary = "docker"
+
+// proxyDialCommand is the command the remote host runs to reach the
+// container's sshd; it sits inside the ProxyCommand's double quotes.
+//
+// The container's address is resolved on the remote host on every connection,
+// so the quotes and the command substitution are escaped: \$ keeps the inspect
+// running there rather than on the local machine, and \" stops the format's
+// quotes from closing the ProxyCommand string. The IP format carries
+// Go-template-looking {{ }} braces, which is why this stays plain Sprintf —
+// text/template would collide with them.
+//
+// Docker blocks keep the original shape. Any other engine first asks for a
+// published sshd port, because a rootless engine's container address is not
+// routable even from its own host.
+func proxyDialCommand(opts ConfigBlockOptions) string {
+	engine := opts.EngineBinary
+	if engine == "" {
+		engine = defaultEngineBinary
+	}
+	escapedFormat := strings.ReplaceAll(DockerIPFormat, `"`, `\"`)
+	dialByAddress := fmt.Sprintf(`nc -q0 \$(%s inspect -f '%s' %s | head -n1) %s`, engine, escapedFormat, opts.Container, Port)
+	if engine == defaultEngineBinary {
+		return dialByAddress
+	}
+	publishedPort := fmt.Sprintf(`\$(%s port %s %s 2>/dev/null | head -n1 | sed 's/.*://')`, engine, opts.Container, Port)
+	return fmt.Sprintf(`p=%s; if [ \$p ]; then nc -q0 %s \$p; else %s; fi`, publishedPort, LoopbackHost, dialByAddress)
 }

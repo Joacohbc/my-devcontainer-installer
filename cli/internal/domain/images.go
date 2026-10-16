@@ -167,12 +167,65 @@ func FingerprintTag(fp string) string {
 	return types.ImageNamespace + "/" + fp[:12] + ":latest"
 }
 
+const (
+	defaultImageRegistry = "docker.io"
+	officialImageOwner   = "library"
+	localImageRegistry   = "localhost"
+)
+
+// QualifyImageReference spells out the registry of an image reference that
+// leaves it implicit, the way Docker reads it: a bare name is an official Docker
+// Hub image, and a name with an owner but no registry is that owner's. A
+// reference that already starts with a registry is returned unchanged.
+func QualifyImageReference(reference string) string {
+	if reference == "" || hasRegistry(reference) {
+		return reference
+	}
+	if !strings.Contains(reference, "/") {
+		return defaultImageRegistry + "/" + officialImageOwner + "/" + reference
+	}
+	return defaultImageRegistry + "/" + reference
+}
+
+func hasRegistry(reference string) bool {
+	firstSegment, _, hasPath := strings.Cut(reference, "/")
+	if !hasPath {
+		return false
+	}
+	return strings.ContainsAny(firstSegment, ".:") || firstSegment == localImageRegistry
+}
+
+var fromInstruction = regexp.MustCompile(`(?m)^(FROM\s+(?:--\S+\s+)*)(\S+)`)
+
+// qualifyFromInstructions rewrites the image of every FROM line in a
+// Dockerfile. A stage alias ("FROM builder") and "scratch" are left alone.
+func qualifyFromInstructions(dockerfile string) string {
+	stages := map[string]bool{"scratch": true}
+	for _, match := range regexp.MustCompile(`(?mi)^FROM\s+\S+\s+AS\s+(\S+)`).FindAllStringSubmatch(dockerfile, -1) {
+		stages[strings.ToLower(match[1])] = true
+	}
+	return fromInstruction.ReplaceAllStringFunc(dockerfile, func(line string) string {
+		parts := fromInstruction.FindStringSubmatch(line)
+		isStageOrVariable := stages[strings.ToLower(parts[2])] || strings.HasPrefix(parts[2], "$")
+		if isStageOrVariable {
+			return line
+		}
+		return parts[1] + QualifyImageReference(parts[2])
+	})
+}
+
 // IsLocalImage reports whether an image reference is one this CLI built
 // locally (the fingerprint-tagged namespace) rather than one pulled from a
 // registry. A pulled image is shared by every project on the same profile, so
 // removing it as part of one project's cleanup would be wrong.
 func IsLocalImage(image string) bool {
-	return strings.HasPrefix(image, types.ImageNamespace+"/")
+	return strings.HasPrefix(StripLocalRegistry(image), types.ImageNamespace+"/")
+}
+
+// StripLocalRegistry drops the "localhost/" prefix Podman prepends to images
+// built on this machine, so a reference reads the same under either engine.
+func StripLocalRegistry(image string) string {
+	return strings.TrimPrefix(image, localImageRegistry+"/")
 }
 
 // LocalImageExists reports whether a Docker image with the given reference is

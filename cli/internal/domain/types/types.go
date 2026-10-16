@@ -479,6 +479,54 @@ type DevcontainerConfig struct {
 	// image fingerprint. Zero means "unset" — the Dockerfile ARG defaults apply.
 	BuildUID int `json:"-" yaml:"-"`
 	BuildGID int `json:"-" yaml:"-"`
+	// Engine describes the container engine the generated files are for. Like
+	// the build ids it is resolved fresh at generate time and never persisted:
+	// the same project can be regenerated under a different engine.
+	Engine EngineTraits `json:"-" yaml:"-"`
+}
+
+const (
+	DockerSocketPath      = "/var/run/docker.sock"
+	SSHLoopbackPublishing = "127.0.0.1::22"
+	KeepIDUserNamespace   = "keep-id"
+	// RootUser is who the devcontainer must start as under keep-id. That
+	// namespace mode makes Podman run the container as the host user, but the
+	// entrypoint has to be root: it renumbers devuser to the workspace owner,
+	// fixes the home's ownership and starts sshd.
+	RootUser = "root"
+)
+
+// EngineTraits holds the facts about the container engine that change what the
+// generator writes. The zero value is a plain rootful Docker, which is what the
+// generator assumed before any other engine existed.
+type EngineTraits struct {
+	IsPodman   bool
+	IsRootless bool
+	// SocketPath is the host path of the engine's API socket, bind-mounted into
+	// the container for docker-outside-of-docker. Empty means DockerSocketPath.
+	SocketPath string
+}
+
+// QualifiesShortNames reports whether image references must be spelled with
+// their registry. Podman resolves an unqualified name through the user's
+// registries.conf and may prompt or refuse; Docker always means Docker Hub.
+func (e EngineTraits) QualifiesShortNames() bool { return e.IsPodman }
+
+// MapsHostUserIntoContainer reports whether the project's bind mount only
+// keeps its host owner inside the container when the user namespace is told to.
+// Rootless Podman otherwise maps the host user to root, so devuser — baked with
+// the host UID — would find the workspace owned by someone else.
+func (e EngineTraits) MapsHostUserIntoContainer() bool { return e.IsPodman && e.IsRootless }
+
+// PublishesSSHOnLoopback reports whether sshd has to be published on the host's
+// loopback because the container's own address cannot be dialed from the host.
+func (e EngineTraits) PublishesSSHOnLoopback() bool { return e.IsRootless }
+
+func (e EngineTraits) HostSocketPath() string {
+	if e.SocketPath == "" {
+		return DockerSocketPath
+	}
+	return e.SocketPath
 }
 
 const ConfigFile = "devcontainer.config.json"

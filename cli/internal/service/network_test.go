@@ -164,3 +164,70 @@ func TestContainerNames_listsAll(t *testing.T) {
 		t.Errorf("ContainerNames = %v, want %v", got, want)
 	}
 }
+
+type labelledNetworksRunner struct {
+	*fakeRunner
+	networksByLabel map[string]string
+}
+
+func (r labelledNetworksRunner) Run(ctx context.Context, args []string, stdio string, cwd string, env map[string]string) (int, string, string) {
+	status, stdout, stderr := r.fakeRunner.Run(ctx, args, stdio, cwd, env)
+	for label, networks := range r.networksByLabel {
+		if slices.Contains(args, "label="+label+"=myws") {
+			return 0, networks, ""
+		}
+	}
+	if slices.Contains(args, "ls") {
+		return 0, "", ""
+	}
+	return status, stdout, stderr
+}
+
+func TestResolveNetwork_fallsBackToPodmanComposeLabel(t *testing.T) {
+	r := labelledNetworksRunner{
+		fakeRunner:      &fakeRunner{},
+		networksByLabel: map[string]string{podmanComposeProjectLabel: "myws_myws-network\n"},
+	}
+	defer useFakeDocker(r)()
+
+	got, err := NetworkService{Report: nopReporter{}}.ResolveNetwork("myws")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != "myws_myws-network" {
+		t.Errorf("network = %q, want %q", got, "myws_myws-network")
+	}
+}
+
+func TestResolveNetwork_prefersTheDockerComposeLabel(t *testing.T) {
+	r := labelledNetworksRunner{
+		fakeRunner: &fakeRunner{},
+		networksByLabel: map[string]string{
+			composeProjectLabel:       "from-docker-label\n",
+			podmanComposeProjectLabel: "from-podman-label\n",
+		},
+	}
+	defer useFakeDocker(r)()
+
+	got, err := NetworkService{Report: nopReporter{}}.ResolveNetwork("myws")
+	if err != nil || got != "from-docker-label" {
+		t.Errorf("ResolveNetwork = %q, %v; want from-docker-label", got, err)
+	}
+}
+
+func TestDeriveWorkspace_readsEitherComposeProjectLabel(t *testing.T) {
+	cases := []struct {
+		name   string
+		labels map[string]string
+		want   string
+	}{
+		{"docker compose", map[string]string{composeProjectLabel: "proj"}, "proj"},
+		{"podman-compose only", map[string]string{podmanComposeProjectLabel: "proj"}, "proj"},
+		{"neither", map[string]string{"other": "x"}, ""},
+	}
+	for _, c := range cases {
+		if got := deriveWorkspace(c.labels); got != c.want {
+			t.Errorf("%s: deriveWorkspace = %q, want %q", c.name, got, c.want)
+		}
+	}
+}

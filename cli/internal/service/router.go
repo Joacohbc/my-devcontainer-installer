@@ -37,6 +37,49 @@ type RouterService struct {
 	AdminURL   string
 	HTTPClient *http.Client
 	StatePath  string
+	// UnprivilegedPortStartPath overrides the kernel setting read to learn the
+	// lowest port a rootless engine may publish. Tests point it at a temp file.
+	UnprivilegedPortStartPath string
+}
+
+const (
+	kernelUnprivilegedPortStartPath = "/proc/sys/net/ipv4/ip_unprivileged_port_start"
+	defaultUnprivilegedPortStart    = 1024
+)
+
+func (s RouterService) unprivilegedPortStart() int {
+	path := s.UnprivilegedPortStartPath
+	if path == "" {
+		path = kernelUnprivilegedPortStartPath
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return defaultUnprivilegedPortStart
+	}
+	start, err := strconv.Atoi(strings.TrimSpace(string(raw)))
+	if err != nil {
+		return defaultUnprivilegedPortStart
+	}
+	return start
+}
+
+// CheckRootlessCanPublishRouterPorts fails when the engine is rootless and the
+// kernel keeps the router's HTTP/HTTPS ports out of an unprivileged user's
+// reach. A rootful engine, or one allowed to bind them, passes.
+func (s RouterService) CheckRootlessCanPublishRouterPorts() error {
+	lowestRouterPort := min(domain.RouterHTTPPort, domain.RouterHTTPSPort)
+	if s.unprivilegedPortStart() <= lowestRouterPort || !docker.IsRootless() {
+		return nil
+	}
+	return fmt.Errorf("rootless %s cannot publish port %d: the kernel reserves ports below %d for root. Allow it with 'sudo sysctl net.ipv4.ip_unprivileged_port_start=%d' (add it to /etc/sysctl.d/ to keep it)",
+		docker.CurrentEngine().Name, lowestRouterPort, s.unprivilegedPortStart(), lowestRouterPort)
+}
+
+func routerImage() string {
+	if docker.IsPodman() {
+		return domain.QualifyImageReference(domain.RouterImage)
+	}
+	return domain.RouterImage
 }
 
 func (s RouterService) adminURL() string {
@@ -135,6 +178,9 @@ func (s RouterService) EnsureRouterRunning(ctx context.Context) error {
 		return s.waitForAdminAPI(ctx)
 	}
 
+	if privilegeErr := s.CheckRootlessCanPublishRouterPorts(); privilegeErr != nil {
+		return privilegeErr
+	}
 	if portErr := s.CheckHostPortsAvailable(); portErr != nil {
 		s.Report.Warn("Port pre-flight check warning: %v", portErr)
 	}
@@ -149,7 +195,7 @@ func (s RouterService) EnsureRouterRunning(ctx context.Context) error {
 		"-p", fmt.Sprintf("127.0.0.1:%d:%d", domain.RouterHTTPPort, domain.RouterHTTPPort),
 		"-p", fmt.Sprintf("127.0.0.1:%d:%d", domain.RouterHTTPSPort, domain.RouterHTTPSPort),
 		"-p", fmt.Sprintf("127.0.0.1:%d:%d", domain.RouterAdminPort, domain.RouterAdminPort),
-		domain.RouterImage,
+		routerImage(),
 		"/bin/sh", "-c",
 		`mkdir -p /config/caddy && if [ ! -f /config/caddy/autosave.json ] || ! grep -q "0.0.0.0:2019" /config/caddy/autosave.json; then echo '{"admin":{"listen":"0.0.0.0:2019","enforce_origin":false},"apps":{"http":{"servers":{"srv0":{"listen":[":80",":443"],"routes":[]}}}}}' > /config/caddy/autosave.json; fi; exec caddy run --config /config/caddy/autosave.json --resume`,
 	}

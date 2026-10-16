@@ -622,3 +622,31 @@ func TestInspectListContainersWorkspace(t *testing.T) {
 		}
 	}
 }
+
+// Podman prints the same `ps` row with structured fields: Names is an array,
+// Labels a map, Ports a list of bindings, and Status is empty (the state lives
+// in State alone).
+func TestInspectListContainers_PodmanShape(t *testing.T) {
+	stdout := `{"Names":["proj-devcontainer-ssh"],"Image":"localhost/proj:local","Status":"","State":"running",` +
+		`"Labels":{"dev.devcontainer-installer.managed":"true","io.podman.compose.project":"proj"},` +
+		`"Ports":[{"host_ip":"127.0.0.1","container_port":22,"host_port":40222,"range":1,"protocol":"tcp"}]}`
+	defer useFakeDocker(&fakeRunner{status: 0, stdout: stdout})()
+
+	containers, err := InspectService{Report: nopReporter{}}.ListContainers(false)
+	if err != nil {
+		t.Fatalf("ListContainers: %v", err)
+	}
+	if len(containers) != 1 {
+		t.Fatalf("expected 1 container, got %d", len(containers))
+	}
+	c := containers[0]
+	if c.Name != "proj-devcontainer-ssh" || c.State != "running" || c.Status != "running" {
+		t.Errorf("name/state mis-parsed: %+v", c)
+	}
+	if !c.Managed || c.Workspace != "proj" {
+		t.Errorf("labels mis-read: managed=%v workspace=%q", c.Managed, c.Workspace)
+	}
+	if c.Ports != "127.0.0.1:40222->22/tcp" {
+		t.Errorf("ports = %q, want the Docker rendering", c.Ports)
+	}
+}

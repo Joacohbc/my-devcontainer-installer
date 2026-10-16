@@ -147,18 +147,18 @@ func TestSshContainerLiveness(t *testing.T) {
 	t.Run("running returns its first IP", func(t *testing.T) {
 		runner := &cmdRoutingRunner{psOut: ps, inspectOut: "bridge 172.25.0.14\n"}
 		defer useFakeDocker(runner)()
-		state, ip, err := (SshService{Report: nopReporter{}}).ContainerLiveness("alpha")
-		if err != nil || state != TargetRunning || ip != "172.25.0.14" {
-			t.Errorf("ContainerLiveness(alpha) = %v,%q,%v, want running,172.25.0.14,nil", state, ip, err)
+		state, endpoint, err := (SshService{Report: nopReporter{}}).ContainerLiveness("alpha")
+		if err != nil || state != TargetRunning || endpoint.Host != "172.25.0.14" || endpoint.IsPublished() {
+			t.Errorf("ContainerLiveness(alpha) = %v,%+v,%v, want running,172.25.0.14 on the stock port,nil", state, endpoint, err)
 		}
 	})
 
 	t.Run("stopped", func(t *testing.T) {
 		runner := &cmdRoutingRunner{psOut: ps}
 		defer useFakeDocker(runner)()
-		state, ip, err := (SshService{Report: nopReporter{}}).ContainerLiveness("stopped-one")
-		if err != nil || state != TargetStopped || ip != "" {
-			t.Errorf("ContainerLiveness(stopped-one) = %v,%q,%v, want stopped,\"\",nil", state, ip, err)
+		state, endpoint, err := (SshService{Report: nopReporter{}}).ContainerLiveness("stopped-one")
+		if err != nil || state != TargetStopped || endpoint.Host != "" {
+			t.Errorf("ContainerLiveness(stopped-one) = %v,%+v,%v, want stopped,no endpoint,nil", state, endpoint, err)
 		}
 	})
 
@@ -599,5 +599,122 @@ func TestSshConnectEphemeral_WithVia_PropagatesExitCode(t *testing.T) {
 	err := svc.ConnectEphemeral("c1", "", keyPath, "jumpuser@remote-host", []string{"cmd"})
 	if err == nil || !strings.Contains(err.Error(), "code 12") {
 		t.Errorf("ConnectEphemeral error = %v, want exit code 12", err)
+	}
+}
+
+// endpointRunner answers the two inspects an SSH endpoint lookup makes: the
+// published-ports one (by its format) and the network-address one.
+type endpointRunner struct {
+	psOut      string
+	portsJSON  string
+	networkOut string
+}
+
+func (r *endpointRunner) Run(_ context.Context, args []string, _ string, _ string, _ map[string]string) (int, string, string) {
+	switch {
+	case len(args) >= 2 && args[1] == "version":
+		return 0, "27.0.0", ""
+	case slices.Contains(args, "ps"):
+		return 0, r.psOut, ""
+	case slices.Contains(args, publishedPortsFormat):
+		return 0, r.portsJSON, ""
+	case slices.Contains(args, "inspect"):
+		return 0, r.networkOut, ""
+	}
+	return 0, "", ""
+}
+
+const runningC1 = `{"Names":"c1","Image":"img1","Status":"Up","State":"running","Labels":"","Ports":""}`
+
+func TestPublishedTCPPort(t *testing.T) {
+	cases := []struct {
+		name         string
+		portsJSON    string
+		wantIP, want string
+	}{
+		{"loopback bind", `{"22/tcp":[{"HostIp":"127.0.0.1","HostPort":"41234"}]}`, "127.0.0.1", "41234"},
+		{"wildcard bind is reached on the loopback", `{"22/tcp":[{"HostIp":"0.0.0.0","HostPort":"2222"}]}`, "127.0.0.1", "2222"},
+		{"empty bind is reached on the loopback", `{"22/tcp":[{"HostIp":"","HostPort":"2222"}]}`, "127.0.0.1", "2222"},
+		{"specific address is kept", `{"22/tcp":[{"HostIp":"192.168.1.5","HostPort":"2200"}]}`, "192.168.1.5", "2200"},
+		{"first binding with a host port wins", `{"22/tcp":[{"HostIp":"::","HostPort":""},{"HostIp":"127.0.0.1","HostPort":"7"}]}`, "127.0.0.1", "7"},
+		{"exposed but not published", `{"22/tcp":null}`, "", ""},
+		{"another port only", `{"8080/tcp":[{"HostIp":"127.0.0.1","HostPort":"8080"}]}`, "", ""},
+		{"no ports at all", `{}`, "", ""},
+		{"unparseable", `bridge 172.25.0.14`, "", ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			defer useFakeDocker(&endpointRunner{portsJSON: c.portsJSON})()
+			ip, port := InspectService{Report: nopReporter{}}.PublishedTCPPort("c1", "22")
+			if ip != c.wantIP || port != c.want {
+				t.Errorf("PublishedTCPPort = %q,%q, want %q,%q", ip, port, c.wantIP, c.want)
+			}
+		})
+	}
+}
+
+func TestContainerEndpoint_prefersThePublishedPortOverTheAddress(t *testing.T) {
+	defer useFakeDocker(&endpointRunner{
+		portsJSON:  `{"22/tcp":[{"HostIp":"127.0.0.1","HostPort":"41234"}]}`,
+		networkOut: "bridge 10.89.0.2\n",
+	})()
+
+	got := (SshService{Report: nopReporter{}}).ContainerEndpoint("c1")
+	if got.Host != "127.0.0.1" || got.Port != "41234" || !got.IsPublished() {
+		t.Errorf("ContainerEndpoint = %+v, want 127.0.0.1:41234 published", got)
+	}
+}
+
+func TestContainerEndpoint_fallsBackToTheNetworkAddress(t *testing.T) {
+	defer useFakeDocker(&endpointRunner{portsJSON: `{"22/tcp":null}`, networkOut: "bridge 172.25.0.14\n"})()
+
+	got := (SshService{Report: nopReporter{}}).ContainerEndpoint("c1")
+	if got.Host != "172.25.0.14" || got.IsPublished() {
+		t.Errorf("ContainerEndpoint = %+v, want 172.25.0.14 on the stock port", got)
+	}
+}
+
+func TestContainerLiveness_reportsThePublishedEndpoint(t *testing.T) {
+	defer useFakeDocker(&endpointRunner{
+		psOut:     runningC1,
+		portsJSON: `{"22/tcp":[{"HostIp":"127.0.0.1","HostPort":"41234"}]}`,
+	})()
+
+	state, endpoint, err := (SshService{Report: nopReporter{}}).ContainerLiveness("c1")
+	if err != nil || state != TargetRunning || endpoint.Port != "41234" {
+		t.Errorf("ContainerLiveness = %v,%+v,%v, want running on port 41234", state, endpoint, err)
+	}
+}
+
+func TestEnsureEphemeralAccess_dialsThePublishedPort(t *testing.T) {
+	defer useFakeDocker(&endpointRunner{
+		psOut:     runningC1,
+		portsJSON: `{"22/tcp":[{"HostIp":"127.0.0.1","HostPort":"41234"}]}`,
+	})()
+	keyPath := filepath.Join(t.TempDir(), "id_devcontainer")
+	if err := os.WriteFile(keyPath, []byte("private"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(keyPath+".pub", []byte("ssh-ed25519 AAAA test\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	target, err := (SshService{Report: nopReporter{}}).EnsureEphemeralAccess("c1", "", keyPath, "")
+	if err != nil {
+		t.Fatalf("EnsureEphemeralAccess: %v", err)
+	}
+	if target.IP != "127.0.0.1" || target.Port != "41234" {
+		t.Errorf("target = %+v, want 127.0.0.1:41234", target)
+	}
+	dial := strings.Join(target.DialArgs(), " ")
+	if !strings.Contains(dial, "-p 41234") {
+		t.Errorf("DialArgs = %q, want it to dial -p 41234", dial)
+	}
+}
+
+func TestEphemeralTarget_dialsTheStockPortWhenNothingIsPublished(t *testing.T) {
+	target := EphemeralTarget{IP: "172.25.0.14", User: "devuser", KeyPath: "/k"}
+	if dial := strings.Join(target.DialArgs(), " "); !strings.Contains(dial, "-p 22") {
+		t.Errorf("DialArgs = %q, want -p 22", dial)
 	}
 }
