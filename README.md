@@ -8,7 +8,7 @@
 [![Bash](https://img.shields.io/badge/Bash-4EAA25?logo=gnubash&logoColor=white)](#)
 [![GitHub Actions](https://img.shields.io/badge/GitHub_Actions-2088FF?logo=github-actions&logoColor=white)](#)
 
-*Automatiza la creación, orquestación y gestión de entornos aislados de desarrollo en Docker (DevContainers).*
+*Automatiza la creación, orquestación y gestión de entornos aislados de desarrollo en Docker o Podman (DevContainers).*
 
 </div>
 
@@ -131,6 +131,22 @@ curl -fsSL https://raw.githubusercontent.com/Joacohbc/my-devcontainer-installer/
 
 > **Sobre la skill para agentes:** podés instalar la skill del host en tus agentes (Claude Code, Antigravity, etc.) con el CLI de Skills (`npx skills add Joacohbc/my-devcontainer-installer@devcontainer-cli -g`), y con eso un agente que corre en tu máquina aprende a manejar esta CLI: crear el devcontainer de un proyecto, correr los builds y tests adentro y no ensuciar tu host. Ver [§6](#6-skill-para-el-agente-del-host).
 
+## Docker o Podman
+
+La CLI funciona con **Docker** o con **Podman** (rootless o rootful). Por defecto elige sola (`auto`): usa Docker si responde y, si no, Podman. Si tenés los dos instalados, fijá uno:
+
+```bash
+devcontainer-cli config engine podman        # Lo guarda en la configuración global (docker | podman | auto)
+DEVCONTAINER_ENGINE=docker devcontainer-cli up   # Sólo para este comando; gana sobre la configuración
+```
+
+Lo que cambia con Podman, sin que tengas que hacer nada:
+- Los nombres de imagen se generan con registro completo (`docker.io/library/...`), porque Podman no tiene uno por defecto.
+- En **Podman rootless** el contenedor usa `userns_mode: keep-id` para que los archivos del proyecto sigan siendo tuyos, y `sshd` se publica en `127.0.0.1:<puerto aleatorio>` (la IP del contenedor no es alcanzable desde el host). `devcontainer-cli ssh` se conecta a ese puerto y el alias SSH generado trae `Port` y `HostKeyAlias`.
+- `podman compose` delega en `docker-compose` o `podman-compose`. Si usás `docker-compose`, necesita el socket de la API de Podman: `systemctl --user enable --now podman.socket` (o elegí el proveedor con `PODMAN_COMPOSE_PROVIDER=podman-compose`).
+- `route` necesita publicar los puertos 80/443, algo que Podman rootless no puede hacer a menos que bajes `net.ipv4.ip_unprivileged_port_start`; la CLI lo avisa antes de empezar.
+- `--via` con Podman usa `CONTAINER_HOST` en lugar de `DOCKER_HOST`, y asume que el host remoto corre el mismo motor.
+
 ## Uso Rápido y Flujo de Trabajo
 
 ### 1. Crear y levantar un entorno
@@ -152,7 +168,7 @@ devcontainer-cli ssh --via user@docker-host --container dc-ssh # Contenedor en O
 ssh mi-proyecto                                                # Conexión directa vía cliente SSH tradicional usando el alias generado
 ```
 
-`--via` (requiere `--container`) es para cuando el contenedor vive en un Docker host distinto: usa la conexión SSH que ya tenés a ese host para instalar la clave y fijar el `known_hosts`, sin instalar devcontainer-cli ahí — la clave privada nunca sale de esta máquina. Es lo opuesto de `--setup-external USER@HOST`, que asume que la CLI corre en el host remoto: en vez de conectar, imprime un snippet autocontenido (con la clave privada) para pegar en la máquina desde la que te conectás.
+`--via` (requiere `--container`) es para cuando el contenedor vive en otro host (con Docker o Podman): usa la conexión SSH que ya tenés a ese host para instalar la clave y fijar el `known_hosts`, sin instalar devcontainer-cli ahí — la clave privada nunca sale de esta máquina. Es lo opuesto de `--setup-external USER@HOST`, que asume que la CLI corre en el host remoto: en vez de conectar, imprime un snippet autocontenido (con la clave privada) para pegar en la máquina desde la que te conectás.
 
 ### 3. Copiar archivos y assets (`copy`)
 Copia archivos entre el host y el contenedor o instala scripts embebidos de IA en caliente:
@@ -249,8 +265,8 @@ Credenciales predeterminadas para los servicios de base de datos (Usuario: `devu
 <details>
 <summary><b>Connection refused o cambio de IP / host key</b></summary>
 
-- Confirma que el contenedor esté activo mediante `docker compose -f .dc_<workspace>/build/docker-compose.yml ps`.
-- Si se reconstruyó la imagen o cambió la IP, ejecuta `devcontainer-cli ssh`: la CLI detecta el cambio, actualiza la IP y re-fija automáticamente la host key en `~/.config/devcontainer-cli/ssh/known_hosts`.
+- Confirma que el contenedor esté activo con `devcontainer-cli status` (o `devcontainer-cli compose ps`).
+- Si se reconstruyó la imagen o cambió la IP, ejecuta `devcontainer-cli ssh`: la CLI detecta el cambio, actualiza la IP (o el puerto publicado, con Podman rootless) y re-fija automáticamente la host key en `~/.config/devcontainer-cli/ssh/known_hosts`.
 </details>
 
 <details>
@@ -258,4 +274,5 @@ Credenciales predeterminadas para los servicios de base de datos (Usuario: `devu
 
 - Verifica que el módulo `dod` esté habilitado y que `.dc_<workspace>/build/docker-compose.yml` contenga el montaje `- /var/run/docker.sock:/var/run/docker.sock`.
 - Asegura que el usuario `devuser` pertenezca al grupo `docker` dentro del contenedor.
+- Con Podman, el montaje apunta al socket de la API de Podman del host (`podman info --format '{{.Host.RemoteSocket.Path}}'`); si no está activo, `systemctl --user enable --now podman.socket`.
 </details>

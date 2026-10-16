@@ -5,7 +5,7 @@ description: Drive devcontainer-cli from the host to give a project a disposable
 
 # devcontainer-cli from the host
 
-`devcontainer-cli` builds and manages disposable Docker development
+`devcontainer-cli` builds and manages disposable Docker or Podman development
 environments ("devcontainers") for a project directory. You are running **on the
 host**: you drive the CLI, and the work happens inside the container.
 
@@ -37,9 +37,9 @@ Use these first. The plain commands they wrap (`shell`, `ssh`, `port-forward`,
 `copy`, `ls`, `destroy`, `clean`) still exist and are documented at the end —
 reach for them only for the cases the group does not cover.
 
-## 🚨 STRICT RULE: NEVER TOUCH DOCKER DIRECTLY
+## 🚨 STRICT RULE: NEVER TOUCH THE CONTAINER ENGINE DIRECTLY
 
-You must **NEVER** use `docker`, `docker compose`, `docker-compose`, or `docker exec` directly to interact with a devcontainer environment, not even for simple commands like `curl` or `wget`.
+You must **NEVER** use `docker`, `podman`, `docker compose`, `podman compose`, `docker-compose`, or `docker exec`/`podman exec` directly to interact with a devcontainer environment, not even for simple commands like `curl` or `wget`.
 You must **NEVER** manually edit the generated `docker-compose.yml` or `Dockerfile` located in `.dc_<workspace>`.
 
 Instead, you must always use the CLI commands provided:
@@ -146,7 +146,7 @@ change what is inside.
     devcontainer-cli agent exec -w -- pnpm install
     devcontainer-cli agent exec -c myapp-postgres --user postgres -T -- pg_dump devdb > dump.sql
 
-`agent exec` is a `docker exec` wrapper and the normal way to do work in the
+`agent exec` is a `docker exec`/`podman exec` wrapper and the normal way to do work in the
 container. It requires a command — there is no interactive mode to fall into.
 
 It runs as **devuser**, who owns the workspace files. That matters more than it
@@ -397,7 +397,7 @@ A throwaway container with no project to configure:
 `run --profile` only accepts a `[remote]`-tagged id (or `ssh` for the hand-built
 full image), since it always pulls.
 
-A container on a **different Docker host**, through an existing SSH connection
+A container on a **different container host (Docker or Podman)**, through an existing SSH connection
 to it:
 
     devcontainer-cli shell --via me@docker-host -c dc-ssh -- uname -a
@@ -406,6 +406,7 @@ to it:
 Global config, profiles and shared logins:
 
     devcontainer-cli config                       # current defaults
+    devcontainer-cli config engine podman         # container engine: docker | podman | auto (DEVCONTAINER_ENGINE overrides)
     devcontainer-cli config profile list          # bundles for --profile; [remote]/[local] tag
     devcontainer-cli config profile info <id>     # one profile's full resolved definition
     devcontainer-cli config skill list            # agent skills for --skill; built-in + user-defined

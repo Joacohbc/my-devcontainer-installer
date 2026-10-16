@@ -26,12 +26,12 @@ push/PR touching `cli/**`. All four must pass. Keep the tree `gofmt`-clean and
 
 ## Mandatory rule: No direct Docker interaction
 
-Agents operating in or on this project must **never** run `docker`, `docker compose`, `docker-compose`, or `docker exec` directly to interact with a workspace.
+Agents operating in or on this project must **never** run `docker`, `podman`, `docker compose`, `podman compose`, `docker-compose`, or `docker exec`/`podman exec` directly to interact with a workspace.
 They must **never** manually edit the generated `docker-compose.yml` or `Dockerfile` located in `.dc_<workspace>`.
 
 Instead, they must strictly use the CLI commands provided:
 - To run commands inside: `devcontainer-cli agent exec -w -- <cmd>`
-- To port-forward: `devcontainer-cli agent forward <ports>` (via SSH or Docker)
+- To port-forward: `devcontainer-cli agent forward <ports>` (via SSH or the container engine)
 - To open an SSH session: `devcontainer-cli agent ssh [--ephemeral]`
 - To run temporal isolated tasks: `devcontainer-cli agent create --temporal --profile <id>`
 
@@ -55,7 +55,7 @@ Applies to:
 - `internal/domain/catalog/catalog.go` — the module/service catalog.
 - `internal/domain/{generator,resolver,validators,config,project,images}.go` — generator core.
 - `internal/service/*.go` — every service method that adds/changes logic needs a matching
-  case in the group's `_test.go` (Docker swapped via `docker.SetRunner`, fake
+  case in the group's `_test.go` (the engine swapped via `engine.SetRunner`, fake
   `Reporter`/`Prompter`).
 
 ### What to validate when adding/updating a module
@@ -153,13 +153,13 @@ importable from outside the module.
 | Path | Why it exists / what belongs here |
 |---|---|
 | `cmd/devcontainer-cli/main.go` | Process wiring only: signal handlers (SIGINT/SIGTERM → exit 130), `version` var (injected via ldflags), root dispatch, error→exit-code mapping. No business logic. |
-| `internal/cli/` | User interaction layer. Contains subcommands (`cli/commands`), console output + prompts + wizard engine (`cli/ui`), and container picker (`cli/pick`). Commands only parse flags, drive prompts, and print — **they delegate all business logic to `internal/service` and never call `infra/docker` or `os/exec` directly.** |
+| `internal/cli/` | User interaction layer. Contains subcommands (`cli/commands`), console output + prompts + wizard engine (`cli/ui`), and container picker (`cli/pick`). Commands only parse flags, drive prompts, and print — **they delegate all business logic to `internal/service` and never call `infra/engine` or `os/exec` directly.** |
 | `internal/service/` | Orchestration layer between `cli` and `{domain, infra}`. Each service owns one operation group's logic (docker/ssh/exec orchestration + domain calls) and reports/prompts only through the `service.Reporter`/`service.Prompter` interfaces. **May import `domain` and `infra`; never imports `cli`.** See the service-layer section below. |
 | `internal/domain/` | Core logic layer: generating Dockerfile/compose, resolving module dependencies, validating input, loading/persisting config, fingerprinting, subnet math, workspace name resolution. **Never imports `infra` or `cli`.** |
 | `internal/domain/types/` | Shared domain data types: config structures, constants, label calculations. No I/O, no logic. (Was `internal/core`). |
 | `internal/domain/catalog/` | The catalog of modules/services (`catalog.go`). (Was `internal/registry`). |
 | `internal/domain/modules/` | Module definitions themselves: `modules/dockerfile/` and `modules/compose/`. |
-| `internal/infra/` | I/O execution layer. Contains raw subprocess running (`infra/docker`), the git binary (`infra/git` — the only place in the tree that shells out to it, mirroring how `infra/docker` owns docker), assets embed extraction (`infra/assets`), SSH key default setup (`infra/sshdefaults`), and low-level project file-path definitions (`infra/project`). **Never imports `domain` or `cli`.** |
+| `internal/infra/` | I/O execution layer. Contains raw subprocess running (`infra/engine`, which drives Docker or Podman), the git binary (`infra/git` — the only place in the tree that shells out to it, mirroring how `infra/engine` owns the container engine), assets embed extraction (`infra/assets`), SSH key default setup (`infra/sshdefaults`), and low-level project file-path definitions (`infra/project`). **Never imports `domain` or `cli`.** |
 
 **Why `cmd/devcontainer-cli/main.go` and not `cli/main.go`:** `cli/` is the
 module root — it holds `go.mod` and the release/installer artifacts
@@ -173,7 +173,7 @@ is a thin `package main` that only *wires* those internal pieces together — no
 business logic to misplace at the root.
 
 Import paths name the layer: `internal/domain/types`, `internal/domain`,
-`internal/service`, `internal/infra/docker`, `internal/cli/commands`. The allowed
+`internal/service`, `internal/infra/engine`, `internal/cli/commands`. The allowed
 import direction is `cli → service → { domain, infra }`.
 
 **Type placement:** a type used by **more than one package** lives in
@@ -182,9 +182,9 @@ import direction is `cli → service → { domain, infra }`.
 
 ### The `CaptureFunc` injection pattern (domain never imports infra)
 
-Domain functions that need to query Docker do **not** import `infra/docker`.
+Domain functions that need to query the engine do **not** import `infra/engine`.
 Instead they take a `domain.CaptureFunc func(args []string) (status int, stdout, stderr string)`
-parameter, and the **service** passes a closure wrapping `docker.DockerCapture`
+parameter, and the **service** passes a closure wrapping `engine.Capture`
 (see `captureFunc()` / `dockerCapture()` in `internal/service/capture.go`).
 This keeps the dependency direction clean and makes domain functions trivially
 testable with a fake capture. Examples: `domain.ListUsedSubnets(capture)`,
@@ -202,11 +202,11 @@ and `infra`, **never `cli`** (no `cli/ui`, no `cli/pick`).
 
 - **Command (`cli/commands/<name>.go`)**: parse cobra flags, resolve cwd/workspace,
   run interactive pickers/prompts, construct the service with `ui.Console{}`, call a
-  method, print results. **No `infra/docker`, no `os/exec`** (verified: `grep -rln
-  infra/docker internal/cli/commands` is empty).
+  method, print results. **No `infra/engine`, no `os/exec`** (verified: `grep -rln
+  infra/engine internal/cli/commands` is empty).
 - **Service (`service/<group>.go`)**: a `struct { Report Reporter; Prompt Prompter }`
   (add `Prompt` only if it asks the user) plus verb methods holding the logic, calling
-  `domain.*` and `infra/docker` directly.
+  `domain.*` and `infra/engine` directly.
 
 ### The boundary interfaces (`service/connector.go`)
 
@@ -233,8 +233,8 @@ them).
 
 ### Testing services
 
-No real Docker: swap the runner with `docker.SetRunner(fake)` + `defer
-docker.ResetRunner()` (and `docker.ResetDockerCache()`); the injected docker closures
+No real engine: swap the runner with `engine.SetRunner(fake)` + `defer
+engine.ResetRunner()` (and `engine.ResetEngine()`); the injected docker closures
 of the past are gone. Use fakes for `Reporter`/`Prompter`. See the shared
 `nopReporter`, `fakeRunner`, `scriptedPrompter` and `useFakeDocker` helpers in
 `internal/service/helpers_test.go`.
@@ -245,24 +245,77 @@ of the past are gone. Use fakes for `Reporter`/`Prompter`. See the shared
 
 Always prefer these over re-implementing the same logic.
 
-### `internal/infra/docker` — Docker execution layer
+### `internal/infra/engine` — container engine execution layer
 
-Centralises **all** shell-outs to the `docker` binary (over `os/exec`).
+Centralises **all** shell-outs to the container engine's binary (`docker` or
+`podman`, over `os/exec`). The engine is data (`engine.Engine{Name, Binary,
+RemoteHostVar}`), never a literal in a call site — see "Container engines" below.
 
 | Export | Purpose |
 |---|---|
-| `Runner` / `SetRunner(r)` / `ResetRunner()` | Indirection over `exec.Command`; swap in tests to avoid real Docker. |
-| `ResetDockerCache()` | Clears the availability cache — call in test setup/teardown. |
-| `IsDockerAvailable()` | Cached check; `false` if docker is absent/daemon down. |
-| `EnsureDocker()` | Returns an error if docker is unavailable. Call at the top of any docker-dependent service. |
-| `DockerInherit(args)` | `docker <args>` with inherited stdio; returns `(status, error)`. |
-| `DockerCapture(args)` | `docker <args>` piped; returns `(status, stdout, stderr, error)`. |
-| `DockerCompose(file, args, opts)` | `docker compose -f <file> <args>`; returns `(status, error)`. |
-| `DockerComposeOrThrow(file, args, opts)` | Same but returns an error on non-zero exit. |
-| `DockerExecStdin(input, args)` | `docker <args>` with `input` piped to stdin; returns `(status, error)`. |
+| `Runner` / `SetRunner(r)` / `ResetRunner()` | Indirection over `exec.Command`; swap in tests to avoid a real engine. |
+| `CurrentEngine()` / `SetEnginePreference(p)` / `SetEngine(e)` / `ResetEngine()` | The engine in use. `auto` probes `docker` then `podman` on first use and caches the answer; an explicit preference never probes. |
+| `ResetAvailabilityCache()` | Clears the availability cache — call in test setup/teardown. |
+| `IsAvailable()` | Cached check; `false` if the engine is absent/daemon down. |
+| `EnsureAvailable()` | Returns an error if the engine is unavailable. Call at the top of any engine-dependent service. |
+| `Inherit(args)` | `<engine> <args>` with inherited stdio; returns `(status, error)`. |
+| `Capture(args)` | `<engine> <args>` piped; returns `(status, stdout, stderr, error)`. |
+| `Compose(file, args, opts)` | `<engine> compose -f <file> <args>`; returns `(status, error)`. On a Podman failure it prints the provider/socket hint. |
+| `ComposeOrThrow(file, args, opts)` | Same but returns an error on non-zero exit. |
+| `ExecStdin(input, args)` | `<engine> <args>` with `input` piped to stdin; returns `(status, error)`. |
+| `IsPodman()` / `IsRootless()` / `HostSocketPath()` | What the generator needs to know about a Podman engine (rootless? where is its API socket?). |
 
-**Rule:** never call `exec.Command("docker", …)` directly anywhere else, and call
-these only from `internal/service` — `cli/commands` go through a service.
+**Rule:** never call `exec.Command("docker", …)` (or `"podman"`) directly anywhere
+else, and call these only from `internal/service` — `cli/commands` go through a service.
+
+### Container engines: Docker and Podman
+
+The CLI drives either engine. Everything below exists so a call site never has to
+ask "which one?" — the answer is data resolved once.
+
+**Selection.** `DEVCONTAINER_ENGINE` beats `config engine`, which beats `auto`
+(`domain.ResolveEnginePreference`, applied in the root `PersistentPreRunE` through
+`service.ApplyEnginePreference`). `auto` prefers Docker, falls back to Podman, and
+falls back to Docker's error message when neither answers. An invalid value warns
+and behaves as `auto`.
+
+**Docker output is frozen.** A Docker project must generate byte-identical files
+before and after this feature, or every fingerprint changes and every user rebuilds.
+Every Podman-specific behaviour is therefore gated on `types.EngineTraits` (resolved
+in `GenerateService.Plan` into `DevcontainerConfig.Engine`, `json:"-"`, so it never
+reaches `devcontainer.config.json`):
+
+| Trait | Effect on the generated files |
+|---|---|
+| `QualifiesShortNames` (Podman) | Service images and Dockerfile `FROM` lines get a registry (`docker.io/library/…`) — Podman has no default registry. `IsLocalImage` strips the `localhost/` Podman prepends to local builds. |
+| `MapsHostUserIntoContainer` (rootless Podman) | The devcontainer service gets `userns_mode: keep-id` and `user: root`: keep-id makes the host user own the bind mount, `user: root` lets the entrypoint still run as root. |
+| `PublishesSSHOnLoopback` (rootless Podman) | sshd is published on `127.0.0.1::22`, because a rootless container's IP is not routable from the host. |
+| `HostSocketPath` | The DooD mount uses the engine's own API socket, still mounted at `/var/run/docker.sock` inside. |
+
+**SSH dials an endpoint, not an IP.** `sshdefaults.Endpoint{Host, Port}` is what
+`SshService.ContainerEndpoint` returns: the published sshd port on loopback when
+there is one (`PublishedTCPPort`), the container IP otherwise. A local block with a
+non-22 port renders `Port N` plus `HostKeyAlias <alias>` — the host key is pinned
+under the alias because `127.0.0.1:<random port>` would change on every recreate.
+The ModeRemote/`--via` ProxyCommand uses the engine binary and, for non-Docker
+engines, asks `<engine> port <name> 22` first. `--via` sets `CONTAINER_HOST`
+instead of `DOCKER_HOST` for Podman (`Engine.RemoteHostVar`); the remote host is
+assumed to run the same engine.
+
+**Never parse engine output with a Docker-only template.** Podman's JSON differs
+(`Names` is an array, `Labels` a map, `Ports` a list of bindings, `Status` empty;
+`network inspect` has lowercase keys and no `Containers`; `.Label "k"` is
+unsupported). Use the tolerant readers in `domain/engine_output.go`
+(`ParseLabelsJSON`, `ParseNamesJSON`, `ParsePortsJSON`) with `{{json …}}`
+formats, and decode `network inspect` into a type that tolerates both spellings
+(`inspectedNetwork`). Project membership is read through
+`composeProjectLabels` (`com.docker.compose.project`, then
+`io.podman.compose.project`).
+
+**Rootless Podman cannot publish 80/443**, so `route` refuses to start (naming the
+`net.ipv4.ip_unprivileged_port_start` sysctl) rather than failing halfway.
+`podman compose` delegates to docker-compose or podman-compose; docker-compose
+needs `podman.socket` running, which `engine.Compose` hints at on failure.
 
 ### `internal/infra/project` — Project path resolution
 
@@ -1123,7 +1176,7 @@ func runDown(cmd *cobra.Command, _ []string) error {
 - `register(c)` appends to the package-level `subcommands` slice consumed by
   `NewRootCommand`.
 - `RunE` orchestrates flags/prompts and **delegates the real work to a service**
-  (`service.<Group>Service{Report: ui.Console{}}`). It must not import `infra/docker`
+  (`service.<Group>Service{Report: ui.Console{}}`). It must not import `infra/engine`
   or `os/exec`. New logic → a service method + its `_test.go`; see the service-layer
   section above.
 - Flag helpers live in `flags.go`: `addYesFlag`/`addInteractiveFlag` and the
@@ -1147,7 +1200,7 @@ is Cobra-native.
 |---|---|---|
 | _(default)_ | `root.go` (+ `generate_prompts.go`) | Generate Dockerfile + compose + .env |
 | `clean` | `clean.go` | Consolidate all cleanup actions under subcommands: `clean catalog` (stale images.json entries), `clean containers` (managed containers, alias `rm`), `clean images` (managed images, alias `rmi`), `clean ssh` (stale SSH config blocks — both `kind=workspace` and `kind=container` — plus any duplicated/orphaned marker `FindOrphanedMarkers` finds regardless of target liveness, plus the host keys they pinned in the managed `known_hosts`, swept by address via `SshService.OrphanKnownHosts`/`ForgetHostKeys` so keys left behind by `destroy` go too; alias `sshs`. A `--via` block's liveness is checked against the daemon named in its marker's `host=`, not the local one (`LiveTargetPredicates`'s `existsRemoteContainer`); when that daemon can't be reached the block is reported *unverified* rather than stale or silently kept — interactive runs can still select it for removal, `--yes` skips it and says how many were skipped; `clean ssh --all` additionally lists every managed block regardless of status via `SshService.ListManagedSSHBlocks`, including currently-alive ones — `--all` only widens what's shown/selectable, `--yes` never auto-removes an alive block), `clean networks` (managed networks), `clean volumes` (managed volumes), and `clean all` (sweep every category). Bare `clean` interactively prompts for categories or sweeps all with `--all`/`-y` |
-| `ssh` | `ssh.go` (setup flow in `setup_ssh.go`) | Open a real SSH session into the project's own devcontainer (unlike `shell`'s `docker exec`) **and own the whole SSH lifecycle — this is where `setup-ssh` used to live** (`runSshSetup` in `setup_ssh.go`). It auto-runs the setup flow when no managed alias exists yet for the target (`SshService.ManagedAlias` looks it up by the `kind=workspace`/`kind=container` marker, not by assuming alias==workspace); `--setup` forces that setup to run again (rotate key / repair block) before connecting. **Setup writes** the Host block into the **CLI-owned** SSH config (`~/.ssh/devcontainer-cli.config` by default, `config ssh-config-file`), never the user's `~/.ssh/config` — that file only ever gains one top-of-file `Include` (`SshService.EnsureInclude`; must precede every `Host`/`Match`). Older blocks in `~/.ssh/config` are lifted across by `SshService.MigrateManagedBlocks` (run by `ssh`, `destroy`, `clean ssh`). Alias collisions are checked against **both** files (`FindHostAliasConflict`; likewise `HostIsReferenced`, `AliasHostName`, `ConfigHostTargets`/`OrphanKnownHosts`, completion `bothConfigs`). Each block carries a marker (`# devcontainer-cli:managed v=1 kind=<workspace\|container> ref=<id> alias=<alias> [host=<via>]`) so `destroy`/`clean ssh` find it. Host-key verification is scoped to the CLI-managed `known_hosts` (`sshdefaults.HostKeyOptions`); the container's keys are read out-of-band through `docker exec` and re-pinned (`SshService.PinContainerHostKeys`), so a rebuilt image never trips "REMOTE HOST IDENTIFICATION HAS CHANGED". `--container` switches to loose mode (keyed by `kind=container`). `--via USER@HOST` (requires `--container`) reaches a container on another Docker host through an existing SSH connection (`service.WithHostOverride` sets `DOCKER_HOST=ssh://…`), so only the shared key's **public** half leaves this machine; its block has no static `HostName` — it reuses the `ProxyCommand`/`docker inspect` stanza (`Remote: f.via`), re-resolving the IP each connect. A `--via`/ProxyCommand block verifies host keys under the **alias** (no `HostName`), so both `pinHostKeys` (setup) and `refreshHostKey` (reconnect, via `SshService.ManagedViaHost` + `WithHostOverride`) pin under the alias — pinning under the IP would never be consulted. `--setup-external USER@HOST` is the old `--remote`: run **on** the Docker host, it prints a self-contained snippet (with the PRIVATE key) to paste on the connecting machine and does **not** connect. `--ephemeral` connects directly via SSH to the container IP on port 2222 using the managed private key without modifying or reading `~/.ssh/config`. Before dialing an existing alias (`refreshExistingTarget`) it re-pins host keys, upgrades pre-pinning blocks (`EnsureHostKeyPinning`), and rules out a **stale target** deterministically by name from the owning daemon (`SshService.ContainerLiveness` → `TargetRunning`/`TargetStopped`/`TargetAbsent`, no SSH): an absent container aborts with a "stale alias" error instead of a confusing SSH failure, a stopped one warns. Everything is **anchored by the container name**, so a local block whose container came back on a new IP is rewritten in place (`SetManagedHostName`, old host key forgotten) rather than dialing a dead address — a `--via`/ProxyCommand block needs no such refresh since it re-resolves the IP live. At setup time the real SSH probe (`verifyTarget`/`confirmLiveProbe`) is shown and confirmed first, never run silently. `--forward`/`--ports` open SSH tunnels alongside the session (`PortForwardService.OpenTunnelsDetached`), torn down when it ends |
+| `ssh` | `ssh.go` (setup flow in `setup_ssh.go`) | Open a real SSH session into the project's own devcontainer (unlike `shell`'s `docker exec`) **and own the whole SSH lifecycle — this is where `setup-ssh` used to live** (`runSshSetup` in `setup_ssh.go`). It auto-runs the setup flow when no managed alias exists yet for the target (`SshService.ManagedAlias` looks it up by the `kind=workspace`/`kind=container` marker, not by assuming alias==workspace); `--setup` forces that setup to run again (rotate key / repair block) before connecting. **Setup writes** the Host block into the **CLI-owned** SSH config (`~/.ssh/devcontainer-cli.config` by default, `config ssh-config-file`), never the user's `~/.ssh/config` — that file only ever gains one top-of-file `Include` (`SshService.EnsureInclude`; must precede every `Host`/`Match`). Older blocks in `~/.ssh/config` are lifted across by `SshService.MigrateManagedBlocks` (run by `ssh`, `destroy`, `clean ssh`). Alias collisions are checked against **both** files (`FindHostAliasConflict`; likewise `HostIsReferenced`, `AliasHostName`, `ConfigHostTargets`/`OrphanKnownHosts`, completion `bothConfigs`). Each block carries a marker (`# devcontainer-cli:managed v=1 kind=<workspace\|container> ref=<id> alias=<alias> [host=<via>]`) so `destroy`/`clean ssh` find it. Host-key verification is scoped to the CLI-managed `known_hosts` (`sshdefaults.HostKeyOptions`); the container's keys are read out-of-band through `docker exec` and re-pinned (`SshService.PinContainerHostKeys`), so a rebuilt image never trips "REMOTE HOST IDENTIFICATION HAS CHANGED". `--container` switches to loose mode (keyed by `kind=container`). `--via USER@HOST` (requires `--container`) reaches a container on another Docker host through an existing SSH connection (`service.WithHostOverride` sets `DOCKER_HOST=ssh://…`), so only the shared key's **public** half leaves this machine; its block has no static `HostName` — it reuses the `ProxyCommand`/`docker inspect` stanza (`Remote: f.via`), re-resolving the IP each connect. A `--via`/ProxyCommand block verifies host keys under the **alias** (no `HostName`), so both `pinHostKeys` (setup) and `refreshHostKey` (reconnect, via `SshService.ManagedViaHost` + `WithHostOverride`) pin under the alias — pinning under the IP would never be consulted. `--setup-external USER@HOST` is the old `--remote`: run **on** the Docker host, it prints a self-contained snippet (with the PRIVATE key) to paste on the connecting machine and does **not** connect. `--ephemeral` connects directly via SSH to the container IP on port 2222 using the managed private key without modifying or reading `~/.ssh/config`. Before dialing an existing alias (`refreshExistingTarget`) it re-pins host keys, upgrades pre-pinning blocks (`EnsureHostKeyPinning`), and rules out a **stale target** deterministically by name from the owning daemon (`SshService.ContainerLiveness` → `TargetRunning`/`TargetStopped`/`TargetAbsent`, no SSH): an absent container aborts with a "stale alias" error instead of a confusing SSH failure, a stopped one warns. Everything is **anchored by the container name**, so a local block whose container came back on a new IP is rewritten in place (`SetManagedHostName`, old host key forgotten) rather than dialing a dead address — a `--via`/ProxyCommand block needs no such refresh since it re-resolves the IP live. At setup time the real SSH probe (`verifyTarget`/`confirmLiveProbe`) is shown and confirmed first, never run silently. On **rootless Podman** the dialed endpoint is the published sshd port on `127.0.0.1` (`SshService.ContainerEndpoint`), so the block carries `Port` + `HostKeyAlias` and a restart that changes the port is rewritten in place (`SetManagedEndpoint`). `--forward`/`--ports` open SSH tunnels alongside the session (`PortForwardService.OpenTunnelsDetached`), torn down when it ends |
 | `port-forward` | `port_forward.go` | Open SSH tunnels between this machine and a running container, **in either direction** (supports interactive selection, project configured forwardPorts, or `--ephemeral` direct SSH tunnels). The default is `ssh -L`: it listens on `127.0.0.1` here and reaches into the container. A spec may lead with an IP literal of this machine as the **bind address**, like `ssh -L` (`0.0.0.0:8000:8000`, `100.64.0.1:8000:8000`, `[::]:8080:80`); only an IP is recognised (`splitBindAddress`), which is what keeps it from colliding with `LOCAL:HOST:CONTAINER`, and a non-loopback one is warned about in the plan (`Tunnel.Exposed`). A bind address on a `reverse:` spec is **rejected**: the reverse listener is opened by the container's sshd, whose `GatewayPorts=no` keeps it on the container's loopback whatever is asked, so accepting it would silently lie. A spec prefixed `reverse:`/`r:` — or every unprefixed spec when `--reverse` is passed — becomes `ssh -R` instead: the container listens on its own loopback and the connection is dialled from this machine, which is how a service running on the host (a database, an API, another project's published port) becomes reachable inside the container. The port fields keep their meaning in both directions (first = this machine's, last = the container's), so only the arrow flips; `--service` is rejected on a reverse spec (a compose service name resolves inside the container network, which a reverse tunnel never dials — use the three-field form for a host-side address), and a reverse tunnel cannot be opened into a container reached through a jump host, since `-R` listens inside the container the alias connects to |
 | `run` | `run.go` | `docker run` from a remote image, no project files |
 | `down` | `down.go` | `docker compose down [-v]` for the current directory's project |
@@ -1156,7 +1209,7 @@ is Cobra-native.
 | `compose` (alias `dc`) | `compose.go` | Passthrough to `docker compose` scoped to the current project (`LifecycleService.Passthrough`): forwards every argument verbatim after `-f .dc_<ws>/build/docker-compose.yml --env-file .dc_<ws>/build/.env`. The escape hatch for compose verbs the curated wrappers don't cover (`exec`, `ps`, `top`, `config`, `kill`, `run`, `port`, …), reaching every service in the stack — database services included. Uses `DisableFlagParsing` so flags like `-it` reach compose instead of cobra; a bare invocation or lone `-h`/`--help` prints the command's own help, everything else (including `<verb> --help`) is forwarded. The `--env-file` flag is included only when the generated `.env` exists, otherwise compose falls back to its own autoload. Completion (`completeComposeArgs`, which still fires under `DisableFlagParsing`) offers compose verbs on the first token and the project's compose **service** keys (`ReadComposeServices`) on later tokens — service names, since that's what `docker compose <verb> <service>` takes, not container names |
 | `update` | `update.go` | Pull/rebuild images; `--all`; per-mode dispatch |
 | `upgrade-cli` | `upgrade_cli.go` | Binary self-update from a GitHub release |
-| `config` | `config.go` | Read/write global config (subcommands `registry`, `db-user`, `db-password`, `ssh-key`, `ssh-config-file`, `git-init`, `alias`, `profile`, `skill`, `shared`); `config git-init` (default `false`) opts into `generate` offering to `git init` a project directory that is not a repository yet (`GitRepoService.EnsureRepo` → `infra/git`) — it writes into the user's own directory rather than the CLI's `.dc_<ws>/`, which is why it is off by default and why an interactive run still asks before doing it; `config ssh-config-file` sets where managed SSH Host blocks live (default `~/.ssh/devcontainer-cli.config`) — it is global rather than a per-command flag on purpose, so `ssh`, `destroy` and `clean ssh` can never disagree about which file to read. `config alias` (`config_alias.go`) manages the user's own shell aliases, stored in the CLI config (`GlobalConfig.Aliases`), not a host file: `config alias set <name> <command>` / `config alias unset <name>` edit the map, bare `config alias` lists it, and `config alias sync` renders it into the `alias.sh` shared-config volume entry (`SharedConfigService.SyncAliases`) so every container picks it up without an image rebuild; `config profile` (`profile.go`, aliased `preset`) lists/creates/copies/removes reusable **profiles** (module ids + custom scripts + agent skills) saved under `~/.devcontainer-cli/profiles/` (`remove <id...>` deletes user profiles only — built-ins are not removable; tab-completed, `-y` to skip confirmation); `config profile info <id>` prints one profile's full resolved definition — source/dir, then `yaml.Marshal` of the resolved `catalog.Profile` (`Source`/`Dir`/`Embedded` are `yaml:"-"`, so this is exactly the manifest a project resolving it would read). A profile is a list of module ids plus optional custom scripts and agent skills (no services/ports/volumes/mode); `create` prompts for the id, runs a modules-only wizard (`GenerateService.SelectModules`), collects scripts, then picks skills and their mode (`GenerateService.SelectSkills`). The interactive `generate` wizard's first question offers 3 starting points, not 2: plain `custom` (pick modules by hand), `custom` from a profile (built-in or the user's own — pre-selects its modules and carries its scripts before the user continues with services/ports/volumes), or `profiles` (pull target, see below). The middle one is `modeChoiceCustomFromProfile` in `generate_wizard.go` — still `types.BuildModeCustom` once normalized (`currentMode`), it just also triggers `profileStep`, which plain `custom` skips. `config skill` (`config_skill.go`) lists built-in and user-defined agent skills (`config skill list`, grouped like `config profile list`) — a user one is a flat `~/.devcontainer-cli/skills/<id>.yml`, no scripts/directory shape, since a skill's install source is already a git ref; `config skill info <id>` prints one skill's full definition (source, install ref, required modules, its `~/CONTEXT.md` entry if any) via the local `skillInfoView` — a plain yaml-shaped mirror of `catalog`'s unexported `userSkillManifest`, since `skills.Spec.Context` is a Go func and cannot be marshaled directly, so a built-in and a user-defined skill render identically either way; `config skill add <id> --ref <source>` writes `~/.devcontainer-cli/skills/<id>.yml` from flags (`--ref` required, prompted for when interactive and missing; everything else optional), refusing to clobber an existing *user* file without `--force` — but never refusing to shadow a built-in id, which is the documented, expected way to override one; `config skill remove <id...>` deletes user-defined skills only (same built-ins-are-not-removable rule as `config profile remove`); `config skill install [skill-ids...]` (`SkillInstallService.Install`) installs agent skills into the project workspace via an ephemeral mini-container (`docker run --rm ghcr.io/joacohbc/devcontainer-utils:latest npx --yes skills add`) with host user ownership without starting a devcontainer stack (`--all`, `--image`, `--dir` supported). `config shared` (`config_shared.go`) groups the shared tool-config volume ops — `config shared sync` (`sync_config.go`, seed from host configs `~/.claude`, `~/.config/gh`, …; `--force` replaces), `config shared backup` (`backup_config.go`, zip the volume; `-o` sets the destination, default a timestamped file in cwd), `config shared restore` (`restore_config.go`, load a zip made by `config shared backup`; `--force` replaces existing entries) |
+| `config` | `config.go` | Read/write global config (subcommands `registry`, `db-user`, `db-password`, `engine` (`docker`/`podman`/`auto`; `DEVCONTAINER_ENGINE` overrides it), `ssh-key`, `ssh-config-file`, `git-init`, `alias`, `profile`, `skill`, `shared`); `config git-init` (default `false`) opts into `generate` offering to `git init` a project directory that is not a repository yet (`GitRepoService.EnsureRepo` → `infra/git`) — it writes into the user's own directory rather than the CLI's `.dc_<ws>/`, which is why it is off by default and why an interactive run still asks before doing it; `config ssh-config-file` sets where managed SSH Host blocks live (default `~/.ssh/devcontainer-cli.config`) — it is global rather than a per-command flag on purpose, so `ssh`, `destroy` and `clean ssh` can never disagree about which file to read. `config alias` (`config_alias.go`) manages the user's own shell aliases, stored in the CLI config (`GlobalConfig.Aliases`), not a host file: `config alias set <name> <command>` / `config alias unset <name>` edit the map, bare `config alias` lists it, and `config alias sync` renders it into the `alias.sh` shared-config volume entry (`SharedConfigService.SyncAliases`) so every container picks it up without an image rebuild; `config profile` (`profile.go`, aliased `preset`) lists/creates/copies/removes reusable **profiles** (module ids + custom scripts + agent skills) saved under `~/.devcontainer-cli/profiles/` (`remove <id...>` deletes user profiles only — built-ins are not removable; tab-completed, `-y` to skip confirmation); `config profile info <id>` prints one profile's full resolved definition — source/dir, then `yaml.Marshal` of the resolved `catalog.Profile` (`Source`/`Dir`/`Embedded` are `yaml:"-"`, so this is exactly the manifest a project resolving it would read). A profile is a list of module ids plus optional custom scripts and agent skills (no services/ports/volumes/mode); `create` prompts for the id, runs a modules-only wizard (`GenerateService.SelectModules`), collects scripts, then picks skills and their mode (`GenerateService.SelectSkills`). The interactive `generate` wizard's first question offers 3 starting points, not 2: plain `custom` (pick modules by hand), `custom` from a profile (built-in or the user's own — pre-selects its modules and carries its scripts before the user continues with services/ports/volumes), or `profiles` (pull target, see below). The middle one is `modeChoiceCustomFromProfile` in `generate_wizard.go` — still `types.BuildModeCustom` once normalized (`currentMode`), it just also triggers `profileStep`, which plain `custom` skips. `config skill` (`config_skill.go`) lists built-in and user-defined agent skills (`config skill list`, grouped like `config profile list`) — a user one is a flat `~/.devcontainer-cli/skills/<id>.yml`, no scripts/directory shape, since a skill's install source is already a git ref; `config skill info <id>` prints one skill's full definition (source, install ref, required modules, its `~/CONTEXT.md` entry if any) via the local `skillInfoView` — a plain yaml-shaped mirror of `catalog`'s unexported `userSkillManifest`, since `skills.Spec.Context` is a Go func and cannot be marshaled directly, so a built-in and a user-defined skill render identically either way; `config skill add <id> --ref <source>` writes `~/.devcontainer-cli/skills/<id>.yml` from flags (`--ref` required, prompted for when interactive and missing; everything else optional), refusing to clobber an existing *user* file without `--force` — but never refusing to shadow a built-in id, which is the documented, expected way to override one; `config skill remove <id...>` deletes user-defined skills only (same built-ins-are-not-removable rule as `config profile remove`); `config skill install [skill-ids...]` (`SkillInstallService.Install`) installs agent skills into the project workspace via an ephemeral mini-container (`docker run --rm ghcr.io/joacohbc/devcontainer-utils:latest npx --yes skills add`) with host user ownership without starting a devcontainer stack (`--all`, `--image`, `--dir` supported). `config shared` (`config_shared.go`) groups the shared tool-config volume ops — `config shared sync` (`sync_config.go`, seed from host configs `~/.claude`, `~/.config/gh`, …; `--force` replaces), `config shared backup` (`backup_config.go`, zip the volume; `-o` sets the destination, default a timestamped file in cwd), `config shared restore` (`restore_config.go`, load a zip made by `config shared backup`; `--force` replaces existing entries) |
 | `cleanup-tips` | `cleanup_tips.go` | Print docker cleanup commands |
 | `context` | `context.go` | Print the container's own context and installed tools: runs `get-devcontainer-context` inside it via `InspectService.Context` and streams the output (`--json` for structured output). Falls back to `copy --asset get-devcontainer-context` when the image predates the `aliases` module. Complements `info` (Docker metadata) by reporting what is *inside* the container |
 | `network` | `network.go` | Attach/detach any container to the workspace network; subcommands `network connect`/`network disconnect <container...>` (tab-completed); `connect` takes `--alias` (extra DNS names; prompted when interactive) |
@@ -1181,8 +1234,8 @@ func TestParsePortMapping(t *testing.T) {
 }
 ```
 
-- **Mocking Docker:** `docker.SetRunner(fake)` + `defer docker.ResetRunner()` (and
-  `docker.ResetDockerCache()`) so no real Docker is invoked.
+- **Mocking the engine:** `engine.SetRunner(fake)` + `defer engine.ResetRunner()` (and
+  `engine.ResetEngine()`) so no real Docker or Podman is invoked.
 - **Services:** use the shared `nopReporter`/`fakeRunner`/`scriptedPrompter` and
   `useFakeDocker` helpers in `internal/service/helpers_test.go`.
 - **Domain functions:** pass a fake `CaptureFunc` returning canned stdout.
@@ -1376,7 +1429,7 @@ installer downloads the raw `devcontainer-cli-<triplet>`.
 - [ ] New/modified module, domain function, or service method has a matching `_test.go`.
 - [ ] Added/changed command or flag has its docs reviewed (`Short`/`Long`/`Example`,
       flag descriptions, the `Current commands` table) — see "command changes require a doc review".
-- [ ] No `infra/docker` or `os/exec` import in `internal/cli/commands` (logic belongs in a service).
+- [ ] No `infra/engine` or `os/exec` import in `internal/cli/commands` (logic belongs in a service).
 - [ ] `go test ./...` passes.
 - [ ] `go vet ./...` and `gofmt -l .` are clean.
 - [ ] Frozen contracts above kept in sync where touched.
