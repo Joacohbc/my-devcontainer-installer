@@ -8,7 +8,7 @@ import (
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/engine"
 )
 
 // PruneService finds and removes CLI-managed docker resources (containers,
@@ -62,7 +62,7 @@ func selectByNames[T any](items []T, names []string, nameOf func(T) string) (sel
 // and reporting each failure via onFail.
 func removeResources[T any](items []T, args func(T) []string, onFail func(T)) (removed, failed int) {
 	for _, it := range items {
-		if status, _ := docker.DockerInherit(args(it)); status == 0 {
+		if status, _ := engine.Inherit(args(it)); status == 0 {
 			removed++
 			continue
 		}
@@ -75,7 +75,7 @@ func removeResources[T any](items []T, args func(T) []string, onFail func(T)) (r
 // captureLines runs `docker <args>` and returns its stdout as trimmed,
 // non-empty lines (nil on error or empty output).
 func captureLines(args []string) []string {
-	status, stdout, _, err := docker.DockerCapture(args)
+	status, stdout, _, err := engine.Capture(args)
 	if err != nil || status != 0 || strings.TrimSpace(stdout) == "" {
 		return nil
 	}
@@ -770,7 +770,7 @@ func listCliImages() []LocalImage {
 }
 
 func imagesInUse() map[string]bool {
-	status, stdout, _, err := docker.DockerCapture([]string{"ps", "-a", "--format", "{{.Image}}"})
+	status, stdout, _, err := engine.Capture([]string{"ps", "-a", "--format", "{{.Image}}"})
 	if err != nil || status != 0 {
 		return nil
 	}
@@ -891,7 +891,7 @@ func networksInUse(names []string) map[string]bool {
 	if len(names) == 0 {
 		return nil
 	}
-	status, stdout, _, err := docker.DockerCapture([]string{"ps", "--format", "{{json .Networks}}"})
+	status, stdout, _, err := engine.Capture([]string{"ps", "--format", "{{json .Networks}}"})
 	if err != nil || status != 0 {
 		return nil
 	}

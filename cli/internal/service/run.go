@@ -6,7 +6,7 @@ import (
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/engine"
 )
 
 // RunService spins up a container from a remote image without project files.
@@ -50,7 +50,7 @@ func (s RunService) Run(spec QuickRunSpec) error {
 			return nil
 		case StateExited, StateCreated, StatePaused:
 			s.Report.Warn("↻ Starting existing container '%s'...", spec.ContainerName)
-			status, err := docker.DockerInherit([]string{"start", spec.ContainerName})
+			status, err := engine.Inherit([]string{"start", spec.ContainerName})
 			if err != nil {
 				return err
 			}
@@ -87,7 +87,7 @@ func (s RunService) Run(spec QuickRunSpec) error {
 	args = append(args, spec.Image, "sleep", "infinity")
 
 	s.Report.Warn("Pulling and starting container...")
-	status, err := docker.DockerInherit(args)
+	status, err := engine.Inherit(args)
 	if err != nil {
 		return err
 	}
@@ -149,7 +149,7 @@ type quickRunLookup struct {
 // container yields a zero-value (Exists: false) result.
 func (s RunService) lookupQuickRunContainer(name string) quickRunLookup {
 	format := `{{.State.Status}}|{{index .Config.Labels "` + types.LabelQuickRun + `"}}`
-	status, stdout, _, err := docker.DockerCapture([]string{"inspect", "-f", format, name})
+	status, stdout, _, err := engine.Capture([]string{"inspect", "-f", format, name})
 	if err != nil || status != 0 {
 		return quickRunLookup{}
 	}

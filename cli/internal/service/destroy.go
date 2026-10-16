@@ -4,7 +4,7 @@ import (
 	"os"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/engine"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/sshdefaults"
 )
 
@@ -29,7 +29,7 @@ type DestroyTarget struct {
 func (s DestroyService) Run(t DestroyTarget) error {
 	if fileExists(t.ComposeFile) {
 		s.Report.Warn("Bringing down '%s' (with volumes)...", t.Workspace)
-		if err := docker.DockerComposeOrThrow(t.ComposeFile, []string{"down", "-v"}, nil); err != nil {
+		if err := engine.ComposeOrThrow(t.ComposeFile, []string{"down", "-v"}, nil); err != nil {
 			return err
 		}
 	} else {

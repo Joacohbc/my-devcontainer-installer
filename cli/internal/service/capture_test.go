@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/engine"
 )
 
 func TestWithHostOverride_RedirectsDockerCallsDuringFn(t *testing.T) {
@@ -12,7 +12,7 @@ func TestWithHostOverride_RedirectsDockerCallsDuringFn(t *testing.T) {
 	defer useFakeDocker(fake)()
 
 	err := WithHostOverride("me@remote-host", func() error {
-		_, _, _, derr := docker.DockerCapture([]string{"ps"})
+		_, _, _, derr := engine.Capture([]string{"ps"})
 		return derr
 	})
 	if err != nil {
@@ -23,7 +23,7 @@ func TestWithHostOverride_RedirectsDockerCallsDuringFn(t *testing.T) {
 	}
 
 	// The override must not leak past WithHostOverride's return.
-	if _, _, _, derr := docker.DockerCapture([]string{"ps"}); derr != nil {
+	if _, _, _, derr := engine.Capture([]string{"ps"}); derr != nil {
 		t.Fatalf("DockerCapture after WithHostOverride: %v", derr)
 	}
 	if fake.lastEnv != nil {
@@ -38,7 +38,7 @@ func TestWithHostOverride_EmptyHostRunsUnchanged(t *testing.T) {
 	called := false
 	err := WithHostOverride("", func() error {
 		called = true
-		_, _, _, derr := docker.DockerCapture([]string{"ps"})
+		_, _, _, derr := engine.Capture([]string{"ps"})
 		return derr
 	})
 	if err != nil {

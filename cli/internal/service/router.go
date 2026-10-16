@@ -19,7 +19,7 @@ import (
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/engine"
 )
 
 type RouterStatus struct {
@@ -68,15 +68,15 @@ func (s RouterService) unprivilegedPortStart() int {
 // reach. A rootful engine, or one allowed to bind them, passes.
 func (s RouterService) CheckRootlessCanPublishRouterPorts() error {
 	lowestRouterPort := min(domain.RouterHTTPPort, domain.RouterHTTPSPort)
-	if s.unprivilegedPortStart() <= lowestRouterPort || !docker.IsRootless() {
+	if s.unprivilegedPortStart() <= lowestRouterPort || !engine.IsRootless() {
 		return nil
 	}
 	return fmt.Errorf("rootless %s cannot publish port %d: the kernel reserves ports below %d for root. Allow it with 'sudo sysctl net.ipv4.ip_unprivileged_port_start=%d' (add it to /etc/sysctl.d/ to keep it)",
-		docker.CurrentEngine().Name, lowestRouterPort, s.unprivilegedPortStart(), lowestRouterPort)
+		engine.CurrentEngine().Name, lowestRouterPort, s.unprivilegedPortStart(), lowestRouterPort)
 }
 
 func routerImage() string {
-	if docker.IsPodman() {
+	if engine.IsPodman() {
 		return domain.QualifyImageReference(domain.RouterImage)
 	}
 	return domain.RouterImage
@@ -134,7 +134,7 @@ func (s RouterService) SaveState(state domain.RouterState) error {
 }
 
 func (s RouterService) EnsureDocker() error {
-	return docker.EnsureDocker()
+	return engine.EnsureAvailable()
 }
 
 func (s RouterService) CheckHostPortsAvailable() error {
@@ -168,7 +168,7 @@ func (s RouterService) EnsureRouterRunning(ctx context.Context) error {
 
 	if exists && !running {
 		s.Report.Info("Starting existing router container '%s'...", domain.RouterContainerName)
-		status, startErr := docker.DockerInherit([]string{"start", domain.RouterContainerName})
+		status, startErr := engine.Inherit([]string{"start", domain.RouterContainerName})
 		if startErr != nil {
 			return startErr
 		}
@@ -200,7 +200,7 @@ func (s RouterService) EnsureRouterRunning(ctx context.Context) error {
 		`mkdir -p /config/caddy && if [ ! -f /config/caddy/autosave.json ] || ! grep -q "0.0.0.0:2019" /config/caddy/autosave.json; then echo '{"admin":{"listen":"0.0.0.0:2019","enforce_origin":false},"apps":{"http":{"servers":{"srv0":{"listen":[":80",":443"],"routes":[]}}}}}' > /config/caddy/autosave.json; fi; exec caddy run --config /config/caddy/autosave.json --resume`,
 	}
 
-	status, runErr := docker.DockerInherit(args)
+	status, runErr := engine.Inherit(args)
 	if runErr != nil {
 		return runErr
 	}
@@ -212,7 +212,7 @@ func (s RouterService) EnsureRouterRunning(ctx context.Context) error {
 }
 
 func (s RouterService) inspectRouterContainer() (running bool, exists bool, err error) {
-	status, stdout, _, cerr := docker.DockerCapture([]string{
+	status, stdout, _, cerr := engine.Capture([]string{
 		"inspect",
 		"--format", "{{.State.Running}}",
 		domain.RouterContainerName,
@@ -308,7 +308,7 @@ func (s RouterService) ensureBaseServerInitialized(ctx context.Context) error {
 }
 
 func (s RouterService) VerifyUpstreamContainer(targetHost string) error {
-	status, stdout, _, err := docker.DockerCapture([]string{
+	status, stdout, _, err := engine.Capture([]string{
 		"inspect",
 		"--format", "{{.State.Running}}",
 		targetHost,
@@ -325,7 +325,7 @@ func (s RouterService) VerifyUpstreamContainer(targetHost string) error {
 }
 
 func (s RouterService) isRouterConnectedToNetwork(networkName string) bool {
-	status, stdout, _, err := docker.DockerCapture([]string{
+	status, stdout, _, err := engine.Capture([]string{
 		"inspect",
 		"--format", "{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}",
 		domain.RouterContainerName,
@@ -352,7 +352,7 @@ func (s RouterService) ConnectWorkspaceNetwork(workspace string) (string, error)
 		return networkName, nil
 	}
 
-	connectStatus, cerr := docker.DockerInherit([]string{
+	connectStatus, cerr := engine.Inherit([]string{
 		"network", "connect",
 		networkName,
 		domain.RouterContainerName,
@@ -368,7 +368,7 @@ func (s RouterService) ConnectWorkspaceNetwork(workspace string) (string, error)
 }
 
 func (s RouterService) ConnectContainerNetwork(targetHost string) (string, error) {
-	status, stdout, _, err := docker.DockerCapture([]string{
+	status, stdout, _, err := engine.Capture([]string{
 		"inspect",
 		"--format", "{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}",
 		targetHost,
@@ -394,7 +394,7 @@ func (s RouterService) ConnectContainerNetwork(targetHost string) (string, error
 		return targetNetwork, nil
 	}
 
-	connectStatus, cerr := docker.DockerInherit([]string{
+	connectStatus, cerr := engine.Inherit([]string{
 		"network", "connect",
 		targetNetwork,
 		domain.RouterContainerName,
@@ -630,7 +630,7 @@ func (s RouterService) ReconcileOrphans(ctx context.Context) error {
 		return nil
 	}
 
-	status, stdout, _, cerr := docker.DockerCapture([]string{
+	status, stdout, _, cerr := engine.Capture([]string{
 		"ps",
 		"--format", "{{.Names}}",
 	})
@@ -671,7 +671,7 @@ func (s RouterService) Status(ctx context.Context) (RouterStatus, error) {
 	routes, _ := s.ListRoutes(ctx)
 	status.ActiveRoutes = len(routes)
 
-	netStatus, stdout, _, _ := docker.DockerCapture([]string{
+	netStatus, stdout, _, _ := engine.Capture([]string{
 		"inspect",
 		"--format", "{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}",
 		domain.RouterContainerName,
@@ -685,8 +685,8 @@ func (s RouterService) Status(ctx context.Context) (RouterStatus, error) {
 
 func (s RouterService) StopRouter() error {
 	s.Report.Info("Stopping global router container '%s'...", domain.RouterContainerName)
-	_, _ = docker.DockerInherit([]string{"stop", domain.RouterContainerName})
-	status, err := docker.DockerInherit([]string{"rm", domain.RouterContainerName})
+	_, _ = engine.Inherit([]string{"stop", domain.RouterContainerName})
+	status, err := engine.Inherit([]string{"rm", domain.RouterContainerName})
 	if err != nil {
 		return err
 	}

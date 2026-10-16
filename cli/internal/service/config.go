@@ -10,7 +10,7 @@ import (
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/catalog"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/modules/skills"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/engine"
 )
 
 // gitInitKey is the only boolean global key; it is spelled as a string like the
@@ -63,7 +63,7 @@ func (s ConfigService) GetGlobalDefault(key string) (value string, customized bo
 	case gitInitKey:
 		return strconv.FormatBool(cfg.GitInit), cfg.GitInit, nil
 	case engineKey:
-		return defaulted(cfg.Engine, docker.PreferenceAuto)
+		return defaulted(cfg.Engine, engine.PreferenceAuto)
 	}
 	return "", false, fmt.Errorf("unknown config key: %s", key)
 }
@@ -93,7 +93,7 @@ func (s ConfigService) SetGlobalDefault(key, value string) error {
 		}
 		cfg.GitInit = enabled
 	case engineKey:
-		preference, perr := docker.ParseEnginePreference(value)
+		preference, perr := engine.ParseEnginePreference(value)
 		if perr != nil {
 			return perr
 		}
@@ -138,7 +138,7 @@ func (s ConfigService) UnsetGlobalDefault(key string) error {
 		fallback = "false"
 	case engineKey:
 		cfg.Engine = ""
-		fallback = docker.PreferenceAuto
+		fallback = engine.PreferenceAuto
 	default:
 		return fmt.Errorf("unknown config key: %s", key)
 	}
@@ -254,7 +254,7 @@ func (s ConfigService) AgentSkills() []*skills.Spec {
 }
 
 // EnginePreferences lists the values `config engine` accepts, for completion.
-func EnginePreferences() []string { return docker.EnginePreferences() }
+func EnginePreferences() []string { return engine.EnginePreferences() }
 
 // ApplyEnginePreference points the infra layer at the engine the user asked
 // for (DEVCONTAINER_ENGINE, then `config engine`). It only records the
@@ -262,14 +262,14 @@ func EnginePreferences() []string { return docker.EnginePreferences() }
 // needs one, so commands that never touch a container pay nothing for it.
 // An invalid stored value is reported rather than silently ignored.
 func ApplyEnginePreference() error {
-	preference, err := docker.ParseEnginePreference(domain.ResolveEnginePreference())
+	preference, err := engine.ParseEnginePreference(domain.ResolveEnginePreference())
 	if err != nil {
 		return err
 	}
-	docker.SetEnginePreference(preference)
+	engine.SetEnginePreference(preference)
 	return nil
 }
 
 // EngineBinary is the CLI of the engine in use ("docker" or "podman"), for the
 // places that write a command into a file another machine will run.
-func EngineBinary() string { return docker.CurrentEngine().Binary }
+func EngineBinary() string { return engine.CurrentEngine().Binary }

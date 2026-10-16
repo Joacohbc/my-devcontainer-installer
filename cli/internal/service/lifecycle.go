@@ -3,7 +3,7 @@ package service
 import (
 	"fmt"
 
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/engine"
 )
 
 // LifecycleService runs docker compose lifecycle verbs and container-targeted
@@ -16,7 +16,7 @@ type LifecycleService struct {
 // Compose runs "docker compose <verb>" (start/stop/restart) for the project.
 func (s LifecycleService) Compose(composeFile, verb string) error {
 	s.Report.Warn("\nRunning 'docker compose %s'...", verb)
-	return docker.DockerComposeOrThrow(composeFile, []string{verb}, nil)
+	return engine.ComposeOrThrow(composeFile, []string{verb}, nil)
 }
 
 // Passthrough runs an arbitrary "docker compose" subcommand for the project,
@@ -32,7 +32,7 @@ func (s LifecycleService) Passthrough(composeFile, envFile string, args []string
 	if envFile != "" {
 		composeArgs = append([]string{"--env-file", envFile}, args...)
 	}
-	status, err := docker.DockerCompose(composeFile, composeArgs, nil)
+	status, err := engine.Compose(composeFile, composeArgs, nil)
 	if err != nil {
 		return err
 	}
@@ -49,7 +49,7 @@ func (s LifecycleService) Up(composeFile, workspace string, build bool) error {
 		args = append(args, "--build")
 	}
 	s.Report.Warn("\nBringing up '%s'...", workspace)
-	return docker.DockerComposeOrThrow(composeFile, args, nil)
+	return engine.ComposeOrThrow(composeFile, args, nil)
 }
 
 // Down brings the stack down, optionally removing named volumes (deletes data).
@@ -61,13 +61,13 @@ func (s LifecycleService) Down(composeFile, workspace string, removeVolumes bool
 		suffix = " (with volumes)"
 	}
 	s.Report.Warn("\nBringing down '%s'%s...", workspace, suffix)
-	return docker.DockerComposeOrThrow(composeFile, args, nil)
+	return engine.ComposeOrThrow(composeFile, args, nil)
 }
 
 // StartContainer starts a single named container.
 func (s LifecycleService) StartContainer(name string) error {
 	s.Report.Warn("\nStarting container '%s'...", name)
-	status, err := docker.DockerInherit([]string{"start", name})
+	status, err := engine.Inherit([]string{"start", name})
 	if err != nil {
 		return err
 	}
@@ -80,7 +80,7 @@ func (s LifecycleService) StartContainer(name string) error {
 // StopContainer stops a single named container.
 func (s LifecycleService) StopContainer(name string) error {
 	s.Report.Warn("\nStopping container '%s'...", name)
-	status, err := docker.DockerInherit([]string{"stop", name})
+	status, err := engine.Inherit([]string{"stop", name})
 	if err != nil {
 		return err
 	}
@@ -93,7 +93,7 @@ func (s LifecycleService) StopContainer(name string) error {
 // RestartContainer restarts a single named container.
 func (s LifecycleService) RestartContainer(name string) error {
 	s.Report.Warn("\nRestarting container '%s'...", name)
-	status, err := docker.DockerInherit([]string{"restart", name})
+	status, err := engine.Inherit([]string{"restart", name})
 	if err != nil {
 		return err
 	}
@@ -106,8 +106,8 @@ func (s LifecycleService) RestartContainer(name string) error {
 // RemoveContainer stops then removes a single named container.
 func (s LifecycleService) RemoveContainer(name string) error {
 	s.Report.Warn("\nStopping and removing container '%s'...", name)
-	_, _ = docker.DockerInherit([]string{"stop", name})
-	status, err := docker.DockerInherit([]string{"rm", name})
+	_, _ = engine.Inherit([]string{"stop", name})
+	status, err := engine.Inherit([]string{"rm", name})
 	if err != nil {
 		return err
 	}

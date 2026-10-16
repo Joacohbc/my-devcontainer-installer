@@ -8,7 +8,7 @@ import (
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/engine"
 )
 
 func TestConfigGlobalDefaultsRoundTrip(t *testing.T) {
@@ -232,7 +232,7 @@ func TestConfigEngineRoundTrip(t *testing.T) {
 	svc := ConfigService{Report: nopReporter{}}
 
 	value, customized, err := svc.GetGlobalDefault("engine")
-	if err != nil || customized || value != docker.PreferenceAuto {
+	if err != nil || customized || value != engine.PreferenceAuto {
 		t.Fatalf("fresh engine = %q customized=%v err=%v; want auto uncustomized", value, customized, err)
 	}
 
@@ -240,7 +240,7 @@ func TestConfigEngineRoundTrip(t *testing.T) {
 		t.Fatalf("SetGlobalDefault: %v", err)
 	}
 	value, customized, _ = svc.GetGlobalDefault("engine")
-	if value != docker.PreferencePodman || !customized {
+	if value != engine.PreferencePodman || !customized {
 		t.Errorf("after set: value=%q customized=%v", value, customized)
 	}
 
@@ -248,7 +248,7 @@ func TestConfigEngineRoundTrip(t *testing.T) {
 		t.Fatalf("UnsetGlobalDefault: %v", err)
 	}
 	value, customized, _ = svc.GetGlobalDefault("engine")
-	if value != docker.PreferenceAuto || customized {
+	if value != engine.PreferenceAuto || customized {
 		t.Errorf("after unset: value=%q customized=%v", value, customized)
 	}
 }
@@ -278,7 +278,7 @@ func TestApplyEnginePreference_followsEnvThenConfig(t *testing.T) {
 	if err := ApplyEnginePreference(); err != nil {
 		t.Fatalf("ApplyEnginePreference: %v", err)
 	}
-	if got := docker.CurrentEngine(); got != docker.EnginePodman {
+	if got := engine.CurrentEngine(); got != engine.EnginePodman {
 		t.Errorf("engine from config = %+v, want podman", got)
 	}
 
@@ -286,7 +286,7 @@ func TestApplyEnginePreference_followsEnvThenConfig(t *testing.T) {
 	if err := ApplyEnginePreference(); err != nil {
 		t.Fatalf("ApplyEnginePreference: %v", err)
 	}
-	if got := docker.CurrentEngine(); got != docker.EngineDocker {
+	if got := engine.CurrentEngine(); got != engine.EngineDocker {
 		t.Errorf("engine from env = %+v, want docker (env beats config)", got)
 	}
 }

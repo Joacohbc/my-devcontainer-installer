@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/engine"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/sshdefaults"
 	"github.com/spf13/cobra"
 )
@@ -204,11 +204,11 @@ func TestAgentCreate_TemporalExecution(t *testing.T) {
 	}
 
 	runner := &buildStatusRunner{buildStatus: 0}
-	docker.SetRunner(runner)
-	docker.ResetDockerCache()
+	engine.SetRunner(runner)
+	engine.ResetAvailabilityCache()
 	t.Cleanup(func() {
-		docker.ResetRunner()
-		docker.ResetDockerCache()
+		engine.ResetRunner()
+		engine.ResetAvailabilityCache()
 	})
 
 	if err := cmd.RunE(cmd, nil); err != nil {

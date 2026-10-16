@@ -1,4 +1,4 @@
-package docker
+package engine
 
 import (
 	"fmt"
@@ -53,14 +53,14 @@ func SetEnginePreference(preference string) {
 	defer engineMu.Unlock()
 	enginePreference = preference
 	resolvedEngine = nil
-	ResetDockerCache()
+	ResetAvailabilityCache()
 }
 
 func SetEngine(engine Engine) {
 	engineMu.Lock()
 	defer engineMu.Unlock()
 	resolvedEngine = &engine
-	ResetDockerCache()
+	ResetAvailabilityCache()
 }
 
 func ResetEngine() {
@@ -68,7 +68,7 @@ func ResetEngine() {
 	defer engineMu.Unlock()
 	enginePreference = PreferenceAuto
 	resolvedEngine = nil
-	ResetDockerCache()
+	ResetAvailabilityCache()
 }
 
 func CurrentEngine() Engine {
@@ -150,7 +150,7 @@ func podmanInfo(format string) string {
 	if !IsPodman() {
 		return ""
 	}
-	status, stdout, _, err := DockerCapture([]string{"info", "--format", format})
+	status, stdout, _, err := Capture([]string{"info", "--format", format})
 	if err != nil || status != 0 {
 		return ""
 	}

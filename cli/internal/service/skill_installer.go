@@ -11,7 +11,7 @@ import (
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/catalog"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/modules/skills"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/engine"
 )
 
 // DefaultSkillInstallerImage is the lightweight utility image used by default.
@@ -279,7 +279,7 @@ func formatGroupInstallCommand(group *skillSourceGroup) string {
 }
 
 func (s SkillInstallService) runInstallerContainer(workspaceDir, imageName string, installCommands []string, isInteractive bool) error {
-	if err := docker.EnsureDocker(); err != nil {
+	if err := engine.EnsureAvailable(); err != nil {
 		return err
 	}
 
@@ -317,7 +317,7 @@ func buildDockerRunArgs(workspaceDir, imageName, commandScript string, isInterac
 }
 
 func (s SkillInstallService) runInteractiveContainer(containerArgs []string) error {
-	exitStatus, runErr := docker.DockerInherit(containerArgs)
+	exitStatus, runErr := engine.Inherit(containerArgs)
 	if runErr != nil {
 		return runErr
 	}
@@ -329,7 +329,7 @@ func (s SkillInstallService) runInteractiveContainer(containerArgs []string) err
 }
 
 func (s SkillInstallService) runNonInteractiveContainer(containerArgs []string) error {
-	exitStatus, capturedStdout, capturedStderr, runErr := docker.DockerCapture(containerArgs)
+	exitStatus, capturedStdout, capturedStderr, runErr := engine.Capture(containerArgs)
 	if runErr != nil {
 		return runErr
 	}

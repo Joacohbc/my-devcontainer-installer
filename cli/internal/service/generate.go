@@ -11,7 +11,7 @@ import (
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/assets"
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/engine"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/project"
 )
 
@@ -21,9 +21,9 @@ import (
 // and only set when not already provided (so callers/tests can override).
 func resolveEngineTraits(config *types.DevcontainerConfig) {
 	config.Engine = types.EngineTraits{
-		IsPodman:   docker.IsPodman(),
-		IsRootless: docker.IsRootless(),
-		SocketPath: docker.HostSocketPath(),
+		IsPodman:   engine.IsPodman(),
+		IsRootless: engine.IsRootless(),
+		SocketPath: engine.HostSocketPath(),
 	}
 }
 
@@ -59,14 +59,14 @@ func (s GenerateService) UsedSubnets(ignoreNetworks ...string) []domain.CidrRang
 
 // NameConflicts returns managed-resource name clashes for the config.
 func (s GenerateService) NameConflicts(config *types.DevcontainerConfig) []domain.Conflict {
-	return domain.FindConflicts(config, docker.IsDockerAvailable(), captureFunc())
+	return domain.FindConflicts(config, engine.IsAvailable(), captureFunc())
 }
 
 // EnsureSharedConfigVolume creates the shared tool-config volume if missing.
 // It is best-effort: with docker unavailable it does nothing so generation of
 // the project files never fails on a stopped daemon.
 func (s GenerateService) EnsureSharedConfigVolume() error {
-	if !docker.IsDockerAvailable() {
+	if !engine.IsAvailable() {
 		return nil
 	}
 	return EnsureSharedConfigVolume(s.Report)
@@ -141,7 +141,7 @@ func (s GenerateService) Build(composeFile string, remote bool) error {
 	} else {
 		s.Report.Info("Building...")
 	}
-	status, err := docker.DockerCompose(composeFile, []string{action}, nil)
+	status, err := engine.Compose(composeFile, []string{action}, nil)
 	if err != nil {
 		return err
 	}

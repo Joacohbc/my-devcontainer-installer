@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/engine"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/osutil"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/sshdefaults"
 )
@@ -110,7 +110,7 @@ func (s SshService) ContainerEndpoint(name string) sshdefaults.Endpoint {
 
 // ComposeUp brings the stack up detached.
 func (s SshService) ComposeUp(composeFile string) error {
-	status, err := docker.DockerCompose(composeFile, []string{"up", "-d"}, nil)
+	status, err := engine.Compose(composeFile, []string{"up", "-d"}, nil)
 	if err != nil || status != 0 {
 		return fmt.Errorf("docker compose up failed")
 	}
@@ -176,7 +176,7 @@ type InstallKeySpec struct {
 // script via `docker exec`.
 func (s SshService) InstallKeyLocal(spec InstallKeySpec) error {
 	args := []string{"exec", "-i", "-u", spec.User, spec.Container, "sh", "-c", spec.Script}
-	status, err := docker.DockerExecStdin(spec.PublicKey, args)
+	status, err := engine.ExecStdin(spec.PublicKey, args)
 	if err != nil || status != 0 {
 		return fmt.Errorf("docker exec key install failed")
 	}
@@ -198,7 +198,7 @@ func (s SshService) InstallKeyLocal(spec InstallKeySpec) error {
 // false, so PruneManagedBlocks can report it separately rather than either
 // deleting or silently hiding it.
 func (s SshService) LiveTargetPredicates() (existsWorkspace, existsContainer func(string) bool, existsRemoteContainer func(host, name string) (alive, verified bool), err error) {
-	if err := docker.EnsureDocker(); err != nil {
+	if err := engine.EnsureAvailable(); err != nil {
 		return nil, nil, nil, err
 	}
 	inspect := InspectService{Report: s.Report}

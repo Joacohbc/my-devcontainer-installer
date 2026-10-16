@@ -11,7 +11,7 @@ import (
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/commands"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/logger"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/ui"
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/engine"
 )
 
 // version is injected at build time via -ldflags "-X main.version=...".
@@ -21,8 +21,8 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// Set the global context for infra/docker execution
-	docker.SetContext(ctx)
+	// Set the global context for infra/engine execution
+	engine.SetContext(ctx)
 
 	root := commands.NewRootCommand(version)
 	if err := root.ExecuteContext(ctx); err != nil {

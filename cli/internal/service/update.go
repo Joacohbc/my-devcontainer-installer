@@ -6,18 +6,18 @@ import (
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/engine"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/project"
 )
 
 // UpdateService refreshes container images for one project or every recorded
-// project. Tests swap the docker.Runner to avoid invoking real Docker.
+// project. Tests swap the engine.Runner to avoid invoking real Docker.
 type UpdateService struct {
 	Report Reporter
 }
 
 func pullImage(image string) error {
-	status, err := docker.DockerInherit([]string{"pull", image})
+	status, err := engine.Inherit([]string{"pull", image})
 	if err != nil || status != 0 {
 		return fmt.Errorf("failed to pull image '%s'", image)
 	}
@@ -44,7 +44,7 @@ func (s UpdateService) UpdateContainer(containerName string) (string, error) {
 }
 
 func composeBuild(projectDir, composeFile string, args []string) error {
-	status, err := docker.DockerCompose(composeFile, args, &docker.ComposeOptions{CWD: projectDir})
+	status, err := engine.Compose(composeFile, args, &engine.ComposeOptions{CWD: projectDir})
 	if err != nil || status != 0 {
 		return fmt.Errorf("docker compose build failed")
 	}

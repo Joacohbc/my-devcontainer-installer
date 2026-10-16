@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/engine"
 )
 
 // containerHostKeysCommand reads every sshd host public key out of a container.
@@ -26,7 +26,7 @@ var hostKeyTypePrefixes = []string{"ssh-", "ecdsa-", "sk-ssh-", "sk-ecdsa-"}
 // learned from the daemon that owns the container, not from whoever answers on
 // the IP.
 func (s SshService) ContainerHostKeys(container string) ([]string, error) {
-	status, stdout, _, err := docker.DockerCapture([]string{"exec", container, "sh", "-c", containerHostKeysCommand})
+	status, stdout, _, err := engine.Capture([]string{"exec", container, "sh", "-c", containerHostKeysCommand})
 	if err != nil || status != 0 {
 		return nil, fmt.Errorf("could not read ssh host keys from container '%s'", container)
 	}

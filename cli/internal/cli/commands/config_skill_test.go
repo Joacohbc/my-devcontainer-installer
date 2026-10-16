@@ -9,7 +9,7 @@ import (
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/catalog"
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/engine"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/service"
 	"github.com/spf13/cobra"
 )
@@ -234,11 +234,11 @@ func TestAgentSkillInstall_DocumentedAndRegistered(t *testing.T) {
 
 func TestRunConfigSkillInstall_ExplicitSkill_InvokesDockerRun(t *testing.T) {
 	runner := &buildStatusRunner{buildStatus: 0}
-	docker.SetRunner(runner)
-	docker.ResetDockerCache()
+	engine.SetRunner(runner)
+	engine.ResetAvailabilityCache()
 	t.Cleanup(func() {
-		docker.ResetRunner()
-		docker.ResetDockerCache()
+		engine.ResetRunner()
+		engine.ResetAvailabilityCache()
 	})
 
 	cmd := newConfigSkillInstallCommand()
@@ -293,11 +293,11 @@ func TestRunAgentSkillInstall_NonInteractiveNoSkills_FailsActionable(t *testing.
 
 func TestRunConfigSkillInstall_AllFlag(t *testing.T) {
 	runner := &buildStatusRunner{buildStatus: 0}
-	docker.SetRunner(runner)
-	docker.ResetDockerCache()
+	engine.SetRunner(runner)
+	engine.ResetAvailabilityCache()
 	t.Cleanup(func() {
-		docker.ResetRunner()
-		docker.ResetDockerCache()
+		engine.ResetRunner()
+		engine.ResetAvailabilityCache()
 	})
 
 	cmd := newConfigSkillInstallCommand()
@@ -393,11 +393,11 @@ func TestRunAgentSkillInstall_DirIsFile_Fails(t *testing.T) {
 
 func TestRunAgentSkillInstall_ExplicitSkill_InvokesDockerRun(t *testing.T) {
 	runner := &buildStatusRunner{buildStatus: 0}
-	docker.SetRunner(runner)
-	docker.ResetDockerCache()
+	engine.SetRunner(runner)
+	engine.ResetAvailabilityCache()
 	t.Cleanup(func() {
-		docker.ResetRunner()
-		docker.ResetDockerCache()
+		engine.ResetRunner()
+		engine.ResetAvailabilityCache()
 	})
 
 	cmd := newAgentSkillInstallCommand()
@@ -425,11 +425,11 @@ func TestRunAgentSkillInstall_ExplicitSkill_InvokesDockerRun(t *testing.T) {
 
 func TestRunConfigSkillInstall_CustomImage_PassedToRunner(t *testing.T) {
 	runner := &buildStatusRunner{buildStatus: 0}
-	docker.SetRunner(runner)
-	docker.ResetDockerCache()
+	engine.SetRunner(runner)
+	engine.ResetAvailabilityCache()
 	t.Cleanup(func() {
-		docker.ResetRunner()
-		docker.ResetDockerCache()
+		engine.ResetRunner()
+		engine.ResetAvailabilityCache()
 	})
 
 	cmd := newConfigSkillInstallCommand()
@@ -452,11 +452,11 @@ func TestRunConfigSkillInstall_CustomImage_PassedToRunner(t *testing.T) {
 
 func TestRunConfigSkillInstall_ProjectConfig_DefaultsToConfiguredSkills(t *testing.T) {
 	runner := &buildStatusRunner{buildStatus: 0}
-	docker.SetRunner(runner)
-	docker.ResetDockerCache()
+	engine.SetRunner(runner)
+	engine.ResetAvailabilityCache()
 	t.Cleanup(func() {
-		docker.ResetRunner()
-		docker.ResetDockerCache()
+		engine.ResetRunner()
+		engine.ResetAvailabilityCache()
 	})
 
 	tempDir := t.TempDir()

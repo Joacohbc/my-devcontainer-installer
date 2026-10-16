@@ -5,7 +5,7 @@ import (
 	"slices"
 	"sync"
 
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/engine"
 )
 
 type nopReporter struct{}
@@ -115,14 +115,14 @@ func defaultForField(f Field) any {
 }
 
 // useFakeDocker installs r as the docker Runner and returns a restore func that
-// resets the runner and availability cache. It takes a docker.Runner rather
+// resets the runner and availability cache. It takes a engine.Runner rather
 // than a concrete *fakeRunner so tests can wrap it (see missingScriptRunner in
 // inspect_test.go).
-func useFakeDocker(r docker.Runner) func() {
-	docker.SetRunner(r)
-	docker.ResetEngine()
+func useFakeDocker(r engine.Runner) func() {
+	engine.SetRunner(r)
+	engine.ResetEngine()
 	return func() {
-		docker.ResetRunner()
-		docker.ResetEngine()
+		engine.ResetRunner()
+		engine.ResetEngine()
 	}
 }

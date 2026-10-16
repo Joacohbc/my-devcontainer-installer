@@ -1,5 +1,5 @@
 // Package git runs the git binary. It is the only place in the tree that does,
-// mirroring how infra/docker owns every shell-out to docker.
+// mirroring how infra/engine owns every shell-out to the container engine.
 package git
 
 import (

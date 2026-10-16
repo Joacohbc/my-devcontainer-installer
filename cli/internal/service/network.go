@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/engine"
 )
 
 // NetworkService attaches and detaches arbitrary containers to/from the docker
@@ -19,7 +19,7 @@ type NetworkService struct {
 }
 
 // EnsureDocker reports an error if the docker daemon is unavailable.
-func (s NetworkService) EnsureDocker() error { return docker.EnsureDocker() }
+func (s NetworkService) EnsureDocker() error { return engine.EnsureAvailable() }
 
 // ResolveNetwork returns the real docker network name created for workspace.
 // The network is the one carrying both the CLI managed label and docker
@@ -39,7 +39,7 @@ func (s NetworkService) ResolveNetwork(workspace string) (string, error) {
 }
 
 func (s NetworkService) managedNetworksOfProject(projectLabel, workspace string) ([]string, error) {
-	status, stdout, _, err := docker.DockerCapture([]string{
+	status, stdout, _, err := engine.Capture([]string{
 		"network", "ls",
 		"--filter", managedFilter,
 		"--filter", "label=" + projectLabel + "=" + workspace,
@@ -49,7 +49,7 @@ func (s NetworkService) managedNetworksOfProject(projectLabel, workspace string)
 		return nil, err
 	}
 	if status != 0 {
-		return nil, fmt.Errorf("%s network ls failed", docker.CurrentEngine().Name)
+		return nil, fmt.Errorf("%s network ls failed", engine.CurrentEngine().Name)
 	}
 	return splitNonEmptyLines(stdout), nil
 }
@@ -94,7 +94,7 @@ func (s NetworkService) apply(verb, workspace string, containers, aliases []stri
 			args = append(args, "--alias", a)
 		}
 		args = append(args, network, c)
-		status, derr := docker.DockerInherit(args)
+		status, derr := engine.Inherit(args)
 		if derr == nil && status == 0 {
 			s.Report.Success("  ✓ %s", c)
 			ok++
@@ -109,7 +109,7 @@ func (s NetworkService) apply(verb, workspace string, containers, aliases []stri
 // ContainerNames returns every container name on the daemon (running and
 // stopped), used to complete arbitrary connect/disconnect targets.
 func (s NetworkService) ContainerNames() []string {
-	status, stdout, _, err := docker.DockerCapture([]string{"ps", "-a", "--format", "{{.Names}}"})
+	status, stdout, _, err := engine.Capture([]string{"ps", "-a", "--format", "{{.Names}}"})
 	if err != nil || status != 0 {
 		return nil
 	}

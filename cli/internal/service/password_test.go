@@ -7,7 +7,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/engine"
 )
 
 // seqRunner returns responses in order of call index (skipping the docker version check).
@@ -56,9 +56,9 @@ func TestPasswordInitialReturnsPassword(t *testing.T) {
 		{0, "running"},              // inspect (ensureRunning)
 		{0, initialPassword + "\n"}, // cat initial_password.txt
 	}}
-	docker.SetRunner(runner)
-	docker.ResetDockerCache()
-	defer func() { docker.ResetRunner(); docker.ResetDockerCache() }()
+	engine.SetRunner(runner)
+	engine.ResetAvailabilityCache()
+	defer func() { engine.ResetRunner(); engine.ResetAvailabilityCache() }()
 
 	svc := PasswordService{Report: nopReporter{}}
 	out, err := svc.InitialPassword("c1")
@@ -85,9 +85,9 @@ func TestPasswordInitialFailsWhenFileMissing(t *testing.T) {
 		{0, "running"}, // inspect (ensureRunning)
 		{1, ""},        // cat fails: file absent
 	}}
-	docker.SetRunner(runner)
-	docker.ResetDockerCache()
-	defer func() { docker.ResetRunner(); docker.ResetDockerCache() }()
+	engine.SetRunner(runner)
+	engine.ResetAvailabilityCache()
+	defer func() { engine.ResetRunner(); engine.ResetAvailabilityCache() }()
 
 	svc := PasswordService{Report: nopReporter{}}
 	if _, err := svc.InitialPassword("c1"); err == nil {
@@ -117,9 +117,9 @@ func TestPasswordChangeNonInteractive(t *testing.T) {
 		{0, "running"}, // inspect (ensureRunning)
 		{0, ""},        // chpasswd
 	}}
-	docker.SetRunner(runner)
-	docker.ResetDockerCache()
-	defer func() { docker.ResetRunner(); docker.ResetDockerCache() }()
+	engine.SetRunner(runner)
+	engine.ResetAvailabilityCache()
+	defer func() { engine.ResetRunner(); engine.ResetAvailabilityCache() }()
 
 	svc := PasswordService{Report: nopReporter{}}
 	if err := svc.ChangePasswordNonInteractive("c1", "s3cr3t"); err != nil {

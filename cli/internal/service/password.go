@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/engine"
 )
 
 const initialPasswordFile = types.DevUserHome + "/initial_password.txt"
@@ -24,7 +24,7 @@ func (s PasswordService) InitialPassword(container string) (string, error) {
 	if err := s.ensureRunning(container); err != nil {
 		return "", err
 	}
-	status, stdout, _, err := docker.DockerCapture([]string{
+	status, stdout, _, err := engine.Capture([]string{
 		"exec", container, "cat", initialPasswordFile,
 	})
 	if err != nil {
@@ -42,7 +42,7 @@ func (s PasswordService) ChangePassword(container string) error {
 	if err := s.ensureRunning(container); err != nil {
 		return err
 	}
-	exitCode, err := docker.DockerInherit([]string{"exec", "-it", container, "passwd", "devuser"})
+	exitCode, err := engine.Inherit([]string{"exec", "-it", container, "passwd", "devuser"})
 	if err != nil {
 		return err
 	}
@@ -62,7 +62,7 @@ func (s PasswordService) ChangePasswordNonInteractive(container, password string
 		return err
 	}
 	input := []byte("devuser:" + password + "\n")
-	exitCode, err := docker.DockerExecStdin(input, []string{"exec", "-i", container, "chpasswd"})
+	exitCode, err := engine.ExecStdin(input, []string{"exec", "-i", container, "chpasswd"})
 	if err != nil {
 		return err
 	}

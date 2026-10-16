@@ -5,7 +5,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/engine"
 )
 
 func TestResolveNetwork_returnsManagedName(t *testing.T) {
@@ -141,9 +141,9 @@ func (r verbStatusRunner) Run(_ context.Context, args []string, _ string, _ stri
 }
 
 func TestConnect_countsFailures(t *testing.T) {
-	docker.SetRunner(verbStatusRunner{network: "myws-network", failVerb: "connect"})
-	docker.ResetDockerCache()
-	defer func() { docker.ResetRunner(); docker.ResetDockerCache() }()
+	engine.SetRunner(verbStatusRunner{network: "myws-network", failVerb: "connect"})
+	engine.ResetAvailabilityCache()
+	defer func() { engine.ResetRunner(); engine.ResetAvailabilityCache() }()
 
 	ok, failed, err := NetworkService{Report: nopReporter{}}.Connect("myws", []string{"ghost", "phantom"}, nil)
 	if err != nil {

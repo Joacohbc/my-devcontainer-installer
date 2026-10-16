@@ -12,7 +12,7 @@ import (
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/assets"
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/engine"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/sshdefaults"
 )
 
@@ -89,12 +89,12 @@ type InspectService struct {
 }
 
 // EnsureDocker reports an error if the docker daemon is unavailable.
-func (s InspectService) EnsureDocker() error { return docker.EnsureDocker() }
+func (s InspectService) EnsureDocker() error { return engine.EnsureAvailable() }
 
 // ContainerState returns the container's State.Status (e.g. "running"), or an
 // error if it cannot be inspected.
 func (s InspectService) ContainerState(name string) (ContainerState, error) {
-	status, stdout, _, err := docker.DockerCapture([]string{"inspect", "-f", "{{.State.Status}}", name})
+	status, stdout, _, err := engine.Capture([]string{"inspect", "-f", "{{.State.Status}}", name})
 	if err != nil || status != 0 {
 		return "", fmt.Errorf("container '%s' not found", name)
 	}
@@ -103,13 +103,13 @@ func (s InspectService) ContainerState(name string) (ContainerState, error) {
 
 // ContainerImage returns the container's configured image, or "" if unknown.
 func (s InspectService) ContainerImage(name string) string {
-	_, stdout, _, _ := docker.DockerCapture([]string{"inspect", "-f", "{{.Config.Image}}", name})
+	_, stdout, _, _ := engine.Capture([]string{"inspect", "-f", "{{.Config.Image}}", name})
 	return strings.TrimSpace(stdout)
 }
 
 // ContainerDetails returns full container metadata from a single docker inspect call.
 func (s InspectService) ContainerDetails(name string) (*ContainerInfo, error) {
-	status, stdout, _, err := docker.DockerCapture([]string{"inspect", "--format", "{{json .}}", name})
+	status, stdout, _, err := engine.Capture([]string{"inspect", "--format", "{{json .}}", name})
 	if err != nil || status != 0 {
 		return nil, fmt.Errorf("container '%s' not found", name)
 	}
@@ -264,7 +264,7 @@ func (s InspectService) Shell(name, user, shellType, workdir string, command []s
 	} else {
 		execArgs = append(execArgs, "sh", "-c", shellLauncher(shellType, workdir))
 	}
-	exitCode, err := docker.DockerInherit(execArgs)
+	exitCode, err := engine.Inherit(execArgs)
 	if err != nil {
 		return err
 	}
@@ -287,7 +287,7 @@ func (s InspectService) Ls(name, path string, all, long bool) error {
 		execArgs = append(execArgs, "-a")
 	}
 	execArgs = append(execArgs, "--color=auto", path)
-	exitCode, err := docker.DockerInherit(execArgs)
+	exitCode, err := engine.Inherit(execArgs)
 	if err != nil {
 		return err
 	}
@@ -306,7 +306,7 @@ func (s InspectService) Copy(name, localPath, containerPath string) error {
 		return err
 	}
 	s.Report.Warn("\nCopying '%s' to '%s' in container '%s'...", localPath, containerPath, name)
-	exitCode, err := docker.DockerInherit([]string{"cp", localPath, name + ":" + containerPath})
+	exitCode, err := engine.Inherit([]string{"cp", localPath, name + ":" + containerPath})
 	if err != nil {
 		return err
 	}
@@ -323,7 +323,7 @@ func (s InspectService) CopyFromContainer(name, containerPath, localPath string)
 		return err
 	}
 	s.Report.Warn("\nCopying '%s' from container '%s' to '%s'...", containerPath, name, localPath)
-	exitCode, err := docker.DockerInherit([]string{"cp", name + ":" + containerPath, localPath})
+	exitCode, err := engine.Inherit([]string{"cp", name + ":" + containerPath, localPath})
 	if err != nil {
 		return err
 	}
@@ -368,7 +368,7 @@ func (s InspectService) CopyAsset(name, assetName, dest string) error {
 	// docker cp lands the file as root; make it a devuser-owned executable script.
 	fixArgs := []string{"exec", name, "sh", "-c",
 		fmt.Sprintf("chown devuser:devuser %q && chmod +x %q", dest, dest)}
-	if exitCode, err := docker.DockerInherit(fixArgs); err != nil {
+	if exitCode, err := engine.Inherit(fixArgs); err != nil {
 		return err
 	} else if exitCode != 0 {
 		s.Report.Warn("could not set ownership/permissions on '%s' (exit %d)", dest, exitCode)
@@ -407,7 +407,7 @@ func (s InspectService) Context(name string, asJSON bool) error {
 	if asJSON {
 		args = append(args, "--json")
 	}
-	exitCode, err := docker.DockerInherit(args)
+	exitCode, err := engine.Inherit(args)
 	if err != nil {
 		return err
 	}
@@ -419,7 +419,7 @@ func (s InspectService) Context(name string, asJSON bool) error {
 
 // containerHasFile reports whether an executable file exists in the container.
 func (s InspectService) containerHasFile(name, path string) bool {
-	status, _, _, err := docker.DockerCapture([]string{"exec", name, "test", "-x", path})
+	status, _, _, err := engine.Capture([]string{"exec", name, "test", "-x", path})
 	return err == nil && status == 0
 }
 
@@ -433,7 +433,7 @@ func (s InspectService) ContainerLogs(name string, follow bool, tail string) err
 		args = append(args, "--tail", tail)
 	}
 	args = append(args, name)
-	status, err := docker.DockerInherit(args)
+	status, err := engine.Inherit(args)
 	if err != nil {
 		return err
 	}
@@ -454,7 +454,7 @@ func (s InspectService) ComposeLogs(composeFile string, follow bool, tail string
 		args = append(args, "--tail", tail)
 	}
 	args = append(args, services...)
-	status, err := docker.DockerCompose(composeFile, args, nil)
+	status, err := engine.Compose(composeFile, args, nil)
 	if err != nil {
 		return err
 	}
@@ -476,7 +476,7 @@ type NetworkIP struct {
 // or an error if the container cannot be inspected.
 func (s InspectService) ContainerNetworkIPs(name string) ([]NetworkIP, error) {
 	format := `{{range $n, $net := .NetworkSettings.Networks}}{{$n}} {{$net.IPAddress}}{{"\n"}}{{end}}`
-	status, stdout, _, err := docker.DockerCapture([]string{"inspect", "-f", format, name})
+	status, stdout, _, err := engine.Capture([]string{"inspect", "-f", format, name})
 	if err != nil || status != 0 {
 		return nil, fmt.Errorf("container '%s' not found", name)
 	}
@@ -510,7 +510,7 @@ type publishedBinding struct {
 // be read. A wildcard bind (0.0.0.0, ::, or none) is reported as the loopback,
 // which is where the machine that published it reaches it.
 func (s InspectService) PublishedTCPPort(name, containerPort string) (hostIP, hostPort string) {
-	status, stdout, _, err := docker.DockerCapture([]string{"inspect", "-f", publishedPortsFormat, name})
+	status, stdout, _, err := engine.Capture([]string{"inspect", "-f", publishedPortsFormat, name})
 	if err != nil || status != 0 {
 		return "", ""
 	}
@@ -537,7 +537,7 @@ func reachableHostIP(boundIP string) string {
 // ContainerNames returns every container name known to the daemon (running or
 // stopped), or nil if docker is unavailable. Used for shell completion.
 func (s InspectService) ContainerNames() []string {
-	if !docker.IsDockerAvailable() {
+	if !engine.IsAvailable() {
 		return nil
 	}
 	containers, err := s.ListContainers(false)
@@ -554,7 +554,7 @@ func (s InspectService) ContainerNames() []string {
 // ListUsers returns usernames from /etc/passwd inside the container.
 // Used for --user flag completion in shell and exec commands.
 func (s InspectService) ListUsers(name string) []string {
-	status, stdout, _, err := docker.DockerCapture([]string{"exec", name, "cut", "-d:", "-f1", "/etc/passwd"})
+	status, stdout, _, err := engine.Capture([]string{"exec", name, "cut", "-d:", "-f1", "/etc/passwd"})
 	if err != nil || status != 0 {
 		return nil
 	}
@@ -575,7 +575,7 @@ func (s InspectService) ListDir(name, dir string, all ...bool) ([]string, error)
 		args = append(args, "-a")
 	}
 	args = append(args, dir)
-	status, stdout, _, err := docker.DockerCapture(args)
+	status, stdout, _, err := engine.Capture(args)
 	if err != nil || status != 0 {
 		return nil, fmt.Errorf("could not list %q in container %q", dir, name)
 	}
@@ -720,12 +720,12 @@ func (s InspectService) ListContainers(managedOnly bool) ([]Container, error) {
 		args = append(args, "--filter", "label="+types.LabelManaged+"=true")
 	}
 
-	status, stdout, _, err := docker.DockerCapture(args)
+	status, stdout, _, err := engine.Capture(args)
 	if err != nil {
 		return nil, err
 	}
 	if status != 0 {
-		return nil, fmt.Errorf("%s ps exited with status %d", docker.CurrentEngine().Name, status)
+		return nil, fmt.Errorf("%s ps exited with status %d", engine.CurrentEngine().Name, status)
 	}
 	if strings.TrimSpace(stdout) == "" {
 		return nil, nil

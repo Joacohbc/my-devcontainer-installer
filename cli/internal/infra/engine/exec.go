@@ -1,4 +1,4 @@
-package docker
+package engine
 
 import (
 	"bytes"
@@ -11,7 +11,7 @@ import (
 	"sync"
 )
 
-// Runner abstracts OS subprocess execution (such as exec.CommandContext) for the docker package.
+// Runner abstracts OS subprocess execution (such as exec.CommandContext) for the engine package.
 // It serves as a dependency injection point: by programming against this abstraction rather than
 // concrete OS execution, unit tests can swap the runner (via SetRunner) with mock/fake implementations
 // to simulate Docker daemon states, mock exit codes, and capture command invocations without spawning
@@ -87,7 +87,7 @@ func hostOverrideEnv() map[string]string {
 	return map[string]string{CurrentEngine().RemoteHostVar: "ssh://" + host}
 }
 
-func IsDockerAvailable() bool {
+func IsAvailable() bool {
 	ctx := getContext()
 	if ctx.Err() != nil {
 		return false
@@ -114,24 +114,24 @@ func probeEngine(ctx context.Context, engine Engine) bool {
 	return status == 0
 }
 
-func ResetDockerCache() {
+func ResetAvailabilityCache() {
 	availMu.Lock()
 	defer availMu.Unlock()
 	availCache = nil
 }
 
-func EnsureDocker() error {
-	if IsDockerAvailable() {
+func EnsureAvailable() error {
+	if IsAvailable() {
 		return nil
 	}
 	return unavailableError(CurrentEngine())
 }
 
-// DockerInherit runs a docker command inheriting the parent process's standard streams
+// Inherit runs a container-engine command inheriting the parent process's standard streams
 // (Stdin, Stdout, Stderr). It is used for interactive shell sessions, real-time logging,
 // or operations where terminal interaction is required. It returns the process exit status.
-func DockerInherit(args []string) (int, error) {
-	if err := EnsureDocker(); err != nil {
+func Inherit(args []string) (int, error) {
+	if err := EnsureAvailable(); err != nil {
 		return 1, err
 	}
 	fullArgs := append([]string{CurrentEngine().Binary}, args...)
@@ -139,12 +139,12 @@ func DockerInherit(args []string) (int, error) {
 	return status, nil
 }
 
-// DockerCapture runs a docker command in the background, piping and collecting its standard
+// Capture runs a container-engine command in the background, piping and collecting its standard
 // output and error streams into memory strings. It is used for programmatic checks and queries
 // (such as state check or JSON list processing) and does not write to the user's terminal.
 // It returns the process exit status, captured stdout, captured stderr, and any execution error.
-func DockerCapture(args []string) (status int, stdout, stderr string, err error) {
-	if err = EnsureDocker(); err != nil {
+func Capture(args []string) (status int, stdout, stderr string, err error) {
+	if err = EnsureAvailable(); err != nil {
 		return 1, "", "", err
 	}
 	fullArgs := append([]string{CurrentEngine().Binary}, args...)
@@ -157,8 +157,8 @@ type ComposeOptions struct {
 	Env map[string]string
 }
 
-func DockerCompose(composeFile string, args []string, opts *ComposeOptions) (int, error) {
-	if err := EnsureDocker(); err != nil {
+func Compose(composeFile string, args []string, opts *ComposeOptions) (int, error) {
+	if err := EnsureAvailable(); err != nil {
 		return 1, err
 	}
 	cmdArgs := append([]string{CurrentEngine().Binary, "compose", "-f", composeFile}, args...)
@@ -187,8 +187,8 @@ const podmanComposeHint = "hint: `podman compose` delegates to docker-compose or
 // composeHintOutput is where the hint goes; a variable so tests can capture it.
 var composeHintOutput io.Writer = os.Stderr
 
-func DockerComposeOrThrow(composeFile string, args []string, opts *ComposeOptions) error {
-	status, err := DockerCompose(composeFile, args, opts)
+func ComposeOrThrow(composeFile string, args []string, opts *ComposeOptions) error {
+	status, err := Compose(composeFile, args, opts)
 	if err != nil {
 		return err
 	}
@@ -252,8 +252,8 @@ func (r *DefaultRunner) Run(ctx context.Context, args []string, stdio string, cw
 	return 0, string(outBytes), ""
 }
 
-func DockerExecStdin(input []byte, args []string) (int, error) {
-	if err := EnsureDocker(); err != nil {
+func ExecStdin(input []byte, args []string) (int, error) {
+	if err := EnsureAvailable(); err != nil {
 		return 1, err
 	}
 	ctx := getContext()

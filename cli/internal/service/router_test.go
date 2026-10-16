@@ -13,7 +13,7 @@ import (
 	"testing"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/engine"
 )
 
 type routerTestRunner struct {
@@ -484,7 +484,7 @@ func routerOnPodman(t *testing.T, rootless string, unprivilegedPortStart string)
 	t.Helper()
 	runner := &routerTestRunner{}
 	t.Cleanup(useFakeDocker(podmanInfoRunner{routerTestRunner: runner, rootless: rootless}))
-	docker.SetEnginePreference(docker.PreferencePodman)
+	engine.SetEnginePreference(engine.PreferencePodman)
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)

@@ -12,7 +12,7 @@ import (
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/catalog"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/engine"
 )
 
 type mockSkillPrompter struct {
@@ -553,11 +553,11 @@ func (unavailableDockerRunner) Run(_ context.Context, _ []string, _ string, _ st
 }
 
 func TestSkillInstallService_DockerUnavailable_Fails(t *testing.T) {
-	docker.SetRunner(unavailableDockerRunner{})
-	docker.ResetDockerCache()
+	engine.SetRunner(unavailableDockerRunner{})
+	engine.ResetAvailabilityCache()
 	defer func() {
-		docker.ResetRunner()
-		docker.ResetDockerCache()
+		engine.ResetRunner()
+		engine.ResetAvailabilityCache()
 	}()
 
 	svc := SkillInstallService{Report: nopReporter{}}

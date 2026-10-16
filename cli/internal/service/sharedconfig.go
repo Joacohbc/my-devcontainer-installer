@@ -10,7 +10,7 @@ import (
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/assets"
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/engine"
 )
 
 // EnsureSharedConfigVolume creates the single daemon-level shared tool-config
@@ -20,10 +20,10 @@ import (
 // so it must exist before `docker compose up`; quick-run also calls this so the
 // label is applied (a bare `docker run -v` would otherwise create it unlabeled).
 func EnsureSharedConfigVolume(report Reporter) error {
-	if status, _, _, err := docker.DockerCapture([]string{"volume", "inspect", types.SharedConfigVolumeName}); err == nil && status == 0 {
+	if status, _, _, err := engine.Capture([]string{"volume", "inspect", types.SharedConfigVolumeName}); err == nil && status == 0 {
 		return nil
 	}
-	status, _, stderr, err := docker.DockerCapture([]string{
+	status, _, stderr, err := engine.Capture([]string{
 		"volume", "create",
 		"--label", types.LabelManaged + "=true",
 		"--label", types.LabelSharedConfig + "=true",
@@ -123,7 +123,7 @@ func syncEntryScript() string {
 // is owned by the host uid/gid — exactly what devuser is remapped to on boot.
 func (s SharedConfigService) SyncFromHost(entries []types.SharedConfigEntry, hostHome string, force bool) (SyncResult, error) {
 	res := SyncResult{}
-	if err := docker.EnsureDocker(); err != nil {
+	if err := engine.EnsureAvailable(); err != nil {
 		return res, err
 	}
 	if err := EnsureSharedConfigVolume(s.Report); err != nil {
@@ -162,7 +162,7 @@ func (s SharedConfigService) syncEntry(e types.SharedConfigEntry, hostHome, owne
 	if force {
 		forceVal = "1"
 	}
-	status, stdout, stderr, err := docker.DockerCapture([]string{
+	status, stdout, stderr, err := engine.Capture([]string{
 		"run", "--rm",
 		"-v", types.SharedConfigVolumeName + ":/vol",
 		"-v", hostHome + ":/host:ro",
@@ -206,7 +206,7 @@ echo COPIED`
 // from a host file, which is why it always overwrites. Ownership matches the
 // host uid/gid, i.e. what devuser is remapped to on boot.
 func (s SharedConfigService) SyncAliases(content string) error {
-	if err := docker.EnsureDocker(); err != nil {
+	if err := engine.EnsureAvailable(); err != nil {
 		return err
 	}
 	if err := EnsureSharedConfigVolume(s.Report); err != nil {
@@ -216,7 +216,7 @@ func (s SharedConfigService) SyncAliases(content string) error {
 	if !ok {
 		return fmt.Errorf("no shared-config entry for %q", types.SharedConfigAliasID)
 	}
-	status, _, stderr, err := docker.DockerCapture([]string{
+	status, _, stderr, err := engine.Capture([]string{
 		"run", "--rm",
 		"-v", types.SharedConfigVolumeName + ":/vol",
 		"-e", "ENTRY_ID=" + entry.ID,
@@ -305,7 +305,7 @@ func entryIDs(entries []types.SharedConfigEntry) []string {
 // sharedConfigVolumeExists reports whether the shared-config volume exists,
 // without creating it (unlike EnsureSharedConfigVolume).
 func sharedConfigVolumeExists() bool {
-	status, _, _, err := docker.DockerCapture([]string{"volume", "inspect", types.SharedConfigVolumeName})
+	status, _, _, err := engine.Capture([]string{"volume", "inspect", types.SharedConfigVolumeName})
 	return err == nil && status == 0
 }
 
@@ -316,7 +316,7 @@ func sharedConfigVolumeExists() bool {
 // absent from the volume are skipped and reported in Missing.
 func (s SharedConfigService) BackupToZip(entries []types.SharedConfigEntry, destZip string) (BackupResult, error) {
 	res := BackupResult{}
-	if err := docker.EnsureDocker(); err != nil {
+	if err := engine.EnsureAvailable(); err != nil {
 		return res, err
 	}
 	if !sharedConfigVolumeExists() {
@@ -330,7 +330,7 @@ func (s SharedConfigService) BackupToZip(entries []types.SharedConfigEntry, dest
 	defer os.RemoveAll(stageDir)
 
 	ids := entryIDs(entries)
-	status, _, stderr, err := docker.DockerCapture([]string{
+	status, _, stderr, err := engine.Capture([]string{
 		"run", "--rm",
 		"-v", types.SharedConfigVolumeName + ":/vol:ro",
 		"-v", stageDir + ":/stage",
@@ -374,7 +374,7 @@ type RestoreResult struct {
 // present in the zip are reported in Missing.
 func (s SharedConfigService) RestoreFromZip(zipPath string, entries []types.SharedConfigEntry, force bool) (RestoreResult, error) {
 	res := RestoreResult{}
-	if err := docker.EnsureDocker(); err != nil {
+	if err := engine.EnsureAvailable(); err != nil {
 		return res, err
 	}
 	if err := EnsureSharedConfigVolume(s.Report); err != nil {
@@ -407,7 +407,7 @@ func (s SharedConfigService) RestoreFromZip(zipPath string, entries []types.Shar
 	if force {
 		forceVal = "1"
 	}
-	status, stdout, stderr, err := docker.DockerCapture([]string{
+	status, stdout, stderr, err := engine.Capture([]string{
 		"run", "--rm",
 		"-v", types.SharedConfigVolumeName + ":/vol",
 		"-v", stageDir + ":/stage:ro",

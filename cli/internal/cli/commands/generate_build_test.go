@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/engine"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/project"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/service"
 )
@@ -32,11 +32,11 @@ func runSaveAndPostProcess(t *testing.T, status int) error {
 	cwd := t.TempDir()
 
 	runner := &buildStatusRunner{buildStatus: status}
-	docker.SetRunner(runner)
-	docker.ResetDockerCache()
+	engine.SetRunner(runner)
+	engine.ResetAvailabilityCache()
 	t.Cleanup(func() {
-		docker.ResetRunner()
-		docker.ResetDockerCache()
+		engine.ResetRunner()
+		engine.ResetAvailabilityCache()
 	})
 
 	sharedConfigOff := false
