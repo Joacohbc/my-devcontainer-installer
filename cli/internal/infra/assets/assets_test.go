@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -978,6 +979,12 @@ func TestProjectSkillsInstallerSplitsTheSkillSelector(t *testing.T) {
 	bash, err := exec.LookPath("bash")
 	if err != nil {
 		t.Skip("bash not available")
+	}
+	// The installer only ever runs in the Ubuntu image (bash 5) and uses
+	// associative arrays; macOS still ships bash 3.2, which has none.
+	out, verr := exec.Command(bash, "-c", "echo ${BASH_VERSINFO[0]}").Output()
+	if major, cerr := strconv.Atoi(strings.TrimSpace(string(out))); verr != nil || cerr != nil || major < 4 {
+		t.Skip("needs bash 4+ (associative arrays), like the container image")
 	}
 	bin := t.TempDir()
 	logFile := filepath.Join(t.TempDir(), "npx.log")
