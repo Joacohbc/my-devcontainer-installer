@@ -56,7 +56,7 @@ RUN mkdir -p -m 755 /etc/apt/keyrings && \
     chmod go+r /etc/apt/keyrings/cloudflare-main.gpg && \
     echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared any main" | tee /etc/apt/sources.list.d/cloudflared.list > /dev/null && \
     apt-get update && \
-    apt-get install -y cloudflared && \
+    apt-get install -y --no-install-recommends cloudflared && \
     %s
 `, aptCleanup())
 	},

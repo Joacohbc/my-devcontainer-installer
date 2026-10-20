@@ -55,7 +55,8 @@ var PythonModule = &ModuleSpec{
 				Body: ctxBody(
 					"`python3` and `pip` are installed, and `pip` is the real pip here, not a",
 					"wrapper: `uv` was **not** selected for this image, so none of the uv",
-					"commands exist and nothing rewrites `pip` for you.",
+					"commands exist and nothing rewrites `pip` for you. There is no C",
+					"compiler; a package that builds from source needs the `c-cpp` module.",
 					"",
 					"Ubuntu marks the system interpreter externally managed (PEP 668), so a",
 					"plain `pip install X` is refused. Create a virtualenv for the project",
@@ -87,6 +88,9 @@ var PythonModule = &ModuleSpec{
 				"write access to the install directories. `pip` and `pip3` are shell functions",
 				"forwarding here, so the old commands keep working in a shell — but they are",
 				"functions, so a bare `docker exec` does not see them. Call `uv pip` directly.",
+				"",
+				"There is no C compiler. Anything that ships a wheel installs normally; a",
+				"package that has to build from source needs the `c-cpp` module.",
 			),
 		}
 	},
@@ -96,11 +100,15 @@ var PythonModule = &ModuleSpec{
 			return fmt.Sprintf(`##
 ## PYTHON
 ##
-RUN apt-get update && apt-get install -y python3 python3-pip && %s
+RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-pip python3-venv && %s
 `, aptCleanup())
 		}
 		// python3 + pip and uv (Astral installer for devuser) install in one RUN
 		// layer; cleanup runs last so the apt cache never lands in the layer.
+		// --no-install-recommends is worth ~300 MB here: python3-pip recommends
+		// build-essential and python3-dev, a whole C toolchain that the c-cpp
+		// module exists to opt into. python3-venv is what `python3 -m venv`
+		// needs, which the uv-less Context tells the user to run.
 		//
 		// The chown is what makes `uv pip install X` work as devuser. UV_SYSTEM_PYTHON
 		// points uv at the system interpreter, whose install directories are
@@ -116,7 +124,7 @@ RUN apt-get update && apt-get install -y python3 python3-pip && %s
 		return fmt.Sprintf(`##
 ## PYTHON
 ##
-RUN apt-get update && apt-get install -y python3 python3-pip && \
+RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-pip python3-venv && \
     su - devuser -c 'curl -LsSf https://astral.sh/uv/install.sh | sh' && \
     PY_PURELIB="$(python3 -c 'import sysconfig; print(sysconfig.get_path("purelib"))')" && \
     PY_SCRIPTS="$(python3 -c 'import sysconfig; print(sysconfig.get_path("scripts"))')" && \

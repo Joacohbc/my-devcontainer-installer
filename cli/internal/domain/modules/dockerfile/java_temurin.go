@@ -70,13 +70,16 @@ var JavaTemurinModule = &ModuleSpec{
 		if len(pkgs) == 0 {
 			return ""
 		}
+		// The key goes in a keyring referenced by signed-by rather than through
+		// apt-key, which is deprecated and gone from apt 3.
 		return fmt.Sprintf(`##
 ## JAVA (Temurin)
 ##
-RUN wget -O - https://packages.adoptium.net/artifactory/api/gpg/key/public | apt-key add - && \
-    echo "deb https://packages.adoptium.net/artifactory/deb $(awk -F= '/^VERSION_CODENAME/{print$2}' /etc/os-release) main" | tee /etc/apt/sources.list.d/adoptium.list && \
+RUN install -m 0755 -d /etc/apt/keyrings && \
+    wget -qO /etc/apt/keyrings/adoptium.asc https://packages.adoptium.net/artifactory/api/gpg/key/public && \
+    echo "deb [signed-by=/etc/apt/keyrings/adoptium.asc] https://packages.adoptium.net/artifactory/deb $(awk -F= '/^VERSION_CODENAME/{print$2}' /etc/os-release) main" > /etc/apt/sources.list.d/adoptium.list && \
     apt-get update && \
-    apt-get install -y %s && \
+    apt-get install -y --no-install-recommends %s && \
     %s
 `, strings.Join(pkgs, " "), aptCleanup())
 	},

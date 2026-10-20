@@ -18,10 +18,12 @@ var FfmpegModule = &ModuleSpec{
 		}
 	},
 	Render: func(opts map[string]any) string {
+		// Without recommends ffmpeg drops ~255 MB of GPU drivers, audio servers
+		// and desktop plumbing that a headless container cannot use.
 		return fmt.Sprintf(`##
 ## FFMPEG
 ##
-RUN apt-get update && apt-get install -y ffmpeg && %s
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg && %s
 `, aptCleanup())
 	},
 }

@@ -20,9 +20,9 @@ var JavaOpenjdkModule = &ModuleSpec{
 			Type:  types.ModuleOptionMultiselect,
 			Choices: []types.ModuleOptionChoice{
 				{Value: "none", Label: "none (No JDK versions)"},
-				{Value: "11", Label: "openjdk-11-jdk"},
-				{Value: "17", Label: "openjdk-17-jdk"},
-				{Value: "21", Label: "openjdk-21-jdk"},
+				{Value: "11", Label: "openjdk-11-jdk-headless"},
+				{Value: "17", Label: "openjdk-17-jdk-headless"},
+				{Value: "21", Label: "openjdk-21-jdk-headless"},
 			},
 			Default: []string{"17"},
 		},
@@ -47,6 +47,10 @@ var JavaOpenjdkModule = &ModuleSpec{
 		lines := []string{
 			"OpenJDK from the Ubuntu repositories, with " + strings.Join(installed, " and ") + " installed.",
 			"Switch between them with `sudo update-alternatives --config java`.",
+			"",
+			"The JDKs are the headless builds: there is no display, so the AWT/Swing",
+			"desktop libraries are left out. Headless AWT (image processing, fonts)",
+			"still works.",
 		}
 		if types.BoolOpt(opts, "maven", true) {
 			lines = append(lines, "", "Maven (`mvn`) is installed. Gradle is not — use the project's `./gradlew`.")
@@ -61,7 +65,7 @@ var JavaOpenjdkModule = &ModuleSpec{
 		pkgs := make([]string, 0, len(versions)+1)
 		for _, v := range versions {
 			if v != "none" {
-				pkgs = append(pkgs, fmt.Sprintf("openjdk-%s-jdk", v))
+				pkgs = append(pkgs, fmt.Sprintf("openjdk-%s-jdk-headless", v))
 			}
 		}
 		if maven {
@@ -70,10 +74,13 @@ var JavaOpenjdkModule = &ModuleSpec{
 		if len(pkgs) == 0 {
 			return ""
 		}
+		// The -headless packages are the JDK without the desktop toolkit: the
+		// full openjdk-N-jdk pulls in X11, GTK and ALSA (~290 MB per version)
+		// for windows a container has nowhere to draw.
 		return fmt.Sprintf(`##
 ## JAVA (OpenJDK)
 ##
-RUN apt-get update && apt-get install -y %s && %s
+RUN apt-get update && apt-get install -y --no-install-recommends %s && %s
 `, strings.Join(pkgs, " "), aptCleanup())
 	},
 }

@@ -24,7 +24,7 @@ var SqliteModule = &ModuleSpec{
 		return fmt.Sprintf(`##
 ## SQLITE
 ##
-RUN apt-get update && apt-get install -y sqlite3 && %s
+RUN apt-get update && apt-get install -y --no-install-recommends sqlite3 && %s
 `, aptCleanup())
 	},
 }
