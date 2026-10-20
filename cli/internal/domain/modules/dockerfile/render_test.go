@@ -390,7 +390,7 @@ func TestChromeModuleRender(t *testing.T) {
 
 func TestFfmpegModuleRender(t *testing.T) {
 	out := dockerfile.FfmpegModule.Render(nil)
-	if !strings.Contains(out, "apt-get install -y ffmpeg") {
+	if !strings.Contains(out, "apt-get install -y --no-install-recommends ffmpeg") {
 		t.Errorf("ffmpeg module must install the ffmpeg package:\n%s", out)
 	}
 }
@@ -399,7 +399,7 @@ func TestFfmpegModuleRender(t *testing.T) {
 // binary into the image and declares the token it reads at runtime.
 func TestCloudflaredModuleRender(t *testing.T) {
 	out := dockerfile.CloudflaredModule.Render(nil)
-	if !strings.Contains(out, "apt-get install -y cloudflared") {
+	if !strings.Contains(out, "apt-get install -y --no-install-recommends cloudflared") {
 		t.Errorf("cloudflared module must install the cloudflared package:\n%s", out)
 	}
 	if !strings.Contains(out, "signed-by=/etc/apt/keyrings/cloudflare-main.gpg") {
@@ -646,6 +646,112 @@ func TestAllDockerfileModulesRenderNonEmpty(t *testing.T) {
 		out := m.Render(nil)
 		if strings.TrimSpace(out) == "" {
 			t.Errorf("module %q rendered an empty fragment", m.ID)
+		}
+	}
+}
+
+// aptRecommendsAllowed are the packages whose Recommends are part of what the
+// module promises, so they keep them on purpose:
+//   - chromium: the recommended fonts are what keep headless screenshots and
+//     PDFs from rendering text as empty boxes.
+//   - docker-ce-cli: the recommended buildx and compose plugins are what make
+//     `docker build`/`docker compose` work against the host daemon.
+var aptRecommendsAllowed = []string{"chromium", "docker-ce-cli"}
+
+// Every other apt install must skip Recommends. They are what turns python3-pip
+// into a 330 MB C toolchain and openjdk into a desktop stack, so one missing
+// flag silently costs hundreds of MB in every image that selects the module.
+func TestAptInstallsSkipRecommends(t *testing.T) {
+	for _, m := range catalog.DockerfileModules {
+		defaults := map[string]any{}
+		for _, o := range m.Options {
+			defaults[o.ID] = o.Default
+		}
+		// The two extra variants reach the branches defaults skip: python
+		// without uv, and the PGDG-pinned postgres client.
+		variants := []map[string]any{nil, defaults, {"uv": false}, {"version": "17"}}
+		for _, opts := range variants {
+			out := m.Render(opts)
+			for _, install := range aptInstallCommands(out) {
+				if strings.Contains(install, "--no-install-recommends") || mentionsAny(install, aptRecommendsAllowed) {
+					continue
+				}
+				t.Errorf("module %s (opts %v): apt install without --no-install-recommends:\n%s", m.ID, opts, install)
+			}
+		}
+	}
+}
+
+// aptInstallCommands returns each `apt-get install` invocation in a rendered
+// fragment, up to the next command separator.
+func aptInstallCommands(rendered string) []string {
+	var cmds []string
+	for _, marker := range []string{"apt-get install", "apt-get -y install"} {
+		rest := rendered
+		for {
+			i := strings.Index(rest, marker)
+			if i < 0 {
+				break
+			}
+			rest = rest[i:]
+			end := strings.Index(rest, "&&")
+			if end < 0 {
+				end = len(rest)
+			}
+			cmds = append(cmds, rest[:end])
+			rest = rest[len(marker):]
+		}
+	}
+	return cmds
+}
+
+func mentionsAny(s string, words []string) bool {
+	for _, w := range words {
+		if strings.Contains(s, w) {
+			return true
+		}
+	}
+	return false
+}
+
+func TestModuleRendersStayLean(t *testing.T) {
+	jdk := dockerfile.JavaOpenjdkModule.Render(map[string]any{"versions": []string{"17", "21"}})
+	for _, pkg := range []string{"openjdk-17-jdk-headless", "openjdk-21-jdk-headless"} {
+		if !strings.Contains(jdk, pkg) {
+			t.Errorf("openjdk should install %s, the JDK without the desktop toolkit:\n%s", pkg, jdk)
+		}
+	}
+	if strings.Contains(jdk, "openjdk-17-jdk ") {
+		t.Errorf("openjdk must not install the desktop openjdk-17-jdk:\n%s", jdk)
+	}
+	ctx := dockerfile.JavaOpenjdkModule.Context(map[string]any{"versions": []string{"17"}})
+	if ctx == nil || !strings.Contains(ctx.Body, "headless") {
+		t.Errorf("openjdk Context should say the JDK is headless, got %+v", ctx)
+	}
+
+	temurin := dockerfile.JavaTemurinModule.Render(nil)
+	if strings.Contains(temurin, "apt-key") {
+		t.Errorf("temurin must not use the deprecated apt-key:\n%s", temurin)
+	}
+	if !strings.Contains(temurin, "signed-by=/etc/apt/keyrings/adoptium.asc") {
+		t.Errorf("temurin repo should be pinned to its keyring via signed-by:\n%s", temurin)
+	}
+
+	// The Docker repo must match the image's release, not a hardcoded one.
+	dod := dockerfile.DodModule.Render(nil)
+	if strings.Contains(dod, "jammy") || !strings.Contains(dod, "VERSION_CODENAME") {
+		t.Errorf("dod should take the Ubuntu codename from /etc/os-release:\n%s", dod)
+	}
+
+	// python3-venv is what `python3 -m venv` needs; both branches install it.
+	for _, opts := range []map[string]any{nil, {"uv": false}} {
+		py := dockerfile.PythonModule.Render(opts)
+		if !strings.Contains(py, "python3-venv") {
+			t.Errorf("python (opts %v) should install python3-venv:\n%s", opts, py)
+		}
+		pyCtx := dockerfile.PythonModule.Context(opts)
+		if pyCtx == nil || !strings.Contains(pyCtx.Body, "`c-cpp`") {
+			t.Errorf("python Context (opts %v) should point at the c-cpp module for source builds, got %+v", opts, pyCtx)
 		}
 	}
 }

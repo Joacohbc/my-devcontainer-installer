@@ -76,6 +76,14 @@ Applies to:
    need is declared in `ProvidesEnv` (see "The container environment is declared
    as data"), never exported from a shell-init file — otherwise it exists only
    for processes that start a shell.
+8. **apt Recommends**: every `apt-get install` a module renders passes
+   `--no-install-recommends`. Recommends are where the weight hides —
+   `python3-pip` recommends a whole C toolchain (~300 MB), `ffmpeg` GPU drivers
+   and audio servers (~295 MB), and `openjdk-N-jdk` is the desktop build of
+   `openjdk-N-jdk-headless` (~290 MB per version) — and a headless container
+   uses none of it. A package whose recommends *are* the feature is listed, with
+   the reason, in `aptRecommendsAllowed` (`dockerfile/render_test.go`);
+   `TestAptInstallsSkipRecommends` fails on any other.
 
 ### Module-declared runtime env vars (`RequiresEnv`)
 

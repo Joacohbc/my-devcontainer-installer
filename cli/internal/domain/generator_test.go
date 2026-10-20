@@ -179,7 +179,7 @@ func TestGenerateDockerfile_AllSelectedModules(t *testing.T) {
 	assertContainsStr(t, df, "fnm install --lts", "full dockerfile")
 	assertContainsStr(t, df, "bun.sh/install", "full dockerfile")
 	assertContainsStr(t, df, "zellij", "full dockerfile")
-	assertContainsStr(t, df, "install -y ffmpeg", "full dockerfile")
+	assertContainsStr(t, df, "install -y --no-install-recommends ffmpeg", "full dockerfile")
 	assertContainsStr(t, df, "ppa:ondrej/php", "full dockerfile")
 	assertContainsStr(t, df, "rustup.rs", "full dockerfile")
 }
@@ -213,7 +213,7 @@ func TestGenerateDockerfile_NgrokModule(t *testing.T) {
 	})
 	df := mustGenerateDockerfile(t, cfg)
 	assertContainsStr(t, df, "ngrok-agent.s3.amazonaws.com/ngrok.asc", "ngrok")
-	assertContainsStr(t, df, "apt-get install -y ngrok", "ngrok")
+	assertContainsStr(t, df, "apt-get install -y --no-install-recommends ngrok", "ngrok")
 }
 
 // cloudflared is installed into the image (like ngrok) rather than run as a
@@ -225,7 +225,7 @@ func TestGenerateDockerfile_CloudflaredModule(t *testing.T) {
 	df := mustGenerateDockerfile(t, cfg)
 	assertContainsStr(t, df, "pkg.cloudflare.com/cloudflare-main.gpg", "cloudflared")
 	assertContainsStr(t, df, "https://pkg.cloudflare.com/cloudflared any main", "cloudflared")
-	assertContainsStr(t, df, "apt-get install -y cloudflared", "cloudflared")
+	assertContainsStr(t, df, "apt-get install -y --no-install-recommends cloudflared", "cloudflared")
 	// The apt list must be signed by the keyring it just installed, and scoped to
 	// the build's architecture (images are built for amd64 and arm64).
 	assertContainsStr(t, df, "signed-by=/etc/apt/keyrings/cloudflare-main.gpg", "cloudflared")
