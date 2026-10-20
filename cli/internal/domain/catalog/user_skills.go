@@ -80,6 +80,11 @@ func LoadUserSkills(dir string) []*skills.Spec {
 		if yaml.Unmarshal(data, &m) != nil || m.ID == "" || m.Ref == "" {
 			continue
 		}
+		// A hand-edited manifest skips `config skill add`, so the ref is
+		// checked again here before it can reach an installer's shell.
+		if skills.ValidateInstallRef(m.Ref, m.Skill) != nil {
+			continue
+		}
 		out = append(out, m.toSpec())
 	}
 	return out

@@ -1,6 +1,7 @@
 package assets_test
 
 import (
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -818,6 +819,81 @@ func TestContextScriptFallsBackToLsofBanner(t *testing.T) {
 	}
 }
 
+// Right after `agent create` the start.d installers are still running in the
+// background, so the inventory reports each one's state: an agent CLI that is
+// absent because its installer is still running must not read as "not in this
+// image", nor as a failure.
+func TestContextScriptReportsPostScriptStates(t *testing.T) {
+	bash, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skip("bash not available")
+	}
+	home := t.TempDir()
+	startDir := filepath.Join(home, "post-script", "start.d")
+	stateDir := filepath.Join(home, ".post-script-state")
+	for _, dir := range []string{startDir, stateDir} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, name := range []string{"50-a.sh", "50-b.sh", "50-c.sh", "90-d.sh"} {
+		if err := os.WriteFile(filepath.Join(startDir, name), []byte("#!/bin/sh\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, marker := range []string{"50-a.sh.log", "50-a.sh.done", "50-b.sh.log", "50-b.sh.failed", "50-c.sh.log"} {
+		if err := os.WriteFile(filepath.Join(stateDir, marker), nil, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	script, err := filepath.Abs("get-devcontainer-context.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := exec.Command(bash, script, "--json")
+	cmd.Env = append(os.Environ(), "HOME="+home)
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("running the context script failed: %v", err)
+	}
+	var parsed struct {
+		PostScripts map[string]string `json:"postScripts"`
+	}
+	if err := json.Unmarshal(out, &parsed); err != nil {
+		t.Fatalf("--json output is not valid JSON: %v\n%s", err, out)
+	}
+	want := map[string]string{"50-a.sh": "done", "50-b.sh": "failed", "50-c.sh": "running", "90-d.sh": "pending"}
+	for name, state := range want {
+		if parsed.PostScripts[name] != state {
+			t.Errorf("postScripts[%q] = %q, want %q (all: %v)", name, parsed.PostScripts[name], state, parsed.PostScripts)
+		}
+	}
+
+	cmd = exec.Command(bash, script)
+	cmd.Env = append(os.Environ(), "HOME="+home)
+	text, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("running the context script failed: %v", err)
+	}
+	if !strings.Contains(string(text), "## Start-up installers") || !strings.Contains(string(text), "running") {
+		t.Errorf("markdown output must list the start-up installers:\n%s", text)
+	}
+}
+
+// The entrypoint leaves a .failed marker on a failed start.d script, which is
+// the only thing that tells it apart from one still running (both have a log
+// and no .done).
+func TestEntrypointMarksFailedPostScripts(t *testing.T) {
+	body, err := os.ReadFile("entrypoint.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), `: > "$failed_marker"`) || !strings.Contains(string(body), `rm -f "$failed_marker"`) {
+		t.Error("stage_post_scripts must write a .failed marker on failure and clear it before a re-run")
+	}
+}
+
 // runSkillsInstaller runs install-project-skills.sh with a fake npx on PATH. The
 // workspace mount it installs into only exists inside a container, so these
 // cases stop at the mode gate — which is what governs whether it writes into
@@ -894,8 +970,47 @@ func TestAutostartProjectSkillsPassesTheAutoFlag(t *testing.T) {
 
 // A skills entry is "<source>" or "<source>#<skill>": the selector form is what
 // names one skill of a repo holding several without pinning its branch.
+//
+// Entries sharing a source collapse into one `skills add`, a bare source wins
+// over its selectors, and an unattended run (no TTY) passes the Skills CLI its
+// own --yes so it can never stop at a picker.
 func TestProjectSkillsInstallerSplitsTheSkillSelector(t *testing.T) {
-	// Replaced by grouped commands and interactive prompt allowing global installs.
+	bash, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skip("bash not available")
+	}
+	bin := t.TempDir()
+	logFile := filepath.Join(t.TempDir(), "npx.log")
+	fakeNpx := "#!/bin/sh\necho \"$*\" >> \"" + logFile + "\"\n"
+	if err := os.WriteFile(filepath.Join(bin, "npx"), []byte(fakeNpx), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	script, err := filepath.Abs("install-project-skills.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(bash, script)
+	cmd.Env = append(os.Environ(),
+		"PATH="+bin+":"+os.Getenv("PATH"),
+		"SKILLS_TARGET_DIR="+t.TempDir(),
+		"DEVCONTAINER_SKILLS=anthropics/skills#pdf anthropics/skills#docx firecrawl/cli#firecrawl vercel-labs/agent-browser firecrawl/cli",
+	)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("installer failed: %v\n%s", err, out)
+	}
+	logged, err := os.ReadFile(logFile)
+	if err != nil {
+		t.Fatalf("npx was never called: %v", err)
+	}
+	got := strings.Split(strings.TrimSpace(string(logged)), "\n")
+	want := []string{
+		"--yes skills add anthropics/skills --skill pdf --skill docx --yes",
+		"--yes skills add firecrawl/cli --yes",
+		"--yes skills add vercel-labs/agent-browser --yes",
+	}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Errorf("npx calls:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
 }
 
 // install-ecc.sh only puts ECC's CLIs on PATH, and must stop there.

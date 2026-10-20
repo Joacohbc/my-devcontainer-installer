@@ -234,8 +234,8 @@ with --no-interactive every value must come from a flag.`,
 		RunE:         runConfigSkillAdd,
 	}
 	cmd.Flags().String("label", "", "Human-readable label")
-	cmd.Flags().String("ref", "", "Install source the Skills CLI resolves (owner/repo, or a repository URL)")
-	cmd.Flags().String("skill", "", "Skill selector, only needed when --ref holds more than one skill")
+	cmd.Flags().String("ref", "", "Install source the Skills CLI resolves (owner/repo, or a repository URL); one token, no spaces or shell characters")
+	cmd.Flags().String("skill", "", "Skill selector, only needed when --ref holds more than one skill (letters, digits, ., _ and - only)")
 	cmd.Flags().String("requires-modules", "", "Comma-separated Dockerfile module ids this skill's tooling needs")
 	cmd.Flags().String("context-title", "", "Title of its ~/CONTEXT.md entry (optional; defaults to the label or id)")
 	cmd.Flags().String("context-body", "", "Body of its ~/CONTEXT.md entry (optional; a title with no body is dropped)")
@@ -287,6 +287,10 @@ func runConfigSkillAdd(cmd *cobra.Command, args []string) error {
 			return err
 		}
 		label = asked
+	}
+
+	if err := skills.ValidateInstallRef(ref, strings.TrimSpace(skillSel)); err != nil {
+		return err
 	}
 
 	if isBuiltinSkill(types.SkillID(id)) {

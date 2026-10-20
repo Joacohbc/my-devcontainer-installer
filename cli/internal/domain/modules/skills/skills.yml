@@ -339,7 +339,8 @@ skills:
     label: "Webapp Testing (Playwright / browser automated testing)"
     ref: "anthropics/skills"
     skill: "webapp-testing"
-    requires_modules: ["nodejs"]
+    # Its scripts are Python Playwright driving a real browser.
+    requires_modules: ["nodejs", "python", "chrome"]
     category: "quality-testing"
 
   - id: code-review

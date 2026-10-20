@@ -3,6 +3,7 @@ package skills
 import (
 	_ "embed"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/goccy/go-yaml"
@@ -139,6 +140,27 @@ func (s *Spec) InstallRef() string {
 		return s.Ref
 	}
 	return s.Ref + types.SkillRefSeparator + s.Skill
+}
+
+var (
+	refPattern      = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._/:@~-]*$`)
+	selectorPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
+)
+
+// ValidateInstallRef rejects a ref or selector that cannot travel as one
+// token. Both are interpolated into a `sh -c` program by the host-side
+// installer and word-split from DEVCONTAINER_SKILLS inside the container, so
+// whitespace, a shell metacharacter or the entry separator is an injection,
+// not a typo. The built-in catalogue already holds to this; a user-defined
+// skill is free text from a YAML file, which is why it is checked at all.
+func ValidateInstallRef(ref, skill string) error {
+	if !refPattern.MatchString(ref) {
+		return fmt.Errorf("invalid skill ref %q: use an owner/repo shorthand or a repository URL, with no spaces or shell characters", ref)
+	}
+	if skill != "" && !selectorPattern.MatchString(skill) {
+		return fmt.Errorf("invalid skill selector %q: use only letters, digits, '.', '_' and '-'", skill)
+	}
+	return nil
 }
 
 // Get returns the spec for an id, or nil when the id is unknown.

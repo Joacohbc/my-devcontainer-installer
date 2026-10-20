@@ -264,11 +264,16 @@ stage_post_scripts() {
             done_marker="$state_dir/$name.done"
             [ -f "$done_marker" ] && continue
             log="$state_dir/$name.log"
+            failed_marker="$state_dir/$name.failed"
+            rm -f "$failed_marker"
             echo "post-script: running $name as $(id -un) (log: $log)"
             if bash -l "$script" > "$log" 2>&1; then
                 : > "$done_marker"
                 echo "post-script: $name completed"
             else
+                # Tells get-devcontainer-context "failed" apart from "still
+                # running"; both have a log and no .done.
+                : > "$failed_marker"
                 echo "post-script: $name FAILED (see $log)" >&2
             fi
         done

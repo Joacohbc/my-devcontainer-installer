@@ -47,7 +47,7 @@ func (s SkillInstallService) Install(skillIDs []string, opts SkillInstallOptions
 		return nil
 	}
 
-	installCommands := buildInstallCommands(requestedSpecs)
+	installCommands := buildInstallCommands(requestedSpecs, !opts.Interactive)
 	if len(installCommands) == 0 {
 		return nil
 	}
@@ -235,7 +235,11 @@ type skillSourceGroup struct {
 	names  []string
 }
 
-func buildInstallCommands(specs []*skills.Spec) []string {
+// buildInstallCommands groups the specs by source into one `skills add` each.
+// assumeYes appends the Skills CLI's own --yes: the one after `npx` only
+// answers npx, so without it an unattended run can stop at the CLI's agent or
+// skill picker with nobody to answer it.
+func buildInstallCommands(specs []*skills.Spec, assumeYes bool) []string {
 	var groups []*skillSourceGroup
 	groupBySource := make(map[string]*skillSourceGroup)
 
@@ -252,7 +256,7 @@ func buildInstallCommands(specs []*skills.Spec) []string {
 
 	commands := make([]string, 0, len(groups))
 	for _, group := range groups {
-		commands = append(commands, formatGroupInstallCommand(group))
+		commands = append(commands, formatGroupInstallCommand(group, assumeYes))
 	}
 	return commands
 }
@@ -267,15 +271,17 @@ func ensureSkillSourceGroup(groups *[]*skillSourceGroup, groupBySource map[strin
 	return group
 }
 
-func formatGroupInstallCommand(group *skillSourceGroup) string {
-	if group.isBare || len(group.names) == 0 {
-		return fmt.Sprintf("npx --yes skills add %s", group.source)
+func formatGroupInstallCommand(group *skillSourceGroup, assumeYes bool) string {
+	command := "npx --yes skills add " + group.source
+	if !group.isBare {
+		for _, name := range group.names {
+			command += " --skill " + name
+		}
 	}
-	skillArguments := make([]string, 0, len(group.names))
-	for _, name := range group.names {
-		skillArguments = append(skillArguments, fmt.Sprintf("--skill %s", name))
+	if assumeYes {
+		command += " --yes"
 	}
-	return fmt.Sprintf("npx --yes skills add %s %s", group.source, strings.Join(skillArguments, " "))
+	return command
 }
 
 func (s SkillInstallService) runInstallerContainer(workspaceDir, imageName string, installCommands []string, isInteractive bool) error {

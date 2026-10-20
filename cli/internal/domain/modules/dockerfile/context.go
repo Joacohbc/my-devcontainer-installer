@@ -30,7 +30,8 @@ func agentCtx(title, command string, autoStart bool, extra ...string) *types.Con
 			"",
 			"Installed by a post-script that the entrypoint runs in the background the",
 			"first time the container starts, so it may be unavailable for a few seconds",
-			"after boot. Check `~/.post-script-state/` for the install log if it is missing.",
+			"after boot. `get-devcontainer-context` lists each installer as done, running,",
+			"pending or failed; the logs are under `~/.post-script-state/`.",
 		)
 	}
 	if len(extra) > 0 {

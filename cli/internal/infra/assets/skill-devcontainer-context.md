@@ -44,7 +44,10 @@ this container", the command answers "what is true at this moment".
   container is recreated. Never leave work there.
 - You are `devuser` with passwordless `sudo`. Installing packages with
   `sudo apt-get install` is fine and expected — the container is disposable and
-  is itself the sandbox.
+  is itself the sandbox. **Except when `/var/run/docker.sock` is mounted**
+  (`get-devcontainer-context` reports it): the `docker` CLI then drives the
+  host's daemon, which is root on the host. Treat every `docker` command as a
+  host action and ask first.
 - **Check the inventory before installing anything.** A toolchain is often
   already present through a version manager (fnm/nvm for Node, uv for Python,
   the Go tarball) rather than through apt, and a second copy from apt will

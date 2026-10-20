@@ -1037,18 +1037,26 @@ func TestGenerateDockerfile_AutoStartOrdering(t *testing.T) {
 	}
 }
 
-// Interactive scripts (codex, the github login) stay manual under post-script/,
-// never under start.d/.
-func TestGenerateDockerfile_ManualPostScripts(t *testing.T) {
+// Codex is a real install now (it used to be an interactive `npx` launcher), so
+// it lands in start.d like the other agent CLIs. The interactive github login
+// stays manual under post-script/, never under start.d/.
+func TestGenerateDockerfile_CodexAutoStartsAndLoginStaysManual(t *testing.T) {
 	cfg := makeConfig(func(c *types.DevcontainerConfig) {
 		c.Dockerfile.Modules = []types.SelectedModule{{ID: "codex-cli"}}
 	})
 	df := mustGenerateDockerfile(t, cfg)
-	assertContainsStr(t, df, "install-codex-cli.sh", "codex script present")
-	// codex-cli pulls in no auto-start module, so there is no start.d block.
-	if strings.Contains(df, "start.d/") {
-		t.Errorf("interactive-only config must not emit a start.d block:\n%s", df)
+	assertContainsStr(t, df, "/home/devuser/post-script/start.d/50-install-codex-cli.sh", "codex auto-start")
+	if strings.Contains(df, "start.d/50-login-github-cli.sh") || strings.Contains(df, "start.d/login-github-cli.sh") {
+		t.Errorf("the interactive github login must not be auto-started:\n%s", df)
 	}
+}
+
+func TestGenerateDockerfile_OpencodeDeclaresItsPath(t *testing.T) {
+	cfg := makeConfig(func(c *types.DevcontainerConfig) {
+		c.Dockerfile.Modules = []types.SelectedModule{{ID: "opencode"}}
+	})
+	df := mustGenerateDockerfile(t, cfg)
+	assertContainsStr(t, df, "/home/devuser/.opencode/bin", "opencode bin dir in the image PATH")
 }
 
 func TestGenerateDockerfile_Opencode(t *testing.T) {

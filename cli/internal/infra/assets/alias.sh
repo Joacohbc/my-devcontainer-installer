@@ -65,6 +65,9 @@ fi
 # itself, so `claude` stays the plain CLI and `claude_yolo` is the no-prompts run.
 # Each alias is set only when its CLI is installed (command -v guard), so this
 # one file is valid in every image variant.
+# The isolation claim does NOT hold when /var/run/docker.sock is mounted (the
+# dod module): an agent with approvals off can then drive the host's daemon,
+# which is root on the host.
 if command -v claude >/dev/null 2>&1; then
     alias claude_yolo='claude --dangerously-skip-permissions'
 fi

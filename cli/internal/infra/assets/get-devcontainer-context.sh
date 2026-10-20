@@ -84,6 +84,9 @@ ffmpeg|-version|ffmpeg
 chromium|--version|Chromium
 ngrok|--version|ngrok
 cloudflared|--version|cloudflared
+ecc|--version|ECC
+agentshield|--version|AgentShield
+context-mode|--version|Context Mode
 claude|--version|Claude Code
 codex|--version|Codex CLI
 copilot|--version|GitHub Copilot CLI
@@ -125,6 +128,32 @@ tool_version() { # $1 = command, $2 = version flag
         java) "$1" "$2" 2>&1 </dev/null | first_line ;;
         *) "$1" "$2" 2>/dev/null </dev/null | first_line ;;
     esac
+}
+
+# ── Start-up installers ──────────────────────────────────────────────────────
+# The entrypoint runs ~/post-script/start.d/ in the background on the first
+# start, so right after `agent create` an agent CLI may simply not be there
+# yet. Reporting each script's state is what tells "still installing" apart
+# from "not part of this image" and from "the install failed".
+# Prints "<script>|<done|failed|running|pending>" per script.
+post_script_states() {
+    local start_dir="$HOME/post-script/start.d" state_dir="$HOME/.post-script-state"
+    local script name state
+    [ -d "$start_dir" ] || return 0
+    for script in "$start_dir"/*.sh; do
+        [ -e "$script" ] || continue
+        name="$(basename "$script")"
+        if [ -f "$state_dir/$name.done" ]; then
+            state=done
+        elif [ -f "$state_dir/$name.failed" ]; then
+            state=failed
+        elif [ -f "$state_dir/$name.log" ]; then
+            state=running
+        else
+            state=pending
+        fi
+        printf '%s|%s\n' "$name" "$state"
+    done
 }
 
 # ── Reachable sibling services ───────────────────────────────────────────────
@@ -172,6 +201,15 @@ emit_json() {
         printf '%s\n    "%s": {"label": "%s", "port": %s}' "$sep" "$host" "$label" "$port"
         sep=','
     done <<< "$SERVICES"
+    printf '\n  },\n'
+
+    printf '  "postScripts": {'
+    sep=''
+    while IFS='|' read -r name state; do
+        [ -z "$name" ] && continue
+        printf '%s\n    "%s": "%s"' "$sep" "$name" "$state"
+        sep=','
+    done <<< "$(post_script_states)"
     printf '\n  }\n'
     printf '}\n'
 }
@@ -225,6 +263,22 @@ emit_services() {
     echo
 }
 
+emit_post_scripts() {
+    local states
+    states=$(post_script_states)
+    [ -n "$states" ] || return 0
+    echo "## Start-up installers"
+    echo
+    echo "Run once, in the background, on the container's first start. A tool whose"
+    echo "installer is \`running\` or \`pending\` is not missing — wait and re-check."
+    echo "Logs: ~/.post-script-state/<script>.log"
+    echo
+    while IFS='|' read -r name state; do
+        printf -- '- %-36s %s\n' "$name" "$state"
+    done <<< "$states"
+    echo
+}
+
 emit_text() {
     if [ "$TOOLS_ONLY" -eq 1 ]; then
         emit_tools
@@ -232,6 +286,7 @@ emit_text() {
     fi
     emit_static_context
     emit_tools
+    emit_post_scripts
     emit_services
 }
 

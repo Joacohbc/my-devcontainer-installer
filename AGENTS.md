@@ -469,8 +469,8 @@ aliasing it bare quietly undoes the split.
 Anything that resolves the mount must handle three layouts, in this order:
 `/workspaces/<name>` (current), the `/workspace/<name>` alias, and a bare
 `/workspace` for images built before the split. `entrypoint.sh`,
-`get-devcontainer-context.sh` and `install-codex-cli.sh` each carry the same
-glob; keep them identical. The entrypoint also drops a bare `/workspace`
+`get-devcontainer-context.sh`, `install-project-skills.sh` and
+`install-browser-harness.sh` each carry the same glob; keep them identical. The entrypoint also drops a bare `/workspace`
 symlink left in the writable layer by an older image before creating the dir.
 Covered by `TestEntrypointAliasesWorkspacePerProject` and
 `TestEntrypointWorkspaceAliasIsCreated` (which runs the real block).

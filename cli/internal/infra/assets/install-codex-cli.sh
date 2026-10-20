@@ -1,22 +1,19 @@
 #!/bin/bash
-# Codex CLI — no global install. Runs in project dir via npx.
-# This script triggers it inside the project mount.
+# Put the Codex CLI on PATH.
+#
+# This used to run `npx @openai/codex` from the workspace and install nothing,
+# which left `codex` missing from PATH: the `codex_yolo` alias (guarded by
+# `command -v codex`) never existed, `get-devcontainer-context` reported Codex as
+# absent, and every launch re-resolved the package from the registry. Installing
+# it once, the same way install-ecc.sh does, fixes all three. Starting it is the
+# user's call — run `codex` from the project directory.
 set -e
 
-# Resolve the project mount the way the entrypoint does. There is no bare
-# /workspace to fall back on in current images: each project gets its own
-# /workspaces/<name> (aliased /workspace/<name>), so that a path-keyed agent
-# history never merges two projects. Older images did mount at /workspace.
-target="$1"
-if [ -z "$target" ]; then
-    target=/workspace
-    for _ws in /workspaces/*; do
-        [ -d "$_ws" ] || continue
-        target="$_ws"
-        break
-    done
+echo "==> Installing Codex CLI (@openai/codex)"
+export PATH="$HOME/.local/bin:$PATH"
+if command -v pnpm >/dev/null 2>&1; then
+  pnpm add -g @openai/codex
+else
+  npm install -g @openai/codex
 fi
-
-cd "$target"
-echo "==> Running: npx @openai/codex (cwd=$(pwd))"
-npx @openai/codex
+codex --version || true

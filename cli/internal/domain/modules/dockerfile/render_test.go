@@ -584,7 +584,7 @@ func TestModuleRunLayerCounts(t *testing.T) {
 
 // The non-interactive installer modules are marked PostScriptAutoStart so the
 // entrypoint runs them on start; the agent-wiring tools (graphify/caveman) carry
-// a higher run order so they run after the agents. Interactive scripts (codex,
+// a higher run order so they run after the agents. Interactive scripts (
 // the github login under cleanup) must NOT be auto-start.
 // ECC's installer only puts the CLIs on PATH; it never runs `ecc --target <t>`
 // itself, because every target writes into the user's own project or home. So
@@ -620,7 +620,7 @@ func TestPostScriptAutoStartFlags(t *testing.T) {
 		{"ecc", dockerfile.EccModule, true, 90},
 		{"browser-harness", dockerfile.BrowserHarnessModule, true, 90},
 		{"skills", dockerfile.SkillsModule, true, 95},
-		{"codex", dockerfile.CodexCliModule, false, 0},
+		{"codex", dockerfile.CodexCliModule, true, 0},
 		{"cleanup (github login)", dockerfile.CleanupModule, false, 0},
 		{"golang", dockerfile.GolangModule, false, 0},
 	}

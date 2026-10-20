@@ -72,7 +72,7 @@ func TestSkillInstallService_ExplicitSkills_Success(t *testing.T) {
 	}
 
 	lastArg := call[len(call)-1]
-	wantScript := "npx --yes skills add firecrawl/cli --skill firecrawl"
+	wantScript := "npx --yes skills add firecrawl/cli --skill firecrawl --yes"
 	if lastArg != wantScript {
 		t.Errorf("unexpected script command: got %q, want %q", lastArg, wantScript)
 	}
@@ -100,7 +100,7 @@ func TestSkillInstallService_ExplicitSkills_MultipleAndGrouped(t *testing.T) {
 	}
 
 	lastArg := call[len(call)-1]
-	wantScript := "npx --yes skills add mattpocock/skills --skill wayfinder && npx --yes skills add firecrawl/cli --skill firecrawl"
+	wantScript := "npx --yes skills add mattpocock/skills --skill wayfinder --yes && npx --yes skills add firecrawl/cli --skill firecrawl --yes"
 	if lastArg != wantScript {
 		t.Errorf("unexpected script command: got %q, want %q", lastArg, wantScript)
 	}
@@ -192,7 +192,7 @@ func TestSkillInstallService_ProjectConfig_DefaultsToConfiguredSkills(t *testing
 	}
 
 	lastArg := call[len(call)-1]
-	wantScript := "npx --yes skills add firecrawl/cli --skill firecrawl"
+	wantScript := "npx --yes skills add firecrawl/cli --skill firecrawl --yes"
 	if lastArg != wantScript {
 		t.Errorf("unexpected script command: got %q, want %q", lastArg, wantScript)
 	}
@@ -358,7 +358,7 @@ func TestSkillInstallService_EmptySkillIDString_FallsBackToProjectConfig(t *test
 		t.Errorf("call missing default image %s: %v", DefaultSkillInstallerImage, call)
 	}
 	lastArg := call[len(call)-1]
-	wantScript := "npx --yes skills add firecrawl/cli --skill firecrawl"
+	wantScript := "npx --yes skills add firecrawl/cli --skill firecrawl --yes"
 	if lastArg != wantScript {
 		t.Errorf("unexpected script command: got %q, want %q", lastArg, wantScript)
 	}
@@ -403,7 +403,7 @@ func TestSkillInstallService_CommaSeparatedSkills_Parsed(t *testing.T) {
 		t.Errorf("call missing default image %s: %v", DefaultSkillInstallerImage, call)
 	}
 	lastArg := call[len(call)-1]
-	wantScript := "npx --yes skills add firecrawl/cli --skill firecrawl && npx --yes skills add mattpocock/skills --skill wayfinder"
+	wantScript := "npx --yes skills add firecrawl/cli --skill firecrawl --yes && npx --yes skills add mattpocock/skills --skill wayfinder --yes"
 	if lastArg != wantScript {
 		t.Errorf("unexpected script command: got %q, want %q", lastArg, wantScript)
 	}
@@ -627,5 +627,25 @@ func TestSkillInstallService_ProjectConfig_EmptySkillsField_FallsBackToActionabl
 	}
 	if !strings.Contains(err.Error(), "no skills specified") || !strings.Contains(err.Error(), "--all") {
 		t.Errorf("unexpected error message: %v", err)
+	}
+}
+
+// Only an unattended run gets the Skills CLI's own --yes: an interactive one
+// keeps its picker so the user can choose agents and skills.
+func TestFormatGroupInstallCommand_AssumeYesOnlyWhenUnattended(t *testing.T) {
+	group := &skillSourceGroup{source: "firecrawl/cli", names: []string{"firecrawl"}}
+	cases := []struct {
+		group     *skillSourceGroup
+		assumeYes bool
+		want      string
+	}{
+		{group, false, "npx --yes skills add firecrawl/cli --skill firecrawl"},
+		{group, true, "npx --yes skills add firecrawl/cli --skill firecrawl --yes"},
+		{&skillSourceGroup{source: "vercel-labs/agent-browser", isBare: true}, true, "npx --yes skills add vercel-labs/agent-browser --yes"},
+	}
+	for _, c := range cases {
+		if got := formatGroupInstallCommand(c.group, c.assumeYes); got != c.want {
+			t.Errorf("formatGroupInstallCommand(%+v, %v) = %q, want %q", c.group, c.assumeYes, got, c.want)
+		}
 	}
 }

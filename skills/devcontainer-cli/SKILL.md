@@ -136,6 +136,14 @@ with their versions and the reachable services. That is where the answers to
 "which Python is in here", "how do I reach postgres", "is pnpm installed" are,
 so you stop guessing and stop probing with throwaway `agent exec` calls.
 
+Agent CLIs and their plugins (`claude-code`, `codex-cli`, `graphify`, …) are
+installed by start-up scripts that run in the background on the container's
+first start, so right after a create they can still be missing. The inventory
+lists each one under "Start-up installers" (`postScripts` in `--json`) as
+`done`, `running`, `pending` or `failed`: wait and re-check on `running`/
+`pending`, read `~/.post-script-state/<script>.log` on `failed`, and do not
+install the tool by hand in either case.
+
 Read it again after any `agent create` re-run or `update --rebuild`: both can
 change what is inside.
 
