@@ -69,6 +69,58 @@ them by re-running generation, not by hand.
 `<workspace>-devcontainer-ssh`, databases are `<workspace>-postgres`,
 `<workspace>-redis`, `<workspace>-mongo`.
 
+## Pre-flight: Prompt Intent & Skill Assessment
+
+Before composing or executing `agent create`, review the user's task, prompt,
+and instructions. Map their requirements to matching toolchains, services, and
+agent skills. Do not blindly spin up an environment with generic defaults.
+
+### 1. Explore categories and match prompt requirements to workspace agent skills
+
+Inspect the full catalogue with `devcontainer-cli agent cli-info --json` or
+`config skill list`. The catalogue contains dozens of specialized skills organized
+into multiple distinct categories (such as `core-agents`, `frontend-ux-design`,
+`architecture-planning`, `quality-testing`, `docs-content`, `automation-n8n`, plus
+user-defined skills).
+
+> [!IMPORTANT]
+> **Do NOT always pick the same few skills.** The table below is **only an illustrative sample
+> of recommendations** across common task types. Always query the live catalogue
+> (`agent cli-info --json`) to find the exact skill(s) best suited for the prompt
+> (e.g., `remotion-create` for programmatic video, `domain-modeling` for DDD, `theme-factory`
+> for color palettes, `n8n-*` for workflows, `diagnosing-bugs` for root-cause analysis, etc.):
+
+| User Task / Prompt Intent | Sample Suggested Skills (`--skill`) | Primary Category |
+|---|---|---|
+| Frontend UI, styling, design tokens | `frontend-design`, `ui-ux-pro-max`, `impeccable`, `canvas-design` | `frontend-ux-design` |
+| Web scraping, crawling, browser automation | `firecrawl`, `agent-browser` | `core-agents` |
+| Testing, TDD, bug diagnostics | `webapp-testing`, `tdd`, `diagnosing-bugs` | `quality-testing` |
+| Architecture planning, specs, DDD modeling | `codebase-design`, `to-spec`, `domain-modeling`, `to-tickets` | `architecture-planning` |
+| Documentation, diagrams, office suites | `doc-coauthoring`, `pdf`, `docx`, `pptx`, `xlsx` | `docs-content` |
+| Workflow orchestration, API automation | `n8n-agents-official`, `n8n-subworkflows-official` | `automation-n8n` |
+
+*(Note: `--skill` installs skills into the project's `.agents/skills` via the Skills CLI and automatically adds the `skills` module, which requires `nodejs`).*
+
+### 2. Match prompt requirements to profiles, modules, and services
+
+- **Prebuilt profile first**: If the stack matches a prebuilt profile (`nodejs`,
+  `bun`, `python`, `go`, `node-python`, `node-go`, etc.), prefer `--mode profiles --profile <id>`
+  for fast remote pull instead of a slow local build.
+- **Databases**: Add `--service postgres`, `redis`, or `mongo` as requested in the prompt.
+- **Client tools**: Add `--with postgres-client` if the user will need CLI tools (`psql`).
+
+### 3. Apply skills atomically or incrementally
+
+- **When creating a new environment**: Pass `--skill` directly to `agent create`:
+  ```bash
+  devcontainer-cli agent create --mode profiles --profile nodejs --service postgres --skill webapp-testing,impeccable,tdd
+  ```
+- **When the container is ALREADY running**: Do not rebuild or recreate the container
+  just to add an agent skill. Install it directly into the workspace with the ephemeral runner:
+  ```bash
+  devcontainer-cli agent skill install webapp-testing impeccable
+  ```
+
 ## Create an environment
 
 Run it from the project directory. It generates the files, builds the image and
@@ -444,6 +496,12 @@ managed label). Use `--dry-run` first and show the user what would go.
   The container's `localhost` is its own; nothing on this machine answers there
   by default. Open the reverse tunnel instead of editing the project to publish
   a port, and never assume a host database is reachable because it runs.
+- **Assess skills and intent before running `agent create`.** Analyze the user's prompt
+  and explore the full catalogue (`agent cli-info --json` or `config skill list`) across its
+  diverse categories (`frontend-ux-design`, `quality-testing`, `architecture-planning`,
+  `automation-n8n`, `docs-content`, etc.). Do not default to the same subset every time;
+  select the specific skill that best solves the prompt. If the container already exists, use
+  `agent skill install <id...>` instead of recreating it.
 - **Read `agent cli-info` before composing a create.** It is generated from the
   live catalogue, so it never names a module this binary does not have — and it
   includes the user's own profiles and skills, which no document can.
