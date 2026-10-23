@@ -323,7 +323,7 @@ skills:
   - id: data-science
     label: "Data Science (Python / Jupyter toolchain & analysis)"
     ref: "probabl-ai/skills"
-    skill: "data-science-python-stack"
+    skill: "setup-python-env"
     requires_modules: ["python"]
     category: "architecture-planning"
 

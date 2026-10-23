@@ -382,8 +382,8 @@ func TestDataScienceAndWayfinderSkills(t *testing.T) {
 	}
 
 	refs := domain.SkillRefs(config.Skills)
-	if !slices.Contains(refs, "probabl-ai/skills#data-science-python-stack") {
-		t.Errorf("expected data-science ref 'probabl-ai/skills#data-science-python-stack', got %v", refs)
+	if !slices.Contains(refs, "probabl-ai/skills#setup-python-env") {
+		t.Errorf("expected data-science ref 'probabl-ai/skills#setup-python-env', got %v", refs)
 	}
 	if !slices.Contains(refs, "mattpocock/skills#wayfinder") {
 		t.Errorf("expected wayfinder ref 'mattpocock/skills#wayfinder', got %v", refs)
