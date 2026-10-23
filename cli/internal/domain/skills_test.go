@@ -370,7 +370,7 @@ func TestSkillsManifestIntegrity(t *testing.T) {
 func TestDataScienceAndWayfinderSkills(t *testing.T) {
 	config := &types.DevcontainerConfig{
 		Skills: types.SkillsConfig{
-			Skills: []types.SkillID{types.SkillDataScience, types.SkillWayfinder},
+			Skills: []types.SkillID{types.SkillDataScience, types.SkillChoosePythonLibrary, types.SkillWayfinder},
 		},
 	}
 	missing := domain.MissingSkillModules(config)
@@ -384,6 +384,9 @@ func TestDataScienceAndWayfinderSkills(t *testing.T) {
 	refs := domain.SkillRefs(config.Skills)
 	if !slices.Contains(refs, "probabl-ai/skills#setup-python-env") {
 		t.Errorf("expected data-science ref 'probabl-ai/skills#setup-python-env', got %v", refs)
+	}
+	if !slices.Contains(refs, "probabl-ai/skills#choose-python-library") {
+		t.Errorf("expected choose-python-library ref 'probabl-ai/skills#choose-python-library', got %v", refs)
 	}
 	if !slices.Contains(refs, "mattpocock/skills#wayfinder") {
 		t.Errorf("expected wayfinder ref 'mattpocock/skills#wayfinder', got %v", refs)

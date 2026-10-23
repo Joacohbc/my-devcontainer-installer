@@ -39,6 +39,7 @@ categories:
       - handoff
       - triage
       - data-science
+      - choose-python-library
 
   - id: quality-testing
     label: "Quality & Testing (TDD, QA, code review, bug diagnostics)"
@@ -325,6 +326,15 @@ skills:
     skill: "setup-python-env"
     requires_modules: ["python"]
     category: "architecture-planning"
+
+  - id: choose-python-library
+    label: "Choose Python Library (data science & ML library selector)"
+    ref: "probabl-ai/skills"
+    skill: "choose-python-library"
+    requires_modules: ["python"]
+    category: "architecture-planning"
+    description: |
+      Resolves optimal library choices and packages for data science, ML and tabular analysis.
 
   # Quality & Testing
   - id: tdd

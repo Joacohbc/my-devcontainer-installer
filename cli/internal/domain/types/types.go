@@ -209,17 +209,18 @@ type SelectedModule struct {
 type SkillID string
 
 const (
-	SkillFirecrawl      SkillID = "firecrawl"
-	SkillAgentBrowser   SkillID = "agent-browser"
-	SkillWebappTesting  SkillID = "webapp-testing"
-	SkillDataScience    SkillID = "data-science"
-	SkillRemotion       SkillID = "remotion-create"
-	SkillClaudeVideo    SkillID = "claude-video"
-	SkillImpeccable     SkillID = "impeccable"
-	SkillWayfinder      SkillID = "wayfinder"
-	SkillFrontendDesign SkillID = "frontend-design"
-	SkillUIUXProMax     SkillID = "ui-ux-pro-max"
-	SkillFindSkills     SkillID = "find-skills"
+	SkillFirecrawl           SkillID = "firecrawl"
+	SkillAgentBrowser        SkillID = "agent-browser"
+	SkillWebappTesting       SkillID = "webapp-testing"
+	SkillDataScience         SkillID = "data-science"
+	SkillChoosePythonLibrary SkillID = "choose-python-library"
+	SkillRemotion            SkillID = "remotion-create"
+	SkillClaudeVideo         SkillID = "claude-video"
+	SkillImpeccable          SkillID = "impeccable"
+	SkillWayfinder           SkillID = "wayfinder"
+	SkillFrontendDesign      SkillID = "frontend-design"
+	SkillUIUXProMax          SkillID = "ui-ux-pro-max"
+	SkillFindSkills          SkillID = "find-skills"
 
 	// Functional Category IDs (expandable via ExpandSkillGroups)
 	SkillCategoryCoreAgents           SkillID = "core-agents"
