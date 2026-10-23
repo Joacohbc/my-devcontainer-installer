@@ -3,7 +3,7 @@
 Guide for agents (human or AI) modifying this repo.
 
 The CLI lives in `cli/` and is written in **Go** (module
-`github.com/joacohbc/my-devcontainer-installer/cli`, Go 1.25), built on
+`github.com/joacohbc/my-devcontainer-installer/cli`, Go 1.26), built on
 [`spf13/cobra`](https://github.com/spf13/cobra). The previous TypeScript/Node
 implementation is frozen under `cli-ts-legacy/` for reference only — do not
 modify it and do not port changes back to it.
