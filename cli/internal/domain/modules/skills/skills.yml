@@ -47,7 +47,6 @@ categories:
       - webapp-testing
       - code-review
       - diagnosing-bugs
-      - resolving-merge-conflicts
       - git-guardrails-claude-code
       - setup-pre-commit
 
@@ -353,13 +352,6 @@ skills:
     label: "Diagnosing Bugs (root cause debugging & traces)"
     ref: "mattpocock/skills"
     skill: "diagnosing-bugs"
-    requires_modules: ["nodejs"]
-    category: "quality-testing"
-
-  - id: resolving-merge-conflicts
-    label: "Resolving Merge Conflicts (git merge conflict resolution)"
-    ref: "mattpocock/skills"
-    skill: "resolving-merge-conflicts"
     requires_modules: ["nodejs"]
     category: "quality-testing"
 
