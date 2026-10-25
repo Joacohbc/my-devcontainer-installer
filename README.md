@@ -58,8 +58,10 @@ devcontainer-cli
 # 2. Levantar el stack de contenedores
 devcontainer-cli up
 
-# 3. Conectarse inmediatamente por SSH (o por shell directa)
-devcontainer-cli ssh
+# 3. Conectarse al entorno (elija SSH o Shell directa)
+devcontainer-cli ssh         # Acceso SSH persistente (registra alias en ~/.ssh/devcontainer-cli.config)
+# o bien:
+devcontainer-cli shell       # Shell directa e interactiva vía docker exec (sin tocar configuración SSH)
 ```
 
 ---
@@ -180,34 +182,58 @@ graph LR
 
 ## Flujo de Trabajo Diario y Operaciones
 
-### 1. Conexión y Gestión de SSH (`devcontainer-cli ssh`)
-`devcontainer-cli ssh` abre una sesión SSH en el contenedor y gestiona el ciclo de vida completo de claves y alias:
-- **Archivo de configuración dedicado**: Los bloques `Host` se escriben en **`~/.ssh/devcontainer-cli.config`**, manteniendo su `~/.ssh/config` intacto con una única línea `Include`. Cambie la ubicación con `devcontainer-cli config ssh-config-file <ruta>`.
-- **Fijación de claves de host (*Host-Key Pinning*)**: Las claves del contenedor se leen por Docker y se registran en `known_hosts` de la CLI; reconstruir la imagen nunca dispara advertencias de identidad alterada.
+### 1. Acceso por SSH: Persistente vs. Efímero (`devcontainer-cli ssh`)
+`devcontainer-cli ssh` abre una sesión OpenSSH interactiva en el puerto 2222 del contenedor. Ofrece dos modos de operación según la necesidad de persistencia:
+
+- **Modo Persistente (`devcontainer-cli ssh`) [Recomendado para humanos y VS Code]**:
+  - Registra el bloque `Host <workspace>` en **`~/.ssh/devcontainer-cli.config`**, manteniendo su `~/.ssh/config` intacto con una única línea `Include`. Cambie la ubicación con `devcontainer-cli config ssh-config-file <ruta>`.
+  - **Fijación de claves de host (*Host-Key Pinning*)**: Las claves se leen por Docker y se registran en el `known_hosts` de la CLI; reconstruir la imagen nunca dispara advertencias de identidad alterada.
+  - Permite conectarse desde cualquier terminal con `ssh <workspace>` o abrir el entorno en **VS Code Remote - SSH**.
+  - Con `--setup` fuerza la regeneración y reparación de claves antes de conectar.
+
+- **Modo Efímero (`devcontainer-cli ssh --ephemeral`) [Idóneo para agentes y CI/CD]**:
+  - Se conecta directamente a la IP y puerto 2222 del contenedor mediante la clave privada gestionada (`-i ...`), **sin leer ni modificar `~/.ssh/config` ni `~/.ssh/devcontainer-cli.config`**.
+  - No fija claves ni deja entradas huérfanas en el sistema anfitrión (**cero polución**).
+  - Es el modo predeterminado para agentes de IA en `devcontainer-cli agent ssh`.
 
 ```bash
-devcontainer-cli ssh                                          # Conecta al devcontainer (configura claves automáticamente)
+devcontainer-cli ssh                                          # SSH persistente: configura alias y conecta
+devcontainer-cli ssh --ephemeral                              # SSH efímero: conecta directo sin tocar archivos SSH
 devcontainer-cli ssh --setup                                  # Fuerza regeneración de claves y bloques
 devcontainer-cli ssh --via user@docker-host --container dc-ssh # Conexión a contenedor en OTRO host vía salto SSH
-ssh mi-proyecto                                                # Conexión directa mediante alias tradicional
+ssh mi-proyecto                                                # Conexión directa mediante alias tradicional (modo persistente)
 ```
 > `--via` (requiere `--container`) es idóneo para servidores remotos en LAN: la clave privada nunca sale de su máquina cliente. En contraste, `--setup-external USER@HOST` corre en el servidor e imprime un snippet autocontenido para pegar en el cliente.
 
-### 2. Reenvío de Puertos y Túneles Inversos (`port-forward`)
+### 2. Acceso por Shell Directa (`devcontainer-cli shell`)
+Utiliza `docker exec` internamente resolviendo automáticamente el contenedor del espacio de trabajo actual, sin requerir OpenSSH ni configuración de claves:
+- **Modo interactivo**: Abre una terminal Zsh interactiva con soporte TTY completo.
+- **Ejecución puntual o tuberías (`-T` / `--no-tty`)**: Desactiva el pseudo-terminal para evitar caracteres de control (`\r`) en redirecciones de archivos, scripts o volcados de bases de datos.
+- **Acceso a contenedores secundarios (`-c <contenedor>`)**: Permite entrar a servicios auxiliares (ej. `postgres`, `redis`).
+
+```bash
+devcontainer-cli shell                                        # Entra a la shell interactiva (Zsh)
+devcontainer-cli shell -- bash                                # Abre la shell especificando bash
+devcontainer-cli shell -c mi-proyecto-postgres                # Entra directo al contenedor de la base de datos
+devcontainer-cli shell -- uname -a                            # Ejecuta un comando puntual y retorna su salida
+devcontainer-cli shell -T -- pg_dump -U devuser devdb > dump.sql # Dump limpio de base de datos sin corrupción TTY
+```
+
+### 3. Reenvío de Puertos y Túneles Inversos (`port-forward`)
 Permite conectar servicios en ambas direcciones entre el anfitrión y el contenedor:
 ```bash
 devcontainer-cli port-forward 3000                 # Forward directo: escucha en 127.0.0.1:3000 del host
 devcontainer-cli port-forward reverse:5432         # Túnel inverso: el host adentro en localhost:5432
 ```
 
-### 3. Copiar Archivos y Assets (`copy`)
+### 4. Copiar Archivos y Assets (`copy`)
 Copia archivos hacia/desde el contenedor o materializa instaladores embebidos:
 ```bash
 devcontainer-cli copy ./app.go :/home/devuser/app.go         # Host -> Contenedor
 devcontainer-cli copy --asset install-claude-code             # Materializa instalador de IA en el contenedor
 ```
 
-### 4. Bases de Datos Integradas
+### 5. Bases de Datos Integradas
 Credenciales predeterminadas para los servicios complementarios (Usuario: `devuser` | Contraseña: `devpass`):
 - **PostgreSQL:** `psql -h postgres -U devuser -d devdb`
 - **MongoDB:** `mongosh --host mongo -u devuser -p devpass --authenticationDatabase admin`

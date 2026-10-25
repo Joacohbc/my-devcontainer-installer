@@ -32,13 +32,19 @@ Utiliza `docker exec` internamente, resolviendo automáticamente el contenedor d
 
 Proporciona acceso mediante OpenSSH, idóneo para **VS Code Remote - SSH** o sesiones multiplexadas con **Zellij**:
 
-- **Modo Interactivo**:
+- **Modo Persistente (predeterminado)**:
   ```bash
   devcontainer-cli ssh                         # Abre sesión SSH (ejecuta configuración automática la primera vez)
   devcontainer-cli ssh --remote user@server    # Conecta por SSH a un devcontainer en un servidor remoto
   ssh <workspace>                              # Conexión directa mediante el alias registrado por la CLI
   ```
   El alias reside en `~/.ssh/devcontainer-cli.config` (archivo propio de la CLI, incluido desde `~/.ssh/config` con una directiva `Include`).
+
+- **Modo Efímero (`--ephemeral`)**:
+  ```bash
+  devcontainer-cli ssh --ephemeral             # Conecta directamente a la IP sin tocar archivos ~/.ssh/
+  ```
+  Ideal para scripts de automatización, agentes de IA y CI/CD donde no se desea registrar alias ni modificar configuraciones locales en el host.
 
 - **Modo No Interactivo**:
   ```bash
