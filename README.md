@@ -82,7 +82,7 @@ graph LR
 <details>
 <summary><b>3. Acceso Remoto Seguro (Cloudflare Tunnel)</b></summary>
 
-Acceso desde cualquier lugar mediante Cloudflare Zero Trust y cliente WARP sin abrir puertos en el router. `cloudflared` se instala **dentro** del devcontainer (módulo `cloudflared`), así que el túnel alcanza `localhost` sin saltos de red. (Ver [CLOUDFLARE_TUNNEL.md](CLOUDFLARE_TUNNEL.md)).
+Acceso desde cualquier lugar mediante Cloudflare Zero Trust y cliente WARP sin abrir puertos en el router. `cloudflared` se instala **dentro** del devcontainer (módulo `cloudflared`), así que el túnel alcanza `localhost` sin saltos de red. (Ver [.docs/cloudflare-tunnel.md](.docs/cloudflare-tunnel.md)).
 
 ```mermaid
 graph LR
@@ -129,7 +129,7 @@ curl -fsSL https://raw.githubusercontent.com/Joacohbc/my-devcontainer-installer/
 
 > **Descargas manuales:** Disponibles en los [Releases de GitHub](https://github.com/Joacohbc/my-devcontainer-installer/releases/latest) (binarios standalone para `linux-x64`, `linux-arm64`, `darwin-x64` y `darwin-arm64`). El autocompletado en Zsh y Bash se configura automáticamente tras instalar.
 
-> **Sobre la skill para agentes:** podés instalar la skill del host en tus agentes (Claude Code, Antigravity, etc.) con el CLI de Skills (`npx skills add Joacohbc/my-devcontainer-installer@devcontainer-cli -g`), y con eso un agente que corre en tu máquina aprende a manejar esta CLI: crear el devcontainer de un proyecto, correr los builds y tests adentro y no ensuciar tu host. Ver [§6](#6-skill-para-el-agente-del-host).
+> **Sobre la skill para agentes:** puede instalar la habilidad del host en sus agentes (Claude Code, Antigravity, etc.) con el CLI de Skills (`npx skills add Joacohbc/my-devcontainer-installer@devcontainer-cli -g`), y con ello un agente que se ejecuta en su máquina aprende a operar esta CLI: crear el devcontainer de un proyecto, ejecutar compilaciones y pruebas adentro sin alterar el host. Ver [§6](#6-skill-para-el-agente-del-host).
 
 ## Uso Rápido y Flujo de Trabajo
 
@@ -137,13 +137,13 @@ curl -fsSL https://raw.githubusercontent.com/Joacohbc/my-devcontainer-installer/
 ```bash
 mkdir mi-proyecto && cd mi-proyecto
 devcontainer-cli                       # Asistente interactivo TUI para generar el entorno
-devcontainer-cli up                    # Levanta el stack de contenedores (o ejecutá directamente devcontainer-cli ssh)
+devcontainer-cli up                    # Levanta el stack de contenedores (o ejecute directamente devcontainer-cli ssh)
 ```
 
 ### 2. Conexión y configuración SSH (`devcontainer-cli ssh`)
-`devcontainer-cli ssh` abre una sesión SSH en el contenedor y es dueño de todo el ciclo de vida SSH (acá vivía el viejo `setup-ssh`). Si aún no está configurado el acceso SSH para el proyecto, ejecuta automáticamente la configuración (creación de claves, alias SSH y fijado de `known_hosts`). Con `--setup` fuerza esa configuración de nuevo antes de conectar.
+`devcontainer-cli ssh` abre una sesión SSH en el contenedor y es dueño de todo el ciclo de vida SSH (aquí residía el comando `setup-ssh`). Si aún no está configurado el acceso SSH para el proyecto, ejecuta automáticamente la configuración (creación de claves, alias SSH y fijado de `known_hosts`). Con `--setup` fuerza esa configuración de nuevo antes de conectar.
 
-Los bloques `Host` se escriben en un archivo propio de la CLI, **`~/.ssh/devcontainer-cli.config`**, y no en tu `~/.ssh/config`: a ese último sólo se le agrega una línea `Include` al principio, la primera vez. Los bloques que versiones anteriores dejaron dentro de `~/.ssh/config` se mueven solos. Cambiá la ubicación con `devcontainer-cli config ssh-config-file <ruta>`.
+Los bloques `Host` se escriben en un archivo propio de la CLI, **`~/.ssh/devcontainer-cli.config`**, y no en su `~/.ssh/config`: a ese último sólo se le agrega una línea `Include` al principio, la primera vez. Los bloques que versiones anteriores dejaron dentro de `~/.ssh/config` se mueven solos. Cambie la ubicación con `devcontainer-cli config ssh-config-file <ruta>`.
 
 ```bash
 devcontainer-cli ssh                                          # Conecta al devcontainer (lo configura si es la primera vez)
@@ -152,7 +152,7 @@ devcontainer-cli ssh --via user@docker-host --container dc-ssh # Contenedor en O
 ssh mi-proyecto                                                # Conexión directa vía cliente SSH tradicional usando el alias generado
 ```
 
-`--via` (requiere `--container`) es para cuando el contenedor vive en un Docker host distinto: usa la conexión SSH que ya tenés a ese host para instalar la clave y fijar el `known_hosts`, sin instalar devcontainer-cli ahí — la clave privada nunca sale de esta máquina. Es lo opuesto de `--setup-external USER@HOST`, que asume que la CLI corre en el host remoto: en vez de conectar, imprime un snippet autocontenido (con la clave privada) para pegar en la máquina desde la que te conectás.
+`--via` (requiere `--container`) es para cuando el contenedor vive en un Docker host distinto: usa la conexión SSH que ya tiene hacia ese host para instalar la clave y fijar el `known_hosts`, sin instalar devcontainer-cli allí — la clave privada nunca sale de esta máquina. Es lo opuesto de `--setup-external USER@HOST`, que asume que la CLI se ejecuta en el host remoto: en vez de conectar, imprime un fragmento autocontenido (con la clave privada) para pegar en la máquina desde la que se conecta.
 
 ### 3. Copiar archivos y assets (`copy`)
 Copia archivos entre el host y el contenedor o instala scripts embebidos de IA en caliente:
@@ -235,15 +235,15 @@ Credenciales predeterminadas para los servicios de base de datos (Usuario: `devu
 - **MongoDB:** `mongosh --host mongo -u devuser -p devpass --authenticationDatabase admin`
 - **Redis:** `redis-cli -h redis`
 
-> Para detalles sobre actualización de contraseñas y preparación posterior, consulta **[POST_INSTALL_STEPS.md](POST_INSTALL_STEPS.md)**.
+> Para detalles sobre actualización de contraseñas y preparación posterior, consulte **[.docs/post-install.md](.docs/post-install.md)**.
 
 ## Solución de Problemas
 
 <details>
 <summary><b>Permission denied (publickey)</b></summary>
 
-- Ejecuta `devcontainer-cli ssh` para verificar y reinstalar automáticamente la clave pública gestionada en `~/.ssh/authorized_keys` dentro del contenedor.
-- Si modificaste los archivos manualmente en el contenedor, asegura los permisos requeridos: `chmod 700 ~/.ssh` y `chmod 600 ~/.ssh/authorized_keys`.
+- Ejecute `devcontainer-cli ssh` para verificar y reinstalar automáticamente la clave pública gestionada en `~/.ssh/authorized_keys` dentro del contenedor.
+- Si modificó los archivos manualmente en el contenedor, asegure los permisos requeridos: `chmod 700 ~/.ssh` y `chmod 600 ~/.ssh/authorized_keys`.
 </details>
 
 <details>

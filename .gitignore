@@ -3,8 +3,6 @@ cli/dist/
 
 .antigravitycli/
 graphify-out/
-.agents/
-.claude/
 .wayfinder/
 
 # devcontainer-cli
