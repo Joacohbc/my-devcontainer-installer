@@ -33,6 +33,7 @@ Goal: before writing code, know the domain rules, architectural contracts, and p
 | Shared-config volume (`internal/service/sharedconfig.go`, `assets/shared-config.sh`) | `.docs/architecture.md` §3 (D7) |
 | Docker runner, exec, and subprocesses (`internal/infra/docker/`) | `.docs/architecture.md` §1–§2 (CaptureFunc), `.docs/testing.md` §2 |
 | Build, release, version injection, and upgrade (`.goreleaser.yaml`, `commands/upgrade_cli.go`) | `.docs/dev-environment.md` §2–§3 |
+| User workflows, practical cases, and documentation (`README.md`, `commands/`) | `.docs/manual.md`, `.docs/product.md` |
 | Verification and test patterns (`*_test.go`, `helpers_test.go`) | `.docs/testing.md` §1–§3; skill `dev-ops-verify` |
 
 The same table tells `code-reviewer` and `doc-editor` which documents a change can make stale.

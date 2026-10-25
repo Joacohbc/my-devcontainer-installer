@@ -9,6 +9,7 @@ This file holds the constitutional rules an agent must follow. Detailed document
 | Need | Read |
 |---|---|
 | Product purpose, personas, and end-to-end flows | `.docs/product.md` |
+| Practical use cases handbook (human and agentic) | `.docs/manual.md` |
 | 4-layer architecture, boundaries, and decisions D1–D13 | `.docs/architecture.md` |
 | Entities, Dockerfile modules, compose services, profiles | `.docs/domain-model.md` |
 | Domain vocabulary (ubiquitous language) | `.docs/context.md` |
