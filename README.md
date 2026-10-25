@@ -12,13 +12,77 @@
 
 </div>
 
-## Resumen
+---
 
-**DevContainer Installer CLI** (`devcontainer-cli`) es una herramienta interactiva y extensible construida en Go. Olvídate de perder horas configurando dependencias, resolviendo conflictos de versiones y adecuando tu entorno local para cada nuevo proyecto: esta CLI automatiza la creación, orquestación y gestión de entornos aislados de desarrollo en Docker (*DevContainers*). 
+## Resumen Ejecutivo
 
-Con un asistente interactivo (*TUI*), te permite componer en segundos un contenedor a medida para desarrollo con tu stack preferido, bases de datos dockerizadas, utilidades avanzadas de terminal y agentes de Inteligencia Artificial (como Claude Code, Copilot y Codex), garantizando la máxima productividad y consistencia sin ensuciar tu sistema operativo anfitrión.
+**DevContainer Installer CLI** (`devcontainer-cli`) es una herramienta interactiva, extensible y de alto rendimiento construida en Go. Elimina la fricción de configurar dependencias locales, resolver conflictos de versiones y adecuar la máquina física para cada proyecto: automatiza la creación, orquestación y gestión de entornos aislados de desarrollo en Docker (*DevContainers*).
 
-## Componentes y Servicios Soportados
+Tanto para **desarrolladores humanos** (mediante un asistente interactivo TUI, acceso transparente por VS Code Remote - SSH y bases de datos integradas) como para **agentes autónomos de IA** (como Claude Code, Antigravity, Codex y Copilot, operando en un sandbox seguro como usuario regular sin permisos de root), `devcontainer-cli` garantiza máxima reproducibilidad y consistencia sin ensuciar el sistema operativo anfitrión.
+
+---
+
+## Instalación y Configuración Inicial
+
+### 1. Instalación Rápida (Linux / macOS)
+```bash
+curl -fsSL https://raw.githubusercontent.com/Joacohbc/my-devcontainer-installer/main/cli/install.sh | sh
+```
+> **Descargas manuales:** Disponibles en los [Releases de GitHub](https://github.com/Joacohbc/my-devcontainer-installer/releases/latest) (binarios standalone para `linux-x64`, `linux-arm64`, `darwin-x64` y `darwin-arm64`). El autocompletado en Zsh y Bash se configura automáticamente tras instalar.
+
+### 2. Habilidad de Host para Agentes de IA (Opcional, Muy Recomendado)
+Enseña a los asistentes que corren en su máquina física (Claude Code, Antigravity, etc.) a operar esta CLI para que ejecuten builds, tests y migraciones dentro de contenedores:
+```bash
+npx skills add Joacohbc/my-devcontainer-installer@devcontainer-cli -g
+```
+
+### 3. Actualización y Desinstalación
+```bash
+# Actualizar la CLI a la última versión disponible
+devcontainer-cli upgrade-cli
+
+# Desinstalar la CLI por completo
+curl -fsSL https://raw.githubusercontent.com/Joacohbc/my-devcontainer-installer/main/cli/uninstall.sh | sh
+```
+
+---
+
+## Flujo Esencial en 60 Segundos
+
+```bash
+mkdir mi-proyecto && cd mi-proyecto
+
+# 1. Generar la configuración del contenedor (asistente interactivo TUI)
+devcontainer-cli
+
+# 2. Levantar el stack de contenedores
+devcontainer-cli up
+
+# 3. Conectarse inmediatamente por SSH (o por shell directa)
+devcontainer-cli ssh
+```
+
+---
+
+## Guía Rápida por Rol
+
+### 👤 Para Desarrolladores Humanos
+- **Asistente TUI amigable**: Ejecute `devcontainer-cli` en la raíz de su proyecto y elija lenguajes, bases de datos y herramientas con la barra espaciadora.
+- **Arranque instantáneo con perfiles**: Omita la compilación local usando imágenes precompiladas de GHCR con `devcontainer-cli --profile nodejs` (o `python`, `go`, `bun`, `node-go`).
+- **Integración con VS Code**: `devcontainer-cli ssh` configura automáticamente sus claves en `~/.ssh/devcontainer-cli.config`. Abra VS Code, pulse `F1` -> *Remote-SSH: Connect to Host...* y elija el nombre de su proyecto.
+- **Bases de datos listas**: Añada `--service postgres,redis` y conéctese con DBeaver o TablePlus desde el host en `127.0.0.1:5432`.
+
+### 🤖 Para Agentes Autónomos de IA (Antigravity, Claude Code, Codex, Copilot)
+- **Fachada desatendida y predecible**: El grupo `devcontainer-cli agent` nunca abre menús interactivos ni espera respuestas; si falta un parámetro, falla de forma inmediata y explícita.
+- **Aislamiento seguro sin root**: `devcontainer-cli agent exec -w -- <comando>` ejecuta tareas estrictamente como `devuser`, impidiendo que se generen archivos propiedad de `root` en su checkout local.
+- **Auto-orientación exacta**: Cada contenedor genera `~/CONTEXT.md` y `devcontainer-cli agent context --json`, informando al agente con exactitud qué herramientas, rutas y credenciales existen.
+- **Entornos temporales desechables**: `devcontainer-cli agent create --temporal --profile python` crea un entorno efímero para reproducir incidencias y se destruye limpiamente con `agent clean`.
+
+> 💡 **Manual Exhaustivo de Casos de Uso:** Consulte [`.docs/manual.md`](.docs/manual.md) para ver ejemplos paso a paso de cada flujo humano y agéntico.
+
+---
+
+## Componentes y Tecnologías Soportadas
 
 | Categoría | Tecnologías y Herramientas | Descripción |
 | :--- | :--- | :--- |
@@ -30,9 +94,11 @@ Con un asistente interactivo (*TUI*), te permite componer en segundos un contene
 | **Red y Conectividad** | [![OpenSSH](https://img.shields.io/badge/OpenSSH-000000?logo=openssh&logoColor=white)](#) [![Cloudflare](https://img.shields.io/badge/Cloudflare_Tunnel-F38020?logo=cloudflare&logoColor=white)](#) [![ngrok](https://img.shields.io/badge/ngrok-1F1E24?logo=ngrok&logoColor=white)](#) | Automatización de claves SSH, ProxyCommand para servidores remotos, túneles seguros con Cloudflare Zero Trust, Ngrok y gestión de puertos. |
 | **Entorno de Terminal** | [![Zsh](https://img.shields.io/badge/Zsh-F15A24?logo=zsh&logoColor=white)](#) [![Zellij](https://img.shields.io/badge/Zellij-000000?logo=gnu-bash&logoColor=white)](#) [![Micro](https://img.shields.io/badge/Micro-4A154B?logo=visualstudiocode&logoColor=white)](#) | ZSH con Oh My Zsh preconfigurado, multiplexor Zellij, editores `micro`/`nano` y manual integrado (`cat ~/help`). |
 
-## Arquitectura y Modos de Conectividad
+---
 
-El entorno ofrece un contenedor principal (`devcontainer-ssh`) accesible vía SSH, permitiendo conectar tu editor (VS Code) o terminal según la infraestructura disponible:
+## Arquitectura y Topologías de Red
+
+El entorno ofrece un contenedor principal (`devcontainer-ssh`) accesible vía OpenSSH en el puerto 2222, permitiendo conectar su editor o terminal según el escenario de infraestructura:
 
 <details>
 <summary><b>1. Acceso Local (Host de desarrollo)</b></summary>
@@ -56,7 +122,7 @@ graph LR
 </details>
 
 <details>
-<summary><b>2. Acceso Remoto LAN (Laptop → Servidor)</b></summary>
+<summary><b>2. Acceso Remoto LAN (Laptop → Servidor con --via)</b></summary>
 
 Conexión desde una laptop a un servidor local (Raspberry Pi, Mini PC) usando el servicio SSH del servidor como puente seguro (`netcat`), sin exponer puertos del contenedor.
 
@@ -82,7 +148,7 @@ graph LR
 <details>
 <summary><b>3. Acceso Remoto Seguro (Cloudflare Tunnel)</b></summary>
 
-Acceso desde cualquier lugar mediante Cloudflare Zero Trust y cliente WARP sin abrir puertos en el router. `cloudflared` se instala **dentro** del devcontainer (módulo `cloudflared`), así que el túnel alcanza `localhost` sin saltos de red. (Ver [.docs/cloudflare-tunnel.md](.docs/cloudflare-tunnel.md)).
+Acceso desde cualquier lugar mediante Cloudflare Zero Trust y cliente WARP sin abrir puertos en el router. `cloudflared` se instala **dentro** del devcontainer (módulo `cloudflared`), alcanzando `localhost` sin saltos de red. (Ver [.docs/cloudflare-tunnel.md](.docs/cloudflare-tunnel.md)).
 
 ```mermaid
 graph LR
@@ -95,7 +161,6 @@ graph LR
     end
     
     subgraph LocalNetwork["Tu Red Local"]
-        
         subgraph DockerEnv["Entorno Docker"]
             subgraph DevContainer["🖥️ Devcontainer-SSH"]
                 Cloudflared["Cloudflared (Túnel)"]
@@ -111,133 +176,117 @@ graph LR
 ```
 </details>
 
-## Instalación y Actualización
+---
+
+## Flujo de Trabajo Diario y Operaciones
+
+### 1. Conexión y Gestión de SSH (`devcontainer-cli ssh`)
+`devcontainer-cli ssh` abre una sesión SSH en el contenedor y gestiona el ciclo de vida completo de claves y alias:
+- **Archivo de configuración dedicado**: Los bloques `Host` se escriben en **`~/.ssh/devcontainer-cli.config`**, manteniendo su `~/.ssh/config` intacto con una única línea `Include`. Cambie la ubicación con `devcontainer-cli config ssh-config-file <ruta>`.
+- **Fijación de claves de host (*Host-Key Pinning*)**: Las claves del contenedor se leen por Docker y se registran en `known_hosts` de la CLI; reconstruir la imagen nunca dispara advertencias de identidad alterada.
 
 ```bash
-# Instalación rápida (Linux / macOS)
-curl -fsSL https://raw.githubusercontent.com/Joacohbc/my-devcontainer-installer/main/cli/install.sh | sh
-
-# Enseñarle a tu agente de IA a manejar la CLI (opcional, recomendado)
-npx skills add Joacohbc/my-devcontainer-installer@devcontainer-cli -g
-
-# Actualizar la CLI a la última versión
-devcontainer-cli upgrade-cli
-
-# Desinstalar la CLI
-curl -fsSL https://raw.githubusercontent.com/Joacohbc/my-devcontainer-installer/main/cli/uninstall.sh | sh
+devcontainer-cli ssh                                          # Conecta al devcontainer (configura claves automáticamente)
+devcontainer-cli ssh --setup                                  # Fuerza regeneración de claves y bloques
+devcontainer-cli ssh --via user@docker-host --container dc-ssh # Conexión a contenedor en OTRO host vía salto SSH
+ssh mi-proyecto                                                # Conexión directa mediante alias tradicional
 ```
+> `--via` (requiere `--container`) es idóneo para servidores remotos en LAN: la clave privada nunca sale de su máquina cliente. En contraste, `--setup-external USER@HOST` corre en el servidor e imprime un snippet autocontenido para pegar en el cliente.
 
-> **Descargas manuales:** Disponibles en los [Releases de GitHub](https://github.com/Joacohbc/my-devcontainer-installer/releases/latest) (binarios standalone para `linux-x64`, `linux-arm64`, `darwin-x64` y `darwin-arm64`). El autocompletado en Zsh y Bash se configura automáticamente tras instalar.
-
-> **Sobre la skill para agentes:** puede instalar la habilidad del host en sus agentes (Claude Code, Antigravity, etc.) con el CLI de Skills (`npx skills add Joacohbc/my-devcontainer-installer@devcontainer-cli -g`), y con ello un agente que se ejecuta en su máquina aprende a operar esta CLI: crear el devcontainer de un proyecto, ejecutar compilaciones y pruebas adentro sin alterar el host. Ver [§6](#6-skill-para-el-agente-del-host).
-
-## Uso Rápido y Flujo de Trabajo
-
-### 1. Crear y levantar un entorno
+### 2. Reenvío de Puertos y Túneles Inversos (`port-forward`)
+Permite conectar servicios en ambas direcciones entre el anfitrión y el contenedor:
 ```bash
-mkdir mi-proyecto && cd mi-proyecto
-devcontainer-cli                       # Asistente interactivo TUI para generar el entorno
-devcontainer-cli up                    # Levanta el stack de contenedores (o ejecute directamente devcontainer-cli ssh)
+devcontainer-cli port-forward 3000                 # Forward directo: escucha en 127.0.0.1:3000 del host
+devcontainer-cli port-forward reverse:5432         # Túnel inverso: el host adentro en localhost:5432
 ```
 
-### 2. Conexión y configuración SSH (`devcontainer-cli ssh`)
-`devcontainer-cli ssh` abre una sesión SSH en el contenedor y es dueño de todo el ciclo de vida SSH (aquí residía el comando `setup-ssh`). Si aún no está configurado el acceso SSH para el proyecto, ejecuta automáticamente la configuración (creación de claves, alias SSH y fijado de `known_hosts`). Con `--setup` fuerza esa configuración de nuevo antes de conectar.
-
-Los bloques `Host` se escriben en un archivo propio de la CLI, **`~/.ssh/devcontainer-cli.config`**, y no en su `~/.ssh/config`: a ese último sólo se le agrega una línea `Include` al principio, la primera vez. Los bloques que versiones anteriores dejaron dentro de `~/.ssh/config` se mueven solos. Cambie la ubicación con `devcontainer-cli config ssh-config-file <ruta>`.
-
-```bash
-devcontainer-cli ssh                                          # Conecta al devcontainer (lo configura si es la primera vez)
-devcontainer-cli ssh --setup                                  # Rehace la configuración de acceso y luego conecta
-devcontainer-cli ssh --via user@docker-host --container dc-ssh # Contenedor en OTRO host, a través de una conexión SSH existente
-ssh mi-proyecto                                                # Conexión directa vía cliente SSH tradicional usando el alias generado
-```
-
-`--via` (requiere `--container`) es para cuando el contenedor vive en un Docker host distinto: usa la conexión SSH que ya tiene hacia ese host para instalar la clave y fijar el `known_hosts`, sin instalar devcontainer-cli allí — la clave privada nunca sale de esta máquina. Es lo opuesto de `--setup-external USER@HOST`, que asume que la CLI se ejecuta en el host remoto: en vez de conectar, imprime un fragmento autocontenido (con la clave privada) para pegar en la máquina desde la que se conecta.
-
-### 3. Copiar archivos y assets (`copy`)
-Copia archivos entre el host y el contenedor o instala scripts embebidos de IA en caliente:
+### 3. Copiar Archivos y Assets (`copy`)
+Copia archivos hacia/desde el contenedor o materializa instaladores embebidos:
 ```bash
 devcontainer-cli copy ./app.go :/home/devuser/app.go         # Host -> Contenedor
-devcontainer-cli copy --asset install-claude-code             # Materializa instalador en el contenedor
+devcontainer-cli copy --asset install-claude-code             # Materializa instalador de IA en el contenedor
 ```
 
-### 4. Sincronizar credenciales de IA y GitHub (`config shared`)
-Comparte sesiones (`.claude`, `.codex`, `.gemini`, `.config/gh`) entre todos los contenedores mediante un volumen persistente:
-```bash
-devcontainer-cli config shared sync                           # Sembrar logins del host al volumen
-devcontainer-cli config shared backup -o backup.zip            # Respaldar volumen a un file .zip
-devcontainer-cli config shared restore backup.zip              # Restaurar volumen desde un file .zip
-```
-
-### 5. Contexto del contenedor para agentes de IA (`context`)
-Cada contenedor trae `~/CONTEXT.md`, el documento que un agente de IA debería leer primero. **Se genera para cada proyecto** a partir de los módulos y servicios que elegiste, así que describe lo que realmente hay en esa imagen: que estás dentro de Docker, `uv` para Python, `pnpm` para JS, qué versión de Node quedó fija, y a qué host, puerto y credenciales responde cada base de datos (contenedores hermanos, nunca `localhost`). Elegir otros módulos cambia el documento.
-
-Para lo que sólo se sabe en tiempo de ejecución está `get-devcontainer-context`, que lista las herramientas realmente instaladas con sus versiones, los servicios alcanzables y el workspace resuelto.
-
-Además, cada imagen trae **preinstalada una skill global** llamada `devcontainer-context` (queda enlazada en `~/.agents/skills` y `~/.claude/skills`, así que los agentes la ven sin instalar nada). Es corta a propósito: le avisa al agente que está adentro de un contenedor Docker, le dice que lea `~/CONTEXT.md` y corra `get-devcontainer-context` antes de asumir nada, y le recuerda lo que vale en todos los contenedores (editar sólo en el workspace, que todo lo de afuera del workspace y `/home/devuser` se pierde al recrear, que hay `sudo` sin password, que no hay systemd, que sólo los puertos publicados se ven desde el host, y que las bases se alcanzan por el nombre del servicio de compose y no por `localhost`).
-```bash
-devcontainer-cli context                 # Reporte legible del contenedor del proyecto
-devcontainer-cli context --json          # Salida estructurada, pensada para agentes
-get-devcontainer-context                 # Lo mismo, desde adentro del contenedor
-```
-
-### 6. Skill para el agente del host
-Lo anterior es la mitad de adentro del contenedor. La mitad de **afuera** es la skill publicada en `skills/devcontainer-cli/SKILL.md`: le enseña a un agente del host (Claude Code, Antigravity, …) a manejar esta CLI — generar el devcontainer de un proyecto, correr builds y tests adentro, publicar o tunelizar puertos, revisar qué trae la imagen y destruir el entorno. Con eso el agente puede meter el trabajo en un contenedor en vez de ensuciar tu máquina.
-
-Podés instalarla en tu máquina mediante el CLI de Skills:
-```bash
-npx skills add Joacohbc/my-devcontainer-installer@devcontainer-cli -g
-```
-
-### 7. Comandos pensados para agentes (`agent`)
-La skill le enseña al agente a manejar la CLI, y `devcontainer-cli agent` es la cara de la CLI hecha para que la maneje: un puñado de comandos de alto nivel que **nunca abren un wizard ni esperan una respuesta**, así que una sesión desatendida no se queda colgada en un prompt que el agente no puede contestar.
-
-`agent cli-info` es el punto de partida: imprime el catálogo vivo —módulos, servicios, perfiles, skills, cómo agregar scripts propios, qué assets se pueden copiar y las rutas que sigue todo proyecto—. Como sale del catálogo real del binario, incluye también los perfiles y skills que hayas definido vos en `~/.devcontainer-cli/`, que ningún documento puede saber de antemano.
-```bash
-devcontainer-cli agent cli-info --json                    # Catálogo estructurado
-devcontainer-cli agent create --with nodejs,pnpm --service postgres  # Generar + build + up
-devcontainer-cli agent exec -- go test ./...              # Correr algo adentro
-devcontainer-cli agent forward 3000                       # Túnel a 127.0.0.1:3000
-devcontainer-cli agent forward reverse:5432               # Al revés: el host adentro
-devcontainer-cli agent list /home/devuser --json          # Listar archivos del contenedor
-devcontainer-cli agent clean --dry-run                    # Ver qué se borraría
-```
-Es una capa **aditiva**: cada comando que envuelve (`shell`, `ssh`, `port-forward`, `copy`, `ls`, `destroy`, `clean`) sigue existiendo igual que antes, y son la salida de emergencia para lo que el grupo no cubre (`compose`, `ssh --via`, `run`, `config`). `agent clean` alcanza sólo al proyecto del directorio actual —incluida la imagen que se construyó para él, pero no una imagen bajada de un registry, que comparten todos los proyectos del mismo perfil—; `--all` barre además todo lo demás que la CLI gestiona en la máquina.
-
-### 8. Aliases en todos los contenedores (`config alias`)
-La imagen trae aliases por defecto: `kill_port <puerto>`, `npm`→`pnpm`, `npx`→`pnpm dlx`, `pip`/`pip3`→`uv pip`, y un lanzador `<tool>_yolo` por agente (`claude_yolo`, `codex_yolo`, `copilot_yolo`, `agy_yolo`) que corre el CLI sin prompts de permisos —el contenedor ya es el sandbox—. Los comandos `claude`, `codex`, `copilot` y `agy` quedan intactos: saltear los permisos es opt-in.
-
-Tus propios aliases los definís **por comandos** y se guardan en la configuración de la CLI (`config.json`), no en un archivo suelto de tu home. `config alias sync` los renderiza dentro del volumen compartido, así que se aplican a **todos** los contenedores sin reconstruir ninguna imagen y sin reiniciar nada (toman efecto en la próxima shell):
-```bash
-devcontainer-cli config alias                    # Listar los aliases configurados
-devcontainer-cli config alias set ll "ls -la"    # Agregar o actualizar uno
-devcontainer-cli config alias unset ll           # Quitar uno
-devcontainer-cli config alias sync               # Aplicarlos a todos los contenedores
-```
-Como se sourcean después de los defaults de la imagen, lo que definas ahí siempre gana.
-
-### 9. Conectar otros servicios a la red (`network`)
-Conecta cualquier otro contenedor Docker a la red privada del workspace actual:
-```bash
-devcontainer-cli network connect mi-servicio-extra --alias db-extra
-```
-
-### 10. Limpieza del sistema (`clean`)
-```bash
-devcontainer-cli clean ssh              # Elimina bloques SSH y known_hosts obsoletos
-devcontainer-cli clean all              # Menú interactivo de limpieza de imágenes/volúmenes/redes
-```
-
-## Bases de Datos y Post-Instalación
-
-Credenciales predeterminadas para los servicios de base de datos (Usuario: `devuser` | Contraseña: `devpass`):
+### 4. Bases de Datos Integradas
+Credenciales predeterminadas para los servicios complementarios (Usuario: `devuser` | Contraseña: `devpass`):
 - **PostgreSQL:** `psql -h postgres -U devuser -d devdb`
 - **MongoDB:** `mongosh --host mongo -u devuser -p devpass --authenticationDatabase admin`
 - **Redis:** `redis-cli -h redis`
 
-> Para detalles sobre actualización de contraseñas y preparación posterior, consulte **[.docs/post-install.md](.docs/post-install.md)**.
+```bash
+# Reiniciar el esquema de PostgreSQL sin reiniciar el contenedor
+devcontainer-cli shell -c <workspace>-postgres -- psql -U devuser -d devdb -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
 
-## Solución de Problemas
+# Backup limpio sin corrupción de TTY (el flag -T es obligatorio)
+devcontainer-cli shell -c <workspace>-postgres -T -- pg_dump -U devuser --no-owner --no-acl devdb > backup.sql
+```
+> Más detalles de administración de BD en [.docs/post-install.md](.docs/post-install.md).
+
+---
+
+## Configuración Compartida y Personalización
+
+### 1. Sincronizar Credenciales de IA y GitHub (`config shared`)
+El volumen `devcontainer-shared-config` persiste inicios de sesión (`.claude`, `.codex`, `.gemini`, `.config/gh`) compartiéndolos entre todos los contenedores:
+```bash
+devcontainer-cli config shared sync                           # Sembrar sesiones del host al volumen
+devcontainer-cli config shared backup -o backup.zip            # Respaldar volumen a un archivo .zip
+devcontainer-cli config shared restore backup.zip              # Restaurar volumen desde un archivo .zip
+```
+
+### 2. Aliases Globales Persistentes (`config alias`)
+La imagen incluye alias útiles por defecto: `kill_port <puerto>`, `npm`→`pnpm`, `pip`→`uv pip` y lanzadores `<tool>_yolo` que ejecutan CLIs de IA sin pausas de permisos.
+
+Puede definir sus propios alias globales que se propagan a **todos** los contenedores sin recompilar imágenes:
+```bash
+devcontainer-cli config alias                    # Listar alias configurados
+devcontainer-cli config alias set ll "ls -la"    # Crear o actualizar un alias
+devcontainer-cli config alias unset ll           # Eliminar un alias
+devcontainer-cli config alias sync               # Sincronizar hacia el volumen compartido
+```
+
+### 3. Conectar Otros Contenedores a la Red (`network`)
+Integre cualquier contenedor externo al stack privado del proyecto:
+```bash
+devcontainer-cli network connect mi-servicio-externo --alias db-externa
+```
+
+---
+
+## La Capa de Agentes de IA
+
+### 1. Fachada Desatendida (`devcontainer-cli agent`)
+Diseñada específicamente para que agentes autónomos operen sin riesgo de colgarse en prompts ni corromper permisos:
+```bash
+devcontainer-cli agent cli-info --json                        # Catálogo estructurado de capacidades
+devcontainer-cli agent create --profile node-python --service redis # Crear y levantar stack sin TUI
+devcontainer-cli agent exec -w -- go test ./...                # Ejecutar comando como devuser en el workspace
+devcontainer-cli agent forward 8080                           # Reenviar puerto para pruebas o web preview
+devcontainer-cli agent context --json                         # Diagnóstico de herramientas y versiones
+devcontainer-cli agent clean                                  # Limpiar stack e imagen construida del proyecto
+```
+
+### 2. Contexto Dinámico (`~/CONTEXT.md` y Habilidad Global)
+Cada contenedor genera un `~/CONTEXT.md` único que describe exactamente los módulos, variables y credenciales activas. Además, incluye la habilidad global preinstalada **`devcontainer-context`** (enlazada en `~/.agents/skills` y `~/.claude/skills`), recordando a los agentes las reglas invariantes: editar solo en el workspace, consultar bases de datos por su nombre de servicio de compose y utilizar `sudo` sin contraseña.
+
+---
+
+## Higiene y Mantenimiento (`clean` y `destroy`)
+
+```bash
+# Limpiar bloques SSH obsoletos y entradas huérfanas en known_hosts
+devcontainer-cli clean ssh -y
+
+# Menú interactivo o limpieza completa de contenedores/imágenes/redes en desuso
+devcontainer-cli clean all
+
+# Destruir completamente el devcontainer del proyecto actual y sus volúmenes
+devcontainer-cli destroy
+```
+
+---
+
+## Solución de Problemas Frecuentes
 
 <details>
 <summary><b>Permission denied (publickey)</b></summary>
@@ -249,13 +298,34 @@ Credenciales predeterminadas para los servicios de base de datos (Usuario: `devu
 <details>
 <summary><b>Connection refused o cambio de IP / host key</b></summary>
 
-- Confirma que el contenedor esté activo mediante `docker compose -f .dc_<workspace>/build/docker-compose.yml ps`.
-- Si se reconstruyó la imagen o cambió la IP, ejecuta `devcontainer-cli ssh`: la CLI detecta el cambio, actualiza la IP y re-fija automáticamente la host key en `~/.config/devcontainer-cli/ssh/known_hosts`.
+- Confirme que el contenedor esté activo mediante `devcontainer-cli status` o `devcontainer-cli compose ps`.
+- Si se reconstruyó la imagen o cambió la IP, ejecute `devcontainer-cli ssh`: la CLI detecta el cambio, actualiza la IP y re-fija automáticamente la host key en su archivo de configuración gestionado.
 </details>
 
 <details>
 <summary><b>Error de Socket de Docker (DoD) dentro del contenedor</b></summary>
 
-- Verifica que el módulo `dod` esté habilitado y que `.dc_<workspace>/build/docker-compose.yml` contenga el montaje `- /var/run/docker.sock:/var/run/docker.sock`.
-- Asegura que el usuario `devuser` pertenezca al grupo `docker` dentro del contenedor.
+- Verifique que el módulo `dod` esté habilitado y que `.dc_<workspace>/build/docker-compose.yml` contenga el montaje `- /var/run/docker.sock:/var/run/docker.sock`.
+- Asegure que el usuario `devuser` pertenezca al grupo `docker` dentro del contenedor.
 </details>
+
+---
+
+## Documentación Detallada
+
+Para profundizar en la arquitectura interna, decisiones técnicas y guías de desarrollo, consulte la documentación oficial en [`.docs/`](.docs/):
+
+| Documento | Contenido Principal |
+|---|---|
+| [**`.docs/manual.md`**](.docs/manual.md) | **Manual Práctico de Casos de Uso** detallado para humanos y agentes de IA con comandos exactos. |
+| [**`.docs/product.md`**](.docs/product.md) | Visión de producto, personas y flujos funcionales de extremo a extremo. |
+| [**`.docs/architecture.md`**](.docs/architecture.md) | Arquitectura en 4 capas, contratos de aislamiento e inventario de decisiones D1–D13. |
+| [**`.docs/domain-model.md`**](.docs/domain-model.md) | Entidades, catálogo de módulos Dockerfile, servicios Compose y perfiles. |
+| [**`.docs/code-conventions.md`**](.docs/code-conventions.md) | Directivas `hbc-code-design`, convenciones Go y autoría de comandos Cobra. |
+| [**`.docs/dev-environment.md`**](.docs/dev-environment.md) | Entorno local, GitHub Actions, GoReleaser y auto-actualización. |
+| [**`.docs/testing.md`**](.docs/testing.md) | Pirámide de pruebas, simulación de Docker con fakes y tests de invariantes. |
+| [**`.docs/cloudflare-tunnel.md`**](.docs/cloudflare-tunnel.md) | Guía de configuración de redes privadas Zero Trust y cliente WARP. |
+| [**`.docs/post-install.md`**](.docs/post-install.md) | Pasos posteriores a la instalación, scripts embebidos y gestión de bases de datos. |
+| [**`.docs/roadmap.md`**](.docs/roadmap.md) | Lista viva de tareas, decisiones abiertas, visión y deuda técnica. |
+| [**`.docs/context.md`**](.docs/context.md) | Glosario de vocabulario ubicuo y conceptos de negocio. |
+| [**`AGENTS.md`**](AGENTS.md) | Constitución ejecutiva y reglas inviolables para agentes de IA que operan en este repositorio. |
