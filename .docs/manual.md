@@ -99,27 +99,71 @@ Este manual proporciona una guía directa, exhaustiva y orientada a la práctica
 
 ---
 
-### Caso 1.4: Flujo Diario con VS Code Remote - SSH y Zellij
+### Caso 1.4: Acceso al Contenedor: SSH Persistente, SSH Efímero y Shell Directa
 
-**Escenario**: Desea editar el código cómodamente en la interfaz de VS Code Remote o trabajar en terminal con multiplexación de sesiones.
+**Escenario**: Desea conectarse al contenedor para desarrollar interactivamente con VS Code Remote, ejecutar comandos rápidos desde la terminal o trabajar con multiplexación de sesiones vía Zellij.
 
-**Paso a paso**:
-1. Ejecute la configuración y conexión SSH por primera vez:
+#### Comparativa de Métodos de Acceso
+
+| Método | Comando | Mecanismo | Modifica `~/.ssh/` en Host | Caso de Uso Ideal |
+|---|---|---|---|---|
+| **SSH Persistente** | `devcontainer-cli ssh` | OpenSSH (puerto 2222) | **Sí** (registra bloque `Host` en `devcontainer-cli.config`) | Desarrollo interactivo diario, editores gráficos (VS Code Remote - SSH), alias corto `ssh <workspace>`. |
+| **SSH Efímero** | `devcontainer-cli ssh --ephemeral` | OpenSSH (puerto 2222) | **No** (conecta directo a IP sin dejar rastro) | Tareas puntuales por SSH, scripts, automatizaciones o cuando no desea alterar su configuración SSH local. |
+| **Shell Directa** | `devcontainer-cli shell` | `docker exec` | **No** (interactúa vía socket de Docker) | Entrada rápida a la terminal, pipes y redirecciones limpias (`-T`), acceso a BD auxiliares (`-c`). |
+
+---
+
+#### 1. Modo SSH Persistente y VS Code Remote - SSH
+1. Ejecute la conexión por primera vez:
    ```bash
    devcontainer-cli ssh
    ```
-   *La CLI genera automáticamente las claves SSH en `~/.config/devcontainer-cli/ssh/`, inyecta la clave pública en el contenedor y crea el bloque de conexión en `~/.ssh/devcontainer-cli.config`.*
+   *La CLI genera automáticamente las claves SSH en `~/.config/devcontainer-cli/ssh/`, inyecta la clave pública en el contenedor y crea el bloque de conexión permanente en `~/.ssh/devcontainer-cli.config`.*
 2. **Conexión desde VS Code**:
    - Abra VS Code en su máquina anfitriona.
    - Presione `F1` (o `Cmd+Shift+P` / `Ctrl+Shift+P`) y elija: **Remote-SSH: Connect to Host...**.
    - Seleccione el alias con el nombre de su proyecto (ej. `mi-proyecto`).
    - VS Code abrirá una ventana remota ejecutándose dentro del contenedor, con extensiones y terminal integradas.
-3. **Multiplexación de Terminal con Zellij**:
-   - Si prefiere trabajar 100% en consola, inicie una sesión multiplexada dentro del contenedor:
-     ```bash
-     devcontainer-cli shell -- zellij
-     ```
-   - Puede dividir paneles, crear pestañas y desacoplarse (`Ctrl+o`, luego `d`) sin perder los procesos en ejecución.
+3. **Conexión directa desde cualquier terminal**:
+   ```bash
+   ssh mi-proyecto
+   ```
+
+---
+
+#### 2. Modo SSH Efímero (`--ephemeral`)
+Conéctese directamente sin tocar su archivo de configuración SSH ni registrar alias:
+```bash
+devcontainer-cli ssh --ephemeral
+```
+*La CLI resuelve la IP del contenedor y utiliza la clave privada gestionada (`-i ~/.config/devcontainer-cli/ssh/id_devcontainer`) para abrir la sesión OpenSSH en el puerto 2222, garantizando **cero polución** en sus archivos de configuración locales.*
+
+---
+
+#### 3. Modo Shell Directa (`devcontainer-cli shell`)
+Entrada inmediata sin necesidad de claves SSH ni daemon sshd:
+```bash
+# Terminal interactiva Zsh
+devcontainer-cli shell
+
+# Terminal Bash explícita
+devcontainer-cli shell -- bash
+
+# Acceso a contenedores secundarios del stack (ej. Postgres)
+devcontainer-cli shell -c mi-proyecto-postgres
+
+# Comandos no interactivos o pipes limpios (sin caracteres de control TTY)
+devcontainer-cli shell -T -- uname -a
+```
+
+---
+
+#### 4. Multiplexación de Terminal con Zellij
+Si prefiere trabajar 100% en consola, inicie una sesión multiplexada dentro del contenedor:
+```bash
+devcontainer-cli shell -- zellij
+```
+*Puede dividir paneles, crear pestañas y desacoplarse (`Ctrl+o`, luego `d`) sin perder los procesos en ejecución.*
 
 ---
 
@@ -228,10 +272,11 @@ devcontainer-cli port-forward reverse:5432
 ---
 
 ### Invariantes Críticos para Agentes
-Los agentes de IA que operan en proyectos bajo `devcontainer-cli` deben observar estas tres reglas fundamentales:
+Los agentes de IA que operan en proyectos bajo `devcontainer-cli` deben observar estas cuatro reglas fundamentales:
 1. **Nunca tocar Docker directamente**: Queda terminantemente prohibido invocar `docker`, `docker compose` o `docker exec` desnudos. Toda interacción se realiza a través de `devcontainer-cli agent <verbo>`.
 2. **Ejecución obligatoria como usuario regular (`devuser`)**: La fachada `agent exec` fuerza la ejecución como `devuser`, evitando que se creen archivos propiedad de `root` en el checkout del host.
 3. **Cero prompts interactivos**: Los comandos del grupo `agent` tienen desactivada la interacción. Si falta un parámetro, fallan ruidosamente de inmediato en lugar de bloquear el proceso.
+4. **Modo Efímero por Defecto en SSH y Puertos**: Las operaciones `agent ssh` y `agent forward` activan `--ephemeral=true` por defecto, conectando directamente por IP y clave privada sin crear bloques `Host` ni modificar `~/.ssh/config` ni `~/.ssh/devcontainer-cli.config`, garantizando cero polución en el host.
 
 ---
 
@@ -310,16 +355,26 @@ devcontainer-cli agent skill install webapp-testing
 
 ---
 
-### Caso 2.5: Exposición Programática para Pruebas E2E / Browser
+### Caso 2.5: Sesión SSH y Reenvío de Puertos Efímeros (`agent ssh` / `agent forward`)
 
-**Escenario**: El agente ha levantado un servidor web en el contenedor en el puerto `8080` y necesita que una herramienta externa de navegador (Playwright en el host, Chrome DevTools) interactúe con él.
+**Escenario**: El agente requiere abrir una sesión SSH desatendida para herramientas que dependen de SSH, o necesita exponer un puerto web (ej. `8080`) para que una herramienta externa en el host (Playwright, Chrome DevTools) interactúe con la aplicación.
 
-**Comando**:
+**Comandos**:
 ```bash
+# Sesión SSH desatendida efímera (cero polución en ~/.ssh/config)
+devcontainer-cli agent ssh
+
+# Reenvío de puerto directo a 127.0.0.1:8080 en el host
 devcontainer-cli agent forward 8080
+
+# Túnel inverso efímero: permite al contenedor acceder al puerto 5432 del host
+devcontainer-cli agent forward reverse:5432
 ```
-- Vincula el puerto estrictamente a `127.0.0.1:8080` en la máquina anfitriona.
-- Permite la navegación en un *Secure Context* local sin advertencias de certificados.
+
+**Propiedades Clave**:
+- `--ephemeral=true` por defecto: la conexión se realiza directamente a la IP del contenedor con la clave privada, sin tocar `~/.ssh/config` ni `~/.ssh/devcontainer-cli.config`.
+- Al finalizar el proceso del agente, no queda ningún alias o clave huérfana en la máquina del usuario.
+- El reenvío a `127.0.0.1` asegura la navegación en un *Secure Context* local sin problemas de APIs Web bloqueadas.
 
 ---
 
