@@ -102,6 +102,7 @@ jobs:
           echo "REPO_OWNER=${OWNER,,}" >>${GITHUB_ENV}
           echo "SHORT_SHA=$(echo $GITHUB_SHA | cut -c1-7)" >> $GITHUB_ENV
           echo "TIMESTAMP=$(date +%Y%m%d-%H%M%S)" >> $GITHUB_ENV
+          echo "SOURCE_DATE_EPOCH=$(git log -1 --pretty=%ct)" >> $GITHUB_ENV
         env:
           OWNER: '${{ github.repository_owner }}'
           GITHUB_SHA: '${{ github.sha }}'
@@ -123,7 +124,8 @@ jobs:
           context: .dc_devcontainer/build
           push: true
           platforms: linux/amd64,linux/arm64
-          cache-to: type=inline
+          cache-from: type=registry,ref=ghcr.io/${{ env.REPO_OWNER }}/devcontainer-cache:base
+          cache-to: type=registry,ref=ghcr.io/${{ env.REPO_OWNER }}/devcontainer-cache:base,mode=max
           tags: |
             ghcr.io/${{ env.REPO_OWNER }}/devcontainer-base:latest
             ghcr.io/${{ env.REPO_OWNER }}/devcontainer-base:${{ env.SHORT_SHA }}-${{ env.TIMESTAMP }}
@@ -131,8 +133,8 @@ jobs:
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.description=Shared base image (Ubuntu + devuser + zsh + GitHub CLI + Zellij) for devcontainer variants
 
-  # ── Build CLI-generated devcontainer variants ──
-  build-variants:
+  # ── Level 1: Build single-language variants ──
+  build-single:
     needs: build-base-cache
     runs-on: ubuntu-latest
     strategy:
@@ -141,25 +143,105 @@ jobs:
         include:
           - name: nodejs
             description: "Node.js only"
+            export_cache: true
           - name: bun
             description: "Bun only"
+            export_cache: true
           - name: java-temurin
             description: "Java Temurin only"
+            export_cache: false
           - name: python
             description: "Python only"
+            export_cache: false
           - name: go
             description: "Go only"
+            export_cache: false
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+          cache-dependency-path: cli/go.sum
+
+      - name: Build CLI
+        working-directory: cli
+        run: go build -o devcontainer-cli ./cmd/devcontainer-cli
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Prepare environment variables
+        run: |
+          echo "REPO_OWNER=${OWNER,,}" >>${GITHUB_ENV}
+          echo "SHORT_SHA=$(echo $GITHUB_SHA | cut -c1-7)" >> $GITHUB_ENV
+          echo "TIMESTAMP=$(date +%Y%m%d-%H%M%S)" >> $GITHUB_ENV
+          echo "SOURCE_DATE_EPOCH=$(git log -1 --pretty=%ct)" >> $GITHUB_ENV
+        env:
+          OWNER: '${{ github.repository_owner }}'
+          GITHUB_SHA: '${{ github.sha }}'
+
+      - name: Generate Dockerfile
+        run: |
+          ./cli/devcontainer-cli --no-interactive --force \
+            --workspace devcontainer \
+            --profile ${{ matrix.name }} \
+            --image ghcr.io/${{ env.REPO_OWNER }}/devcontainer-${{ matrix.name }}:latest \
+            --no-build
+
+      - name: Build and push single-language image
+        uses: docker/build-push-action@v7
+        with:
+          context: .dc_devcontainer/build
+          push: true
+          platforms: linux/amd64,linux/arm64
+          cache-from: type=registry,ref=ghcr.io/${{ env.REPO_OWNER }}/devcontainer-cache:base
+          cache-to: ${{ matrix.export_cache && format('type=registry,ref=ghcr.io/{0}/devcontainer-cache:{1},mode=max', env.REPO_OWNER, matrix.name) || 'type=inline' }}
+          tags: |
+            ghcr.io/${{ env.REPO_OWNER }}/devcontainer-${{ matrix.name }}:latest
+            ghcr.io/${{ env.REPO_OWNER }}/devcontainer-${{ matrix.name }}:${{ env.SHORT_SHA }}-${{ env.TIMESTAMP }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.description=Devcontainer with ${{ matrix.description }}
+
+  # ── Level 2: Build combined-language variants (inherits single-language layers) ──
+  build-combo:
+    needs: [build-base-cache, build-single]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
           - name: node-go
+            parent: nodejs
             description: "Node.js + Go"
           - name: node-python
+            parent: nodejs
             description: "Node.js + Python"
           - name: node-java-temurin
+            parent: nodejs
             description: "Node.js + Java Temurin"
           - name: bun-go
+            parent: bun
             description: "Bun + Go"
           - name: bun-python
+            parent: bun
             description: "Bun + Python"
           - name: bun-java-temurin
+            parent: bun
             description: "Bun + Java Temurin"
 
     steps:
@@ -194,6 +276,7 @@ jobs:
           echo "REPO_OWNER=${OWNER,,}" >>${GITHUB_ENV}
           echo "SHORT_SHA=$(echo $GITHUB_SHA | cut -c1-7)" >> $GITHUB_ENV
           echo "TIMESTAMP=$(date +%Y%m%d-%H%M%S)" >> $GITHUB_ENV
+          echo "SOURCE_DATE_EPOCH=$(git log -1 --pretty=%ct)" >> $GITHUB_ENV
         env:
           OWNER: '${{ github.repository_owner }}'
           GITHUB_SHA: '${{ github.sha }}'
@@ -206,13 +289,15 @@ jobs:
             --image ghcr.io/${{ env.REPO_OWNER }}/devcontainer-${{ matrix.name }}:latest \
             --no-build
 
-      - name: Build and push Docker image
+      - name: Build and push combined-language image
         uses: docker/build-push-action@v7
         with:
           context: .dc_devcontainer/build
           push: true
           platforms: linux/amd64,linux/arm64
-          cache-from: type=registry,ref=ghcr.io/${{ env.REPO_OWNER }}/devcontainer-base:latest
+          cache-from: |
+            type=registry,ref=ghcr.io/${{ env.REPO_OWNER }}/devcontainer-cache:base
+            type=registry,ref=ghcr.io/${{ env.REPO_OWNER }}/devcontainer-cache:${{ matrix.parent }}
           cache-to: type=inline
           tags: |
             ghcr.io/${{ env.REPO_OWNER }}/devcontainer-${{ matrix.name }}:latest
