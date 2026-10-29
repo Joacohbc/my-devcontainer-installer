@@ -8,6 +8,13 @@ Este documento es la **única lista viva de tareas** del proyecto. Describe excl
 
 Actualmente no hay decisiones abiertas que bloqueen las funcionalidades en producción.
 
+### Decisiones Técnicas Resueltas
+- **Desestimación de Alpine Linux para la Imagen Base**: Tras evaluar la reducción de tamaño frente al impacto en compatibilidad de desarrollo, se desestima el reemplazo de Ubuntu 24.04 por Alpine Linux debido a:
+  1. Incompatibilidad de `musl libc` con binarios precompilados de asistentes de IA y el runtime `bun`.
+  2. Ausencia de soporte de wheels binarios `manylinux` en Python, lo que forzaría la compilación local de paquetes y degradaría el tiempo de inicio.
+  3. Necesidad de duplicar el mantenimiento de scripts de instalación de paquetes (`apk` frente a `apt`).
+  La imagen base se mantiene estandarizada en Ubuntu 24.04 LTS para garantizar máxima estabilidad y paridad de herramientas.
+
 ---
 
 ## 2. Visión

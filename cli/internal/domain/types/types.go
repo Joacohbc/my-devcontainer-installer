@@ -215,6 +215,7 @@ const (
 	SkillDataScience         SkillID = "data-science"
 	SkillChoosePythonLibrary SkillID = "choose-python-library"
 	SkillRemotion            SkillID = "remotion-create"
+	SkillHyperframes         SkillID = "hyperframes"
 	SkillClaudeVideo         SkillID = "claude-video"
 	SkillImpeccable          SkillID = "impeccable"
 	SkillWayfinder           SkillID = "wayfinder"
@@ -407,9 +408,10 @@ type BuildMode string
 const (
 	BuildModeCustom   BuildMode = "custom"
 	BuildModeProfiles BuildMode = "profiles"
+	BuildModeImage    BuildMode = "image"
 )
 
-var BuildModes = []BuildMode{BuildModeCustom, BuildModeProfiles}
+var BuildModes = []BuildMode{BuildModeCustom, BuildModeProfiles, BuildModeImage}
 
 var RemoteVariants = []string{
 	"nodejs",

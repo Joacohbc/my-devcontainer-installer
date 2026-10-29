@@ -18,6 +18,7 @@ categories:
       - theme-factory
       - algorithmic-art
       - remotion-create
+      - hyperframes
 
   - id: architecture-planning
     label: "Architecture & Planning (domain modeling, specifications, PRDs)"
@@ -204,6 +205,14 @@ skills:
     category: "frontend-ux-design"
     description: |
       Programmatic video creation in React.
+
+  - id: hyperframes
+    label: "HyperFrames (HTML/CSS to MP4 video framework by HeyGen)"
+    ref: "heygen-com/hyperframes"
+    requires_modules: ["nodejs"]
+    category: "frontend-ux-design"
+    description: |
+      Agent-native framework to build and render deterministic MP4 videos from HTML/CSS/animations.
 
   # Architecture & Planning
   - id: codebase-design

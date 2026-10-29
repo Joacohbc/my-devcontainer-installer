@@ -4,7 +4,7 @@
 # github-cli is listed first for the same reason every other built-in does it:
 # its Dockerfile layer is shared with the cached devcontainer-base image.
 id: media-editor
-label: Media Editor (Images, Audio/Video via FFmpeg, PDFs, Docs, Remotion)
+label: Media Editor (Images, Audio/Video via FFmpeg, PDFs, Docs, Remotion, HyperFrames)
 modules:
   - github-cli
   - nodejs
@@ -22,3 +22,4 @@ scripts:
 skills:
   - remotion-create
   - claude-video
+  - hyperframes

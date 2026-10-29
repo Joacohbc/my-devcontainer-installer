@@ -22,6 +22,11 @@ const SchemaVersion = "1"
 // managed label instead, so both local and remote images are covered.
 const ImageNamespace = "devcontainer-cli"
 
+// ImageNamespaceImg is the repository prefix for reusable named images built
+// by the image module (devcontainer-cli-img/<name>:<tag>). This isolates them
+// from project lifecycle cleanup (clean/destroy/prune).
+const ImageNamespaceImg = "devcontainer-cli-img"
+
 func ProjectID(config *DevcontainerConfig) string {
 	replacer := strings.NewReplacer(":", "_", "/", "_", "@", "_")
 	return replacer.Replace(config.Image)

@@ -7,24 +7,27 @@ import (
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 )
 
-// The aliases module must ship all four of its files — the three embedded
-// assets plus the generated CONTEXT.md — and wire both alias layers into every
-// rc file.
+// The aliases module must ship its three embedded assets (alias.sh,
+// get-devcontainer-context.sh, and the devcontainer-context skill) and wire
+// both alias layers into every rc file. Note that CONTEXT.md is emitted in the
+// PROJECT layer by the generator to avoid busting cache across workspaces.
 func TestAliasesModuleRender(t *testing.T) {
 	out := AliasesModule.Render(nil)
 
 	for _, frag := range []string{
 		"COPY alias.sh /home/devuser/.devcontainer_aliases.sh",
 		"COPY get-devcontainer-context.sh /home/devuser/.local/bin/get-devcontainer-context",
-		"COPY CONTEXT.md /home/devuser/CONTEXT.md",
 		"COPY skill-devcontainer-context.md /home/devuser/.devcontainer-skills/devcontainer-context/SKILL.md",
 	} {
 		if !strings.Contains(out, frag) {
 			t.Errorf("aliases module must contain %q:\n%s", frag, out)
 		}
 	}
+	if strings.Contains(out, "COPY CONTEXT.md") {
+		t.Errorf("aliases module must NOT contain COPY CONTEXT.md (moved to PROJECT layer):\n%s", out)
+	}
 
-	// The context script must land executable, and the alias file, CONTEXT.md
+	// The context script must land executable, and the alias file
 	// and the skill world-readable, all owned by devuser.
 	for _, frag := range []string{
 		"chmod 0755 /home/devuser/.local/bin/get-devcontainer-context",

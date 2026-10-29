@@ -51,15 +51,28 @@ classDiagram
         +string Dir
     }
 
+    class ImageDef {
+        +string Name
+        +string Label
+        +string Tag
+        +ImageSource Source
+        +string Ref
+        +[]SelectedModule Modules
+        +[]CustomScript Scripts
+        +string Dockerfile
+        +[]string Files
+    }
+
     DevcontainerConfig "1" *-- "many" ModuleSpec
     DevcontainerConfig "1" *-- "many" ServiceSpec
     Profile "1" o-- "many" ModuleSpec
+    ImageDef "1" o-- "many" ModuleSpec
 ```
 
 ### `DevcontainerConfig`
 Entidad raíz que representa la configuración completa persistida en `devcontainer.config.json` para un proyecto:
-- `Mode`: estrategia de compilación (`custom` o `profiles`).
-- `Image`: nombre o etiqueta de la imagen Docker final (`devcontainer-cli/<fp12>:latest` o imagen remota de GHCR).
+- `Mode`: estrategia de compilación (`custom`, `profiles` o `image`).
+- `Image`: nombre o etiqueta de la imagen Docker final (`devcontainer-cli/<fp12>:latest`, imagen remota de GHCR, o imagen nombrada `devcontainer-cli-img/<name>:<tag>`).
 - `Workspace`: identificador limpio del espacio de trabajo derivado del nombre del directorio del proyecto.
 - `Dockerfile.Modules`: lista ordenada de identificadores de módulos Dockerfile activados.
 - `Compose.Services`: lista de identificadores de servicios Compose complementarios (bases de datos, motores).
@@ -67,6 +80,16 @@ Entidad raíz que representa la configuración completa persistida en `devcontai
 - `Env`: mapa clave-valor de variables requeridas por los módulos y servicios.
 - `Skills`: configuración de habilidades de agente seleccionadas y modo de instalación (`manual` o `auto`).
 - `CustomScripts`: scripts adicionales definidos por el usuario o provistos por perfiles.
+
+### `ImageDef`
+Entidad que representa una imagen reutilizable e independiente de proyectos, persistida en `~/.config/devcontainer-cli/images/<name>/image.yml`:
+- `Name`: identificador único de la imagen (`[a-z0-9][a-z0-9_-]*`).
+- `Tag`: etiqueta de versión (por defecto `latest`).
+- `Source`: origen de la imagen (`build` para compilación local con módulos/scripts, o `remote` para consumir un registro externo).
+- `Ref`: referencia externa completa cuando `Source` es `remote` (ej. `ghcr.io/org/devcontainer:v1.0`).
+- `Modules`: módulos Dockerfile integrados en la imagen base.
+- `Scripts`: scripts personalizados de compilación.
+- `Namespace`: las imágenes locales construidas se etiquetan bajo `devcontainer-cli-img/<name>:<tag>` para aislarlas del ciclo de vida de los proyectos.
 
 ---
 
@@ -113,7 +136,18 @@ Servicios complementarios definidos en `docker-compose.yml`:
 
 ## 4. Perfiles y Temporización de Scripts (`CustomScript.When`)
 
-Un perfil agrupa módulos, configuraciones de puertos y scripts personalizados. Los scripts se ejecutan en momentos precisos según su propiedad `When`:
+Un perfil agrupa módulos, configuraciones de puertos y scripts personalizados. Existen perfiles planos de un solo lenguaje o combo (`nodejs`, `python`, `node-go`, etc.) y perfiles integrados especializados que empaquetan scripts propios y habilidades de agente:
+
+| Perfil ID | Propósito y Herramientas | Módulos Base | Scripts y Habilidades |
+|---|---|---|---|
+| `browser-tools` | Automatización de navegador y herramientas de agente (Chromium, `agent-browser`, Playwright Node/Python). | `github-cli`, `nodejs`, `pnpm`, `python`, `chrome` | `install-browser-tools.sh` (`when: build`), skill `agent-browser`. |
+| `android` | Desarrollo Android con herramientas de línea de comandos y Gradle (`cmdline-tools`, `adb`, `build-tools`, `platforms;android-34`). | `github-cli`, `java-temurin` | `install-android-tools.sh` (`when: build`), puertos `5554`, `5555`. |
+| `media-editor` | Manipulación multimedia (FFmpeg, ImageMagick, PDF utils, Pandoc, Remotion, HyperFrames). | `github-cli`, `nodejs`, `pnpm`, `chrome`, `ffmpeg` | `install-media-tools.sh` (`when: build`), skills `remotion-create`, `claude-video`, `hyperframes`. |
+| `data-science` | Ciencia de datos y análisis interactivo (JupyterLab, pandas, scikit-learn, duckdb, polars). | `github-cli`, `python`, `sqlite` | `install-datascience-tools.sh` (`when: build`), skill `data-science`. |
+| `n8n` | Automatización de flujos de trabajo local con n8n y pruebas de UI con Playwright. | `github-cli`, `nodejs`, `pnpm`, `chrome` | `install-n8n-automation-tools.sh` (`when: build`), skills `automation-n8n`, `agent-browser`. |
+| `scraper` | Web scraping avanzado y extracción (Crawl4AI, Playwright, Firecrawl, Markitdown, Trafilatura). | `github-cli`, `nodejs`, `pnpm`, `python`, `chrome`, `sqlite`, `ffmpeg` | `install-scraper-tools.sh` (`when: build`), skills `firecrawl`, `agent-browser`, `webapp-testing`. |
+
+Los scripts se ejecutan en momentos precisos según su propiedad `When`:
 
 | Momento (`when`) | Destino en Contenedor | Mecanismo de Ejecución |
 |---|---|---|

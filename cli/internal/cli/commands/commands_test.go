@@ -28,7 +28,7 @@ func TestNewRootCommand_RegistersAllSubcommands(t *testing.T) {
 		"start", "stop", "restart", "update",
 		"upgrade-cli", "config", "cleanup-tips", "shell", "logs", "copy",
 		"up", "status", "ls", "info", "network", "context", "compose",
-		"agent", "route", "init",
+		"agent", "route", "init", "image",
 	}
 	have := map[string]bool{}
 	for _, c := range root.Commands() {
@@ -2716,5 +2716,48 @@ func TestResolveSubnet(t *testing.T) {
 				t.Error("a resolved subnet must never be empty")
 			}
 		})
+	}
+}
+
+func TestImageCommand_StructureAndFlags(t *testing.T) {
+	root := NewRootCommand("test")
+	var imageCmd *cobra.Command
+	for _, c := range root.Commands() {
+		if c.Name() == "image" {
+			imageCmd = c
+			break
+		}
+	}
+	if imageCmd == nil {
+		t.Fatal("image command not registered")
+	}
+
+	subWant := []string{"list", "info", "create", "build", "pull", "export", "remove"}
+	subHave := map[string]bool{}
+	for _, c := range imageCmd.Commands() {
+		subHave[c.Name()] = true
+	}
+	for _, name := range subWant {
+		if !subHave[name] {
+			t.Errorf("expected image subcommand %q to be registered", name)
+		}
+	}
+
+	createCmd, _, err := imageCmd.Find([]string{"create"})
+	if err != nil {
+		t.Fatalf("finding image create: %v", err)
+	}
+	for _, flag := range []string{"from-profile", "remote", "tag", "label"} {
+		if createCmd.Flags().Lookup(flag) == nil {
+			t.Errorf("image create must have flag --%s", flag)
+		}
+	}
+
+	removeCmd, _, err := imageCmd.Find([]string{"remove"})
+	if err != nil {
+		t.Fatalf("finding image remove: %v", err)
+	}
+	if removeCmd.Flags().Lookup("keep-docker-image") == nil {
+		t.Error("image remove must have flag --keep-docker-image")
 	}
 }

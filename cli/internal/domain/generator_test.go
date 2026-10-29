@@ -1299,3 +1299,196 @@ func TestGenerateEnv_LinesSortedAfterHeader(t *testing.T) {
 		t.Errorf("expected .env lines sorted after header, got %v", body)
 	}
 }
+
+func parseDockerfileInstructions(content string) []string {
+	var instructions []string
+	lines := strings.Split(content, "\n")
+	var current strings.Builder
+	for _, rawLine := range lines {
+		line := strings.TrimSpace(rawLine)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		if current.Len() > 0 {
+			current.WriteString("\n")
+		}
+		current.WriteString(line)
+		if !strings.HasSuffix(line, "\\") {
+			instructions = append(instructions, current.String())
+			current.Reset()
+		}
+	}
+	if current.Len() > 0 {
+		instructions = append(instructions, current.String())
+	}
+	return instructions
+}
+
+func sharedLayerPrefix(dockerfileA, dockerfileB string) int {
+	instA := parseDockerfileInstructions(dockerfileA)
+	instB := parseDockerfileInstructions(dockerfileB)
+	minLen := len(instA)
+	if len(instB) < minLen {
+		minLen = len(instB)
+	}
+	shared := 0
+	for i := 0; i < minLen; i++ {
+		if instA[i] == instB[i] {
+			shared++
+		} else {
+			break
+		}
+	}
+	return shared
+}
+
+func TestLayerSharing_Baseline(t *testing.T) {
+	baseCfg := makeConfig(func(c *types.DevcontainerConfig) {
+		c.Workspace = "base-ws"
+		c.Dockerfile.Modules = []types.SelectedModule{}
+	})
+	baseDF := mustGenerateDockerfile(t, baseCfg)
+	baseInstCount := len(parseDockerfileInstructions(baseDF))
+
+	t.Logf("Base dockerfile total instructions: %d", baseInstCount)
+
+	for _, variant := range types.RemoteVariants {
+		prof, ok := catalog.Resolve(variant)
+		if !ok {
+			t.Fatalf("variant profile not found: %s", variant)
+		}
+		var modules []types.SelectedModule
+		for _, m := range prof.Modules {
+			modules = append(modules, types.SelectedModule{ID: types.ModuleID(m)})
+		}
+		cfg := makeConfig(func(c *types.DevcontainerConfig) {
+			c.Workspace = "test-ws"
+			c.Dockerfile.Modules = modules
+		})
+		df := mustGenerateDockerfile(t, cfg)
+		shared := sharedLayerPrefix(baseDF, df)
+		t.Logf("Variant %-18s shared instructions with base: %d", variant, shared)
+		if shared == 0 {
+			t.Errorf("Variant %s must share at least 1 leading instruction with base", variant)
+		}
+	}
+
+	profNode, ok := catalog.Resolve("nodejs")
+	if !ok {
+		t.Fatal("nodejs profile not found")
+	}
+	var nodeModules []types.SelectedModule
+	for _, m := range profNode.Modules {
+		nodeModules = append(nodeModules, types.SelectedModule{ID: types.ModuleID(m)})
+	}
+	cfgAlpha := makeConfig(func(c *types.DevcontainerConfig) {
+		c.Workspace = "ws-alpha"
+		c.Dockerfile.Modules = nodeModules
+	})
+	cfgBeta := makeConfig(func(c *types.DevcontainerConfig) {
+		c.Workspace = "ws-beta"
+		c.Dockerfile.Modules = nodeModules
+	})
+	dfAlpha := mustGenerateDockerfile(t, cfgAlpha)
+	dfBeta := mustGenerateDockerfile(t, cfgBeta)
+
+	sharedWs := sharedLayerPrefix(dfAlpha, dfBeta)
+	totalAlpha := len(parseDockerfileInstructions(dfAlpha))
+	t.Logf("nodejs ws-alpha vs ws-beta: shared %d of %d instructions", sharedWs, totalAlpha)
+}
+
+func TestGenerateDockerfile_ProjectLayerComesLast(t *testing.T) {
+	cfg := makeConfig(func(c *types.DevcontainerConfig) {
+		c.Dockerfile.Modules = []types.SelectedModule{
+			{ID: "nodejs"},
+			{ID: "pnpm"},
+		}
+		c.Dockerfile.Scripts = []types.CustomScript{
+			{File: "custom-build.sh", When: types.ScriptWhenBuild},
+		}
+	})
+	df := mustGenerateDockerfile(t, cfg)
+
+	idxProject := strings.Index(df, "## PROJECT")
+	idxCleanup := strings.Index(df, "## CLEANUP")
+	idxEnv := strings.Index(df, "## ENVIRONMENT")
+	idxCustom := strings.Index(df, "## CUSTOM SCRIPTS")
+	idxLabels := strings.Index(df, "LABEL ")
+
+	if idxProject == -1 {
+		t.Fatal("expected ## PROJECT block in dockerfile")
+	}
+	if idxCleanup == -1 || idxProject < idxCleanup {
+		t.Errorf("## PROJECT (%d) must come after ## CLEANUP (%d)", idxProject, idxCleanup)
+	}
+	if idxEnv == -1 || idxProject < idxEnv {
+		t.Errorf("## PROJECT (%d) must come after ## ENVIRONMENT (%d)", idxProject, idxEnv)
+	}
+	if idxCustom == -1 || idxProject < idxCustom {
+		t.Errorf("## PROJECT (%d) must come after ## CUSTOM SCRIPTS (%d)", idxProject, idxCustom)
+	}
+	if idxLabels == -1 || idxProject > idxLabels {
+		t.Errorf("## PROJECT (%d) must come before LABEL (%d)", idxProject, idxLabels)
+	}
+}
+
+func TestGenerateDockerfile_LeadingLayersIndependentOfWorkspace(t *testing.T) {
+	nodeProf, _ := catalog.Resolve("nodejs")
+	var mods []types.SelectedModule
+	for _, m := range nodeProf.Modules {
+		mods = append(mods, types.SelectedModule{ID: types.ModuleID(m)})
+	}
+
+	cfg1 := makeConfig(func(c *types.DevcontainerConfig) {
+		c.Workspace = "repo-1"
+		c.Dockerfile.Modules = mods
+	})
+	cfg2 := makeConfig(func(c *types.DevcontainerConfig) {
+		c.Workspace = "repo-2"
+		c.Dockerfile.Modules = mods
+	})
+
+	df1 := mustGenerateDockerfile(t, cfg1)
+	df2 := mustGenerateDockerfile(t, cfg2)
+
+	sep := "## PROJECT"
+	part1 := strings.Split(df1, sep)[0]
+	part2 := strings.Split(df2, sep)[0]
+
+	if part1 != part2 {
+		t.Fatalf("Dockerfile before %s must be byte-identical regardless of workspace", sep)
+	}
+}
+
+func TestGenerateDockerfile_VariantsShareModulePrefix(t *testing.T) {
+	nodeProf, _ := catalog.Resolve("nodejs")
+	var nodeMods []types.SelectedModule
+	for _, m := range nodeProf.Modules {
+		nodeMods = append(nodeMods, types.SelectedModule{ID: types.ModuleID(m)})
+	}
+	nodeGoProf, _ := catalog.Resolve("node-go")
+	var nodeGoMods []types.SelectedModule
+	for _, m := range nodeGoProf.Modules {
+		nodeGoMods = append(nodeGoMods, types.SelectedModule{ID: types.ModuleID(m)})
+	}
+
+	dfNode := mustGenerateDockerfile(t, makeConfig(func(c *types.DevcontainerConfig) {
+		c.Dockerfile.Modules = nodeMods
+	}))
+	dfNodeGo := mustGenerateDockerfile(t, makeConfig(func(c *types.DevcontainerConfig) {
+		c.Dockerfile.Modules = nodeGoMods
+	}))
+
+	pnpmMarker := "PNPM_HOME"
+	idxNode := strings.Index(dfNode, pnpmMarker)
+	idxNodeGo := strings.Index(dfNodeGo, pnpmMarker)
+	if idxNode == -1 || idxNodeGo == -1 {
+		t.Fatalf("expected %s in both dockerfiles", pnpmMarker)
+	}
+
+	prefixNode := dfNode[:idxNode]
+	prefixNodeGo := dfNodeGo[:idxNodeGo]
+	if prefixNode != prefixNodeGo {
+		t.Fatalf("nodejs and node-go must share prefix up to %s", pnpmMarker)
+	}
+}

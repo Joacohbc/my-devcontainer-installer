@@ -1,0 +1,18 @@
+# A repo-shipped profile for browser automation and AI agent browsing.
+#
+# github-cli is listed first for the same reason every other built-in does it:
+# its Dockerfile layer is shared with the cached devcontainer-base image.
+id: browser-tools
+label: Browser & Tools (Chromium, agent-browser, Node.js+pnpm, Python+uv)
+modules:
+  - github-cli
+  - nodejs
+  - pnpm
+  - python
+  - chrome
+scripts:
+  - file: install-browser-tools.sh
+    when: build
+# Project-scoped agent skill, installed into the workspace by the skills module.
+skills:
+  - agent-browser

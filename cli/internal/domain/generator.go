@@ -16,7 +16,7 @@ import (
 const DefaultSubnet = "172.25.0.0/28"
 
 func GenerateDockerfile(config *types.DevcontainerConfig) (string, error) {
-	if config.Mode == types.BuildModeProfiles {
+	if config.Mode == types.BuildModeProfiles || config.Mode == types.BuildModeImage {
 		return "", nil
 	}
 	resolved, err := ResolveDockerfileModules(MatchDBClientVersions(config))
@@ -42,8 +42,21 @@ func GenerateDockerfile(config *types.DevcontainerConfig) (string, error) {
 	if customScripts != "" {
 		fragments = append(fragments, customScripts)
 	}
+	fragments = append(fragments, projectLayerBlock(config))
 	fragments = append(fragments, types.DockerfileLabelBlock(config))
 	return types.GeneratedHeader + "\n\n" + strings.Join(fragments, "\n\n") + "\n", nil
+}
+
+// projectLayerBlock bakes workspace-specific files (specifically CONTEXT.md) as
+// the very last layer before labels. Emitting it after all modules, environments,
+// and custom scripts ensures leading Dockerfile layers remain byte-identical across
+// workspaces, maximizing layer cache reuse.
+func projectLayerBlock(config *types.DevcontainerConfig) string {
+	return fmt.Sprintf(`##
+## PROJECT (workspace-specific orientation context)
+##
+COPY %[1]s /home/devuser/%[1]s
+RUN chmod 0644 /home/devuser/%[1]s && chown devuser:devuser /home/devuser/%[1]s`, types.ContextFileName)
 }
 
 // renderEnvironmentBlocks turns every resolved module's declared environment
@@ -250,6 +263,9 @@ func ResolveDevcontainerImageName(config *types.DevcontainerConfig) string {
 	if config.Mode == types.BuildModeProfiles && config.Remote != nil {
 		reg := config.Remote.Registry
 		return ResolveRemoteImage(config.Remote.Variant, reg)
+	}
+	if config.Mode == types.BuildModeImage {
+		return config.Image
 	}
 	if config.Mode == types.BuildModeCustom && config.Fingerprint != "" {
 		fp := config.Fingerprint
@@ -530,7 +546,7 @@ func (c composeContext) configureDevcontainer(rendered *compose.ServiceDef) {
 	// declared in the top-level volumes section (see volumes()).
 	rendered.Volumes = append(rendered.Volumes, c.config.Compose.Volumes...)
 
-	if c.config.Mode == types.BuildModeProfiles {
+	if c.config.Mode == types.BuildModeProfiles || c.config.Mode == types.BuildModeImage {
 		rendered.Build = nil
 	} else {
 		rendered.Build = devcontainerBuild(c.config)
