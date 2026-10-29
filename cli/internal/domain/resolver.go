@@ -11,8 +11,8 @@ import (
 var categoryOrder = []types.DockerfileCategory{
 	types.CategoryBase,
 	types.CategoryInfra,
-	types.CategoryLang,
 	types.CategoryRuntime,
+	types.CategoryLang,
 	types.CategoryDB,
 	types.CategoryCleanup,
 }
