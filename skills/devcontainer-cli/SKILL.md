@@ -69,6 +69,30 @@ them by re-running generation, not by hand.
 `<workspace>-devcontainer-ssh`, databases are `<workspace>-postgres`,
 `<workspace>-redis`, `<workspace>-mongo`.
 
+### Several agents or git worktrees at once
+
+Each checkout gets its own devcontainer with no extra flags: the workspace
+comes from the directory name, so sibling worktrees (`repo-feature-a/`,
+`repo-feature-b/`) never share a container. `devcontainer.config.json` and
+`.dc_*/` are gitignored, so a fresh worktree starts with no devcontainer even
+when the main checkout has one; run `agent create` from the worktree root and
+never commit those files.
+
+- **Pick the workspace name on the first `agent create`.** That run chooses a
+  free compose subnet and saves it in `devcontainer.config.json`. Re-running
+  `agent create --workspace <other>` keeps the saved subnet while the first
+  workspace's network still holds it, and fails with
+  `subnet X overlaps with existing Docker network X`. To rename, run
+  `agent clean` first. Pass `--workspace` only when two checkouts share a
+  directory name (e.g. `~/a/app` and `~/b/app`).
+- **Run git on the host, not inside the container.** A worktree's `.git` is a
+  file pointing at the main checkout's host path, which the container does not
+  mount, so `git` fails there (`fatal: not a git repository`). Go builds stamp
+  VCS info by default, so run them with `GOFLAGS=-buildvcs=false`.
+- **Target a container explicitly** with `agent exec -c <workspace>-devcontainer-ssh`
+  when the directory's config no longer matches the container you want, and
+  check `devcontainer-cli status --all` before creating anything.
+
 ## Pre-flight: Prompt Intent & Skill Assessment
 
 Before composing or executing `agent create`, review the user's task, prompt,
