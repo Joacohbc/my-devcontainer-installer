@@ -38,7 +38,7 @@ var (
 	// All is the complete ordered catalogue of installable agent skills.
 	All []*Spec
 
-	// Categories contains the 6 semantic functional categories.
+	// Categories contains the 3 semantic functional categories.
 	Categories []*Category
 )
 

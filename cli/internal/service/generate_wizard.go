@@ -851,7 +851,7 @@ func (s GenerateService) SelectModules(base *types.DevcontainerConfig, prompt Pr
 // ProfileChoices lists the profiles usable for --profile under the "profiles"
 // build mode: those with Profile.Remote set, i.e. a published
 // ghcr.io/devcontainer-<id> image built by CI. A profile without one (e.g.
-// 'scraper') can still be applied locally via --profile in mode=custom, but
+// 'base' or a user profile) can still be applied locally via --profile in mode=custom, but
 // is left out here — offering it would just fail the pull.
 func ProfileChoices(dirs ...string) []Option {
 	var choices []Option

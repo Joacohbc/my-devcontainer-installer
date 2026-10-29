@@ -55,10 +55,10 @@ Subcommands:
   remove <id..>         Delete user-defined skills (built-ins cannot be removed).
   install [skill-ids..] Install agent skills at project level in an ephemeral container.`,
 		Example: `  devcontainer-cli config skill list
-  devcontainer-cli config skill info firecrawl
+  devcontainer-cli config skill info agent-browser
   devcontainer-cli config skill add my-skill --ref owner/repo
   devcontainer-cli config skill remove my-skill
-  devcontainer-cli config skill install firecrawl
+  devcontainer-cli config skill install agent-browser
   devcontainer-cli config skill install --all
   devcontainer-cli --with nodejs --skill my-skill`,
 	}
@@ -155,7 +155,7 @@ func newConfigSkillInfoCommand() *cobra.Command {
 		Long: `devcontainer-cli config skill info — print one skill's full definition: built-in
 or user-defined, its install ref, required modules, and its ~/CONTEXT.md
 entry when it has one.`,
-		Example:           "  devcontainer-cli config skill info firecrawl",
+		Example:           "  devcontainer-cli config skill info agent-browser",
 		Args:              cobra.ExactArgs(1),
 		SilenceUsage:      true,
 		RunE:              runConfigSkillInfo,
@@ -228,7 +228,7 @@ optional. A value missing from the flags is prompted for when interactive;
 with --no-interactive every value must come from a flag.`,
 		Example: `  devcontainer-cli config skill add my-skill --ref owner/repo --label "My Skill"
   devcontainer-cli config skill add my-skill --ref owner/repo --requires-modules nodejs,python
-  devcontainer-cli config skill add firecrawl --ref me/firecrawl --force   # shadow the built-in`,
+  devcontainer-cli config skill add agent-browser --ref me/agent-browser --force   # shadow the built-in`,
 		Args:         cobra.ExactArgs(1),
 		SilenceUsage: true,
 		RunE:         runConfigSkillAdd,
@@ -423,7 +423,7 @@ If no skill IDs are specified:
 
 Use --all to install all available agent skills (both built-in and user-defined).`,
 		Example: `  # Install specific skills
-  devcontainer-cli config skill install firecrawl
+  devcontainer-cli config skill install agent-browser
 
   # Install all available skills
   devcontainer-cli config skill install --all

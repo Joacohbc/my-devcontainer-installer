@@ -26,21 +26,19 @@ func newProfileCommand() *cobra.Command {
 		Long: `devcontainer-cli config profile — manage profiles, named bundles of Dockerfile
 modules plus your own scripts, that you can reuse when generating projects.
 
-Built-in profiles ship with the CLI, some of them (like 'scraper') carrying
-scripts of their own; your own are saved under ~/.devcontainer-cli/profiles/. A
+Built-in profiles ship with the CLI; your own are saved under ~/.devcontainer-cli/profiles/. A
 profile with no scripts is a single <id>.yml; one that carries scripts is an
-<id>/ directory holding profile.yml and the .sh files next to it. Copying a
-built-in that ships scripts writes them out as a normal user profile you can
-edit. Pass a profile to 'devcontainer-cli --profile <id>' (or pick
-one in the interactive wizard) to pre-select its modules and add its scripts.
+<id>/ directory holding profile.yml and the .sh files next to it. Pass a profile to
+'devcontainer-cli --profile <id>' (or pick one in the interactive wizard) to
+pre-select its modules and add its scripts.
 
 Every profile builds locally this way, regardless of the [remote]/[local] tag
 'config profile list' shows: [remote] means it also has a published
 ghcr.io/devcontainer-<id> image, so the same --profile <id> can instead be
 pulled with '--mode profiles --profile <id>' (or 'run --profile <id>', which
-only ever pulls) instead of built; [local] (e.g. 'scraper', and any profile
-you create yourself) has no such image, so only mode=custom applies to it —
-passing it under mode=profiles fails.
+only ever pulls) instead of built; [local] (e.g. any profile you create yourself)
+has no such image, so only mode=custom applies to it — passing it under
+mode=profiles fails.
 
 Each script declares when it runs: 'build' bakes it into the image, 'start' runs
 it once per container, 'manual' only copies it to ~/post-script/.
@@ -174,15 +172,11 @@ func runProfileInfo(cmd *cobra.Command, args []string) error {
 	console.NewLine()
 	console.Info("  Source: %s", p.Source)
 	if p.Dir != "" {
-		dir := p.Dir
-		if p.Embedded {
-			dir = "embedded:" + dir
-		}
-		console.Info("  Dir:    %s", dir)
+		console.Info("  Dir:    %s", p.Dir)
 	}
 	console.NewLine()
 
-	// p.Source/Dir/Embedded are all tagged yaml:"-", so this reproduces exactly
+	// p.Source and p.Dir are tagged yaml:"-", so this reproduces exactly
 	// the manifest a project resolving this profile would read (or that
 	// 'config profile copy'/'create' would write).
 	data, err := yaml.Marshal(p)

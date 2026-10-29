@@ -245,7 +245,7 @@ func TestRunConfigSkillInstall_ExplicitSkill_InvokesDockerRun(t *testing.T) {
 	cmd.Flags().Set("dir", t.TempDir())
 	cmd.Flags().Set("no-interactive", "true")
 
-	if err := runConfigSkillInstall(cmd, []string{"firecrawl"}); err != nil {
+	if err := runConfigSkillInstall(cmd, []string{"agent-browser"}); err != nil {
 		t.Fatalf("runConfigSkillInstall: %v", err)
 	}
 
@@ -257,8 +257,8 @@ func TestRunConfigSkillInstall_ExplicitSkill_InvokesDockerRun(t *testing.T) {
 		t.Errorf("call missing default image %s: %v", service.DefaultSkillInstallerImage, call)
 	}
 	lastArg := call[len(call)-1]
-	if !strings.Contains(lastArg, "firecrawl") {
-		t.Errorf("expected firecrawl in docker run args: %s", lastArg)
+	if !strings.Contains(lastArg, "agent-browser") {
+		t.Errorf("expected agent-browser in docker run args: %s", lastArg)
 	}
 }
 
@@ -317,12 +317,12 @@ func TestRunConfigSkillInstall_AllFlag(t *testing.T) {
 
 func TestCompleteInstallSkillArgs(t *testing.T) {
 	cmd := newConfigSkillInstallCommand()
-	completions, _ := completeInstallSkillArgs(cmd, []string{"firecrawl"}, "")
-	if slices.Contains(completions, "firecrawl") {
-		t.Error("already passed skill firecrawl should not be in completions")
+	completions, _ := completeInstallSkillArgs(cmd, []string{"agent-browser"}, "")
+	if slices.Contains(completions, "agent-browser") {
+		t.Error("already passed skill agent-browser should not be in completions")
 	}
-	if !slices.Contains(completions, "wayfinder") {
-		t.Error("wayfinder should be in completions")
+	if !slices.Contains(completions, "find-skills") {
+		t.Error("find-skills should be in completions")
 	}
 }
 
@@ -332,7 +332,7 @@ func TestRunConfigSkillInstall_ExplicitSkillsAndAll_Fails(t *testing.T) {
 	cmd.Flags().Set("dir", t.TempDir())
 	cmd.Flags().Set("no-interactive", "true")
 
-	err := runConfigSkillInstall(cmd, []string{"firecrawl"})
+	err := runConfigSkillInstall(cmd, []string{"agent-browser"})
 	if err == nil {
 		t.Fatal("expected error when both skill args and --all are passed")
 	}
@@ -406,7 +406,7 @@ func TestRunAgentSkillInstall_ExplicitSkill_InvokesDockerRun(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := runConfigSkillInstall(cmd, []string{"firecrawl"}); err != nil {
+	if err := runConfigSkillInstall(cmd, []string{"agent-browser"}); err != nil {
 		t.Fatalf("runConfigSkillInstall: %v", err)
 	}
 
@@ -418,8 +418,8 @@ func TestRunAgentSkillInstall_ExplicitSkill_InvokesDockerRun(t *testing.T) {
 		t.Errorf("call missing default image %s: %v", service.DefaultSkillInstallerImage, call)
 	}
 	lastArg := call[len(call)-1]
-	if !strings.Contains(lastArg, "firecrawl") {
-		t.Errorf("expected firecrawl in docker run args: %s", lastArg)
+	if !strings.Contains(lastArg, "agent-browser") {
+		t.Errorf("expected agent-browser in docker run args: %s", lastArg)
 	}
 }
 
@@ -437,7 +437,7 @@ func TestRunConfigSkillInstall_CustomImage_PassedToRunner(t *testing.T) {
 	cmd.Flags().Set("no-interactive", "true")
 	cmd.Flags().Set("image", "custom-registry.io/custom-utils:v1")
 
-	if err := runConfigSkillInstall(cmd, []string{"firecrawl"}); err != nil {
+	if err := runConfigSkillInstall(cmd, []string{"agent-browser"}); err != nil {
 		t.Fatalf("runConfigSkillInstall: %v", err)
 	}
 
@@ -460,7 +460,7 @@ func TestRunConfigSkillInstall_ProjectConfig_DefaultsToConfiguredSkills(t *testi
 	})
 
 	tempDir := t.TempDir()
-	configContent := `{"workspace":"testws","skills":{"skills":["firecrawl"]}}`
+	configContent := `{"workspace":"testws","skills":{"skills":["agent-browser"]}}`
 	if err := os.WriteFile(filepath.Join(tempDir, "devcontainer.config.json"), []byte(configContent), 0o644); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
@@ -478,8 +478,8 @@ func TestRunConfigSkillInstall_ProjectConfig_DefaultsToConfiguredSkills(t *testi
 		t.Fatalf("expected docker run --rm call, got %v", runner.calls)
 	}
 	lastArg := call[len(call)-1]
-	if !strings.Contains(lastArg, "firecrawl") {
-		t.Errorf("expected firecrawl in docker run args: %s", lastArg)
+	if !strings.Contains(lastArg, "agent-browser") {
+		t.Errorf("expected agent-browser in docker run args: %s", lastArg)
 	}
 }
 

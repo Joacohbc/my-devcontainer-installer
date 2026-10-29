@@ -1,32 +1,13 @@
 package catalog
 
 import (
-	"embed"
-	"io/fs"
 	"os"
-	"path"
 	"path/filepath"
-	"slices"
 	"strings"
 
 	"github.com/goccy/go-yaml"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 )
-
-// Repo-shipped profiles that carry scripts live here as data, next to the files
-// they reference — go:embed cannot reach out of its own directory, so a profile
-// with scripts cannot be a Go literal like the plain bundles below.
-//
-//go:embed profiles
-var builtinProfileFS embed.FS
-
-// BuiltinProfileFS exposes that tree so a built-in profile's scripts can be read
-// the same way a user profile's are read off disk.
-var BuiltinProfileFS fs.FS = builtinProfileFS
-
-// BuiltinProfileRoot is the directory inside BuiltinProfileFS holding one
-// subdirectory per repo-shipped profile.
-const BuiltinProfileRoot = "profiles"
 
 // ProfileFileName is the manifest inside a directory-shaped profile. A profile
 // that carries custom scripts is a directory (the scripts live next to the
@@ -56,27 +37,18 @@ type Profile struct {
 	// Remote marks that this profile id also has a published
 	// ghcr.io/devcontainer-<id> image, built by CI from this exact module list —
 	// so it is safe to offer for --profile under mode=profiles (a pull instead of a
-	// local build). A profile without it (e.g. 'scraper', or any user profile
-	// that has not set up its own matching publish) can still be applied with
-	// --profile in mode=custom; it is just never a pull target, since nothing
-	// is published under its id and the pull would 404/be denied.
+	// local build). A profile without it can still be applied with --profile in
+	// mode=custom; it is just never a pull target.
 	Remote bool   `yaml:"remote,omitempty"`
 	Source string `yaml:"-"`
 	// Dir is the directory the profile's scripts are resolved against: the
-	// profile's own directory for a directory-shaped profile, the containing
-	// directory for a flat <id>.yml, and the path inside BuiltinProfileFS for a
-	// repo-shipped one. Empty only for a profile that ships no scripts.
+	// profile's own directory for a directory-shaped profile, and the containing
+	// directory for a flat <id>.yml. Empty for a profile that ships no scripts.
 	Dir string `yaml:"-"`
-	// Embedded marks Dir as a path inside BuiltinProfileFS rather than on the
-	// host filesystem.
-	Embedded bool `yaml:"-"`
 }
 
-// BuiltinProfiles is every profile the CLI ships: the plain module bundles
-// below, followed by the repo-shipped ones that carry scripts (read from
-// BuiltinProfileFS). A bundle that needs no files stays a Go literal, which is
-// what keeps the ids the CI variant matrix depends on in one readable table.
-var BuiltinProfiles = slices.Concat(plainBuiltinProfiles, embeddedProfiles())
+// BuiltinProfiles is every profile the CLI ships: the plain module bundles below.
+var BuiltinProfiles = plainBuiltinProfiles
 
 // github-cli is listed first in every profile so its Dockerfile layer is shared
 // with the base cache image (devcontainer-base), maximising Docker layer cache
@@ -199,35 +171,6 @@ var plainBuiltinProfiles = []Profile{
 			string(types.ModuleJavaTemurin),
 		},
 	},
-}
-
-// embeddedProfiles reads the repo-shipped profiles out of BuiltinProfileFS. A
-// malformed one is a build-time mistake in this repo, not user input, so
-// TestEmbeddedProfilesAreWellFormed asserts every entry parses instead of
-// letting one disappear silently here.
-func embeddedProfiles() []Profile {
-	entries, err := fs.ReadDir(builtinProfileFS, BuiltinProfileRoot)
-	if err != nil {
-		return nil
-	}
-	var out []Profile
-	for _, e := range entries {
-		if !e.IsDir() {
-			continue
-		}
-		dir := path.Join(BuiltinProfileRoot, e.Name())
-		data, rerr := fs.ReadFile(builtinProfileFS, path.Join(dir, ProfileFileName))
-		if rerr != nil {
-			continue
-		}
-		var p Profile
-		if yaml.Unmarshal(data, &p) != nil || p.ID == "" {
-			continue
-		}
-		p.Dir, p.Embedded = dir, true
-		out = append(out, p)
-	}
-	return out
 }
 
 // Resolve looks an id up across the given user directories (earlier ones win)

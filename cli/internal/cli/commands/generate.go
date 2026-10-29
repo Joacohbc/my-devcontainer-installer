@@ -57,7 +57,7 @@ func addGenerateFlags(cmd *cobra.Command) {
 	f.String(flagVolumes, "", "Extra volume mounts on the devcontainer (e.g. myvol:/data,./cache:/cache); 'none' clears them")
 	f.String(flagForwardPorts, "", "Ports 'port-forward' tunnels when called with no argument (e.g. 3000,8080:80, reverse:5432 for a host port reachable inside the container); 'none' clears them")
 	f.Bool(flagSharedConfig, true, "Mount the global shared AI/dev tool config volume (devcontainer-shared-config) so logins/sessions persist across containers; --shared-config=false to opt out")
-	f.String(flagProfile, "", "Apply a profile: a module bundle for mode=custom (any profile, e.g. 'scraper'), or the pull target for mode=profiles (must be [remote]-tagged). See 'config profile list'.")
+	f.String(flagProfile, "", "Apply a profile: a module bundle for mode=custom (any profile, e.g. 'python'), or the pull target for mode=profiles (must be [remote]-tagged). See 'config profile list'.")
 	f.String(flagPreset, "", "Deprecated alias for --profile")
 	_ = f.MarkDeprecated(flagPreset, "use --profile instead")
 	f.StringArray(flagScript, nil, "Custom script to add, as <path>[:build|start|service|manual] (default build); repeatable. build bakes it into the image, start runs once per container, service runs as background service on every start, manual only copies it to ~/post-script/")
@@ -101,7 +101,7 @@ const remoteVariantSSH = "ssh"
 // its only caller for that is 'run', which always pulls, plus "ssh" (the
 // hand-built full image, not a catalog profile). Everywhere else every known
 // profile is offered, since --profile also selects a mode=custom module
-// bundle, where a local-build-only profile like 'scraper' is valid too.
+// bundle, where a local-build-only profile like 'base' or a user profile is valid too.
 func profileIDs(remoteOnly bool) []string {
 	ids := make([]string, 0)
 	for _, p := range catalog.All(domain.ProfileDirs()...) {
@@ -119,7 +119,7 @@ func profileIDs(remoteOnly bool) []string {
 // validRemoteVariant reports whether v is usable as --profile's pull target
 // under mode=profiles (or 'run', which is always that target): "ssh", or a
 // profile id with a published image. A profile that exists but was never
-// published (e.g. 'scraper') is rejected here — it would only fail the pull —
+// published (e.g. 'base') is rejected here — it would only fail the pull —
 // even though it remains valid for --profile under mode=custom.
 func validRemoteVariant(v string) bool {
 	if v == remoteVariantSSH {
@@ -130,7 +130,7 @@ func validRemoteVariant(v string) bool {
 }
 
 // remoteVariantError builds the mode=profiles / 'run' --profile validation
-// error. A profile that exists but has no published image (e.g. 'scraper')
+// error. A profile that exists but has no published image (e.g. 'base' or a user profile)
 // gets a pointer to the local-build path instead of being reported as merely
 // "unknown".
 func remoteVariantError(v string) error {
@@ -328,7 +328,7 @@ func parseGenFlags(cmd *cobra.Command) (*genFlags, error) {
 	}
 	// --profile is validated against the [remote] tag only once the effective
 	// mode is known (validateConfig): it is shared with mode=custom, where any
-	// profile — including a [local]-only one like 'scraper' — is valid.
+	// profile — including a [local]-only one like 'base' — is valid.
 	return g, nil
 }
 
@@ -502,7 +502,7 @@ func validateConfig(cwd string, config *types.DevcontainerConfig, flags *genFlag
 		return fmt.Errorf("profile %q is a pull target only (the hand-built full image); use --mode %s to pull it, or pick a profile that carries modules", remoteVariantSSH, types.BuildModeProfiles)
 	}
 	// --profile is shared with mode=custom, where any profile (including a
-	// [local]-only one like 'scraper') is valid — so this can only be checked
+	// [local]-only one like 'base') is valid — so this can only be checked
 	// once the effective mode is known, here rather than at flag-parse time.
 	if config.Mode == types.BuildModeProfiles && config.Remote != nil && config.Remote.Variant != "" && !validRemoteVariant(config.Remote.Variant) {
 		return remoteVariantError(config.Remote.Variant)

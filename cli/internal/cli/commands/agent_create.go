@@ -43,7 +43,7 @@ pass --temporal together with --profile to spawn an ephemeral container.`,
   devcontainer-cli agent create --mode profiles --profile nodejs
 
   # Start from a profile and publish a port
-  devcontainer-cli agent create --profile scraper --ports 3000:3000
+  devcontainer-cli agent create --profile python --ports 3000:3000
 
   # Generate and build, but leave the stack down
   devcontainer-cli agent create --with golang --no-up
@@ -77,7 +77,7 @@ func addAgentCreateFlags(cmd *cobra.Command) {
 	f.String(flagVolumes, "", "Extra volume mounts on the devcontainer (e.g. myvol:/data,./cache:/cache); 'none' clears them")
 	f.String(flagForwardPorts, "", "Ports 'port-forward' tunnels when called with no argument (e.g. 3000,8080:80, reverse:5432 for a host port reachable inside the container); 'none' clears them")
 	f.Bool(flagSharedConfig, true, "Mount the global shared AI/dev tool config volume (devcontainer-shared-config) so logins/sessions persist across containers; --shared-config=false to opt out")
-	f.String(flagProfile, "", "Apply a profile: a module bundle for mode=custom (any profile, e.g. 'scraper'), or the pull target for mode=profiles (must be [remote]-tagged). See 'config profile list'.")
+	f.String(flagProfile, "", "Apply a profile: a module bundle for mode=custom (any profile, e.g. 'python'), or the pull target for mode=profiles (must be [remote]-tagged). See 'config profile list'.")
 	f.StringArray(flagScript, nil, "Custom script to add, as <path>[:build|start|service|manual] (default build); repeatable. build bakes it into the image, start runs once per container, service runs as background service on every start, manual only copies it to ~/post-script/")
 	f.String(flagSkill, "", "Comma-separated agent skills installed into the project workspace; implies the nodejs module. See 'config skill list' (built-in + your own)")
 	f.String(flagSkillsMode, "", "How the project's agent skills get installed: manual (default — you run 'install-skills') or auto (on every container start, writing into the workspace unprompted)")

@@ -200,7 +200,7 @@ func TestConfigureHonorsSharedConfigAnswer(t *testing.T) {
 }
 
 // ProfileChoices backs --profile under mode=profiles, so it must only offer
-// profiles with a published image, never e.g. 'scraper' (local build only).
+// profiles with a published image, never e.g. 'base' (local build only).
 func TestProfileChoicesOnlyListsRemoteProfiles(t *testing.T) {
 	choices := ProfileChoices()
 
@@ -222,8 +222,8 @@ func TestProfileChoicesOnlyListsRemoteProfiles(t *testing.T) {
 		}
 	}
 	for _, c := range choices {
-		if c.Value == "scraper" {
-			t.Error("ProfileChoices must not offer 'scraper': it has no published remote image")
+		if c.Value == "base" {
+			t.Error("ProfileChoices must not offer 'base': it has no published remote image")
 		}
 	}
 }
@@ -659,7 +659,7 @@ func TestSkillsGateDeclinedAsksNothingElse(t *testing.T) {
 
 	base := &types.DevcontainerConfig{Skills: types.SkillsConfig{
 		Mode:   types.SkillModeAuto,
-		Skills: []types.SkillID{types.SkillFirecrawl},
+		Skills: []types.SkillID{types.SkillAgentBrowser},
 	}}
 	ctx := wizardContext{base: base}
 
@@ -690,7 +690,7 @@ func TestConfigureProfileSkillsArePreSelected(t *testing.T) {
 	if err := os.MkdirAll(profilesDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	manifest := "id: withskills\nmodules: [nodejs]\nskills: [firecrawl]\nskills_mode: auto\n"
+	manifest := "id: withskills\nmodules: [nodejs]\nskills: [agent-browser]\nskills_mode: auto\n"
 	if err := os.WriteFile(filepath.Join(profilesDir, "withskills.yml"), []byte(manifest), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -711,7 +711,7 @@ func TestConfigureProfileSkillsArePreSelected(t *testing.T) {
 		t.Fatalf("Configure: %v", err)
 	}
 
-	if len(cfg.Skills.Skills) != 1 || cfg.Skills.Skills[0] != types.SkillFirecrawl {
+	if len(cfg.Skills.Skills) != 1 || cfg.Skills.Skills[0] != types.SkillAgentBrowser {
 		t.Errorf("expected the profile's skill to be pre-selected, got %+v", cfg.Skills.Skills)
 	}
 	if cfg.Skills.Mode != types.SkillModeAuto {
@@ -730,7 +730,7 @@ func TestConfigureExplicitSkillsBeatProfile(t *testing.T) {
 	if err := os.MkdirAll(profilesDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	manifest := "id: withskills\nmodules: [nodejs]\nskills: [firecrawl]\nskills_mode: auto\n"
+	manifest := "id: withskills\nmodules: [nodejs]\nskills: [find-skills]\nskills_mode: auto\n"
 	if err := os.WriteFile(filepath.Join(profilesDir, "withskills.yml"), []byte(manifest), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -746,7 +746,7 @@ func TestConfigureExplicitSkillsBeatProfile(t *testing.T) {
 	}
 	// Clear the page the profile's own skill sits on, then pick another one —
 	// they share a page when they share a category, so order matters here.
-	answers[skillPageKeyFor(t, types.SkillFirecrawl)] = []string{}
+	answers[skillPageKeyFor(t, types.SkillFindSkills)] = []string{}
 	answers[skillPageKeyFor(t, types.SkillAgentBrowser)] = []string{string(types.SkillAgentBrowser)}
 	prompter := scriptedPrompter{answers: answers}
 

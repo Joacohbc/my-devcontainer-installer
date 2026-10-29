@@ -513,7 +513,7 @@ func TestResolveRunProfile_RejectsLocalOnlyAcceptsSSH(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 
 	cmd := newRunCommand()
-	if err := cmd.Flags().Set("profile", "scraper"); err != nil {
+	if err := cmd.Flags().Set("profile", "base"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := resolveRunProfile(cmd, true); err == nil {
@@ -1913,7 +1913,7 @@ func TestRunConfigSkillInfo_UnknownSkillFails(t *testing.T) {
 func TestRunConfigSkillInfo_KnownSkillSucceeds(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	cmd := &cobra.Command{}
-	if err := runConfigSkillInfo(cmd, []string{"firecrawl"}); err != nil {
+	if err := runConfigSkillInfo(cmd, []string{"agent-browser"}); err != nil {
 		t.Fatalf("runConfigSkillInfo: %v", err)
 	}
 }
@@ -2145,7 +2145,7 @@ func TestInitAndConfigure_ExplicitSkillsSkipsPrompt(t *testing.T) {
 	flags := &genFlags{
 		interactive: true,
 		withModules: []string{"nodejs"},
-		skills:      []types.SkillID{types.SkillFirecrawl},
+		skills:      []types.SkillID{types.SkillAgentBrowser},
 	}
 	svc := service.GenerateService{}
 
@@ -2153,7 +2153,7 @@ func TestInitAndConfigure_ExplicitSkillsSkipsPrompt(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(config.Skills.Skills) != 1 || config.Skills.Skills[0] != types.SkillFirecrawl {
+	if len(config.Skills.Skills) != 1 || config.Skills.Skills[0] != types.SkillAgentBrowser {
 		t.Errorf("expected the explicit skill to be applied, got %+v", config.Skills.Skills)
 	}
 }
@@ -2197,7 +2197,7 @@ func TestValidateConfig_KeepsPinnedWorkspaceOnCollision(t *testing.T) {
 	}
 }
 
-// mode=profiles rejects a [local]-only --profile (e.g. 'scraper'): it has no
+// mode=profiles rejects a [local]-only --profile (e.g. 'base'): it has no
 // published image, so the pull would just fail — caught here instead, once
 // the effective mode is known, not eagerly at flag-parse time (where the same
 // --profile is valid for mode=custom).
@@ -2207,7 +2207,7 @@ func TestValidateConfig_ModeProfilesRejectsLocalOnlyProfile(t *testing.T) {
 	config := &types.DevcontainerConfig{
 		Workspace: "ws",
 		Mode:      types.BuildModeProfiles,
-		Remote:    &types.RemoteConfig{Variant: "scraper"},
+		Remote:    &types.RemoteConfig{Variant: "base"},
 	}
 	flags := &genFlags{interactive: true, keepWorkspace: true}
 	err := validateConfig(cwd, config, flags, service.GenerateService{})

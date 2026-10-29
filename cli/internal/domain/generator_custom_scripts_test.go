@@ -132,7 +132,7 @@ func TestGenerateDockerfile_RemoteModeIgnoresCustomScripts(t *testing.T) {
 // skills themselves are runtime data, so nothing about them is baked in.
 func TestGenerateDockerfile_SkillsModule(t *testing.T) {
 	cfg := makeConfig(func(c *types.DevcontainerConfig) {
-		c.Skills = types.SkillsConfig{Skills: []types.SkillID{types.SkillFirecrawl}}
+		c.Skills = types.SkillsConfig{Skills: []types.SkillID{types.SkillAgentBrowser}}
 	})
 	domain.ApplySelectedSkills(cfg)
 	df := mustGenerateDockerfile(t, cfg)
@@ -142,7 +142,7 @@ func TestGenerateDockerfile_SkillsModule(t *testing.T) {
 	assertContainsStr(t, df, "start.d/95-autostart-project-skills.sh", "skills entrypoint hook")
 	// The chosen skills reach the container through compose, so an image is not
 	// rebuilt when the list changes.
-	assertNotContainsStr(t, df, "firecrawl", "the skill refs must not be baked into the image")
+	assertNotContainsStr(t, df, "agent-browser", "the skill refs must not be baked into the image")
 }
 
 // The refs and the mode ride on the devcontainer service's environment.
@@ -171,7 +171,7 @@ func TestGenerateCompose_NoSkillsEnvironmentWithoutSkills(t *testing.T) {
 // An agent reads what its own skills cover from CONTEXT.md.
 func TestGenerateContext_SkillSections(t *testing.T) {
 	cfg := makeConfig(func(c *types.DevcontainerConfig) {
-		c.Skills = types.SkillsConfig{Skills: []types.SkillID{types.SkillFirecrawl}}
+		c.Skills = types.SkillsConfig{Skills: []types.SkillID{types.SkillAgentBrowser}}
 	})
 	domain.ApplySelectedSkills(cfg)
 
@@ -179,6 +179,6 @@ func TestGenerateContext_SkillSections(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	assertContainsStr(t, doc, "## Firecrawl skill", "the skill's own section")
+	assertContainsStr(t, doc, "## Agent-browser skill", "the skill's own section")
 	assertContainsStr(t, doc, "## Agent skills", "the skills module section")
 }

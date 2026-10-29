@@ -1018,7 +1018,7 @@ func TestGenerateDockerfile_AutoStartOrdering(t *testing.T) {
 			{ID: "python"}, {ID: "nodejs"},
 			{ID: "claude-code"}, {ID: "graphify"}, {ID: "caveman"},
 		}
-		c.Skills = types.SkillsConfig{Skills: []types.SkillID{types.SkillFirecrawl}}
+		c.Skills = types.SkillsConfig{Skills: []types.SkillID{types.SkillAgentBrowser}}
 	})
 	domain.ApplySelectedSkills(cfg)
 	df := mustGenerateDockerfile(t, cfg)

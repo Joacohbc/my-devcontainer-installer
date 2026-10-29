@@ -37,7 +37,7 @@ the existing container first.
 --profile takes a profile id with a published image — run
 'devcontainer-cli config profile list' and look for the [remote] tag — or the
 special value 'ssh' for the hand-built full image. A [local] profile (e.g.
-'scraper', or one of your own) has no matching ghcr.io/devcontainer-<id>
+'base', or one of your own) has no matching ghcr.io/devcontainer-<id>
 image and is rejected here; build it instead with 'devcontainer-cli --profile
 <id>' and the default mode=custom, which generates project files and builds.`,
 		Example: `  # Interactive: pick a profile and options
