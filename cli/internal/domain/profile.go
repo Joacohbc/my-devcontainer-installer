@@ -130,13 +130,17 @@ func ProfileScripts(p catalog.Profile) ([]types.CustomScript, error) {
 	if len(p.Scripts) == 0 {
 		return nil, nil
 	}
-	if p.Dir == "" {
-		return nil, fmt.Errorf("profile %q declares scripts but has no directory to resolve them against", p.ID)
-	}
 	out := make([]types.CustomScript, 0, len(p.Scripts))
 	for _, s := range p.Scripts {
 		if err := ValidateCustomScript(s); err != nil {
 			return nil, fmt.Errorf("profile %q: %w", p.ID, err)
+		}
+		if s.Source != "" {
+			out = append(out, s)
+			continue
+		}
+		if p.Dir == "" {
+			return nil, fmt.Errorf("profile %q declares scripts but has no directory to resolve them against", p.ID)
 		}
 		s.Source = filepath.Join(p.Dir, s.File)
 		out = append(out, s)

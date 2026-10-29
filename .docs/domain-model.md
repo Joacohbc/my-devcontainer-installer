@@ -147,6 +147,16 @@ Los scripts personalizados definidos por el usuario o provistos en sus perfiles 
 | `service` | `~/post-script/services.d/<script>.sh` | Ejecutado en segundo plano por `entrypoint.sh` en cada arranque del contenedor (sin centinela `.done`). |
 | `manual` | `~/post-script/<script>.sh` | No se ejecuta automáticamente; queda disponible para ejecución manual por parte del usuario. |
 
+### Composición de Múltiples Perfiles (`--profile a,b`)
+
+En `mode=custom`, la bandera `--profile` acepta una lista de identificadores separados por comas que se fusionan en un único perfil efectivo antes de compilar la imagen local:
+
+- **Unión de Módulos**: Se combinan los módulos de todos los perfiles preservando el orden de primera aparición y eliminando duplicados. Los conflictos entre módulos incompatibles (ej. `java-temurin` y `java-openjdk`) son detectados por el resolver del catálogo.
+- **Concatenación de Scripts**: Los scripts personalizados se concatenan en el orden especificado. Si dos perfiles declaran scripts con el mismo nombre de archivo de destino en el directorio de construcción (`custom-<archivo>.sh`), el comando falla inmediatamente nombrando a ambos perfiles en conflicto.
+- **Unión de Habilidades y Puertos**: Las habilidades de agente (`skills`), puertos publicados (`ports`) y túneles SSH (`forward_ports`) se combinan mediante unión deduplicada en orden de primera aparición.
+- **Validación de Modo de Habilidades**: Si dos o más perfiles especifican modos explícitos de instalación (`skills_mode`) que entren en contradicción (por ejemplo, `manual` y `auto`), la generación se rechaza con error explícito.
+- **Invariante de Perfil Único para Descarga Remota**: `mode=profiles` y `devcontainer-cli run` únicamente admiten un único perfil remoto publicado (`[remote]`). Si se pasa una lista separada por comas a estos comandos, se genera un error descriptivo no interactivo.
+
 ---
 
 ## 5. Máquina de Estados del Ciclo de Vida

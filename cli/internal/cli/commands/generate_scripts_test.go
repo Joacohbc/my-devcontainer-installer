@@ -315,7 +315,9 @@ func TestApplyGenFlags_PersistsScripts(t *testing.T) {
 	config := &types.DevcontainerConfig{}
 	flags := &genFlags{scripts: []types.CustomScript{{File: "setup.sh", When: types.ScriptWhenStart, Source: "/tmp/setup.sh"}}}
 
-	applyGenFlags(config, flags)
+	if err := applyGenFlags(config, flags); err != nil {
+		t.Fatalf("unexpected error applying gen flags: %v", err)
+	}
 
 	if len(config.Dockerfile.Scripts) != 1 {
 		t.Fatalf("expected the script to be persisted, got %+v", config.Dockerfile.Scripts)
@@ -390,10 +392,12 @@ func TestParseGenFlags_RejectsUnknownSkillAndMode(t *testing.T) {
 // precedence --with has over the profile's modules.
 func TestApplyGenFlags_SkillPrecedence(t *testing.T) {
 	fromProfile := &types.DevcontainerConfig{}
-	applyGenFlags(fromProfile, &genFlags{
+	if err := applyGenFlags(fromProfile, &genFlags{
 		profileSkills:     []types.SkillID{types.SkillAgentBrowser},
 		profileSkillsMode: types.SkillModeManual,
-	})
+	}); err != nil {
+		t.Fatalf("unexpected error applying gen flags: %v", err)
+	}
 	if len(fromProfile.Skills.Skills) != 1 || fromProfile.Skills.Mode != types.SkillModeManual {
 		t.Errorf("expected the profile's skills to apply, got %+v", fromProfile.Skills)
 	}
@@ -404,12 +408,14 @@ func TestApplyGenFlags_SkillPrecedence(t *testing.T) {
 	}
 
 	explicit := &types.DevcontainerConfig{}
-	applyGenFlags(explicit, &genFlags{
+	if err := applyGenFlags(explicit, &genFlags{
 		skills:            []types.SkillID{types.SkillAgentBrowser},
 		skillsMode:        string(types.SkillModeAuto),
 		profileSkills:     []types.SkillID{},
 		profileSkillsMode: types.SkillModeManual,
-	})
+	}); err != nil {
+		t.Fatalf("unexpected error applying gen flags: %v", err)
+	}
 	if explicit.Skills.Mode != types.SkillModeAuto {
 		t.Errorf("an explicit --skills-mode must win over the profile's, got %q", explicit.Skills.Mode)
 	}
@@ -419,10 +425,12 @@ func TestApplyGenFlags_SkillPrecedence(t *testing.T) {
 // the same precedence --with has over the profile's modules.
 func TestApplyGenFlags_PortPrecedence(t *testing.T) {
 	fromProfile := &types.DevcontainerConfig{}
-	applyGenFlags(fromProfile, &genFlags{
+	if err := applyGenFlags(fromProfile, &genFlags{
 		profilePorts:        []string{"3000"},
 		profileForwardPorts: []string{"5432:postgres:5432"},
-	})
+	}); err != nil {
+		t.Fatalf("unexpected error applying gen flags: %v", err)
+	}
 	if !slices.Equal(fromProfile.Compose.Ports, []string{"3000"}) {
 		t.Errorf("expected the profile's published ports, got %v", fromProfile.Compose.Ports)
 	}
@@ -432,12 +440,14 @@ func TestApplyGenFlags_PortPrecedence(t *testing.T) {
 
 	explicit := &types.DevcontainerConfig{}
 	ports, forward := []string{"8080:80"}, []string{"9229"}
-	applyGenFlags(explicit, &genFlags{
+	if err := applyGenFlags(explicit, &genFlags{
 		ports:               &ports,
 		forwardPorts:        &forward,
 		profilePorts:        []string{"3000"},
 		profileForwardPorts: []string{"5432"},
-	})
+	}); err != nil {
+		t.Fatalf("unexpected error applying gen flags: %v", err)
+	}
 	if !slices.Equal(explicit.Compose.Ports, ports) {
 		t.Errorf("an explicit --ports must win, got %v", explicit.Compose.Ports)
 	}
@@ -448,7 +458,9 @@ func TestApplyGenFlags_PortPrecedence(t *testing.T) {
 	// "none" clears them rather than falling back to the profile's.
 	cleared := &types.DevcontainerConfig{}
 	empty := []string{}
-	applyGenFlags(cleared, &genFlags{ports: &empty, profilePorts: []string{"3000"}})
+	if err := applyGenFlags(cleared, &genFlags{ports: &empty, profilePorts: []string{"3000"}}); err != nil {
+		t.Fatalf("unexpected error applying gen flags: %v", err)
+	}
 	if len(cleared.Compose.Ports) != 0 {
 		t.Errorf("expected --ports none to clear them, got %v", cleared.Compose.Ports)
 	}

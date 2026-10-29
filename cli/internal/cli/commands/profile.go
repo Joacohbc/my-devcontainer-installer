@@ -28,9 +28,11 @@ modules plus your own scripts, that you can reuse when generating projects.
 
 Built-in profiles ship with the CLI; your own are saved under ~/.devcontainer-cli/profiles/. A
 profile with no scripts is a single <id>.yml; one that carries scripts is an
-<id>/ directory holding profile.yml and the .sh files next to it. Pass a profile to
-'devcontainer-cli --profile <id>' (or pick one in the interactive wizard) to
-pre-select its modules and add its scripts.
+<id>/ directory holding profile.yml and the .sh files next to it. Pass one or
+more profiles to 'devcontainer-cli --profile <id1>,<id2>' (or pick one in the
+interactive wizard) to compose module bundles and combine their scripts. In mode=custom, profiles stack together (modules union, scripts
+concatenated, ports and skills unioned); under mode=profiles or 'run', exactly
+one profile is accepted.
 
 Every profile builds locally this way, regardless of the [remote]/[local] tag
 'config profile list' shows: [remote] means it also has a published
@@ -68,7 +70,8 @@ Subcommands:
   devcontainer-cli config profile info nodejs
   devcontainer-cli config profile create
   devcontainer-cli config profile copy nodejs my-node
-  devcontainer-cli --profile my-node`,
+  devcontainer-cli --profile my-node
+  devcontainer-cli --profile nodejs,my-tools`,
 	}
 	cmd.AddCommand(newProfileListCommand())
 	cmd.AddCommand(newProfileInfoCommand())

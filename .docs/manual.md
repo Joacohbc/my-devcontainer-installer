@@ -267,6 +267,42 @@ devcontainer-cli port-forward reverse:5432
 
 ---
 
+### Caso 1.10: Composición de Perfiles (Lenguaje Base + Perfil Personal de Herramientas)
+
+**Escenario**: Dispone de un perfil personal con herramientas y scripts propios (por ejemplo, `my-ai-tools` con utilidades de SQLite, scripts de inicialización y habilidades de agente) y desea reutilizarlo sobre cualquier perfil de lenguaje (`python`, `nodejs` o `go`) sin duplicar definiciones de perfiles.
+
+**Paso a paso**:
+1. Cree su perfil personal de complementos en `~/.devcontainer-cli/profiles/my-ai-tools/`:
+   - `profile.yml`:
+     ```yaml
+     id: my-ai-tools
+     label: Mis Herramientas de IA
+     modules:
+       - sqlite
+     scripts:
+       - file: setup-tools.sh
+         when: build
+     skills:
+       - agent-browser
+     ports:
+       - "8080:80"
+     ```
+   - Coloque el script `setup-tools.sh` en el mismo directorio.
+2. Combine el perfil del lenguaje con su perfil de complementos pasando una lista separada por comas:
+   ```bash
+   devcontainer-cli agent create --profile python,my-ai-tools
+   ```
+   O mediante el comando directo:
+   ```bash
+   devcontainer-cli --profile python,my-ai-tools
+   ```
+3. El entorno resultante fusiona automáticamente:
+   - **Módulos**: `github-cli`, `python`, `sqlite` (orden de primera aparición, sin duplicados).
+   - **Scripts**: Ejecuta el script `setup-tools.sh` en la fase de construcción.
+   - **Habilidades y Puertos**: Registra la habilidad `agent-browser` y publica el puerto `8080:80`.
+
+---
+
 # PARTE II: Casos de Uso para Agentes Autónomos de IA
 
 ---

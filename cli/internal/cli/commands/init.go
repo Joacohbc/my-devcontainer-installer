@@ -56,7 +56,7 @@ func addInitFlags(cmd *cobra.Command) {
 	f.String(flagVolumes, "", "Extra volume mounts on the devcontainer")
 	f.String(flagForwardPorts, "", "Ports 'port-forward' tunnels by default (a 'reverse:' prefix tunnels a host port into the container)")
 	f.Bool(flagSharedConfig, true, "Mount global shared tool config volume")
-	f.String(flagProfile, "", "Apply a profile bundle")
+	f.String(flagProfile, "", "Apply profile bundle(s) (comma-separated for custom builds)")
 	f.Bool(flagNoUp, false, "Generate and build only; leave containers stopped")
 	f.Bool(flagNoBuild, false, "Skip image build step after generating")
 	f.Bool(flagNoInteractive, false, "Non-interactive mode")
@@ -64,7 +64,7 @@ func addInitFlags(cmd *cobra.Command) {
 	f.Bool(flagForce, false, "Overwrite existing files without prompting")
 
 	completeProfileFunc := func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		return profileIDs(false), cobra.ShellCompDirectiveNoFileComp
+		return completeCSV(toComplete, profileIDs(false)), cobra.ShellCompDirectiveNoFileComp
 	}
 	_ = cmd.RegisterFlagCompletionFunc(flagProfile, completeProfileFunc)
 	_ = cmd.RegisterFlagCompletionFunc(flagMode, staticCompletion(string(types.BuildModeCustom), string(types.BuildModeProfiles)))

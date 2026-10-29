@@ -1,6 +1,7 @@
 package catalog
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -292,4 +293,127 @@ func readProfile(path string) (Profile, bool) {
 
 func hasYAMLSuffix(name string) bool {
 	return strings.HasSuffix(name, ".yml") || strings.HasSuffix(name, ".yaml")
+}
+
+func appendUnique[T comparable](dst []T, seen map[T]bool, items []T) []T {
+	for _, item := range items {
+		if !seen[item] {
+			seen[item] = true
+			dst = append(dst, item)
+		}
+	}
+	return dst
+}
+
+// MergeProfiles merges an ordered list of profiles into a single effective profile.
+//   - Modules: union of module IDs, deduplicated, preserving first-seen order.
+//   - Scripts: concatenated in order. If two scripts share the same destination
+//     build file name (s.BuildFile()) across different profiles, an error is returned
+//     naming both profiles. If a script's Source is not yet set and the originating
+//     profile has a Dir, Source is resolved against it.
+//   - Skills: union of skill IDs, deduplicated, preserving first-seen order.
+//   - Ports and ForwardPorts: union, deduplicated, preserving first-seen order.
+//   - SkillsMode: if multiple profiles declare conflicting explicit skills modes, an
+//     error is returned. Otherwise, the explicit mode (if any) is used.
+func MergeProfiles(profiles ...Profile) (Profile, error) {
+	if len(profiles) == 0 {
+		return Profile{}, nil
+	}
+	if len(profiles) == 1 {
+		return profiles[0], nil
+	}
+
+	var (
+		ids          []string
+		labels       []string
+		modules      []string
+		scripts      []types.CustomScript
+		skills       []types.SkillID
+		ports        []string
+		forwardPorts []string
+
+		seenModules      = make(map[string]bool)
+		seenSkills       = make(map[types.SkillID]bool)
+		seenPorts        = make(map[string]bool)
+		seenForwardPorts = make(map[string]bool)
+		scriptDests      = make(map[string]string) // dest build file -> profile ID/label
+
+		explicitMode     types.SkillMode
+		explicitModeProf string
+	)
+
+	for _, p := range profiles {
+		profName := p.ID
+		if profName == "" {
+			profName = p.Label
+		}
+		if profName == "" {
+			profName = "unnamed"
+		}
+
+		if p.ID != "" {
+			ids = append(ids, p.ID)
+		}
+		if p.Label != "" {
+			labels = append(labels, p.Label)
+		}
+
+		modules = appendUnique(modules, seenModules, p.Modules)
+
+		for _, s := range p.Scripts {
+			dest := s.BuildFile()
+			if prevProf, exists := scriptDests[dest]; exists && prevProf != profName {
+				return Profile{}, fmt.Errorf("script collision: profiles %q and %q both declare destination %q", prevProf, profName, dest)
+			}
+			scriptDests[dest] = profName
+
+			if s.Source == "" && p.Dir != "" {
+				s.Source = filepath.Join(p.Dir, s.File)
+			}
+			scripts = append(scripts, s)
+		}
+
+		skills = appendUnique(skills, seenSkills, p.Skills)
+		ports = appendUnique(ports, seenPorts, p.Ports)
+		forwardPorts = appendUnique(forwardPorts, seenForwardPorts, p.ForwardPorts)
+
+		if p.SkillsMode != "" {
+			if explicitMode == "" {
+				explicitMode = p.SkillsMode
+				explicitModeProf = profName
+			} else if explicitMode != p.SkillsMode {
+				return Profile{}, fmt.Errorf("conflicting skills modes: profile %q specifies %q, but profile %q specifies %q", explicitModeProf, explicitMode, profName, p.SkillsMode)
+			}
+		}
+	}
+
+	merged := Profile{
+		ID:           strings.Join(ids, ","),
+		Label:        strings.Join(labels, " + "),
+		Modules:      modules,
+		Scripts:      scripts,
+		Skills:       skills,
+		SkillsMode:   explicitMode,
+		Ports:        ports,
+		ForwardPorts: forwardPorts,
+		Remote:       false,
+	}
+	return merged, nil
+}
+
+// ResolveComposed resolves each ID in the given list and merges them into an
+// effective profile. If any profile ID is unknown, an error is returned.
+func ResolveComposed(ids []string, userDirs ...string) (Profile, error) {
+	if len(ids) == 0 {
+		return Profile{}, nil
+	}
+	resolved := make([]Profile, 0, len(ids))
+	for _, id := range ids {
+		p, ok := Resolve(id, userDirs...)
+		if !ok {
+			return Profile{}, fmt.Errorf("unknown profile: %s", id)
+		}
+		resolved = append(resolved, p)
+	}
+	return MergeProfiles(resolved...)
 }

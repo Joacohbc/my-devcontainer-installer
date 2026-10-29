@@ -34,7 +34,7 @@ unrelated container entirely — the prompt rejects it and asks again (and
 --name fails the same way non-interactively); pick a different name or remove
 the existing container first.
 
---profile takes a profile id with a published image — run
+--profile takes exactly one profile id with a published image — run
 'devcontainer-cli config profile list' and look for the [remote] tag — or the
 special value 'ssh' for the hand-built full image. A [local] profile (e.g.
 'base', or one of your own) has no matching ghcr.io/devcontainer-<id>
@@ -51,7 +51,7 @@ image and is rejected here; build it instead with 'devcontainer-cli --profile
 		SilenceUsage: true,
 		RunE:         runQuickRun,
 	}
-	cmd.Flags().String("profile", "", "[remote]-tagged profile id to run as a prebuilt image, e.g. ssh, nodejs, python (required with --no-interactive); see 'config profile list'")
+	cmd.Flags().String("profile", "", "Single [remote]-tagged profile id to run as a prebuilt image, e.g. ssh, nodejs, python (required with --no-interactive); see 'config profile list'")
 	cmd.Flags().String("name", "", "Container name (default: dc-<profile>); if it belongs to an existing quick-run container it is reused/restarted, but a name already used by any other container is rejected")
 	cmd.Flags().StringSlice("volumes", nil, "Volume mounts (e.g. myvol:/workspace); repeatable or comma-separated")
 	cmd.Flags().StringSlice("ports", nil, "Port mappings (e.g. 2222:22); bound to 127.0.0.1 unless --expose-all; repeatable or comma-separated")
@@ -177,6 +177,9 @@ func resolveRunOptions(cmd *cobra.Command, svc service.RunService) (runOptions, 
 func resolveRunProfile(cmd *cobra.Command, interactive bool) (string, error) {
 	profile, _ := cmd.Flags().GetString("profile")
 	if profile != "" {
+		if len(splitCSV(profile)) > 1 {
+			return "", fmt.Errorf("'run' accepts exactly one profile, got %q (run pulls a prebuilt image; multiple profiles can only be combined with mode=custom)", profile)
+		}
 		if !validRemoteVariant(profile) {
 			return "", remoteVariantError(profile)
 		}
