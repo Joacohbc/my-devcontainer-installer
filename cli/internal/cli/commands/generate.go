@@ -46,7 +46,7 @@ const (
 
 func addGenerateFlags(cmd *cobra.Command) {
 	f := cmd.Flags()
-	f.String(flagMode, "", "Build mode: custom (default, full local build) or profiles (pull a prebuilt image)")
+	f.String(flagMode, "", "Build mode: custom (default, full local build), profiles (pull a prebuilt image), or image (use a reusable image)")
 	f.String(flagRegistry, "", "Container registry prefix for remote images (overrides global)")
 	f.String(flagWith, "", "Comma-separated dockerfile modules (e.g. nodejs,golang,rust)")
 	f.String(flagService, "", "Comma-separated compose services (e.g. mongo,postgres,redis)")
@@ -80,7 +80,7 @@ func addGenerateFlags(cmd *cobra.Command) {
 		return completeCSV(toComplete, catalog.AgentSkillIDs(domain.SkillDirs()...)), cobra.ShellCompDirectiveNoFileComp
 	})
 	_ = cmd.RegisterFlagCompletionFunc(flagSkillsMode, staticCompletion(string(types.SkillModeAuto), string(types.SkillModeManual)))
-	_ = cmd.RegisterFlagCompletionFunc(flagMode, staticCompletion(string(types.BuildModeCustom), string(types.BuildModeProfiles)))
+	_ = cmd.RegisterFlagCompletionFunc(flagMode, staticCompletion(string(types.BuildModeCustom), string(types.BuildModeProfiles), string(types.BuildModeImage)))
 	_ = cmd.RegisterFlagCompletionFunc(flagWith, func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return completeCSV(toComplete, catalog.ModuleIDs()), cobra.ShellCompDirectiveNoFileComp
 	})
@@ -322,8 +322,8 @@ func parseGenFlags(cmd *cobra.Command) (*genFlags, error) {
 	}
 
 	if g.mode != "" {
-		if g.mode != string(types.BuildModeCustom) && g.mode != string(types.BuildModeProfiles) {
-			return nil, fmt.Errorf("invalid --mode: %s. Expected one of: %s", g.mode, strings.Join([]string{string(types.BuildModeCustom), string(types.BuildModeProfiles)}, ", "))
+		if g.mode != string(types.BuildModeCustom) && g.mode != string(types.BuildModeProfiles) && g.mode != string(types.BuildModeImage) {
+			return nil, fmt.Errorf("invalid --mode: %s. Expected one of: %s", g.mode, strings.Join([]string{string(types.BuildModeCustom), string(types.BuildModeProfiles), string(types.BuildModeImage)}, ", "))
 		}
 	}
 	// --profile is validated against the [remote] tag only once the effective
@@ -489,6 +489,10 @@ func validateConfig(cwd string, config *types.DevcontainerConfig, flags *genFlag
 			strings.Join(ids, ", "))
 	}
 
+	if config.Mode == types.BuildModeImage && config.Image == "" {
+		return fmt.Errorf("mode=image requires --image <name> (run 'devcontainer-cli image list' to see available images)")
+	}
+
 	if config.Mode == types.BuildModeProfiles && config.Remote == nil {
 		return fmt.Errorf("mode=profiles requires --profile (a [remote]-tagged profile id — run 'devcontainer-cli config profile list' to see them, or 'ssh' for the full image)")
 	}
@@ -584,7 +588,7 @@ func materializeCustomScripts(config *types.DevcontainerConfig, buildDir string)
 // prepareBuildDir constructs the build target filesystem structure and validates dependencies.
 func prepareBuildDir(cwd string, config *types.DevcontainerConfig, paths project.Paths) (map[string]string, []string, error) {
 	buildDir := paths.BuildDir
-	skipBuildArtifacts := config.Mode == types.BuildModeProfiles
+	skipBuildArtifacts := config.Mode == types.BuildModeProfiles || config.Mode == types.BuildModeImage
 
 	if err := os.MkdirAll(buildDir, 0o755); err != nil {
 		return nil, nil, err
@@ -872,6 +876,11 @@ func applyGenFlags(config *types.DevcontainerConfig, flags *genFlags) {
 
 	if flags.mode != "" {
 		config.Mode = types.BuildMode(flags.mode)
+		if config.Mode == types.BuildModeImage && flags.image != "" {
+			if def, ok, _ := domain.ResolveImageDef(flags.image); ok {
+				config.Image = domain.ImageTag(def)
+			}
+		}
 	}
 	if flags.workspace != "" {
 		config.Workspace = flags.workspace

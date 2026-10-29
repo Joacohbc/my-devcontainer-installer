@@ -166,7 +166,7 @@ func (s GenerateService) MaterializeCustomScripts(config *types.DevcontainerConf
 // PrepareBuildDir sets up build directories, copies assets and returns file contents map.
 func (s GenerateService) PrepareBuildDir(config *types.DevcontainerConfig, paths project.Paths) (map[string]string, []string, error) {
 	buildDir := paths.BuildDir
-	skipBuildArtifacts := config.Mode == types.BuildModeProfiles
+	skipBuildArtifacts := config.Mode == types.BuildModeProfiles || config.Mode == types.BuildModeImage
 
 	if err := os.MkdirAll(buildDir, 0o755); err != nil {
 		return nil, nil, err

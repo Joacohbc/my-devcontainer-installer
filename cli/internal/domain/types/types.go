@@ -407,9 +407,10 @@ type BuildMode string
 const (
 	BuildModeCustom   BuildMode = "custom"
 	BuildModeProfiles BuildMode = "profiles"
+	BuildModeImage    BuildMode = "image"
 )
 
-var BuildModes = []BuildMode{BuildModeCustom, BuildModeProfiles}
+var BuildModes = []BuildMode{BuildModeCustom, BuildModeProfiles, BuildModeImage}
 
 var RemoteVariants = []string{
 	"nodejs",
