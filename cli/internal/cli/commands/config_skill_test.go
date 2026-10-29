@@ -732,6 +732,38 @@ func TestRunConfigSkillAdd_Discovery_SingleSkillNoPrompt(t *testing.T) {
 	}
 }
 
+// A source that holds a single skill (e.g. a /tree/<branch>/<path> URL) has
+// nothing to choose from, so --no-interactive must not demand --all or --pick.
+func TestRunConfigSkillAdd_Discovery_SingleSkillNonInteractive(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	cmd := newTestConfigSkillAddCmd(t)
+
+	singlePayload := &skillsdiscovery.DiscoveredRaw{
+		RawJSON: []byte(`[{"name":"pdf","status":"installed","source":"anthropics/skills","path":"/tmp/test/.claude/skills/pdf"}]`),
+		SkillMDs: map[string][]byte{
+			"/tmp/test/.claude/skills/pdf": []byte("---\nname: pdf\ndescription: PDF skill.\n---\n# PDF"),
+		},
+	}
+
+	oldFactory := configSkillServiceFactory
+	configSkillServiceFactory = func() service.ConfigService {
+		return service.ConfigService{
+			Report:          console,
+			DiscoveryRunner: &fakeDiscoveryRunner{payload: singlePayload},
+		}
+	}
+	t.Cleanup(func() { configSkillServiceFactory = oldFactory })
+
+	if err := runConfigSkillAdd(cmd, []string{"https://github.com/anthropics/skills/tree/main/skills/pdf"}); err != nil {
+		t.Fatalf("expected a single discovered skill to be saved without --all or --pick: %v", err)
+	}
+
+	loaded := catalog.LoadUserSkills(domain.SkillDir())
+	if len(loaded) != 1 || string(loaded[0].ID) != "pdf" {
+		t.Errorf("expected pdf skill to be saved, got %+v", loaded)
+	}
+}
+
 func TestRunConfigSkillAdd_Discovery_MultiselectPrompt(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	cmd := newConfigSkillAddCommand() // interactive mode

@@ -290,10 +290,10 @@ func runConfigSkillAddDiscovery(cmd *cobra.Command, source string) error {
 			return err
 		}
 		selected = matched
-	} else if !interactive {
-		return fmt.Errorf("non-interactive mode requires --all or --pick")
 	} else if len(discovered) == 1 {
 		selected = discovered
+	} else if !interactive {
+		return fmt.Errorf("non-interactive mode requires --all or --pick")
 	} else {
 		choices := make([]service.Option, 0, len(discovered))
 		for _, d := range discovered {
