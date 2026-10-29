@@ -83,7 +83,7 @@ When operating on devcontainer workspaces, agents must strictly use the provided
 | `add-dockerfile-module` | Adding or updating a Dockerfile module in `internal/domain/modules/dockerfile/` |
 | `add-compose-service` | Adding or updating a companion Compose service in `internal/domain/modules/compose/` |
 | `add-cli-command` | Adding or modifying Cobra commands and subcommands in `internal/cli/commands/` |
-| `add-profile` | Creating or updating built-in or embedded script profiles in `internal/domain/catalog/profiles/` |
+| `add-profile` | Creating or updating built-in plain profiles in `internal/domain/catalog/profiles.go` (script-carrying profiles are user profiles) |
 | `add-agent-skill` | Adding curated agent skills to `internal/domain/modules/skills/skills.yml` |
 
 ## Subagents (`.agents/agents/`)

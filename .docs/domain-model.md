@@ -47,7 +47,6 @@ classDiagram
         +[]CustomScript Scripts
         +[]string Skills
         +bool Remote
-        +bool Embedded
         +string Dir
     }
 

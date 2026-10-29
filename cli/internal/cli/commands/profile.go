@@ -594,8 +594,8 @@ func saveProfile(dir string, p catalog.Profile) (string, error) {
 		if s.Source == "" {
 			continue
 		}
-		// Goes through the domain reader so copying a repo-shipped profile lands
-		// its embedded scripts on disk just like a user profile's.
+		// Goes through the domain reader, the same path generation uses to read a
+		// profile's scripts.
 		data, err := domain.ReadCustomScript(s)
 		if err != nil {
 			return "", err

@@ -242,8 +242,8 @@ stage_context_skill() {
 }
 
 # Scripts under post-script/start.d/ are the non-interactive installers
-# (Claude Code, Antigravity, Copilot, OpenCode, then the agent-wiring tools
-# Graphify/Caveman) the generator marked as auto-start. The ENTIRE block runs as
+# (Claude Code, Antigravity, Copilot, OpenCode, then any user start scripts)
+# the generator marked as auto-start. The ENTIRE block runs as
 # devuser (never root): a single 'su - devuser' login shell owns the loop, the
 # sentinels and the logs, so nothing under the home is left root-owned. It runs
 # in the BACKGROUND so SSH comes up immediately, and only once per container — a
