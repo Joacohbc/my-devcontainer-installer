@@ -301,6 +301,41 @@ devcontainer-cli port-forward reverse:5432
    - **Scripts**: Ejecuta el script `setup-tools.sh` en la fase de construcción.
    - **Habilidades y Puertos**: Registra la habilidad `agent-browser` y publica el puerto `8080:80`.
 
+### Caso 1.11: Descubrimiento e Incorporación de Habilidades de Agente (`config skill add <source>`)
+
+**Escenario**: Desea inspeccionar un repositorio de habilidades de agente (por ejemplo `anthropics/skills` o una URL Git) e incorporar habilidades seleccionadas en su catálogo de usuario (`~/.devcontainer-cli/skills/`) sin declarar manifiestos manualmente.
+
+**Requisitos previos**:
+- Node.js >= 22.20 instalado en la máquina anfitriona.
+- Acceso a `npx` en el entorno local.
+
+> [!NOTE]
+> La telemetría de Skills CLI se mantiene habilitada intencionalmente durante el descubrimiento, ya que `DISABLE_TELEMETRY` también desactiva el servicio de auditoría de seguridad provisto por Snyk (`[snyk: <rating>]`) que la CLI muestra al seleccionar habilidades.
+
+**Modo Interactivo (con multiselección y auditoría de seguridad)**:
+```bash
+# Descubrir e interactuar con el selector múltiple
+devcontainer-cli config skill add anthropics/skills
+```
+*Si el repositorio contiene una única habilidad, se guardará directamente sin requerir confirmación interactiva. Si contiene múltiples habilidades, se presentará un selector con nombre, descripción corta y calificación de seguridad Snyk.*
+
+**Modo No Interactivo / Automatizado**:
+```bash
+# Incorporar todas las habilidades descubiertas
+devcontainer-cli config skill add anthropics/skills --all
+
+# Incorporar únicamente habilidades específicas
+devcontainer-cli config skill add anthropics/skills --pick pdf,pptx
+
+# Forzar sobreescritura si ya existen habilidades previas con el mismo identificador
+devcontainer-cli config skill add anthropics/skills --all --force
+```
+
+**Modo Manual (compatibilidad con scripts existentes)**:
+```bash
+devcontainer-cli config skill add mi-habilidad --ref owner/repo --label "Mi Habilidad"
+```
+
 ---
 
 # PARTE II: Casos de Uso para Agentes Autónomos de IA

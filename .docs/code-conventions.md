@@ -54,7 +54,7 @@ func runDown(cmd *cobra.Command, _ []string) error {
 1. **Delegación Total al Servicio**: `RunE` solo procesa argumentos, resuelve banderas de Cobra, instancia el servicio con `ui.Console{}` e invoca el método correspondiente.
 2. **Prohibición de Docker y Procesos**: Ningún comando bajo `internal/cli/commands` puede importar `internal/infra/docker` ni `os/exec`.
 3. **Reutilización de Ayudantes de Banderas**: Utilizar siempre los ayudantes definidos en `flags.go` (`addYesFlag`, `addInteractiveFlag`, `addWorkspaceFlags`) para mantener descripciones y nombres de banderas unificados.
-4. **Soporte No Interactivo**: Nuevos subcomandos deben aceptar `--no-interactive` (no `--non-interactive`; la raíz acepta ambos por retrocompatibilidad). Ante `--no-interactive`, cualquier parámetro obligatorio no provisto debe retornar un error inmediato sin detenerse a consultar.
+4. **Soporte No Interactivo**: Nuevos subcomandos deben aceptar `--no-interactive` (no `--non-interactive`; la raíz acepta ambos por retrocompatibilidad). Ante `--no-interactive`, cualquier parámetro obligatorio no provisto debe retornar un error inmediato sin detenerse a consultar. En comandos que efectúan descubrimiento múltiple (como `config skill add <source>`), se exige el uso explícito de `--all` o `--pick <elementos>`.
 5. **Composición de Perfiles en `--profile`**: En modo `custom`, la bandera `--profile` acepta listas separadas por comas (`--profile a,b`) con autocompletado mediante `completeCSV`. En `mode=profiles` y en el comando `run`, debe aceptarse estrictamente un único perfil remoto, rechazando cualquier valor CSV con un error explícito y no interactivo.
 
 ---

@@ -91,6 +91,11 @@ Entidad que representa una imagen reutilizable e independiente de proyectos, per
 - `Scripts`: scripts personalizados de compilación.
 - `Namespace`: las imágenes locales construidas se etiquetan bajo `devcontainer-cli-img/<name>:<tag>` para aislarlas del ciclo de vida de los proyectos.
 
+### `UserSkillManifest` y `DiscoveredSkill`
+Entidades asociadas a habilidades de asistente definidas por el usuario (`~/.devcontainer-cli/skills/<id>.yml`):
+- `UserSkillManifest`: manifiesto en formato YAML que especifica identificador normalizado (`ID`), etiqueta descriptiva (`Label`), origen Git o URL (`Ref`), selector secundario opcional (`Skill`), módulos requeridos (`RequiresModules`) y directiva de orientación contextual para `~/CONTEXT.md` (`Context.Title`, `Context.Body`).
+- `DiscoveredSkill`: representación en memoria obtenida durante el proceso de descubrimiento (`npx skills add <source> --copy -y --json` en directorio temporal). Almacena auditoría de seguridad provista por Snyk (`Snyk`), estado de instalación (`Status`), descripción extraída del frontmatter YAML de `SKILL.md` y manifiesto preparado para su persistencia.
+
 ---
 
 ## 2. Catálogo de Módulos Dockerfile (`internal/domain/catalog`)

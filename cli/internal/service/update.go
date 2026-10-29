@@ -39,7 +39,7 @@ func (s UpdateService) UpdateContainer(containerName string) (string, error) {
 	if err := pullImage(image); err != nil {
 		return image, err
 	}
-	s.Report.Success("Pulled " + image)
+	s.Report.Success("Pulled %s", image)
 	return image, nil
 }
 
@@ -66,7 +66,7 @@ func (s UpdateService) UpdateOne(projectDir string, config *types.DevcontainerCo
 		if err := pullImage(image); err != nil {
 			return image, false
 		}
-		s.Report.Success("Pulled " + image)
+		s.Report.Success("Pulled %s", image)
 		return image, true
 	}
 
@@ -83,7 +83,7 @@ func (s UpdateService) UpdateOne(projectDir string, config *types.DevcontainerCo
 	if err := composeBuild(projectDir, composeFile, args); err != nil {
 		return config.Image, false
 	}
-	s.Report.Success("Rebuilt " + config.Image)
+	s.Report.Success("Rebuilt %s", config.Image)
 	return config.Image, true
 }
 

@@ -20,7 +20,8 @@ const gitInitKey = "git-init"
 // import/export. It owns validation, persistence and success reporting; the cli
 // parses args and prints the read values.
 type ConfigService struct {
-	Report Reporter
+	Report          Reporter
+	DiscoveryRunner SkillDiscoveryRunner
 }
 
 const (
