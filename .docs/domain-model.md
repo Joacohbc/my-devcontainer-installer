@@ -51,15 +51,28 @@ classDiagram
         +string Dir
     }
 
+    class ImageDef {
+        +string Name
+        +string Label
+        +string Tag
+        +ImageSource Source
+        +string Ref
+        +[]SelectedModule Modules
+        +[]CustomScript Scripts
+        +string Dockerfile
+        +[]string Files
+    }
+
     DevcontainerConfig "1" *-- "many" ModuleSpec
     DevcontainerConfig "1" *-- "many" ServiceSpec
     Profile "1" o-- "many" ModuleSpec
+    ImageDef "1" o-- "many" ModuleSpec
 ```
 
 ### `DevcontainerConfig`
 Entidad raíz que representa la configuración completa persistida en `devcontainer.config.json` para un proyecto:
-- `Mode`: estrategia de compilación (`custom` o `profiles`).
-- `Image`: nombre o etiqueta de la imagen Docker final (`devcontainer-cli/<fp12>:latest` o imagen remota de GHCR).
+- `Mode`: estrategia de compilación (`custom`, `profiles` o `image`).
+- `Image`: nombre o etiqueta de la imagen Docker final (`devcontainer-cli/<fp12>:latest`, imagen remota de GHCR, o imagen nombrada `devcontainer-cli-img/<name>:<tag>`).
 - `Workspace`: identificador limpio del espacio de trabajo derivado del nombre del directorio del proyecto.
 - `Dockerfile.Modules`: lista ordenada de identificadores de módulos Dockerfile activados.
 - `Compose.Services`: lista de identificadores de servicios Compose complementarios (bases de datos, motores).
@@ -67,6 +80,16 @@ Entidad raíz que representa la configuración completa persistida en `devcontai
 - `Env`: mapa clave-valor de variables requeridas por los módulos y servicios.
 - `Skills`: configuración de habilidades de agente seleccionadas y modo de instalación (`manual` o `auto`).
 - `CustomScripts`: scripts adicionales definidos por el usuario o provistos por perfiles.
+
+### `ImageDef`
+Entidad que representa una imagen reutilizable e independiente de proyectos, persistida en `~/.config/devcontainer-cli/images/<name>/image.yml`:
+- `Name`: identificador único de la imagen (`[a-z0-9][a-z0-9_-]*`).
+- `Tag`: etiqueta de versión (por defecto `latest`).
+- `Source`: origen de la imagen (`build` para compilación local con módulos/scripts, o `remote` para consumir un registro externo).
+- `Ref`: referencia externa completa cuando `Source` es `remote` (ej. `ghcr.io/org/devcontainer:v1.0`).
+- `Modules`: módulos Dockerfile integrados en la imagen base.
+- `Scripts`: scripts personalizados de compilación.
+- `Namespace`: las imágenes locales construidas se etiquetan bajo `devcontainer-cli-img/<name>:<tag>` para aislarlas del ciclo de vida de los proyectos.
 
 ---
 

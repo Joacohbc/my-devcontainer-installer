@@ -156,3 +156,23 @@ El orden es estricto: `stage_workspace` determina el UID/GID de devuser; `stage_
 - **Contexto**: Modificar directamente `~/.ssh/config` del usuario anfitrión genera riesgo de corrupción de configuración o colisiones con conexiones personales.
 - **Decisión**: Escribir todos los bloques gestionados en `~/.ssh/devcontainer-cli.config` y vincularlo mediante una única directiva `Include` al inicio de `~/.ssh/config`.
 - **Consecuencias**: Aislamiento seguro, limpieza trivial de alias obsoletos y cero interferencia con la configuración personal del anfitrión.
+
+### D14: Capa de Proyecto al Final del Dockerfile
+- **Contexto**: `CONTEXT.md` se copiaba tempranamente en el módulo `aliases`, invalidando la caché de capas de Docker para todos los módulos de lenguaje y herramientas cuando cambiaba el workspace o la configuración de red.
+- **Decisión**: Mover la copia de `CONTEXT.md` y cualquier archivo dependiente del contexto a la última capa del Dockerfile, bajo una sección explícita `## PROJECT`.
+- **Consecuencias**: Las capas de herramientas son 100% reutilizables entre proyectos que compartan la misma receta. Los builds secundarios locales toman segundos.
+
+### D15: Modo de Compilación `image`
+- **Contexto**: Los usuarios requerían utilizar imágenes preexistentes de registros privados o construidas independientemente sin recrear un Dockerfile por proyecto.
+- **Decisión**: Introducir el modo `image` (`BuildModeImage`), donde el generador omite la creación del Dockerfile y apunta directamente a la referencia registrada por el módulo `image`.
+- **Consecuencias**: Desacoplamiento total entre la preparación de entornos de sistema y el ciclo de vida de los proyectos.
+
+### D16: Aislamiento de Ciclo de Vida para Imágenes Nombradas
+- **Contexto**: El comando `destroy` y el limpiador de imágenes huérfanas eliminaban imágenes con el prefijo `devcontainer-cli/` asociadas al proyecto.
+- **Decisión**: Asignar a las imágenes creadas por el módulo `image` el prefijo reservado `devcontainer-cli-img/<name>:<tag>`.
+- **Consecuencias**: Destruir un proyecto nunca elimina una imagen compartida que otros proyectos puedan estar utilizando.
+
+### D17: Verificación de Compatibilidad por Contrato en Imágenes Externas
+- **Contexto**: Descargar imágenes arbitrarias de Docker Hub o GHCR que carecen de `devuser`, OpenSSH o el script de inicialización provoca fallos silenciosos o cuelgues en el arranque.
+- **Decisión**: Exigir que toda imagen consumida mediante el modo `image` cumpla el contrato formal inspeccionado vía `CheckImageCompat`: entrypoint en `/entrypoint.sh` y etiqueta `dev.devcontainer-installer.managed="true"`.
+- **Consecuencias**: Mensajes de error claros e inmediatos ante imágenes incompatibles antes de intentar levantar el stack de contenedores.
