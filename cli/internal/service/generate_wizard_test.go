@@ -782,7 +782,7 @@ func TestCategorySteps_PreSelectsRequiredDependencies(t *testing.T) {
 
 	state := NewState()
 	state.Set(stepKeyMode, string(types.BuildModeCustom))
-	state.Set(categoryStepKey(types.UICategoryAITools), []string{"browser-harness"})
+	state.Set(categoryStepKey(types.UICategoryAITools), []string{"codex-cli"})
 
 	steps := ctx.categorySteps(state)
 	stepMap := map[string]Step{}
@@ -790,7 +790,7 @@ func TestCategorySteps_PreSelectsRequiredDependencies(t *testing.T) {
 		stepMap[s.Key] = s
 	}
 
-	// For Languages category, python should be pre-selected in Initial
+	// For Languages category, nodejs should be pre-selected in Initial
 	langStep, ok := stepMap[categoryStepKey(types.UICategoryLanguages)]
 	if !ok {
 		t.Fatalf("missing languages category step")
@@ -800,11 +800,11 @@ func TestCategorySteps_PreSelectsRequiredDependencies(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected Initial to be []string, got %T", langField.Initial)
 	}
-	if !slices.Contains(langInitial, "python") {
-		t.Errorf("expected python to be pre-selected in languages, got %v", langInitial)
+	if !slices.Contains(langInitial, "nodejs") {
+		t.Errorf("expected nodejs to be pre-selected in languages, got %v", langInitial)
 	}
 
-	// For Dev Tools category, chrome and ffmpeg should be pre-selected in Initial
+	// For Dev Tools category, github-cli should be pre-selected in Initial
 	devStep, ok := stepMap[categoryStepKey(types.UICategoryDevTools)]
 	if !ok {
 		t.Fatalf("missing dev-tools category step")
@@ -814,10 +814,7 @@ func TestCategorySteps_PreSelectsRequiredDependencies(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected Initial to be []string, got %T", devField.Initial)
 	}
-	if !slices.Contains(devInitial, "chrome") {
-		t.Errorf("expected chrome to be pre-selected in dev-tools, got %v", devInitial)
-	}
-	if !slices.Contains(devInitial, "ffmpeg") {
-		t.Errorf("expected ffmpeg to be pre-selected in dev-tools, got %v", devInitial)
+	if !slices.Contains(devInitial, "github-cli") {
+		t.Errorf("expected github-cli to be pre-selected in dev-tools, got %v", devInitial)
 	}
 }

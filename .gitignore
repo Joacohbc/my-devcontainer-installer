@@ -2,7 +2,6 @@ cli/node_modules/
 cli/dist/
 
 .antigravitycli/
-graphify-out/
 .wayfinder/
 
 # devcontainer-cli

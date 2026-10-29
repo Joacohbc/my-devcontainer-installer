@@ -82,16 +82,12 @@ jq|--version|jq
 lsof|-v|lsof
 ffmpeg|-version|ffmpeg
 chromium|--version|Chromium
-ngrok|--version|ngrok
 cloudflared|--version|cloudflared
 claude|--version|Claude Code
 codex|--version|Codex CLI
 copilot|--version|GitHub Copilot CLI
 agy|--version|Antigravity CLI
 opencode|--version|OpenCode
-graphify|--version|Graphify
-caveman|--version|Caveman
-browser-harness|--version|Browser Harness
 '
 
 # first_line trims a version banner down to one usable line, skipping the JVM's

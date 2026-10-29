@@ -31,17 +31,10 @@ const (
 	ModuleCodexCli       ModuleID = "codex-cli"
 	ModuleAntigravityCli ModuleID = "antigravity-cli"
 	ModuleCopilotCli     ModuleID = "copilot-cli"
-	ModuleGraphify       ModuleID = "graphify"
-	ModuleCaveman        ModuleID = "caveman"
-	ModuleClaudeMem      ModuleID = "claude-mem"
-	ModuleContextMode    ModuleID = "context-mode"
-	ModuleEcc            ModuleID = "ecc"
-	ModuleBrowserHarness ModuleID = "browser-harness"
 	ModuleZellij         ModuleID = "zellij"
 	ModuleChrome         ModuleID = "chrome"
 	ModuleFfmpeg         ModuleID = "ffmpeg"
 	ModuleDod            ModuleID = "dod"
-	ModuleNgrok          ModuleID = "ngrok"
 	ModuleCloudflared    ModuleID = "cloudflared"
 	ModuleSkills         ModuleID = "skills"
 	ModuleCleanup        ModuleID = "cleanup"
@@ -73,8 +66,8 @@ const PostScriptDir = DevUserHome + "/post-script"
 // PostScriptStartDir holds the non-interactive installer scripts the entrypoint
 // runs automatically (in the background, once per container) on start. Scripts
 // are copied here with a numeric "NN-" prefix so the entrypoint's sorted glob
-// runs them in the intended order (agents first, then the agent-wiring tools
-// graphify/caveman last). Manual/interactive scripts stay under PostScriptDir.
+// runs them in the intended order (agents first, then downstream tools and skills
+// last). Manual/interactive scripts stay under PostScriptDir.
 const PostScriptStartDir = PostScriptDir + "/start.d"
 
 // PostScriptServicesDir holds background service scripts the entrypoint runs

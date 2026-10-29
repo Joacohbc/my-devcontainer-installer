@@ -72,9 +72,6 @@ Los instaladores no interactivos se ejecutan automáticamente en segundo plano a
 ~/post-script/start.d/50-install-opencode.sh         # OpenCode
 ~/post-script/start.d/50-install-antigravity.sh      # Antigravity CLI
 ~/post-script/start.d/50-install-copilot.sh          # GitHub Copilot
-~/post-script/start.d/90-install-graphify.sh         # Graphify
-~/post-script/start.d/90-install-caveman.sh          # Caveman
-~/post-script/start.d/90-install-browser-harness.sh  # Browser Harness
 ```
 
 Si no incluyó un módulo en la imagen inicial, puede materializar cualquiera de estos instaladores en un contenedor en ejecución con:

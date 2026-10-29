@@ -47,7 +47,7 @@ func seedSelectedModules(selected []types.SelectedModule) (map[types.ModuleID]ma
 	}
 	for _, sel := range selected {
 		if catalog.GetDockerfileModule(sel.ID) == nil {
-			return nil, ResolverError{fmt.Errorf("Unknown module: %s", sel.ID)}
+			return nil, ResolverError{fmt.Errorf("unknown module %q: run 'devcontainer-cli agent cli-info' to list available modules; third-party tools can be added as a profile script (when: start)", sel.ID)}
 		}
 		options := sel.Options
 		if options == nil {

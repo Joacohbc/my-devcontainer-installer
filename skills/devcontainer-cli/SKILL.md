@@ -174,9 +174,8 @@ generated files without asking.
 Module ids for `--with`: `github-cli`, `nodejs`, `pnpm`, `yarn`, `bun`,
 `python`, `go`, `rust`, `php`, `c-cpp`, `java-temurin`, `java-openjdk`,
 `sqlite`, `postgres-client`, `redis-client`, `mongo-client`, `claude-code`,
-`codex-cli`, `copilot-cli`, `opencode`, `antigravity-cli`, `graphify`,
-`caveman`, `claude-mem`, `context-mode`, `ecc`, `browser-harness`, `chrome`, `ffmpeg`,
-`dod` (Docker-out-of-Docker), `ngrok`, `cloudflared`. Pick only one of the two
+`codex-cli`, `copilot-cli`, `opencode`, `antigravity-cli`, `chrome`, `ffmpeg`,
+`dod` (Docker-out-of-Docker), `cloudflared`. Pick only one of the two
 `java-*` modules.
 
 `base`, `aliases`, `zellij` and `cleanup` are always applied, and the `skills`

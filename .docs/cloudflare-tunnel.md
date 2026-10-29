@@ -6,7 +6,7 @@ Esta guía explica cómo configurar una **Red Privada** utilizando Cloudflare Tu
 
 ## 0. Instalar cloudflared en el Contenedor
 
-`cloudflared` es un **módulo del Dockerfile** (`cloudflared`), igual que `ngrok`: se instala **dentro** del devcontainer, no como contenedor hermano. Selecciónelo en el asistente interactivo (categoría *Dev Tools*) o mediante:
+`cloudflared` es un **módulo del Dockerfile** (`cloudflared`): se instala **dentro** del devcontainer, no como contenedor hermano. Selecciónelo en el asistente interactivo (categoría *Dev Tools*) o mediante:
 
 ```bash
 devcontainer-cli --with cloudflared

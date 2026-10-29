@@ -45,7 +45,7 @@ type ModuleSpec struct {
 	PostScriptAutoStart bool
 	// PostScriptStartOrder controls the run order of auto-start scripts (lower
 	// runs first). Modules that wire themselves into other already-installed
-	// agents (graphify, caveman) use a high value so they run last. Zero falls
+	// agents (e.g. skills) use a high value so they run last. Zero falls
 	// back to the default order.
 	PostScriptStartOrder int
 	Render               func(opts map[string]any) string

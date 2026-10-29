@@ -35,3 +35,25 @@ func TestServiceIDsMatchCatalog(t *testing.T) {
 		}
 	}
 }
+
+func TestRetiredModuleIDsAbsentFromCatalog(t *testing.T) {
+	retired := []types.ModuleID{
+		"graphify",
+		"caveman",
+		"claude-mem",
+		"context-mode",
+		"ecc",
+		"browser-harness",
+		"ngrok",
+	}
+	for _, id := range retired {
+		if GetDockerfileModule(id) != nil {
+			t.Errorf("retired module %q must not be present in catalog", id)
+		}
+		for _, m := range DockerfileModules {
+			if m.ID == id {
+				t.Errorf("retired module %q must not be in DockerfileModules", id)
+			}
+		}
+	}
+}

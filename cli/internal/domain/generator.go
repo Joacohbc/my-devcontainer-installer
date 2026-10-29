@@ -108,7 +108,7 @@ func postScriptsDockerfileBlock(config *types.DevcontainerConfig) (string, error
 	if len(autoStart) > 0 {
 		// Non-interactive installers the entrypoint auto-runs on start. The
 		// numeric "NN-" prefix encodes run order so the entrypoint's sorted glob
-		// runs agents first and the agent-wiring tools (graphify/caveman) last.
+		// runs agents first and downstream scripts/skills last.
 		for _, e := range autoStart {
 			lines = append(lines, fmt.Sprintf("COPY %s %s/%02d-%s", e.File, types.PostScriptStartDir, e.Order, e.File))
 			// Also expose each auto-start script under its plain name in

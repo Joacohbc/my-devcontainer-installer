@@ -491,7 +491,7 @@ func (w wizardContext) categorySteps(s *State) []Step {
 			}
 
 			// Pre-select any module in this category that is required by an
-			// already selected module or service (e.g. browser-harness -> python, chrome, ffmpeg).
+			// already selected module or service (e.g. codex-cli -> nodejs -> github-cli).
 			reqs := requiredModulesForSelected(w.selectedEntryIDs(s))
 			for reqID := range reqs {
 				if spec := catalog.GetDockerfileModule(reqID); spec != nil && spec.UICategory == category {
