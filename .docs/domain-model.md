@@ -136,7 +136,18 @@ Servicios complementarios definidos en `docker-compose.yml`:
 
 ## 4. Perfiles y Temporización de Scripts (`CustomScript.When`)
 
-Un perfil agrupa módulos, configuraciones de puertos y scripts personalizados. Los scripts se ejecutan en momentos precisos según su propiedad `When`:
+Un perfil agrupa módulos, configuraciones de puertos y scripts personalizados. Existen perfiles planos de un solo lenguaje o combo (`nodejs`, `python`, `node-go`, etc.) y perfiles integrados especializados que empaquetan scripts propios y habilidades de agente:
+
+| Perfil ID | Propósito y Herramientas | Módulos Base | Scripts y Habilidades |
+|---|---|---|---|
+| `browser-tools` | Automatización de navegador y herramientas de agente (Chromium, `agent-browser`, Playwright Node/Python). | `github-cli`, `nodejs`, `pnpm`, `python`, `chrome` | `install-browser-tools.sh` (`when: build`), skill `agent-browser`. |
+| `android` | Desarrollo Android con herramientas de línea de comandos y Gradle (`cmdline-tools`, `adb`, `build-tools`, `platforms;android-34`). | `github-cli`, `java-temurin` | `install-android-tools.sh` (`when: build`), puertos `5554`, `5555`. |
+| `media-editor` | Manipulación multimedia (FFmpeg, ImageMagick, PDF utils, Pandoc, Remotion, HyperFrames). | `github-cli`, `nodejs`, `pnpm`, `chrome`, `ffmpeg` | `install-media-tools.sh` (`when: build`), skills `remotion-create`, `claude-video`, `hyperframes`. |
+| `data-science` | Ciencia de datos y análisis interactivo (JupyterLab, pandas, scikit-learn, duckdb, polars). | `github-cli`, `python`, `sqlite` | `install-datascience-tools.sh` (`when: build`), skill `data-science`. |
+| `n8n` | Automatización de flujos de trabajo local con n8n y pruebas de UI con Playwright. | `github-cli`, `nodejs`, `pnpm`, `chrome` | `install-n8n-automation-tools.sh` (`when: build`), skills `automation-n8n`, `agent-browser`. |
+| `scraper` | Web scraping avanzado y extracción (Crawl4AI, Playwright, Firecrawl, Markitdown, Trafilatura). | `github-cli`, `nodejs`, `pnpm`, `python`, `chrome`, `sqlite`, `ffmpeg` | `install-scraper-tools.sh` (`when: build`), skills `firecrawl`, `agent-browser`, `webapp-testing`. |
+
+Los scripts se ejecutan en momentos precisos según su propiedad `When`:
 
 | Momento (`when`) | Destino en Contenedor | Mecanismo de Ejecución |
 |---|---|---|

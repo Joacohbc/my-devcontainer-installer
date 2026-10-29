@@ -293,8 +293,8 @@ func TestMediaEditorProfile(t *testing.T) {
 	if got := byFile["install-media-tools.sh"]; got != types.ScriptWhenBuild {
 		t.Errorf("the toolchain must be baked into the image, got when=%q", got)
 	}
-	if !slices.Equal(p.Skills, []types.SkillID{types.SkillRemotion, types.SkillClaudeVideo}) {
-		t.Errorf("expected the remotion and claude-video skills, got %v", p.Skills)
+	if !slices.Equal(p.Skills, []types.SkillID{types.SkillRemotion, types.SkillClaudeVideo, types.SkillHyperframes}) {
+		t.Errorf("expected the remotion, claude-video, and hyperframes skills, got %v", p.Skills)
 	}
 	if p.SkillsMode != "" {
 		t.Errorf("expected the media-editor profile to leave the mode at its default, got %q", p.SkillsMode)
@@ -331,6 +331,52 @@ func TestN8nProfile(t *testing.T) {
 	}
 	if p.SkillsMode != "" {
 		t.Errorf("expected the n8n profile to leave the mode at its default, got %q", p.SkillsMode)
+	}
+}
+
+func TestBrowserToolsProfile(t *testing.T) {
+	p, ok := catalog.Resolve("browser-tools", "")
+	if !ok {
+		t.Fatal("expected to resolve the browser-tools profile")
+	}
+	if p.Source != "builtin" {
+		t.Errorf("expected source builtin, got %s", p.Source)
+	}
+	if !slices.Equal(p.Modules, []string{"github-cli", "nodejs", "pnpm", "python", "chrome"}) {
+		t.Errorf("unexpected modules, got %v", p.Modules)
+	}
+	byFile := map[string]types.ScriptWhen{}
+	for _, s := range p.Scripts {
+		byFile[s.File] = s.ResolvedWhen()
+	}
+	if got := byFile["install-browser-tools.sh"]; got != types.ScriptWhenBuild {
+		t.Errorf("the toolchain must be baked into the image, got when=%q", got)
+	}
+	if !slices.Equal(p.Skills, []types.SkillID{types.SkillAgentBrowser}) {
+		t.Errorf("expected the agent-browser skill, got %v", p.Skills)
+	}
+}
+
+func TestAndroidProfile(t *testing.T) {
+	p, ok := catalog.Resolve("android", "")
+	if !ok {
+		t.Fatal("expected to resolve the android profile")
+	}
+	if p.Source != "builtin" {
+		t.Errorf("expected source builtin, got %s", p.Source)
+	}
+	if !slices.Equal(p.Modules, []string{"github-cli", "java-temurin"}) {
+		t.Errorf("unexpected modules, got %v", p.Modules)
+	}
+	if !slices.Contains(p.Ports, "5554:5554") || !slices.Contains(p.Ports, "5555:5555") {
+		t.Errorf("expected ADB ports to be published, got %v", p.Ports)
+	}
+	byFile := map[string]types.ScriptWhen{}
+	for _, s := range p.Scripts {
+		byFile[s.File] = s.ResolvedWhen()
+	}
+	if got := byFile["install-android-tools.sh"]; got != types.ScriptWhenBuild {
+		t.Errorf("the toolchain must be baked into the image, got when=%q", got)
 	}
 }
 

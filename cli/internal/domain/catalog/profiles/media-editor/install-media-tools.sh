@@ -37,11 +37,11 @@ sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
     imagemagick poppler-utils ghostscript qpdf pandoc yt-dlp
 sudo rm -rf /var/lib/apt/lists/*
 
-log "Installing the Remotion CLI (pnpm, global)"
-pnpm add -g @remotion/cli
+log "Installing Remotion CLI and HyperFrames (pnpm, global)"
+pnpm add -g @remotion/cli hyperframes
 
 log "Media toolchain installed:"
-for tool in magick convert pdftoppm pdftotext gs qpdf pandoc ffmpeg remotion; do
+for tool in magick convert pdftoppm pdftotext gs qpdf pandoc ffmpeg remotion hyperframes; do
     if command -v "$tool" >/dev/null 2>&1; then
         echo "    $tool -> $(command -v "$tool")"
     else

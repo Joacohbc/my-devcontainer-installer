@@ -215,6 +215,7 @@ const (
 	SkillDataScience         SkillID = "data-science"
 	SkillChoosePythonLibrary SkillID = "choose-python-library"
 	SkillRemotion            SkillID = "remotion-create"
+	SkillHyperframes         SkillID = "hyperframes"
 	SkillClaudeVideo         SkillID = "claude-video"
 	SkillImpeccable          SkillID = "impeccable"
 	SkillWayfinder           SkillID = "wayfinder"
