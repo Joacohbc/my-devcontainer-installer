@@ -18,7 +18,7 @@ func FindConflicts(config *types.DevcontainerConfig, dockerAvailable bool, captu
 	if !dockerAvailable {
 		return nil
 	}
-	containers, network, _, err := PlannedComposeNames(config)
+	containers, _, _, err := PlannedComposeNames(config)
 	if err != nil {
 		return nil
 	}
@@ -39,8 +39,11 @@ func FindConflicts(config *types.DevcontainerConfig, dockerAvailable bool, captu
 	}
 
 	existingNetworks := listExistingDockerResources("network", capture)
-	if owner, found := existingNetworks[network]; found && owner != project {
-		conflicts = append(conflicts, Conflict{Kind: "network", Name: network, Owner: orFallback(owner, "(no label)")})
+	for _, n := range WorkspaceNetworkNames(config.Workspace) {
+		if owner, found := existingNetworks[n]; found && owner != project {
+			conflicts = append(conflicts, Conflict{Kind: "network", Name: n, Owner: orFallback(owner, "(no label)")})
+			break
+		}
 	}
 
 	return conflicts

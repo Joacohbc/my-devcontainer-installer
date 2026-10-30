@@ -14,6 +14,18 @@ func WorkspaceNetworkName(workspace string) string {
 	return workspace + "-network"
 }
 
+// WorkspaceNetworkNames returns the candidate network names Docker and Compose
+// might assign to a workspace's network on the daemon: the explicit compose network key,
+// the compose-prefixed name (<workspace>_<network>), and the fallback default.
+func WorkspaceNetworkNames(workspace string) []string {
+	net := WorkspaceNetworkName(workspace)
+	return []string{
+		net,
+		workspace + "_" + net,
+		workspace + "_default",
+	}
+}
+
 func ResolveWorkspace(cwd string, config *types.DevcontainerConfig) string {
 	if config != nil && config.Workspace != "" {
 		return config.Workspace
