@@ -34,8 +34,8 @@ func TestValidateSkills(t *testing.T) {
 		wantErr bool
 	}{
 		{"empty", types.SkillsConfig{}, false},
-		{"known skill", types.SkillsConfig{Skills: []types.SkillID{types.SkillFirecrawl}}, false},
-		{"auto", types.SkillsConfig{Mode: types.SkillModeAuto, Skills: []types.SkillID{types.SkillFirecrawl}}, false},
+		{"known skill", types.SkillsConfig{Skills: []types.SkillID{types.SkillAgentBrowser}}, false},
+		{"auto", types.SkillsConfig{Mode: types.SkillModeAuto, Skills: []types.SkillID{types.SkillAgentBrowser}}, false},
 		{"manual", types.SkillsConfig{Mode: types.SkillModeManual}, false},
 		{"unknown skill", types.SkillsConfig{Skills: []types.SkillID{"nope"}}, true},
 		{"unknown mode", types.SkillsConfig{Mode: "someday"}, true},
@@ -99,7 +99,7 @@ func TestAgentSkillCatalogue(t *testing.T) {
 // module requiring nodejs is what guarantees the npx it runs on.
 func TestApplySelectedSkillsAddsTheModule(t *testing.T) {
 	config := &types.DevcontainerConfig{
-		Skills: types.SkillsConfig{Skills: []types.SkillID{types.SkillFirecrawl}},
+		Skills: types.SkillsConfig{Skills: []types.SkillID{types.SkillAgentBrowser}},
 	}
 
 	domain.ApplySelectedSkills(config)
@@ -123,7 +123,7 @@ func TestApplySelectedSkillsAddsTheModule(t *testing.T) {
 
 func TestApplySelectedSkillsIsIdempotent(t *testing.T) {
 	config := &types.DevcontainerConfig{
-		Skills: types.SkillsConfig{Skills: []types.SkillID{types.SkillFirecrawl}},
+		Skills: types.SkillsConfig{Skills: []types.SkillID{types.SkillAgentBrowser}},
 	}
 
 	domain.ApplySelectedSkills(config)
@@ -149,11 +149,9 @@ func TestApplySelectedSkillsWithoutSkillsAddsNothing(t *testing.T) {
 }
 
 func TestSkillRefs(t *testing.T) {
-	config := types.SkillsConfig{Skills: []types.SkillID{types.SkillFirecrawl, types.SkillFirecrawl}}
+	config := types.SkillsConfig{Skills: []types.SkillID{types.SkillFindSkills, types.SkillFindSkills}}
 	refs := domain.SkillRefs(config)
-	// firecrawl/cli holds ten skills, so the entry carries a selector for the one
-	// we want: an unattended install must not take the other nine.
-	if !slices.Equal(refs, []string{"firecrawl/cli#firecrawl"}) {
+	if !slices.Equal(refs, []string{"vercel-labs/skills#find-skills"}) {
 		t.Errorf("expected the selector entry, got %v", refs)
 	}
 
@@ -163,8 +161,8 @@ func TestSkillRefs(t *testing.T) {
 	}
 
 	// Catalogue order, not selection order.
-	ordered := domain.SkillRefs(types.SkillsConfig{Skills: []types.SkillID{types.SkillWebappTesting, types.SkillFirecrawl}})
-	if len(ordered) != 2 || !strings.Contains(ordered[0], "firecrawl") {
+	ordered := domain.SkillRefs(types.SkillsConfig{Skills: []types.SkillID{types.SkillFrontendDesign, types.SkillAgentBrowser}})
+	if len(ordered) != 2 || !strings.Contains(ordered[0], "agent-browser") {
 		t.Errorf("expected catalogue order, got %v", ordered)
 	}
 	if refs := domain.SkillRefs(types.SkillsConfig{Skills: []types.SkillID{"nope"}}); len(refs) != 0 {
@@ -188,7 +186,7 @@ func TestSkillsEnv(t *testing.T) {
 		t.Errorf("expected the resolved mode, got %v", env)
 	}
 
-	auto := domain.SkillsEnv(types.SkillsConfig{Mode: types.SkillModeAuto, Skills: []types.SkillID{types.SkillFirecrawl}})
+	auto := domain.SkillsEnv(types.SkillsConfig{Mode: types.SkillModeAuto, Skills: []types.SkillID{types.SkillAgentBrowser}})
 	if !strings.Contains(strings.Join(auto, "\n"), types.SkillsModeEnvVar+"=auto") {
 		t.Errorf("expected the explicit mode, got %v", auto)
 	}
@@ -196,7 +194,7 @@ func TestSkillsEnv(t *testing.T) {
 
 func TestMissingSkillModules(t *testing.T) {
 	config := &types.DevcontainerConfig{
-		Skills: types.SkillsConfig{Skills: []types.SkillID{types.SkillFirecrawl}},
+		Skills: types.SkillsConfig{Skills: []types.SkillID{types.SkillAgentBrowser}},
 	}
 	if missing := domain.MissingSkillModules(config); !slices.Contains(missing, types.ModuleNodejs) {
 		t.Errorf("expected nodejs to be reported missing, got %v", missing)
@@ -308,16 +306,13 @@ func TestExpandSkillGroups(t *testing.T) {
 	expanded := catalog.ExpandSkillGroups([]types.SkillID{
 		types.SkillCategoryCoreAgents,
 		types.SkillCategoryFrontendDesign,
-		types.SkillCategoryArchitecturePlanning,
-		types.SkillCategoryQualityTesting,
 		types.SkillCategoryDocsContent,
-		types.SkillCategoryAutomationN8n,
 	})
-	if !slices.Contains(expanded, types.SkillID("wayfinder")) {
-		t.Error("expected core-agents to expand wayfinder")
+	if !slices.Contains(expanded, types.SkillID("find-skills")) {
+		t.Error("expected core-agents to expand find-skills")
 	}
-	if !slices.Contains(expanded, types.SkillID("firecrawl")) {
-		t.Error("expected core-agents to expand firecrawl")
+	if !slices.Contains(expanded, types.SkillID("agent-browser")) {
+		t.Error("expected core-agents to expand agent-browser")
 	}
 	if !slices.Contains(expanded, types.SkillID("impeccable")) {
 		t.Error("expected frontend-design to expand impeccable")
@@ -325,31 +320,40 @@ func TestExpandSkillGroups(t *testing.T) {
 	if !slices.Contains(expanded, types.SkillID("ui-ux-pro-max")) {
 		t.Error("expected frontend-design to expand ui-ux-pro-max")
 	}
-	if !slices.Contains(expanded, types.SkillID("codebase-design")) {
-		t.Error("expected architecture-planning to expand codebase-design")
+	if !slices.Contains(expanded, types.SkillID("canvas-design")) {
+		t.Error("expected docs-content to expand canvas-design")
 	}
-	if !slices.Contains(expanded, types.SkillID("tdd")) {
-		t.Error("expected quality-testing to expand tdd")
-	}
-	if !slices.Contains(expanded, types.SkillID("skill-creator")) {
-		t.Error("expected docs-content to expand skill-creator")
-	}
-	if !slices.Contains(expanded, types.SkillID("n8n-agents-official")) {
-		t.Error("expected automation-n8n to expand n8n-agents-official")
+	if !slices.Contains(expanded, types.SkillID("docx")) {
+		t.Error("expected docs-content to expand docx")
 	}
 }
 
 func TestSkillsManifestIntegrity(t *testing.T) {
-	if len(skills.All) == 0 {
-		t.Fatal("expected skills.All to be populated from skills.yml")
+	if len(skills.All) != 13 {
+		t.Fatalf("expected exactly 13 skills, got %d", len(skills.All))
 	}
-	if len(skills.Categories) != 6 {
-		t.Fatalf("expected exactly 6 functional categories, got %d", len(skills.Categories))
+	if len(skills.Categories) != 3 {
+		t.Fatalf("expected exactly 3 functional categories, got %d", len(skills.Categories))
+	}
+	expectedSkills := map[types.SkillID]bool{
+		"find-skills":           true,
+		"agent-browser":         true,
+		"frontend-design":       true,
+		"ui-ux-pro-max":         true,
+		"impeccable":            true,
+		"web-artifacts-builder": true,
+		"theme-factory":         true,
+		"algorithmic-art":       true,
+		"canvas-design":         true,
+		"docx":                  true,
+		"pdf":                   true,
+		"pptx":                  true,
+		"xlsx":                  true,
 	}
 	seenIDs := make(map[types.SkillID]bool, len(skills.All))
 	for _, s := range skills.All {
-		if s.ID == "" {
-			t.Error("found skill with empty ID")
+		if !expectedSkills[s.ID] {
+			t.Errorf("unexpected skill found: %s", s.ID)
 		}
 		if seenIDs[s.ID] {
 			t.Errorf("duplicate skill ID found: %s", s.ID)
@@ -365,30 +369,32 @@ func TestSkillsManifestIntegrity(t *testing.T) {
 			t.Errorf("skill %s has empty Category", s.ID)
 		}
 	}
+	for id := range expectedSkills {
+		if !seenIDs[id] {
+			t.Errorf("expected skill %s not found in catalog", id)
+		}
+	}
 }
 
-func TestDataScienceAndWayfinderSkills(t *testing.T) {
+func TestAgentSkillsRequireNodejs(t *testing.T) {
 	config := &types.DevcontainerConfig{
 		Skills: types.SkillsConfig{
-			Skills: []types.SkillID{types.SkillDataScience, types.SkillChoosePythonLibrary, types.SkillWayfinder},
+			Skills: []types.SkillID{types.SkillFrontendDesign, types.SkillAgentBrowser, types.SkillUIUXProMax},
 		},
 	}
 	missing := domain.MissingSkillModules(config)
-	if !slices.Contains(missing, types.ModulePython) {
-		t.Errorf("expected data-science to require python, got missing=%v", missing)
-	}
 	if !slices.Contains(missing, types.ModuleNodejs) {
-		t.Errorf("expected wayfinder to require nodejs, got missing=%v", missing)
+		t.Errorf("expected skills to require nodejs, got missing=%v", missing)
 	}
 
 	refs := domain.SkillRefs(config.Skills)
-	if !slices.Contains(refs, "probabl-ai/skills#setup-python-env") {
-		t.Errorf("expected data-science ref 'probabl-ai/skills#setup-python-env', got %v", refs)
+	if !slices.Contains(refs, "anthropics/skills#frontend-design") {
+		t.Errorf("expected frontend-design ref 'anthropics/skills#frontend-design', got %v", refs)
 	}
-	if !slices.Contains(refs, "probabl-ai/skills#choose-python-library") {
-		t.Errorf("expected choose-python-library ref 'probabl-ai/skills#choose-python-library', got %v", refs)
+	if !slices.Contains(refs, "vercel-labs/agent-browser") {
+		t.Errorf("expected agent-browser ref 'vercel-labs/agent-browser', got %v", refs)
 	}
-	if !slices.Contains(refs, "mattpocock/skills#wayfinder") {
-		t.Errorf("expected wayfinder ref 'mattpocock/skills#wayfinder', got %v", refs)
+	if !slices.Contains(refs, "nextlevelbuilder/ui-ux-pro-max-skill#ui-ux-pro-max") {
+		t.Errorf("expected ui-ux-pro-max ref 'nextlevelbuilder/ui-ux-pro-max-skill#ui-ux-pro-max', got %v", refs)
 	}
 }

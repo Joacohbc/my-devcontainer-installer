@@ -1,9 +1,7 @@
 package catalog_test
 
 import (
-	"io/fs"
 	"os"
-	"path"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -110,273 +108,20 @@ func TestBuiltinProfilesNoPnpmWithoutNodejs(t *testing.T) {
 	}
 }
 
-// A built-in that declares scripts must be one of the repo-shipped (embedded)
-// ones: a Go literal has no directory to resolve a script against, so it would
-// fail at generate time rather than here.
-func TestBuiltinProfilesWithScriptsAreEmbedded(t *testing.T) {
+func TestBuiltinProfilesHaveNoScripts(t *testing.T) {
 	for _, p := range catalog.BuiltinProfiles {
-		if len(p.Scripts) == 0 {
-			continue
-		}
-		if !p.Embedded || p.Dir == "" {
-			t.Errorf("built-in profile %q declares scripts but is not embedded (dir %q)", p.ID, p.Dir)
+		if len(p.Scripts) != 0 {
+			t.Errorf("built-in profile %q must not declare scripts", p.ID)
 		}
 	}
 }
 
-// Every repo-shipped profile must parse and every script it names must exist in
-// the embedded tree, or the profile is dead weight nobody notices until a build.
-func TestEmbeddedProfilesAreWellFormed(t *testing.T) {
-	entries, err := fs.ReadDir(catalog.BuiltinProfileFS, catalog.BuiltinProfileRoot)
-	if err != nil {
-		t.Fatalf("the embedded profile tree must exist: %v", err)
-	}
-
-	var dirs []string
-	for _, e := range entries {
-		if e.IsDir() {
-			dirs = append(dirs, e.Name())
+func TestRetiredProfilesAreAbsent(t *testing.T) {
+	retired := []string{"scraper", "media-editor", "n8n", "data-science", "android", "browser-tools"}
+	for _, id := range retired {
+		if _, ok := catalog.Resolve(id, ""); ok {
+			t.Errorf("expected retired profile %q to be absent from catalog", id)
 		}
-	}
-	if len(dirs) == 0 {
-		t.Fatal("expected at least one repo-shipped profile")
-	}
-
-	for _, id := range dirs {
-		p, ok := catalog.Resolve(id, "")
-		if !ok {
-			t.Errorf("embedded profile %q does not resolve — did its profile.yml fail to parse?", id)
-			continue
-		}
-		if !p.Embedded {
-			t.Errorf("profile %q must be marked embedded", id)
-		}
-		if p.ID != id {
-			t.Errorf("profile in directory %q declares id %q; they must match", id, p.ID)
-		}
-		if len(p.Modules) == 0 {
-			t.Errorf("profile %q lists no modules", id)
-		}
-		for _, m := range p.Modules {
-			if catalog.GetDockerfileModule(types.ModuleID(m)) == nil {
-				t.Errorf("profile %q lists unknown module %q", id, m)
-			}
-		}
-		for _, s := range p.Scripts {
-			if _, err := fs.Stat(catalog.BuiltinProfileFS, path.Join(p.Dir, s.File)); err != nil {
-				t.Errorf("profile %q references %q, which is not in the embedded tree: %v", id, s.File, err)
-			}
-		}
-	}
-}
-
-// The scraper profile is the reason repo-shipped profiles exist; its shape is
-// what the feature promises.
-func TestScraperProfile(t *testing.T) {
-	p, ok := catalog.Resolve("scraper", "")
-	if !ok {
-		t.Fatal("expected to resolve the scraper profile")
-	}
-	if p.Source != "builtin" {
-		t.Errorf("expected source builtin, got %s", p.Source)
-	}
-	for _, want := range []string{"chrome", "python", "nodejs", "pnpm", "sqlite", "ffmpeg"} {
-		if !slices.Contains(p.Modules, want) {
-			t.Errorf("expected the scraper profile to include %q, got %v", want, p.Modules)
-		}
-	}
-	// Same cache convention as every other built-in.
-	if len(p.Modules) == 0 || p.Modules[0] != "github-cli" {
-		t.Errorf("github-cli must be listed first for the base layer cache, got %v", p.Modules)
-	}
-	byFile := map[string]types.ScriptWhen{}
-	for _, s := range p.Scripts {
-		byFile[s.File] = s.ResolvedWhen()
-	}
-	if got := byFile["install-scraper-tools.sh"]; got != types.ScriptWhenBuild {
-		t.Errorf("the toolchain must be baked into the image, got when=%q", got)
-	}
-
-	// The agent skill is declared, not scripted: a script cannot install one
-	// correctly, since the agent config dirs are symlinks into the shared-config
-	// volume that only exists at runtime.
-	for _, want := range []types.SkillID{types.SkillFirecrawl, types.SkillAgentBrowser, types.SkillWebappTesting} {
-		if !slices.Contains(p.Skills, want) {
-			t.Errorf("expected the %q skill, got %v", want, p.Skills)
-		}
-	}
-	// Left unset so it follows the default, which is manual: the installer writes
-	// into the user's repository.
-	if p.SkillsMode != "" {
-		t.Errorf("expected the scraper profile to leave the mode at its default, got %q", p.SkillsMode)
-	}
-}
-
-// Installing an agent skill from a script writes into ~/.claude or ~/.agents,
-// which are symlinks into the shared-config volume: at build time the volume
-// shadows the write, and at any time it leaks the skill into every other
-// container. The `skills` field exists so no profile has to try.
-func TestEmbeddedProfilesDoNotScriptSkillInstalls(t *testing.T) {
-	for _, p := range catalog.BuiltinProfiles {
-		for _, s := range p.Scripts {
-			if strings.Contains(s.File, "skill") {
-				t.Errorf("profile %q installs skills through the script %q; declare them under `skills:` instead",
-					p.ID, s.File)
-			}
-		}
-	}
-}
-
-// Every skill a repo-shipped profile names must exist in the catalogue, and its
-// mode must be one the installer understands.
-func TestEmbeddedProfileSkillsAreCatalogued(t *testing.T) {
-	for _, p := range catalog.BuiltinProfiles {
-		if p.SkillsMode != "" && !slices.Contains(types.SkillModes, p.SkillsMode) {
-			t.Errorf("profile %q has an unknown skills mode %q", p.ID, p.SkillsMode)
-		}
-		for _, id := range catalog.ExpandSkillGroups(p.Skills) {
-			if catalog.GetAgentSkill(id) == nil {
-				t.Errorf("profile %q names unknown skill %q", p.ID, id)
-			}
-		}
-	}
-}
-
-// The data-science profile bundles Python's data-analysis stack (JupyterLab,
-// pandas, scikit-learn, …) via its script, and JupyterLab's port.
-func TestDataScienceProfile(t *testing.T) {
-	p, ok := catalog.Resolve("data-science", "")
-	if !ok {
-		t.Fatal("expected to resolve the data-science profile")
-	}
-	if p.Source != "builtin" {
-		t.Errorf("expected source builtin, got %s", p.Source)
-	}
-	if !slices.Equal(p.Modules, []string{"github-cli", "python", "sqlite"}) {
-		t.Errorf("unexpected modules, got %v", p.Modules)
-	}
-	if !slices.Contains(p.Ports, "8888:8888") {
-		t.Errorf("expected the JupyterLab port to be published, got %v", p.Ports)
-	}
-	byFile := map[string]types.ScriptWhen{}
-	for _, s := range p.Scripts {
-		byFile[s.File] = s.ResolvedWhen()
-	}
-	if got := byFile["install-datascience-tools.sh"]; got != types.ScriptWhenBuild {
-		t.Errorf("the toolchain must be baked into the image, got when=%q", got)
-	}
-	if !slices.Equal(p.Skills, []types.SkillID{types.SkillDataScience}) {
-		t.Errorf("expected the data-science skill, got %v", p.Skills)
-	}
-	if p.SkillsMode != "" {
-		t.Errorf("expected the data-science profile to leave the mode at its default, got %q", p.SkillsMode)
-	}
-}
-
-// The media-editor profile bundles image/audio/video/PDF/doc tooling around
-// FFmpeg and Remotion, all script-installed except ffmpeg/chrome themselves.
-func TestMediaEditorProfile(t *testing.T) {
-	p, ok := catalog.Resolve("media-editor", "")
-	if !ok {
-		t.Fatal("expected to resolve the media-editor profile")
-	}
-	if p.Source != "builtin" {
-		t.Errorf("expected source builtin, got %s", p.Source)
-	}
-	if !slices.Equal(p.Modules, []string{"github-cli", "nodejs", "pnpm", "chrome", "ffmpeg"}) {
-		t.Errorf("unexpected modules, got %v", p.Modules)
-	}
-	byFile := map[string]types.ScriptWhen{}
-	for _, s := range p.Scripts {
-		byFile[s.File] = s.ResolvedWhen()
-	}
-	if got := byFile["install-media-tools.sh"]; got != types.ScriptWhenBuild {
-		t.Errorf("the toolchain must be baked into the image, got when=%q", got)
-	}
-	if !slices.Equal(p.Skills, []types.SkillID{types.SkillRemotion, types.SkillClaudeVideo, types.SkillHyperframes}) {
-		t.Errorf("expected the remotion, claude-video, and hyperframes skills, got %v", p.Skills)
-	}
-	if p.SkillsMode != "" {
-		t.Errorf("expected the media-editor profile to leave the mode at its default, got %q", p.SkillsMode)
-	}
-}
-
-// The n8n profile installs n8n itself inside the devcontainer (not as a
-// compose service) plus Playwright/Chrome for UI automation.
-func TestN8nProfile(t *testing.T) {
-	p, ok := catalog.Resolve("n8n", "")
-	if !ok {
-		t.Fatal("expected to resolve the n8n profile")
-	}
-	if p.Source != "builtin" {
-		t.Errorf("expected source builtin, got %s", p.Source)
-	}
-	if !slices.Equal(p.Modules, []string{"github-cli", "nodejs", "pnpm", "chrome"}) {
-		t.Errorf("unexpected modules, got %v", p.Modules)
-	}
-	if !slices.Contains(p.Ports, "127.0.0.1:5678:5678") {
-		t.Errorf("expected n8n's editor port to be published, got %v", p.Ports)
-	}
-	byFile := map[string]types.ScriptWhen{}
-	for _, s := range p.Scripts {
-		byFile[s.File] = s.ResolvedWhen()
-	}
-	if got := byFile["install-n8n-automation-tools.sh"]; got != types.ScriptWhenBuild {
-		t.Errorf("the toolchain must be baked into the image, got when=%q", got)
-	}
-	for _, want := range []types.SkillID{types.SkillCategoryAutomationN8n, types.SkillAgentBrowser} {
-		if !slices.Contains(p.Skills, want) {
-			t.Errorf("expected the %q skill, got %v", want, p.Skills)
-		}
-	}
-	if p.SkillsMode != "" {
-		t.Errorf("expected the n8n profile to leave the mode at its default, got %q", p.SkillsMode)
-	}
-}
-
-func TestBrowserToolsProfile(t *testing.T) {
-	p, ok := catalog.Resolve("browser-tools", "")
-	if !ok {
-		t.Fatal("expected to resolve the browser-tools profile")
-	}
-	if p.Source != "builtin" {
-		t.Errorf("expected source builtin, got %s", p.Source)
-	}
-	if !slices.Equal(p.Modules, []string{"github-cli", "nodejs", "pnpm", "python", "chrome"}) {
-		t.Errorf("unexpected modules, got %v", p.Modules)
-	}
-	byFile := map[string]types.ScriptWhen{}
-	for _, s := range p.Scripts {
-		byFile[s.File] = s.ResolvedWhen()
-	}
-	if got := byFile["install-browser-tools.sh"]; got != types.ScriptWhenBuild {
-		t.Errorf("the toolchain must be baked into the image, got when=%q", got)
-	}
-	if !slices.Equal(p.Skills, []types.SkillID{types.SkillAgentBrowser}) {
-		t.Errorf("expected the agent-browser skill, got %v", p.Skills)
-	}
-}
-
-func TestAndroidProfile(t *testing.T) {
-	p, ok := catalog.Resolve("android", "")
-	if !ok {
-		t.Fatal("expected to resolve the android profile")
-	}
-	if p.Source != "builtin" {
-		t.Errorf("expected source builtin, got %s", p.Source)
-	}
-	if !slices.Equal(p.Modules, []string{"github-cli", "java-temurin"}) {
-		t.Errorf("unexpected modules, got %v", p.Modules)
-	}
-	if !slices.Contains(p.Ports, "5554:5554") || !slices.Contains(p.Ports, "5555:5555") {
-		t.Errorf("expected ADB ports to be published, got %v", p.Ports)
-	}
-	byFile := map[string]types.ScriptWhen{}
-	for _, s := range p.Scripts {
-		byFile[s.File] = s.ResolvedWhen()
-	}
-	if got := byFile["install-android-tools.sh"]; got != types.ScriptWhenBuild {
-		t.Errorf("the toolchain must be baked into the image, got when=%q", got)
 	}
 }
 
@@ -517,5 +262,258 @@ modules: [bun]`
 	}
 	if !slices.Equal(got.Modules, []string{"bun"}) {
 		t.Errorf("expected user profile to override builtin, got %v", got.Modules)
+	}
+}
+
+func TestMergeProfiles_Table(t *testing.T) {
+	tests := []struct {
+		name      string
+		profiles  []catalog.Profile
+		wantErr   bool
+		errSubstr string
+		assert    func(t *testing.T, merged catalog.Profile)
+	}{
+		{
+			name:     "empty returns empty profile",
+			profiles: nil,
+			assert: func(t *testing.T, m catalog.Profile) {
+				if m.ID != "" || len(m.Modules) != 0 {
+					t.Errorf("expected empty profile, got %+v", m)
+				}
+			},
+		},
+		{
+			name: "single profile returned as-is",
+			profiles: []catalog.Profile{
+				{
+					ID:         "single",
+					Modules:    []string{"nodejs", "pnpm"},
+					Skills:     []types.SkillID{"agent-browser"},
+					SkillsMode: types.SkillModeManual,
+					Ports:      []string{"3000"},
+				},
+			},
+			assert: func(t *testing.T, m catalog.Profile) {
+				if m.ID != "single" || len(m.Modules) != 2 || m.SkillsMode != types.SkillModeManual {
+					t.Errorf("unexpected merged single profile: %+v", m)
+				}
+			},
+		},
+		{
+			name: "modules union preserves first-seen order and dedupes",
+			profiles: []catalog.Profile{
+				{ID: "p1", Modules: []string{"github-cli", "nodejs", "pnpm"}},
+				{ID: "p2", Modules: []string{"github-cli", "go", "sqlite"}},
+				{ID: "p3", Modules: []string{"pnpm", "python", "sqlite"}},
+			},
+			assert: func(t *testing.T, m catalog.Profile) {
+				want := []string{"github-cli", "nodejs", "pnpm", "go", "sqlite", "python"}
+				if !slices.Equal(m.Modules, want) {
+					t.Errorf("modules = %v, want %v", m.Modules, want)
+				}
+			},
+		},
+		{
+			name: "skills ports and forward ports union in first-seen order",
+			profiles: []catalog.Profile{
+				{
+					ID:           "p1",
+					Skills:       []types.SkillID{"firecrawl", "agent-browser"},
+					Ports:        []string{"3000", "8080:80"},
+					ForwardPorts: []string{"3000"},
+				},
+				{
+					ID:           "p2",
+					Skills:       []types.SkillID{"agent-browser", "webapp-testing"},
+					Ports:        []string{"5432", "3000"},
+					ForwardPorts: []string{"reverse:5432", "3000"},
+				},
+			},
+			assert: func(t *testing.T, m catalog.Profile) {
+				wantSkills := []types.SkillID{"firecrawl", "agent-browser", "webapp-testing"}
+				if !slices.Equal(m.Skills, wantSkills) {
+					t.Errorf("skills = %v, want %v", m.Skills, wantSkills)
+				}
+				wantPorts := []string{"3000", "8080:80", "5432"}
+				if !slices.Equal(m.Ports, wantPorts) {
+					t.Errorf("ports = %v, want %v", m.Ports, wantPorts)
+				}
+				wantFwd := []string{"3000", "reverse:5432"}
+				if !slices.Equal(m.ForwardPorts, wantFwd) {
+					t.Errorf("forward ports = %v, want %v", m.ForwardPorts, wantFwd)
+				}
+			},
+		},
+		{
+			name: "scripts concatenated in order without collisions",
+			profiles: []catalog.Profile{
+				{
+					ID: "p1",
+					Scripts: []types.CustomScript{
+						{File: "setup-a.sh", When: types.ScriptWhenBuild},
+					},
+				},
+				{
+					ID: "p2",
+					Scripts: []types.CustomScript{
+						{File: "start-b.sh", When: types.ScriptWhenStart},
+					},
+				},
+			},
+			assert: func(t *testing.T, m catalog.Profile) {
+				if len(m.Scripts) != 2 {
+					t.Fatalf("expected 2 scripts, got %d", len(m.Scripts))
+				}
+				if m.Scripts[0].File != "setup-a.sh" || m.Scripts[1].File != "start-b.sh" {
+					t.Errorf("unexpected script order: %+v", m.Scripts)
+				}
+			},
+		},
+		{
+			name: "script collision across profiles fails naming both profiles",
+			profiles: []catalog.Profile{
+				{
+					ID: "alpha",
+					Scripts: []types.CustomScript{
+						{File: "install.sh"},
+					},
+				},
+				{
+					ID: "beta",
+					Scripts: []types.CustomScript{
+						{File: "install.sh"},
+					},
+				},
+			},
+			wantErr:   true,
+			errSubstr: "alpha",
+			assert: func(t *testing.T, m catalog.Profile) {
+			},
+		},
+		{
+			name: "script collision with custom prefix fails naming both profiles",
+			profiles: []catalog.Profile{
+				{
+					ID: "prof-first",
+					Scripts: []types.CustomScript{
+						{File: "custom-init.sh"},
+					},
+				},
+				{
+					ID: "prof-second",
+					Scripts: []types.CustomScript{
+						{File: "init.sh"},
+					},
+				},
+			},
+			wantErr:   true,
+			errSubstr: "prof-first",
+		},
+		{
+			name: "conflicting explicit skills mode fails naming both profiles",
+			profiles: []catalog.Profile{
+				{ID: "p-manual", SkillsMode: types.SkillModeManual},
+				{ID: "p-auto", SkillsMode: types.SkillModeAuto},
+			},
+			wantErr:   true,
+			errSubstr: "p-manual",
+		},
+		{
+			name: "inherits explicit skills mode when other profile has unset mode",
+			profiles: []catalog.Profile{
+				{ID: "p1", SkillsMode: ""},
+				{ID: "p2", SkillsMode: types.SkillModeAuto},
+				{ID: "p3", SkillsMode: ""},
+			},
+			assert: func(t *testing.T, m catalog.Profile) {
+				if m.SkillsMode != types.SkillModeAuto {
+					t.Errorf("skills mode = %q, want %q", m.SkillsMode, types.SkillModeAuto)
+				}
+			},
+		},
+		{
+			name: "agreeing explicit skills mode succeeds",
+			profiles: []catalog.Profile{
+				{ID: "p1", SkillsMode: types.SkillModeManual},
+				{ID: "p2", SkillsMode: types.SkillModeManual},
+			},
+			assert: func(t *testing.T, m catalog.Profile) {
+				if m.SkillsMode != types.SkillModeManual {
+					t.Errorf("skills mode = %q, want %q", m.SkillsMode, types.SkillModeManual)
+				}
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			merged, err := catalog.MergeProfiles(tc.profiles...)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("expected error, got nil")
+				}
+				if tc.errSubstr != "" && !strings.Contains(err.Error(), tc.errSubstr) {
+					t.Errorf("error %q does not contain expected substring %q", err.Error(), tc.errSubstr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if tc.assert != nil {
+				tc.assert(t, merged)
+			}
+		})
+	}
+}
+
+func TestMergeProfiles_WithUserProfilesAndBuiltins(t *testing.T) {
+	tempDir := t.TempDir()
+	userProfileDir := filepath.Join(tempDir, "my-ai-tools")
+	if err := os.MkdirAll(userProfileDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	scriptContent := "#!/bin/bash\necho 'hello'"
+	if err := os.WriteFile(filepath.Join(userProfileDir, "setup-ai.sh"), []byte(scriptContent), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	userManifest := `id: my-ai-tools
+label: My AI Tools
+modules:
+  - sqlite
+scripts:
+  - file: setup-ai.sh
+    when: build
+skills:
+  - agent-browser
+ports:
+  - "9000:9000"
+`
+	if err := os.WriteFile(filepath.Join(userProfileDir, "profile.yml"), []byte(userManifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	composed, err := catalog.ResolveComposed([]string{"nodejs", "my-ai-tools"}, tempDir)
+	if err != nil {
+		t.Fatalf("ResolveComposed: %v", err)
+	}
+
+	// nodejs built-in has github-cli, nodejs, pnpm
+	// my-ai-tools has sqlite
+	wantModules := []string{"github-cli", "nodejs", "pnpm", "sqlite"}
+	if !slices.Equal(composed.Modules, wantModules) {
+		t.Errorf("modules = %v, want %v", composed.Modules, wantModules)
+	}
+	if len(composed.Scripts) != 1 || composed.Scripts[0].File != "setup-ai.sh" {
+		t.Errorf("unexpected scripts: %+v", composed.Scripts)
+	}
+	if composed.Scripts[0].Source == "" {
+		t.Error("expected script source to be resolved from user profile dir")
+	}
+	if !slices.Contains(composed.Skills, types.SkillID("agent-browser")) {
+		t.Errorf("expected agent-browser skill, got %v", composed.Skills)
+	}
+	if !slices.Contains(composed.Ports, "9000:9000") {
+		t.Errorf("expected 9000:9000 port, got %v", composed.Ports)
 	}
 }

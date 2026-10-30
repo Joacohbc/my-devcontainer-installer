@@ -513,7 +513,7 @@ func TestResolveRunProfile_RejectsLocalOnlyAcceptsSSH(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 
 	cmd := newRunCommand()
-	if err := cmd.Flags().Set("profile", "scraper"); err != nil {
+	if err := cmd.Flags().Set("profile", "base"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := resolveRunProfile(cmd, true); err == nil {
@@ -530,6 +530,20 @@ func TestResolveRunProfile_RejectsLocalOnlyAcceptsSSH(t *testing.T) {
 	}
 	if got != "ssh" {
 		t.Errorf("got %q, want ssh", got)
+	}
+}
+
+func TestResolveRunProfile_RejectsMultipleProfiles(t *testing.T) {
+	cmd := newRunCommand()
+	if err := cmd.Flags().Set("profile", "nodejs,python"); err != nil {
+		t.Fatal(err)
+	}
+	_, err := resolveRunProfile(cmd, false)
+	if err == nil {
+		t.Fatal("expected error when passing multiple profiles to run")
+	}
+	if !strings.Contains(err.Error(), "accepts exactly one profile") {
+		t.Errorf("expected error to mention accepting exactly one profile, got: %v", err)
 	}
 }
 
@@ -1913,7 +1927,7 @@ func TestRunConfigSkillInfo_UnknownSkillFails(t *testing.T) {
 func TestRunConfigSkillInfo_KnownSkillSucceeds(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	cmd := &cobra.Command{}
-	if err := runConfigSkillInfo(cmd, []string{"firecrawl"}); err != nil {
+	if err := runConfigSkillInfo(cmd, []string{"agent-browser"}); err != nil {
 		t.Fatalf("runConfigSkillInfo: %v", err)
 	}
 }
@@ -2027,7 +2041,9 @@ func TestApplyGenFlags_ProfileWithoutServices(t *testing.T) {
 		profile: "nodejs",
 	}
 
-	applyGenFlags(config, flags)
+	if err := applyGenFlags(config, flags); err != nil {
+		t.Fatalf("unexpected error applying gen flags: %v", err)
+	}
 
 	// The nodejs profile is github-cli + nodejs + pnpm (zellij is always-on and
 	// no longer listed in profiles).
@@ -2051,7 +2067,9 @@ func TestApplyGenFlags_ProfileUnderModeProfilesKeepsServicesAndSetsRemote(t *tes
 	}
 	flags := &genFlags{profile: "nodejs"}
 
-	applyGenFlags(config, flags)
+	if err := applyGenFlags(config, flags); err != nil {
+		t.Fatalf("unexpected error applying gen flags: %v", err)
+	}
 
 	if len(config.Compose.Services) != 1 || config.Compose.Services[0].ID != "postgres" {
 		t.Errorf("expected postgres service to survive, got %v", config.Compose.Services)
@@ -2076,7 +2094,9 @@ func TestApplyGenFlags_SSHProfileUnderCustomModeKeepsServices(t *testing.T) {
 		},
 	}
 
-	applyGenFlags(config, &genFlags{profile: remoteVariantSSH})
+	if err := applyGenFlags(config, &genFlags{profile: remoteVariantSSH}); err != nil {
+		t.Fatalf("unexpected error applying gen flags: %v", err)
+	}
 
 	if len(config.Compose.Services) != 1 || config.Compose.Services[0].ID != "postgres" {
 		t.Errorf("expected postgres service to survive, got %v", config.Compose.Services)
@@ -2098,7 +2118,9 @@ func TestApplyGenFlags_ProfileWithExplicitModeProfilesKeepsServices(t *testing.T
 	}
 	flags := &genFlags{profile: "nodejs", mode: string(types.BuildModeProfiles)}
 
-	applyGenFlags(config, flags)
+	if err := applyGenFlags(config, flags); err != nil {
+		t.Fatalf("unexpected error applying gen flags: %v", err)
+	}
 
 	if len(config.Compose.Services) != 1 || config.Compose.Services[0].ID != "postgres" {
 		t.Errorf("expected postgres service to survive, got %v", config.Compose.Services)
@@ -2145,7 +2167,7 @@ func TestInitAndConfigure_ExplicitSkillsSkipsPrompt(t *testing.T) {
 	flags := &genFlags{
 		interactive: true,
 		withModules: []string{"nodejs"},
-		skills:      []types.SkillID{types.SkillFirecrawl},
+		skills:      []types.SkillID{types.SkillAgentBrowser},
 	}
 	svc := service.GenerateService{}
 
@@ -2153,7 +2175,7 @@ func TestInitAndConfigure_ExplicitSkillsSkipsPrompt(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(config.Skills.Skills) != 1 || config.Skills.Skills[0] != types.SkillFirecrawl {
+	if len(config.Skills.Skills) != 1 || config.Skills.Skills[0] != types.SkillAgentBrowser {
 		t.Errorf("expected the explicit skill to be applied, got %+v", config.Skills.Skills)
 	}
 }
@@ -2197,7 +2219,7 @@ func TestValidateConfig_KeepsPinnedWorkspaceOnCollision(t *testing.T) {
 	}
 }
 
-// mode=profiles rejects a [local]-only --profile (e.g. 'scraper'): it has no
+// mode=profiles rejects a [local]-only --profile (e.g. 'base'): it has no
 // published image, so the pull would just fail — caught here instead, once
 // the effective mode is known, not eagerly at flag-parse time (where the same
 // --profile is valid for mode=custom).
@@ -2207,7 +2229,7 @@ func TestValidateConfig_ModeProfilesRejectsLocalOnlyProfile(t *testing.T) {
 	config := &types.DevcontainerConfig{
 		Workspace: "ws",
 		Mode:      types.BuildModeProfiles,
-		Remote:    &types.RemoteConfig{Variant: "scraper"},
+		Remote:    &types.RemoteConfig{Variant: "base"},
 	}
 	flags := &genFlags{interactive: true, keepWorkspace: true}
 	err := validateConfig(cwd, config, flags, service.GenerateService{})
@@ -2250,6 +2272,143 @@ func TestValidateConfig_ModeCustomRejectsSSHProfile(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "pull target") {
 		t.Errorf("the error must say ssh is a pull target only, got: %v", err)
+	}
+}
+
+func TestValidateConfig_ModeProfilesRejectsMultipleProfiles(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	cwd := t.TempDir()
+	config := &types.DevcontainerConfig{
+		Workspace: "ws",
+		Mode:      types.BuildModeProfiles,
+		Remote:    &types.RemoteConfig{Variant: "nodejs"},
+	}
+	flags := &genFlags{interactive: true, keepWorkspace: true, profile: "nodejs,python"}
+	err := validateConfig(cwd, config, flags, service.GenerateService{})
+	if err == nil {
+		t.Fatal("expected error when passing multiple profiles to mode=profiles")
+	}
+	if !strings.Contains(err.Error(), "accepts exactly one profile") {
+		t.Errorf("expected error to mention accepting exactly one profile, got: %v", err)
+	}
+}
+
+func TestApplyGenFlags_ComposeTwoProfiles(t *testing.T) {
+	config := &types.DevcontainerConfig{
+		Mode: types.BuildModeCustom,
+		Compose: types.ComposeConfig{
+			Services: []types.SelectedService{{ID: "postgres"}},
+		},
+	}
+	flags := &genFlags{
+		profile: "nodejs,go",
+	}
+
+	if err := applyGenFlags(config, flags); err != nil {
+		t.Fatalf("unexpected error applying gen flags: %v", err)
+	}
+
+	// nodejs: github-cli, nodejs, pnpm
+	// go: github-cli, go
+	// union: github-cli, nodejs, pnpm, go
+	if len(config.Dockerfile.Modules) != 4 {
+		t.Errorf("expected 4 modules from composed profiles, got %d: %v", len(config.Dockerfile.Modules), config.Dockerfile.Modules)
+	}
+	wantIDs := []types.ModuleID{types.ModuleGithubCli, types.ModuleNodejs, types.ModulePnpm, types.ModuleGolang}
+	for i, want := range wantIDs {
+		if config.Dockerfile.Modules[i].ID != want {
+			t.Errorf("module[%d] = %q, want %q", i, config.Dockerfile.Modules[i].ID, want)
+		}
+	}
+	if len(config.Compose.Services) != 0 {
+		t.Errorf("expected 0 services after applying profile bundle, got %d", len(config.Compose.Services))
+	}
+}
+
+func TestApplyGenFlags_InvalidProfileReturnsError(t *testing.T) {
+	config := &types.DevcontainerConfig{
+		Mode: types.BuildModeCustom,
+	}
+	flags := &genFlags{
+		profile: "unknown-profile-xyz",
+	}
+	if err := applyGenFlags(config, flags); err == nil {
+		t.Error("expected applyGenFlags to return error for unknown profile, got nil")
+	}
+}
+
+func TestParseGenFlags_ComposedProfilesWithUserProfile(t *testing.T) {
+	configDir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", configDir)
+
+	userProfDir := filepath.Join(configDir, "devcontainer-cli", "profiles", "my-tools")
+	if err := os.MkdirAll(userProfDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(userProfDir, "setup.sh"), []byte("#!/bin/bash\necho hi"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	manifest := `id: my-tools
+modules:
+  - sqlite
+scripts:
+  - file: setup.sh
+    when: build
+skills:
+  - agent-browser
+ports:
+  - "8080:80"
+`
+	if err := os.WriteFile(filepath.Join(userProfDir, "profile.yml"), []byte(manifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := NewRootCommand("dev")
+	if err := cmd.Flags().Set("profile", "python,my-tools"); err != nil {
+		t.Fatal(err)
+	}
+	flags, err := parseGenFlags(cmd)
+	if err != nil {
+		t.Fatalf("parseGenFlags: %v", err)
+	}
+
+	if !slices.Contains(flags.profileModules, "python") || !slices.Contains(flags.profileModules, "sqlite") {
+		t.Errorf("expected profile modules to contain python and sqlite, got: %v", flags.profileModules)
+	}
+	if len(flags.scripts) != 1 || flags.scripts[0].File != "setup.sh" {
+		t.Errorf("expected script from user profile, got: %+v", flags.scripts)
+	}
+	if !slices.Contains(flags.profileSkills, types.SkillID("agent-browser")) {
+		t.Errorf("expected agent-browser skill, got: %v", flags.profileSkills)
+	}
+	if !slices.Contains(flags.profilePorts, "8080:80") {
+		t.Errorf("expected 8080:80 port, got: %v", flags.profilePorts)
+	}
+}
+
+func TestParseGenFlags_ModeProfilesRejectsMultipleProfiles(t *testing.T) {
+	cmd := NewRootCommand("dev")
+	if err := cmd.Flags().Set("mode", "profiles"); err != nil {
+		t.Fatal(err)
+	}
+	if err := cmd.Flags().Set("profile", "nodejs,python"); err != nil {
+		t.Fatal(err)
+	}
+	_, err := parseGenFlags(cmd)
+	if err == nil {
+		t.Fatal("expected parseGenFlags to fail for mode=profiles with multiple profiles")
+	}
+	if !strings.Contains(err.Error(), "accepts exactly one profile") {
+		t.Errorf("expected error to mention accepting exactly one profile, got: %v", err)
+	}
+}
+
+func TestCompleteCSV_Profiles(t *testing.T) {
+	all := []string{"go", "nodejs", "python"}
+	got := completeCSV("nodejs,", all)
+	want := []string{"nodejs,go", "nodejs,python"}
+	if !slices.Equal(got, want) {
+		t.Errorf("completeCSV = %v, want %v", got, want)
 	}
 }
 

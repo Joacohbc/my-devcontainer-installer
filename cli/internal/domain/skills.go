@@ -2,6 +2,7 @@ package domain
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -22,6 +23,19 @@ func SkillDir() string {
 // ProfileDirs there is no legacy predecessor to also read — skills are new.
 func SkillDirs() []string {
 	return []string{SkillDir()}
+}
+
+// UserSkillPath returns the on-disk path of a user-defined skill id in either
+// accepted extension (.yml or .yaml).
+func UserSkillPath(id string) (string, bool) {
+	for _, ext := range []string{".yml", ".yaml"} {
+		p := filepath.Join(SkillDir(), id+ext)
+		info, err := os.Stat(p)
+		if err == nil && !info.IsDir() {
+			return p, true
+		}
+	}
+	return "", false
 }
 
 // ValidateSkillID rejects empty ids and ids with characters outside the

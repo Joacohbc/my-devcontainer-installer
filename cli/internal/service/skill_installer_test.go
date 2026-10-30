@@ -40,7 +40,7 @@ func TestSkillInstallService_ExplicitSkills_Success(t *testing.T) {
 	svc := SkillInstallService{Report: nopReporter{}}
 	tempDir := t.TempDir()
 
-	err := svc.Install([]string{"firecrawl"}, SkillInstallOptions{
+	err := svc.Install([]string{"find-skills"}, SkillInstallOptions{
 		Dir:         tempDir,
 		Interactive: false,
 	})
@@ -72,7 +72,7 @@ func TestSkillInstallService_ExplicitSkills_Success(t *testing.T) {
 	}
 
 	lastArg := call[len(call)-1]
-	wantScript := "npx --yes skills add firecrawl/cli --skill firecrawl"
+	wantScript := "npx --yes skills add vercel-labs/skills --skill find-skills"
 	if lastArg != wantScript {
 		t.Errorf("unexpected script command: got %q, want %q", lastArg, wantScript)
 	}
@@ -86,7 +86,7 @@ func TestSkillInstallService_ExplicitSkills_MultipleAndGrouped(t *testing.T) {
 	svc := SkillInstallService{Report: nopReporter{}}
 	tempDir := t.TempDir()
 
-	err := svc.Install([]string{"wayfinder", "firecrawl"}, SkillInstallOptions{
+	err := svc.Install([]string{"frontend-design", "find-skills"}, SkillInstallOptions{
 		Dir:         tempDir,
 		Interactive: false,
 	})
@@ -100,7 +100,7 @@ func TestSkillInstallService_ExplicitSkills_MultipleAndGrouped(t *testing.T) {
 	}
 
 	lastArg := call[len(call)-1]
-	wantScript := "npx --yes skills add mattpocock/skills --skill wayfinder && npx --yes skills add firecrawl/cli --skill firecrawl"
+	wantScript := "npx --yes skills add anthropics/skills --skill frontend-design && npx --yes skills add vercel-labs/skills --skill find-skills"
 	if lastArg != wantScript {
 		t.Errorf("unexpected script command: got %q, want %q", lastArg, wantScript)
 	}
@@ -167,7 +167,7 @@ func TestSkillInstallService_ProjectConfig_DefaultsToConfiguredSkills(t *testing
 	configData := types.DevcontainerConfig{
 		Workspace: "testws",
 		Skills: types.SkillsConfig{
-			Skills: []types.SkillID{"firecrawl"},
+			Skills: []types.SkillID{"find-skills"},
 		},
 	}
 	rawConfig, err := json.Marshal(configData)
@@ -192,7 +192,7 @@ func TestSkillInstallService_ProjectConfig_DefaultsToConfiguredSkills(t *testing
 	}
 
 	lastArg := call[len(call)-1]
-	wantScript := "npx --yes skills add firecrawl/cli --skill firecrawl"
+	wantScript := "npx --yes skills add vercel-labs/skills --skill find-skills"
 	if lastArg != wantScript {
 		t.Errorf("unexpected script command: got %q, want %q", lastArg, wantScript)
 	}
@@ -219,7 +219,7 @@ func TestSkillInstallService_InteractivePrompt_Success(t *testing.T) {
 
 	prompter := mockSkillPrompter{
 		selected: []Option{
-			{Value: "firecrawl", Label: "firecrawl"},
+			{Value: "find-skills", Label: "find-skills"},
 		},
 	}
 	svc := SkillInstallService{Report: nopReporter{}, Prompt: prompter}
@@ -274,7 +274,7 @@ func TestSkillInstallService_ImageOverride(t *testing.T) {
 	svc := SkillInstallService{Report: nopReporter{}}
 	customImage := "node:22-slim"
 
-	err := svc.Install([]string{"firecrawl"}, SkillInstallOptions{
+	err := svc.Install([]string{"find-skills"}, SkillInstallOptions{
 		Dir:         t.TempDir(),
 		Image:       customImage,
 		Interactive: false,
@@ -298,7 +298,7 @@ func TestSkillInstallService_ContainerFailure_ReportsError(t *testing.T) {
 	defer restore()
 
 	svc := SkillInstallService{Report: nopReporter{}}
-	err := svc.Install([]string{"firecrawl"}, SkillInstallOptions{
+	err := svc.Install([]string{"find-skills"}, SkillInstallOptions{
 		Dir:         t.TempDir(),
 		Interactive: false,
 	})
@@ -312,7 +312,7 @@ func TestSkillInstallService_ContainerFailure_ReportsError(t *testing.T) {
 
 func TestSkillInstallService_ExplicitSkillsAndAll_Fails(t *testing.T) {
 	svc := SkillInstallService{Report: nopReporter{}}
-	err := svc.Install([]string{"firecrawl"}, SkillInstallOptions{
+	err := svc.Install([]string{"find-skills"}, SkillInstallOptions{
 		Dir:         t.TempDir(),
 		All:         true,
 		Interactive: false,
@@ -334,7 +334,7 @@ func TestSkillInstallService_EmptySkillIDString_FallsBackToProjectConfig(t *test
 	configData := types.DevcontainerConfig{
 		Workspace: "testws",
 		Skills: types.SkillsConfig{
-			Skills: []types.SkillID{"firecrawl"},
+			Skills: []types.SkillID{"find-skills"},
 		},
 	}
 	rawConfig, err := json.Marshal(configData)
@@ -358,7 +358,7 @@ func TestSkillInstallService_EmptySkillIDString_FallsBackToProjectConfig(t *test
 		t.Errorf("call missing default image %s: %v", DefaultSkillInstallerImage, call)
 	}
 	lastArg := call[len(call)-1]
-	wantScript := "npx --yes skills add firecrawl/cli --skill firecrawl"
+	wantScript := "npx --yes skills add vercel-labs/skills --skill find-skills"
 	if lastArg != wantScript {
 		t.Errorf("unexpected script command: got %q, want %q", lastArg, wantScript)
 	}
@@ -367,7 +367,7 @@ func TestSkillInstallService_EmptySkillIDString_FallsBackToProjectConfig(t *test
 func TestSkillInstallService_InvalidTargetDir_Fails(t *testing.T) {
 	svc := SkillInstallService{Report: nopReporter{}}
 	nonExistentDir := filepath.Join(t.TempDir(), "does-not-exist")
-	err := svc.Install([]string{"firecrawl"}, SkillInstallOptions{
+	err := svc.Install([]string{"find-skills"}, SkillInstallOptions{
 		Dir:         nonExistentDir,
 		Interactive: false,
 	})
@@ -387,7 +387,7 @@ func TestSkillInstallService_CommaSeparatedSkills_Parsed(t *testing.T) {
 	svc := SkillInstallService{Report: nopReporter{}}
 	tempDir := t.TempDir()
 
-	err := svc.Install([]string{"firecrawl,wayfinder"}, SkillInstallOptions{
+	err := svc.Install([]string{"find-skills,frontend-design"}, SkillInstallOptions{
 		Dir:         tempDir,
 		Interactive: false,
 	})
@@ -403,7 +403,7 @@ func TestSkillInstallService_CommaSeparatedSkills_Parsed(t *testing.T) {
 		t.Errorf("call missing default image %s: %v", DefaultSkillInstallerImage, call)
 	}
 	lastArg := call[len(call)-1]
-	wantScript := "npx --yes skills add firecrawl/cli --skill firecrawl && npx --yes skills add mattpocock/skills --skill wayfinder"
+	wantScript := "npx --yes skills add vercel-labs/skills --skill find-skills && npx --yes skills add anthropics/skills --skill frontend-design"
 	if lastArg != wantScript {
 		t.Errorf("unexpected script command: got %q, want %q", lastArg, wantScript)
 	}
@@ -415,7 +415,7 @@ func TestSkillInstallService_ContainerFailure_EmptyOutput_ReportsStatus(t *testi
 	defer restore()
 
 	svc := SkillInstallService{Report: nopReporter{}}
-	err := svc.Install([]string{"firecrawl"}, SkillInstallOptions{
+	err := svc.Install([]string{"find-skills"}, SkillInstallOptions{
 		Dir:         t.TempDir(),
 		Interactive: false,
 	})
@@ -487,7 +487,7 @@ func TestSkillInstallService_TargetDirIsFile_Fails(t *testing.T) {
 	}
 
 	svc := SkillInstallService{Report: nopReporter{}}
-	err := svc.Install([]string{"firecrawl"}, SkillInstallOptions{Dir: filePath, Interactive: false})
+	err := svc.Install([]string{"find-skills"}, SkillInstallOptions{Dir: filePath, Interactive: false})
 	if err == nil {
 		t.Fatal("expected error when target dir is a regular file")
 	}
@@ -530,7 +530,7 @@ func TestSkillInstallService_NonInteractiveOutput_FormattedSafely(t *testing.T) 
 
 	rec := &recordingReporter{}
 	svc := SkillInstallService{Report: rec}
-	err := svc.Install([]string{"firecrawl"}, SkillInstallOptions{Dir: t.TempDir(), Interactive: false})
+	err := svc.Install([]string{"find-skills"}, SkillInstallOptions{Dir: t.TempDir(), Interactive: false})
 	if err != nil {
 		t.Fatalf("Install: %v", err)
 	}
@@ -561,7 +561,7 @@ func TestSkillInstallService_DockerUnavailable_Fails(t *testing.T) {
 	}()
 
 	svc := SkillInstallService{Report: nopReporter{}}
-	err := svc.Install([]string{"firecrawl"}, SkillInstallOptions{
+	err := svc.Install([]string{"find-skills"}, SkillInstallOptions{
 		Dir:         t.TempDir(),
 		Interactive: false,
 	})
@@ -579,7 +579,7 @@ func TestSkillInstallService_InteractiveContainerFailure_Fails(t *testing.T) {
 	defer restore()
 
 	svc := SkillInstallService{Report: nopReporter{}}
-	err := svc.Install([]string{"firecrawl"}, SkillInstallOptions{
+	err := svc.Install([]string{"find-skills"}, SkillInstallOptions{
 		Dir:         t.TempDir(),
 		Interactive: true,
 	})

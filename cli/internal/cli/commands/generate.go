@@ -57,7 +57,7 @@ func addGenerateFlags(cmd *cobra.Command) {
 	f.String(flagVolumes, "", "Extra volume mounts on the devcontainer (e.g. myvol:/data,./cache:/cache); 'none' clears them")
 	f.String(flagForwardPorts, "", "Ports 'port-forward' tunnels when called with no argument (e.g. 3000,8080:80, reverse:5432 for a host port reachable inside the container); 'none' clears them")
 	f.Bool(flagSharedConfig, true, "Mount the global shared AI/dev tool config volume (devcontainer-shared-config) so logins/sessions persist across containers; --shared-config=false to opt out")
-	f.String(flagProfile, "", "Apply a profile: a module bundle for mode=custom (any profile, e.g. 'scraper'), or the pull target for mode=profiles (must be [remote]-tagged). See 'config profile list'.")
+	f.String(flagProfile, "", "Apply profile(s): comma-separated module bundles for mode=custom (e.g. 'nodejs,my-tools'), or a single pull target for mode=profiles (must be [remote]-tagged). See 'config profile list'.")
 	f.String(flagPreset, "", "Deprecated alias for --profile")
 	_ = f.MarkDeprecated(flagPreset, "use --profile instead")
 	f.StringArray(flagScript, nil, "Custom script to add, as <path>[:build|start|service|manual] (default build); repeatable. build bakes it into the image, start runs once per container, service runs as background service on every start, manual only copies it to ~/post-script/")
@@ -72,7 +72,7 @@ func addGenerateFlags(cmd *cobra.Command) {
 	f.BoolP(flagVersion, "v", false, "Print the CLI version")
 
 	completeProfileFunc := func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		return profileIDs(false), cobra.ShellCompDirectiveNoFileComp
+		return completeCSV(toComplete, profileIDs(false)), cobra.ShellCompDirectiveNoFileComp
 	}
 	_ = cmd.RegisterFlagCompletionFunc(flagProfile, completeProfileFunc)
 	_ = cmd.RegisterFlagCompletionFunc(flagPreset, completeProfileFunc)
@@ -101,7 +101,7 @@ const remoteVariantSSH = "ssh"
 // its only caller for that is 'run', which always pulls, plus "ssh" (the
 // hand-built full image, not a catalog profile). Everywhere else every known
 // profile is offered, since --profile also selects a mode=custom module
-// bundle, where a local-build-only profile like 'scraper' is valid too.
+// bundle, where a local-build-only profile like 'base' or a user profile is valid too.
 func profileIDs(remoteOnly bool) []string {
 	ids := make([]string, 0)
 	for _, p := range catalog.All(domain.ProfileDirs()...) {
@@ -119,7 +119,7 @@ func profileIDs(remoteOnly bool) []string {
 // validRemoteVariant reports whether v is usable as --profile's pull target
 // under mode=profiles (or 'run', which is always that target): "ssh", or a
 // profile id with a published image. A profile that exists but was never
-// published (e.g. 'scraper') is rejected here — it would only fail the pull —
+// published (e.g. 'base') is rejected here — it would only fail the pull —
 // even though it remains valid for --profile under mode=custom.
 func validRemoteVariant(v string) bool {
 	if v == remoteVariantSSH {
@@ -130,7 +130,7 @@ func validRemoteVariant(v string) bool {
 }
 
 // remoteVariantError builds the mode=profiles / 'run' --profile validation
-// error. A profile that exists but has no published image (e.g. 'scraper')
+// error. A profile that exists but has no published image (e.g. 'base' or a user profile)
 // gets a pointer to the local-build path instead of being reported as merely
 // "unknown".
 func remoteVariantError(v string) error {
@@ -141,23 +141,24 @@ func remoteVariantError(v string) error {
 }
 
 type genFlags struct {
-	interactive  bool
-	forcePrompt  bool
-	force        bool
-	build        *bool // nil = ask
-	image        string
-	workspace    string
-	withModules  []string
-	services     []string
-	ports        *[]string // nil = not set (keep existing); non-nil overrides
-	volumes      *[]string // nil = not set (keep existing); non-nil overrides
-	sharedConfig *bool     // nil = not set (keep existing/default-on)
-	mode         string
-	registry     string
-	profile      string
-	scripts      []types.CustomScript
-	skills       []types.SkillID
-	skillsMode   string
+	interactive    bool
+	forcePrompt    bool
+	force          bool
+	build          *bool // nil = ask
+	image          string
+	workspace      string
+	withModules    []string
+	services       []string
+	ports          *[]string // nil = not set (keep existing); non-nil overrides
+	volumes        *[]string // nil = not set (keep existing); non-nil overrides
+	sharedConfig   *bool     // nil = not set (keep existing/default-on)
+	mode           string
+	registry       string
+	profile        string
+	profileModules []string
+	scripts        []types.CustomScript
+	skills         []types.SkillID
+	skillsMode     string
 	// profileSkills and profileSkillsMode come from the applied profile and lose
 	// to the explicit flags above.
 	profileSkills     []types.SkillID
@@ -214,6 +215,44 @@ func validateForwardPorts(specs []string) error {
 	return nil
 }
 
+func populateProfileFlags(g *genFlags) error {
+	if g.profile == "" {
+		return nil
+	}
+	names := splitCSV(g.profile)
+	if g.mode == string(types.BuildModeProfiles) && len(names) > 1 {
+		return fmt.Errorf("mode=profiles accepts exactly one profile, got %q (multiple profiles can only be combined with mode=custom)", g.profile)
+	}
+	// "ssh" is not a catalog profile — it is the hand-built full image, a valid
+	// pull target under mode=profiles but with no modules/scripts/ports of its
+	// own to resolve here. Any other unrecognized id is still an error.
+	if len(names) == 1 && names[0] == remoteVariantSSH {
+		return nil
+	}
+	p, err := catalog.ResolveComposed(names, domain.ProfileDirs()...)
+	if err != nil {
+		return err
+	}
+	scripts, serr := domain.ProfileScripts(p)
+	if serr != nil {
+		return serr
+	}
+	g.scripts = append(g.scripts, scripts...)
+	if serr := domain.ValidateSkills(types.SkillsConfig{Mode: p.SkillsMode, Skills: p.Skills}); serr != nil {
+		return fmt.Errorf("profile %q: %w", p.ID, serr)
+	}
+	g.profileModules = p.Modules
+	g.profileSkills, g.profileSkillsMode = p.Skills, p.SkillsMode
+	if verr := domain.ValidatePortSpecs(p.Ports); verr != nil {
+		return fmt.Errorf("profile %q: %w", p.ID, verr)
+	}
+	if verr := validateForwardPorts(p.ForwardPorts); verr != nil {
+		return fmt.Errorf("profile %q: %w", p.ID, verr)
+	}
+	g.profilePorts, g.profileForwardPorts = p.Ports, p.ForwardPorts
+	return nil
+}
+
 func parseGenFlags(cmd *cobra.Command) (*genFlags, error) {
 	f := cmd.Flags()
 	noI, _ := f.GetBool(flagNoInteractive)
@@ -235,30 +274,8 @@ func parseGenFlags(cmd *cobra.Command) (*genFlags, error) {
 		g.profile, _ = f.GetString(flagPreset)
 	}
 
-	// "ssh" is not a catalog profile — it is the hand-built full image, a valid
-	// pull target under mode=profiles but with no modules/scripts/ports of its
-	// own to resolve here. Any other unrecognized id is still an error.
-	if g.profile != "" && g.profile != remoteVariantSSH {
-		p, ok := catalog.Resolve(g.profile, domain.ProfileDirs()...)
-		if !ok {
-			return nil, fmt.Errorf("unknown profile: %s", g.profile)
-		}
-		scripts, serr := domain.ProfileScripts(p)
-		if serr != nil {
-			return nil, serr
-		}
-		g.scripts = append(g.scripts, scripts...)
-		if serr := domain.ValidateSkills(types.SkillsConfig{Mode: p.SkillsMode, Skills: p.Skills}); serr != nil {
-			return nil, fmt.Errorf("profile %q: %w", p.ID, serr)
-		}
-		g.profileSkills, g.profileSkillsMode = p.Skills, p.SkillsMode
-		if verr := domain.ValidatePortSpecs(p.Ports); verr != nil {
-			return nil, fmt.Errorf("profile %q: %w", p.ID, verr)
-		}
-		if verr := validateForwardPorts(p.ForwardPorts); verr != nil {
-			return nil, fmt.Errorf("profile %q: %w", p.ID, verr)
-		}
-		g.profilePorts, g.profileForwardPorts = p.Ports, p.ForwardPorts
+	if err := populateProfileFlags(g); err != nil {
+		return nil, err
 	}
 
 	if f.Changed(flagSkill) {
@@ -328,7 +345,7 @@ func parseGenFlags(cmd *cobra.Command) (*genFlags, error) {
 	}
 	// --profile is validated against the [remote] tag only once the effective
 	// mode is known (validateConfig): it is shared with mode=custom, where any
-	// profile — including a [local]-only one like 'scraper' — is valid.
+	// profile — including a [local]-only one like 'base' — is valid.
 	return g, nil
 }
 
@@ -411,7 +428,9 @@ func initAndConfigure(cwd string, flags *genFlags, svc service.GenerateService) 
 	// --profile instead just names the pull target).
 	if flags.profile != "" {
 		// Apply profile values to config as base/defaults early so they are pre-selected if prompts are forced
-		applyGenFlags(config, flags)
+		if err := applyGenFlags(config, flags); err != nil {
+			return nil, err
+		}
 	}
 
 	needsPrompts := flags.forcePrompt ||
@@ -452,7 +471,9 @@ func initAndConfigure(cwd string, flags *genFlags, svc service.GenerateService) 
 		}
 	}
 
-	applyGenFlags(config, flags)
+	if err := applyGenFlags(config, flags); err != nil {
+		return nil, err
+	}
 	return config, nil
 }
 
@@ -493,8 +514,16 @@ func validateConfig(cwd string, config *types.DevcontainerConfig, flags *genFlag
 		return fmt.Errorf("mode=image requires --image <name> (run 'devcontainer-cli image list' to see available images)")
 	}
 
-	if config.Mode == types.BuildModeProfiles && config.Remote == nil {
-		return fmt.Errorf("mode=profiles requires --profile (a [remote]-tagged profile id — run 'devcontainer-cli config profile list' to see them, or 'ssh' for the full image)")
+	if config.Mode == types.BuildModeProfiles {
+		if len(splitCSV(flags.profile)) > 1 {
+			return fmt.Errorf("mode=profiles accepts exactly one profile, got %q (multiple profiles can only be combined with mode=custom)", flags.profile)
+		}
+		if config.Remote != nil && len(splitCSV(config.Remote.Variant)) > 1 {
+			return fmt.Errorf("mode=profiles accepts exactly one profile, got %q (multiple profiles can only be combined with mode=custom)", config.Remote.Variant)
+		}
+		if config.Remote == nil {
+			return fmt.Errorf("mode=profiles requires --profile (a [remote]-tagged profile id — run 'devcontainer-cli config profile list' to see them, or 'ssh' for the full image)")
+		}
 	}
 	// "ssh" names the hand-built full image rather than a catalog profile, so
 	// outside mode=profiles there is no bundle behind it to build from.
@@ -502,7 +531,7 @@ func validateConfig(cwd string, config *types.DevcontainerConfig, flags *genFlag
 		return fmt.Errorf("profile %q is a pull target only (the hand-built full image); use --mode %s to pull it, or pick a profile that carries modules", remoteVariantSSH, types.BuildModeProfiles)
 	}
 	// --profile is shared with mode=custom, where any profile (including a
-	// [local]-only one like 'scraper') is valid — so this can only be checked
+	// [local]-only one like 'base') is valid — so this can only be checked
 	// once the effective mode is known, here rather than at flag-parse time.
 	if config.Mode == types.BuildModeProfiles && config.Remote != nil && config.Remote.Variant != "" && !validRemoteVariant(config.Remote.Variant) {
 		return remoteVariantError(config.Remote.Variant)
@@ -836,24 +865,37 @@ func effectiveBuildMode(config *types.DevcontainerConfig, flags *genFlags) types
 // ("ssh", which validateConfig rejects under this mode), since clearing the
 // services for a bundle that contributed no modules either would drop the
 // project's databases for nothing.
-func applyProfileBundle(config *types.DevcontainerConfig, flags *genFlags) {
+func applyProfileBundle(config *types.DevcontainerConfig, flags *genFlags) error {
 	if flags.profile == "" || effectiveBuildMode(config, flags) == types.BuildModeProfiles {
-		return
+		return nil
 	}
-	profile, isKnownProfile := catalog.Resolve(flags.profile, domain.ProfileDirs()...)
-	if !isKnownProfile {
-		return
+	if flags.profile == remoteVariantSSH {
+		return nil
+	}
+	var profileModules []string
+	if flags.profileModules != nil {
+		profileModules = flags.profileModules
+	} else {
+		names := splitCSV(flags.profile)
+		p, err := catalog.ResolveComposed(names, domain.ProfileDirs()...)
+		if err != nil {
+			return err
+		}
+		profileModules = p.Modules
 	}
 	if flags.withModules == nil {
-		flags.withModules = profile.Modules
+		flags.withModules = profileModules
 	}
 	if flags.services == nil {
 		flags.services = []string{}
 	}
+	return nil
 }
 
-func applyGenFlags(config *types.DevcontainerConfig, flags *genFlags) {
-	applyProfileBundle(config, flags)
+func applyGenFlags(config *types.DevcontainerConfig, flags *genFlags) error {
+	if err := applyProfileBundle(config, flags); err != nil {
+		return err
+	}
 
 	// Scripts come from the profile and from --script; they are persisted in the
 	// config so a regenerated project no longer depends on either.
@@ -953,6 +995,7 @@ func applyGenFlags(config *types.DevcontainerConfig, flags *genFlags) {
 	// Last, because --with rewrites the module list above and the skills module
 	// has to survive that: it is derived from the selected skills, not chosen.
 	domain.ApplySelectedSkills(config)
+	return nil
 }
 
 func writeOutput(filePath, content string, force bool) bool {

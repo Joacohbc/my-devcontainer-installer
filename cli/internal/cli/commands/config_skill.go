@@ -3,7 +3,6 @@ package commands
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 
@@ -51,14 +50,17 @@ A user-defined id shadows a built-in of the same id. Pass it to
 Subcommands:
   list                  List built-in and user-defined skills.
   info <id>             Print one skill's full resolved definition.
-  add <id>              Create (or, with --force, overwrite) a user-defined skill.
+  add <id|source>       Create a user-defined skill, or discover from a source.
   remove <id..>         Delete user-defined skills (built-ins cannot be removed).
   install [skill-ids..] Install agent skills at project level in an ephemeral container.`,
 		Example: `  devcontainer-cli config skill list
-  devcontainer-cli config skill info firecrawl
+  devcontainer-cli config skill info agent-browser
+  devcontainer-cli config skill add anthropics/skills
+  devcontainer-cli config skill add anthropics/skills --all
+  devcontainer-cli config skill add anthropics/skills --pick pdf
   devcontainer-cli config skill add my-skill --ref owner/repo
   devcontainer-cli config skill remove my-skill
-  devcontainer-cli config skill install firecrawl
+  devcontainer-cli config skill install agent-browser
   devcontainer-cli config skill install --all
   devcontainer-cli --with nodejs --skill my-skill`,
 	}
@@ -132,22 +134,6 @@ func isBuiltinSkill(id types.SkillID) bool {
 	return false
 }
 
-// skillInfoView is the yaml shape 'config skill info' prints — the same
-// fields catalog's (unexported) userSkillManifest reads, so a built-in and a
-// user-defined skill render identically regardless of which one is actually
-// backed by a yaml file on disk.
-type skillInfoView struct {
-	ID              string   `yaml:"id"`
-	Label           string   `yaml:"label,omitempty"`
-	Ref             string   `yaml:"ref"`
-	Skill           string   `yaml:"skill,omitempty"`
-	RequiresModules []string `yaml:"requires_modules,omitempty"`
-	Context         *struct {
-		Title string `yaml:"title"`
-		Body  string `yaml:"body"`
-	} `yaml:"context,omitempty"`
-}
-
 func newConfigSkillInfoCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:   "info <skill-id>",
@@ -155,7 +141,7 @@ func newConfigSkillInfoCommand() *cobra.Command {
 		Long: `devcontainer-cli config skill info — print one skill's full definition: built-in
 or user-defined, its install ref, required modules, and its ~/CONTEXT.md
 entry when it has one.`,
-		Example:           "  devcontainer-cli config skill info firecrawl",
+		Example:           "  devcontainer-cli config skill info agent-browser",
 		Args:              cobra.ExactArgs(1),
 		SilenceUsage:      true,
 		RunE:              runConfigSkillInfo,
@@ -181,16 +167,13 @@ func runConfigSkillInfo(cmd *cobra.Command, args []string) error {
 	console.Info("  Install: %s", spec.InstallRef())
 	console.NewLine()
 
-	view := skillInfoView{ID: string(spec.ID), Label: spec.Label, Ref: spec.Ref, Skill: spec.Skill}
+	view := types.UserSkillManifest{ID: string(spec.ID), Label: spec.Label, Ref: spec.Ref, Skill: spec.Skill}
 	for _, m := range spec.RequiresModules {
 		view.RequiresModules = append(view.RequiresModules, string(m))
 	}
 	if spec.Context != nil {
 		sec := spec.Context()
-		view.Context = &struct {
-			Title string `yaml:"title"`
-			Body  string `yaml:"body"`
-		}{Title: sec.Title, Body: sec.Body}
+		view.Context = &types.UserSkillContext{Title: sec.Title, Body: sec.Body}
 	}
 
 	data, err := yaml.Marshal(view)
@@ -204,31 +187,44 @@ func runConfigSkillInfo(cmd *cobra.Command, args []string) error {
 // userSkillPath returns the on-disk path of a user-defined skill id, in
 // either accepted extension.
 func userSkillPath(id string) (string, bool) {
-	for _, ext := range []string{".yml", ".yaml"} {
-		p := filepath.Join(domain.SkillDir(), id+ext)
-		if fileExists(p) {
-			return p, true
-		}
-	}
-	return "", false
+	return domain.UserSkillPath(id)
 }
+
+var configSkillServiceFactory = func() service.ConfigService {
+	return service.ConfigService{Report: console}
+}
+
+var skillPrompter service.Prompter = console
 
 func newConfigSkillAddCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "add <skill-id>",
-		Short: "Create (or overwrite) a user-defined agent skill",
-		Long: `devcontainer-cli config skill add — write a user-defined agent skill at
-~/.devcontainer-cli/skills/<id>.yml, selectable with --skill exactly like a
-built-in one — including under an id that already names a built-in, which
-your own then shadows.
+		Use:   "add <skill-id|source>",
+		Short: "Add a user-defined agent skill or discover skills from a source",
+		Long: `devcontainer-cli config skill add — add user-defined agent skills saved at
+~/.devcontainer-cli/skills/<id>.yml, selectable with --skill exactly like built-in
+skills.
 
---ref is the only field that cannot be left empty (the source the Skills CLI
-resolves — an owner/repo shorthand or a repository URL); everything else is
-optional. A value missing from the flags is prompted for when interactive;
-with --no-interactive every value must come from a flag.`,
-		Example: `  devcontainer-cli config skill add my-skill --ref owner/repo --label "My Skill"
+When passed a repository or source (containing '/', ':', or starting with '.'),
+it queries the Skills CLI to discover available skills and lets you choose which
+ones to save. Use --all to save all discovered skills, or --pick a,b to select
+specific skills without prompting. In non-interactive mode, either --all or --pick
+is required.
+
+When passed a skill id without source indicators, it creates (or with --force
+overwrites) a single user-defined skill definition. --ref is required in this mode.`,
+		Example: `  # Discover skills from a repository and pick interactively
+  devcontainer-cli config skill add anthropics/skills
+
+  # Discover and save all skills non-interactively
+  devcontainer-cli config skill add anthropics/skills --all
+
+  # Discover and pick specific skills
+  devcontainer-cli config skill add anthropics/skills --pick pdf,convex-best-practices
+
+  # Add a single skill manually
+  devcontainer-cli config skill add my-skill --ref owner/repo --label "My Skill"
   devcontainer-cli config skill add my-skill --ref owner/repo --requires-modules nodejs,python
-  devcontainer-cli config skill add firecrawl --ref me/firecrawl --force   # shadow the built-in`,
+  devcontainer-cli config skill add agent-browser --ref me/agent-browser --force   # shadow the built-in`,
 		Args:         cobra.ExactArgs(1),
 		SilenceUsage: true,
 		RunE:         runConfigSkillAdd,
@@ -240,6 +236,8 @@ with --no-interactive every value must come from a flag.`,
 	cmd.Flags().String("context-title", "", "Title of its ~/CONTEXT.md entry (optional; defaults to the label or id)")
 	cmd.Flags().String("context-body", "", "Body of its ~/CONTEXT.md entry (optional; a title with no body is dropped)")
 	cmd.Flags().Bool("force", false, "Overwrite an existing user-defined skill with the same id")
+	cmd.Flags().Bool("all", false, "Select all discovered skills from source")
+	cmd.Flags().String("pick", "", "Comma-separated list of discovered skill names or IDs to save")
 	addInteractiveFlag(cmd)
 	_ = cmd.RegisterFlagCompletionFunc("requires-modules", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return completeCSV(toComplete, catalog.ModuleIDs()), cobra.ShellCompDirectiveNoFileComp
@@ -247,8 +245,126 @@ with --no-interactive every value must come from a flag.`,
 	return cmd
 }
 
+func isSkillSourceArg(arg string) bool {
+	if strings.HasPrefix(arg, "-") {
+		return false
+	}
+	return strings.Contains(arg, "/") || strings.Contains(arg, ":") || strings.HasPrefix(arg, ".")
+}
+
 func runConfigSkillAdd(cmd *cobra.Command, args []string) error {
-	id := args[0]
+	arg := args[0]
+	if strings.HasPrefix(arg, "-") {
+		return fmt.Errorf("invalid source %q: source cannot start with '-'", arg)
+	}
+	if isSkillSourceArg(arg) {
+		return runConfigSkillAddDiscovery(cmd, arg)
+	}
+	return runConfigSkillAddManual(cmd, arg)
+}
+
+func runConfigSkillAddDiscovery(cmd *cobra.Command, source string) error {
+	allFlag, _ := cmd.Flags().GetBool("all")
+	pickFlag, _ := cmd.Flags().GetString("pick")
+	force, _ := cmd.Flags().GetBool("force")
+	interactive := interactiveFlag(cmd)
+
+	if allFlag && pickFlag != "" {
+		return fmt.Errorf("cannot specify both --all and --pick")
+	}
+
+	svc := configSkillServiceFactory()
+	discovered, err := svc.DiscoverSkills(source)
+	if err != nil {
+		return err
+	}
+
+	var selected []*domain.DiscoveredSkill
+
+	if allFlag {
+		selected = discovered
+	} else if pickFlag != "" {
+		picks := splitCSV(pickFlag)
+		matched, err := matchDiscoveredSkills(discovered, picks, source)
+		if err != nil {
+			return err
+		}
+		selected = matched
+	} else if len(discovered) == 1 {
+		selected = discovered
+	} else if !interactive {
+		return fmt.Errorf("non-interactive mode requires --all or --pick")
+	} else {
+		choices := make([]service.Option, 0, len(discovered))
+		for _, d := range discovered {
+			choices = append(choices, service.Option{
+				Value: string(d.ID),
+				Label: formatSkillDiscoveryOptionLabel(d),
+			})
+		}
+		picked, err := skillPrompter.Multiselect("Select skills to save:", choices, nil)
+		if err != nil {
+			return err
+		}
+		if len(picked) == 0 {
+			console.Info("No skills selected.")
+			return nil
+		}
+		for _, p := range picked {
+			for _, d := range discovered {
+				if string(d.ID) == p.Value {
+					selected = append(selected, d)
+					break
+				}
+			}
+		}
+	}
+
+	return svc.SaveUserSkills(selected, force)
+}
+
+func matchDiscoveredSkills(discovered []*domain.DiscoveredSkill, picks []string, source string) ([]*domain.DiscoveredSkill, error) {
+	var selected []*domain.DiscoveredSkill
+	for _, pick := range picks {
+		pick = strings.TrimSpace(pick)
+		if pick == "" {
+			continue
+		}
+		var found *domain.DiscoveredSkill
+		for _, d := range discovered {
+			if strings.EqualFold(string(d.ID), pick) || strings.EqualFold(d.Name, pick) {
+				found = d
+				break
+			}
+		}
+		if found == nil {
+			return nil, fmt.Errorf("skill %q not found in %s", pick, source)
+		}
+		if !slices.Contains(selected, found) {
+			selected = append(selected, found)
+		}
+	}
+	return selected, nil
+}
+
+func formatSkillDiscoveryOptionLabel(d *domain.DiscoveredSkill) string {
+	shortDesc := strings.TrimSpace(d.Description)
+	if idx := strings.Index(shortDesc, "\n"); idx != -1 {
+		shortDesc = strings.TrimSpace(shortDesc[:idx])
+	}
+	var parts []string
+	if shortDesc != "" {
+		parts = append(parts, fmt.Sprintf("%s — %s", d.Name, shortDesc))
+	} else {
+		parts = append(parts, d.Name)
+	}
+	if d.Snyk != "" {
+		parts = append(parts, fmt.Sprintf("[snyk: %s]", d.Snyk))
+	}
+	return strings.Join(parts, " ")
+}
+
+func runConfigSkillAddManual(cmd *cobra.Command, id string) error {
 	if err := domain.ValidateSkillID(id); err != nil {
 		return err
 	}
@@ -289,42 +405,31 @@ func runConfigSkillAdd(cmd *cobra.Command, args []string) error {
 		label = asked
 	}
 
-	if isBuiltinSkill(types.SkillID(id)) {
-		console.Info("Note: %q is also a built-in skill id; yours takes precedence.", id)
+	manifest := types.UserSkillManifest{
+		ID:    id,
+		Label: strings.TrimSpace(label),
+		Ref:   ref,
+		Skill: strings.TrimSpace(skillSel),
 	}
-
-	view := skillInfoView{ID: id, Label: strings.TrimSpace(label), Ref: ref, Skill: strings.TrimSpace(skillSel)}
 	for _, m := range splitCSV(rawModules) {
-		view.RequiresModules = append(view.RequiresModules, m)
+		manifest.RequiresModules = append(manifest.RequiresModules, m)
 	}
 	if ctxBody != "" {
 		title := ctxTitle
 		if title == "" {
-			title = view.Label
+			title = manifest.Label
 		}
 		if title == "" {
 			title = id
 		}
-		view.Context = &struct {
-			Title string `yaml:"title"`
-			Body  string `yaml:"body"`
-		}{Title: title, Body: ctxBody}
+		manifest.Context = &types.UserSkillContext{
+			Title: title,
+			Body:  ctxBody,
+		}
 	}
 
-	data, err := yaml.Marshal(view)
-	if err != nil {
-		return err
-	}
-	if err := os.MkdirAll(domain.SkillDir(), 0o755); err != nil {
-		return fmt.Errorf("failed to create skills directory: %w", err)
-	}
-	path := filepath.Join(domain.SkillDir(), id+".yml")
-	if err := os.WriteFile(path, data, 0o644); err != nil {
-		return fmt.Errorf("failed to save skill: %w", err)
-	}
-
-	console.Success("Skill %q successfully created at %s", id, path)
-	return nil
+	svc := configSkillServiceFactory()
+	return svc.SaveUserSkill(manifest, force)
 }
 
 func newConfigSkillRemoveCommand() *cobra.Command {
@@ -423,7 +528,7 @@ If no skill IDs are specified:
 
 Use --all to install all available agent skills (both built-in and user-defined).`,
 		Example: `  # Install specific skills
-  devcontainer-cli config skill install firecrawl
+  devcontainer-cli config skill install agent-browser
 
   # Install all available skills
   devcontainer-cli config skill install --all

@@ -1,32 +1,14 @@
 package catalog
 
 import (
-	"embed"
-	"io/fs"
+	"fmt"
 	"os"
-	"path"
 	"path/filepath"
-	"slices"
 	"strings"
 
 	"github.com/goccy/go-yaml"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 )
-
-// Repo-shipped profiles that carry scripts live here as data, next to the files
-// they reference — go:embed cannot reach out of its own directory, so a profile
-// with scripts cannot be a Go literal like the plain bundles below.
-//
-//go:embed profiles
-var builtinProfileFS embed.FS
-
-// BuiltinProfileFS exposes that tree so a built-in profile's scripts can be read
-// the same way a user profile's are read off disk.
-var BuiltinProfileFS fs.FS = builtinProfileFS
-
-// BuiltinProfileRoot is the directory inside BuiltinProfileFS holding one
-// subdirectory per repo-shipped profile.
-const BuiltinProfileRoot = "profiles"
 
 // ProfileFileName is the manifest inside a directory-shaped profile. A profile
 // that carries custom scripts is a directory (the scripts live next to the
@@ -56,27 +38,18 @@ type Profile struct {
 	// Remote marks that this profile id also has a published
 	// ghcr.io/devcontainer-<id> image, built by CI from this exact module list —
 	// so it is safe to offer for --profile under mode=profiles (a pull instead of a
-	// local build). A profile without it (e.g. 'scraper', or any user profile
-	// that has not set up its own matching publish) can still be applied with
-	// --profile in mode=custom; it is just never a pull target, since nothing
-	// is published under its id and the pull would 404/be denied.
+	// local build). A profile without it can still be applied with --profile in
+	// mode=custom; it is just never a pull target.
 	Remote bool   `yaml:"remote,omitempty"`
 	Source string `yaml:"-"`
 	// Dir is the directory the profile's scripts are resolved against: the
-	// profile's own directory for a directory-shaped profile, the containing
-	// directory for a flat <id>.yml, and the path inside BuiltinProfileFS for a
-	// repo-shipped one. Empty only for a profile that ships no scripts.
+	// profile's own directory for a directory-shaped profile, and the containing
+	// directory for a flat <id>.yml. Empty for a profile that ships no scripts.
 	Dir string `yaml:"-"`
-	// Embedded marks Dir as a path inside BuiltinProfileFS rather than on the
-	// host filesystem.
-	Embedded bool `yaml:"-"`
 }
 
-// BuiltinProfiles is every profile the CLI ships: the plain module bundles
-// below, followed by the repo-shipped ones that carry scripts (read from
-// BuiltinProfileFS). A bundle that needs no files stays a Go literal, which is
-// what keeps the ids the CI variant matrix depends on in one readable table.
-var BuiltinProfiles = slices.Concat(plainBuiltinProfiles, embeddedProfiles())
+// BuiltinProfiles is every profile the CLI ships: the plain module bundles below.
+var BuiltinProfiles = plainBuiltinProfiles
 
 // github-cli is listed first in every profile so its Dockerfile layer is shared
 // with the base cache image (devcontainer-base), maximising Docker layer cache
@@ -201,35 +174,6 @@ var plainBuiltinProfiles = []Profile{
 	},
 }
 
-// embeddedProfiles reads the repo-shipped profiles out of BuiltinProfileFS. A
-// malformed one is a build-time mistake in this repo, not user input, so
-// TestEmbeddedProfilesAreWellFormed asserts every entry parses instead of
-// letting one disappear silently here.
-func embeddedProfiles() []Profile {
-	entries, err := fs.ReadDir(builtinProfileFS, BuiltinProfileRoot)
-	if err != nil {
-		return nil
-	}
-	var out []Profile
-	for _, e := range entries {
-		if !e.IsDir() {
-			continue
-		}
-		dir := path.Join(BuiltinProfileRoot, e.Name())
-		data, rerr := fs.ReadFile(builtinProfileFS, path.Join(dir, ProfileFileName))
-		if rerr != nil {
-			continue
-		}
-		var p Profile
-		if yaml.Unmarshal(data, &p) != nil || p.ID == "" {
-			continue
-		}
-		p.Dir, p.Embedded = dir, true
-		out = append(out, p)
-	}
-	return out
-}
-
 // Resolve looks an id up across the given user directories (earlier ones win)
 // and then the built-ins. Passing several directories is how the legacy
 // `presets/` directory keeps working alongside `profiles/`.
@@ -349,4 +293,127 @@ func readProfile(path string) (Profile, bool) {
 
 func hasYAMLSuffix(name string) bool {
 	return strings.HasSuffix(name, ".yml") || strings.HasSuffix(name, ".yaml")
+}
+
+func appendUnique[T comparable](dst []T, seen map[T]bool, items []T) []T {
+	for _, item := range items {
+		if !seen[item] {
+			seen[item] = true
+			dst = append(dst, item)
+		}
+	}
+	return dst
+}
+
+// MergeProfiles merges an ordered list of profiles into a single effective profile.
+//   - Modules: union of module IDs, deduplicated, preserving first-seen order.
+//   - Scripts: concatenated in order. If two scripts share the same destination
+//     build file name (s.BuildFile()) across different profiles, an error is returned
+//     naming both profiles. If a script's Source is not yet set and the originating
+//     profile has a Dir, Source is resolved against it.
+//   - Skills: union of skill IDs, deduplicated, preserving first-seen order.
+//   - Ports and ForwardPorts: union, deduplicated, preserving first-seen order.
+//   - SkillsMode: if multiple profiles declare conflicting explicit skills modes, an
+//     error is returned. Otherwise, the explicit mode (if any) is used.
+func MergeProfiles(profiles ...Profile) (Profile, error) {
+	if len(profiles) == 0 {
+		return Profile{}, nil
+	}
+	if len(profiles) == 1 {
+		return profiles[0], nil
+	}
+
+	var (
+		ids          []string
+		labels       []string
+		modules      []string
+		scripts      []types.CustomScript
+		skills       []types.SkillID
+		ports        []string
+		forwardPorts []string
+
+		seenModules      = make(map[string]bool)
+		seenSkills       = make(map[types.SkillID]bool)
+		seenPorts        = make(map[string]bool)
+		seenForwardPorts = make(map[string]bool)
+		scriptDests      = make(map[string]string) // dest build file -> profile ID/label
+
+		explicitMode     types.SkillMode
+		explicitModeProf string
+	)
+
+	for _, p := range profiles {
+		profName := p.ID
+		if profName == "" {
+			profName = p.Label
+		}
+		if profName == "" {
+			profName = "unnamed"
+		}
+
+		if p.ID != "" {
+			ids = append(ids, p.ID)
+		}
+		if p.Label != "" {
+			labels = append(labels, p.Label)
+		}
+
+		modules = appendUnique(modules, seenModules, p.Modules)
+
+		for _, s := range p.Scripts {
+			dest := s.BuildFile()
+			if prevProf, exists := scriptDests[dest]; exists && prevProf != profName {
+				return Profile{}, fmt.Errorf("script collision: profiles %q and %q both declare destination %q", prevProf, profName, dest)
+			}
+			scriptDests[dest] = profName
+
+			if s.Source == "" && p.Dir != "" {
+				s.Source = filepath.Join(p.Dir, s.File)
+			}
+			scripts = append(scripts, s)
+		}
+
+		skills = appendUnique(skills, seenSkills, p.Skills)
+		ports = appendUnique(ports, seenPorts, p.Ports)
+		forwardPorts = appendUnique(forwardPorts, seenForwardPorts, p.ForwardPorts)
+
+		if p.SkillsMode != "" {
+			if explicitMode == "" {
+				explicitMode = p.SkillsMode
+				explicitModeProf = profName
+			} else if explicitMode != p.SkillsMode {
+				return Profile{}, fmt.Errorf("conflicting skills modes: profile %q specifies %q, but profile %q specifies %q", explicitModeProf, explicitMode, profName, p.SkillsMode)
+			}
+		}
+	}
+
+	merged := Profile{
+		ID:           strings.Join(ids, ","),
+		Label:        strings.Join(labels, " + "),
+		Modules:      modules,
+		Scripts:      scripts,
+		Skills:       skills,
+		SkillsMode:   explicitMode,
+		Ports:        ports,
+		ForwardPorts: forwardPorts,
+		Remote:       false,
+	}
+	return merged, nil
+}
+
+// ResolveComposed resolves each ID in the given list and merges them into an
+// effective profile. If any profile ID is unknown, an error is returned.
+func ResolveComposed(ids []string, userDirs ...string) (Profile, error) {
+	if len(ids) == 0 {
+		return Profile{}, nil
+	}
+	resolved := make([]Profile, 0, len(ids))
+	for _, id := range ids {
+		p, ok := Resolve(id, userDirs...)
+		if !ok {
+			return Profile{}, fmt.Errorf("unknown profile: %s", id)
+		}
+		resolved = append(resolved, p)
+	}
+	return MergeProfiles(resolved...)
 }

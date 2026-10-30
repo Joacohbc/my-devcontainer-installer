@@ -2,6 +2,7 @@ package domain_test
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
@@ -65,16 +66,15 @@ func TestResolveDockerfileModules_TransitiveRequires(t *testing.T) {
 	assertContains(t, ids, "github-cli")
 }
 
-func TestResolveDockerfileModules_BrowserHarnessDependencies(t *testing.T) {
-	resolved, err := domain.ResolveDockerfileModules([]types.SelectedModule{{ID: "browser-harness"}})
+func TestResolveDockerfileModules_CodexCliDependencies(t *testing.T) {
+	resolved, err := domain.ResolveDockerfileModules([]types.SelectedModule{{ID: "codex-cli"}})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	ids := moduleIDs(resolved)
-	assertContains(t, ids, "browser-harness")
-	assertContains(t, ids, "python")
-	assertContains(t, ids, "chrome")
-	assertContains(t, ids, "ffmpeg")
+	assertContains(t, ids, "codex-cli")
+	assertContains(t, ids, "nodejs")
+	assertContains(t, ids, "github-cli")
 }
 
 func TestResolveDockerfileModules_UnknownModuleErrors(t *testing.T) {
@@ -85,6 +85,34 @@ func TestResolveDockerfileModules_UnknownModuleErrors(t *testing.T) {
 	var re domain.ResolverError
 	if !errors.As(err, &re) {
 		t.Errorf("expected ResolverError, got %T: %v", err, err)
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "devcontainer-cli agent cli-info") {
+		t.Errorf("expected error message to suggest 'devcontainer-cli agent cli-info', got: %s", msg)
+	}
+	if !strings.Contains(msg, "when: start") {
+		t.Errorf("expected error message to mention 'when: start', got: %s", msg)
+	}
+}
+
+func TestResolveDockerfileModules_RemovedModuleError(t *testing.T) {
+	removedModules := []string{"graphify", "caveman", "claude-mem", "context-mode", "ecc", "browser-harness", "ngrok"}
+	for _, mod := range removedModules {
+		_, err := domain.ResolveDockerfileModules([]types.SelectedModule{{ID: types.ModuleID(mod)}})
+		if err == nil {
+			t.Fatalf("expected error for removed module %q, got nil", mod)
+		}
+		var re domain.ResolverError
+		if !errors.As(err, &re) {
+			t.Errorf("expected ResolverError for %q, got %T: %v", mod, err, err)
+		}
+		msg := err.Error()
+		if !strings.Contains(msg, "devcontainer-cli agent cli-info") {
+			t.Errorf("expected hint to suggest 'devcontainer-cli agent cli-info' for %q, got: %s", mod, msg)
+		}
+		if !strings.Contains(msg, "when: start") {
+			t.Errorf("expected hint to mention 'when: start' for %q, got: %s", mod, msg)
+		}
 	}
 }
 

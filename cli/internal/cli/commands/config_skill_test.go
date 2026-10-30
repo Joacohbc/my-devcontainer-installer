@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -10,6 +11,7 @@ import (
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/catalog"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/skillsdiscovery"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/service"
 	"github.com/spf13/cobra"
 )
@@ -115,13 +117,13 @@ func TestRunConfigSkillAdd_RefusesOverwriteWithoutForce(t *testing.T) {
 func TestRunConfigSkillAdd_ShadowsBuiltinWithoutForce(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	cmd := newTestConfigSkillAddCmd(t)
-	cmd.Flags().Set("ref", "me/firecrawl-fork")
-	if err := runConfigSkillAdd(cmd, []string{"firecrawl"}); err != nil {
+	cmd.Flags().Set("ref", "me/pdf-fork")
+	if err := runConfigSkillAdd(cmd, []string{"pdf"}); err != nil {
 		t.Fatalf("expected shadowing a built-in to succeed: %v", err)
 	}
-	spec := catalog.GetAgentSkill("firecrawl", domain.SkillDir())
-	if spec == nil || spec.Ref != "me/firecrawl-fork" {
-		t.Errorf("expected the user-defined firecrawl to win, got %+v", spec)
+	spec := catalog.GetAgentSkill("pdf", domain.SkillDir())
+	if spec == nil || spec.Ref != "me/pdf-fork" {
+		t.Errorf("expected the user-defined pdf to win, got %+v", spec)
 	}
 }
 
@@ -147,7 +149,7 @@ func TestRunConfigSkillRemove_RefusesBuiltin(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	rmCmd := newConfigSkillRemoveCommand()
 	rmCmd.Flags().Set("yes", "true")
-	if err := runConfigSkillRemove(rmCmd, []string{"firecrawl"}); err == nil {
+	if err := runConfigSkillRemove(rmCmd, []string{"pdf"}); err == nil {
 		t.Fatal("expected an error removing a built-in skill")
 	}
 }
@@ -245,7 +247,7 @@ func TestRunConfigSkillInstall_ExplicitSkill_InvokesDockerRun(t *testing.T) {
 	cmd.Flags().Set("dir", t.TempDir())
 	cmd.Flags().Set("no-interactive", "true")
 
-	if err := runConfigSkillInstall(cmd, []string{"firecrawl"}); err != nil {
+	if err := runConfigSkillInstall(cmd, []string{"agent-browser"}); err != nil {
 		t.Fatalf("runConfigSkillInstall: %v", err)
 	}
 
@@ -257,8 +259,8 @@ func TestRunConfigSkillInstall_ExplicitSkill_InvokesDockerRun(t *testing.T) {
 		t.Errorf("call missing default image %s: %v", service.DefaultSkillInstallerImage, call)
 	}
 	lastArg := call[len(call)-1]
-	if !strings.Contains(lastArg, "firecrawl") {
-		t.Errorf("expected firecrawl in docker run args: %s", lastArg)
+	if !strings.Contains(lastArg, "agent-browser") {
+		t.Errorf("expected agent-browser in docker run args: %s", lastArg)
 	}
 }
 
@@ -317,12 +319,12 @@ func TestRunConfigSkillInstall_AllFlag(t *testing.T) {
 
 func TestCompleteInstallSkillArgs(t *testing.T) {
 	cmd := newConfigSkillInstallCommand()
-	completions, _ := completeInstallSkillArgs(cmd, []string{"firecrawl"}, "")
-	if slices.Contains(completions, "firecrawl") {
-		t.Error("already passed skill firecrawl should not be in completions")
+	completions, _ := completeInstallSkillArgs(cmd, []string{"agent-browser"}, "")
+	if slices.Contains(completions, "agent-browser") {
+		t.Error("already passed skill agent-browser should not be in completions")
 	}
-	if !slices.Contains(completions, "wayfinder") {
-		t.Error("wayfinder should be in completions")
+	if !slices.Contains(completions, "find-skills") {
+		t.Error("find-skills should be in completions")
 	}
 }
 
@@ -332,7 +334,7 @@ func TestRunConfigSkillInstall_ExplicitSkillsAndAll_Fails(t *testing.T) {
 	cmd.Flags().Set("dir", t.TempDir())
 	cmd.Flags().Set("no-interactive", "true")
 
-	err := runConfigSkillInstall(cmd, []string{"firecrawl"})
+	err := runConfigSkillInstall(cmd, []string{"agent-browser"})
 	if err == nil {
 		t.Fatal("expected error when both skill args and --all are passed")
 	}
@@ -346,7 +348,7 @@ func TestRunConfigSkillInstall_InvalidDir_Fails(t *testing.T) {
 	cmd.Flags().Set("dir", filepath.Join(t.TempDir(), "nonexistent-dir"))
 	cmd.Flags().Set("no-interactive", "true")
 
-	err := runConfigSkillInstall(cmd, []string{"firecrawl"})
+	err := runConfigSkillInstall(cmd, []string{"pdf"})
 	if err == nil {
 		t.Fatal("expected error for non-existent target directory")
 	}
@@ -382,7 +384,7 @@ func TestRunAgentSkillInstall_DirIsFile_Fails(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err := runConfigSkillInstall(cmd, []string{"firecrawl"})
+	err := runConfigSkillInstall(cmd, []string{"pdf"})
 	if err == nil {
 		t.Fatal("expected error when target dir is a file")
 	}
@@ -406,7 +408,7 @@ func TestRunAgentSkillInstall_ExplicitSkill_InvokesDockerRun(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := runConfigSkillInstall(cmd, []string{"firecrawl"}); err != nil {
+	if err := runConfigSkillInstall(cmd, []string{"agent-browser"}); err != nil {
 		t.Fatalf("runConfigSkillInstall: %v", err)
 	}
 
@@ -418,8 +420,8 @@ func TestRunAgentSkillInstall_ExplicitSkill_InvokesDockerRun(t *testing.T) {
 		t.Errorf("call missing default image %s: %v", service.DefaultSkillInstallerImage, call)
 	}
 	lastArg := call[len(call)-1]
-	if !strings.Contains(lastArg, "firecrawl") {
-		t.Errorf("expected firecrawl in docker run args: %s", lastArg)
+	if !strings.Contains(lastArg, "agent-browser") {
+		t.Errorf("expected agent-browser in docker run args: %s", lastArg)
 	}
 }
 
@@ -437,7 +439,7 @@ func TestRunConfigSkillInstall_CustomImage_PassedToRunner(t *testing.T) {
 	cmd.Flags().Set("no-interactive", "true")
 	cmd.Flags().Set("image", "custom-registry.io/custom-utils:v1")
 
-	if err := runConfigSkillInstall(cmd, []string{"firecrawl"}); err != nil {
+	if err := runConfigSkillInstall(cmd, []string{"agent-browser"}); err != nil {
 		t.Fatalf("runConfigSkillInstall: %v", err)
 	}
 
@@ -460,7 +462,7 @@ func TestRunConfigSkillInstall_ProjectConfig_DefaultsToConfiguredSkills(t *testi
 	})
 
 	tempDir := t.TempDir()
-	configContent := `{"workspace":"testws","skills":{"skills":["firecrawl"]}}`
+	configContent := `{"workspace":"testws","skills":{"skills":["agent-browser"]}}`
 	if err := os.WriteFile(filepath.Join(tempDir, "devcontainer.config.json"), []byte(configContent), 0o644); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
@@ -478,8 +480,8 @@ func TestRunConfigSkillInstall_ProjectConfig_DefaultsToConfiguredSkills(t *testi
 		t.Fatalf("expected docker run --rm call, got %v", runner.calls)
 	}
 	lastArg := call[len(call)-1]
-	if !strings.Contains(lastArg, "firecrawl") {
-		t.Errorf("expected firecrawl in docker run args: %s", lastArg)
+	if !strings.Contains(lastArg, "agent-browser") {
+		t.Errorf("expected agent-browser in docker run args: %s", lastArg)
 	}
 }
 
@@ -490,4 +492,380 @@ func findRecordedCall(calls [][]string, token string) []string {
 		}
 	}
 	return nil
+}
+
+type fakeDiscoveryRunner struct {
+	payload *skillsdiscovery.DiscoveredRaw
+	err     error
+}
+
+func (f *fakeDiscoveryRunner) DiscoverSkills(string) (*skillsdiscovery.DiscoveredRaw, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.payload, nil
+}
+
+type fakeScriptedPrompter struct {
+	multiselectResult []service.Option
+	multiselectCalled bool
+}
+
+func (p *fakeScriptedPrompter) Ask(string) (string, error)   { return "", nil }
+func (p *fakeScriptedPrompter) Confirm(string) (bool, error) { return true, nil }
+func (p *fakeScriptedPrompter) Select(string, []service.Option, service.Option) (service.Option, error) {
+	return service.Option{}, nil
+}
+func (p *fakeScriptedPrompter) Multiselect(string, []service.Option, []service.Option) ([]service.Option, error) {
+	p.multiselectCalled = true
+	return p.multiselectResult, nil
+}
+func (p *fakeScriptedPrompter) Wizard(func(*service.State) []service.Step) (*service.State, error) {
+	return nil, nil
+}
+
+func sampleTestDiscoveryPayload() *skillsdiscovery.DiscoveredRaw {
+	sampleJSON := `[
+		{
+			"name": "pdf",
+			"status": "installed",
+			"source": "anthropics/skills",
+			"path": "/tmp/.claude/skills/pdf",
+			"security": { "snyk": "low" }
+		},
+		{
+			"name": "Convex Best Practices",
+			"status": "installed",
+			"source": "anthropics/skills",
+			"path": "/tmp/.claude/skills/convex-best-practices",
+			"security": { "snyk": "medium" }
+		}
+	]`
+	return &skillsdiscovery.DiscoveredRaw{
+		RawJSON: []byte(sampleJSON),
+		SkillMDs: map[string][]byte{
+			"/tmp/.claude/skills/pdf":                   []byte("---\nname: pdf\ndescription: PDF parsing tools.\n---\n# PDF"),
+			"/tmp/.claude/skills/convex-best-practices": []byte("---\nname: Convex Best Practices\ndescription: Best practices for Convex.\n---\n# Convex"),
+		},
+	}
+}
+
+func TestIsSkillSourceArg(t *testing.T) {
+	tests := []struct {
+		arg  string
+		want bool
+	}{
+		{"owner/repo", true},
+		{"https://github.com/owner/repo", true},
+		{"owner/repo/path", true},
+		{"./local/path", true},
+		{".hidden", true},
+		{"git@github.com:o/r.git", true},
+		{"ssh://git@host/repo", true},
+		{"my-skill", false},
+		{"pdf", false},
+		{"custom_skill", false},
+		{"-flag", false},
+		{"-owner/repo", false},
+	}
+
+	for _, tt := range tests {
+		got := isSkillSourceArg(tt.arg)
+		if got != tt.want {
+			t.Errorf("isSkillSourceArg(%q) = %v, want %v", tt.arg, got, tt.want)
+		}
+	}
+}
+
+func TestRunConfigSkillAdd_DiscoveryNonInteractive_RequiresAllOrPick(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	cmd := newTestConfigSkillAddCmd(t)
+
+	oldFactory := configSkillServiceFactory
+	configSkillServiceFactory = func() service.ConfigService {
+		return service.ConfigService{
+			Report:          console,
+			DiscoveryRunner: &fakeDiscoveryRunner{payload: sampleTestDiscoveryPayload()},
+		}
+	}
+	t.Cleanup(func() { configSkillServiceFactory = oldFactory })
+
+	err := runConfigSkillAdd(cmd, []string{"anthropics/skills"})
+	if err == nil {
+		t.Fatal("expected error in non-interactive mode without --all or --pick")
+	}
+	if !strings.Contains(err.Error(), "non-interactive mode requires --all or --pick") {
+		t.Errorf("unexpected error message: %v", err)
+	}
+}
+
+func TestRunConfigSkillAdd_Discovery_AllAndPickMutuallyExclusive(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	cmd := newTestConfigSkillAddCmd(t)
+	cmd.Flags().Set("all", "true")
+	cmd.Flags().Set("pick", "pdf")
+
+	err := runConfigSkillAdd(cmd, []string{"anthropics/skills"})
+	if err == nil {
+		t.Fatal("expected error with both --all and --pick")
+	}
+	if !strings.Contains(err.Error(), "cannot specify both --all and --pick") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestRunConfigSkillAdd_Discovery_AllFlag(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	cmd := newTestConfigSkillAddCmd(t)
+	cmd.Flags().Set("all", "true")
+
+	oldFactory := configSkillServiceFactory
+	configSkillServiceFactory = func() service.ConfigService {
+		return service.ConfigService{
+			Report:          console,
+			DiscoveryRunner: &fakeDiscoveryRunner{payload: sampleTestDiscoveryPayload()},
+		}
+	}
+	t.Cleanup(func() { configSkillServiceFactory = oldFactory })
+
+	if err := runConfigSkillAdd(cmd, []string{"anthropics/skills"}); err != nil {
+		t.Fatalf("runConfigSkillAdd failed: %v", err)
+	}
+
+	loaded := catalog.LoadUserSkills(domain.SkillDir())
+	if len(loaded) != 2 {
+		t.Fatalf("expected 2 loaded skills, got %d", len(loaded))
+	}
+
+	var ids []string
+	for _, s := range loaded {
+		ids = append(ids, string(s.ID))
+	}
+	if !slices.Contains(ids, "pdf") || !slices.Contains(ids, "convex-best-practices") {
+		t.Errorf("expected pdf and convex-best-practices, got %v", ids)
+	}
+}
+
+func TestRunConfigSkillAdd_Discovery_PickFlag(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	cmd := newTestConfigSkillAddCmd(t)
+	cmd.Flags().Set("pick", "pdf")
+
+	oldFactory := configSkillServiceFactory
+	configSkillServiceFactory = func() service.ConfigService {
+		return service.ConfigService{
+			Report:          console,
+			DiscoveryRunner: &fakeDiscoveryRunner{payload: sampleTestDiscoveryPayload()},
+		}
+	}
+	t.Cleanup(func() { configSkillServiceFactory = oldFactory })
+
+	if err := runConfigSkillAdd(cmd, []string{"anthropics/skills"}); err != nil {
+		t.Fatalf("runConfigSkillAdd failed: %v", err)
+	}
+
+	loaded := catalog.LoadUserSkills(domain.SkillDir())
+	if len(loaded) != 1 || string(loaded[0].ID) != "pdf" {
+		t.Fatalf("expected only pdf, got %+v", loaded)
+	}
+}
+
+func TestRunConfigSkillAdd_Discovery_UnknownPick_Fails(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	cmd := newTestConfigSkillAddCmd(t)
+	cmd.Flags().Set("pick", "non-existent")
+
+	oldFactory := configSkillServiceFactory
+	configSkillServiceFactory = func() service.ConfigService {
+		return service.ConfigService{
+			Report:          console,
+			DiscoveryRunner: &fakeDiscoveryRunner{payload: sampleTestDiscoveryPayload()},
+		}
+	}
+	t.Cleanup(func() { configSkillServiceFactory = oldFactory })
+
+	err := runConfigSkillAdd(cmd, []string{"anthropics/skills"})
+	if err == nil {
+		t.Fatal("expected error for unknown pick")
+	}
+	if !strings.Contains(err.Error(), "not found") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestRunConfigSkillAdd_Discovery_SingleSkillNoPrompt(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	cmd := newConfigSkillAddCommand() // interactive mode (no-interactive is false)
+
+	singlePayload := &skillsdiscovery.DiscoveredRaw{
+		RawJSON: []byte(`[{"name":"solo","status":"installed","source":"owner/repo","path":"/tmp/test/.claude/skills/solo"}]`),
+		SkillMDs: map[string][]byte{
+			"/tmp/test/.claude/skills/solo": []byte("---\nname: solo\ndescription: Solo skill.\n---\n# Solo"),
+		},
+	}
+
+	oldFactory := configSkillServiceFactory
+	configSkillServiceFactory = func() service.ConfigService {
+		return service.ConfigService{
+			Report:          console,
+			DiscoveryRunner: &fakeDiscoveryRunner{payload: singlePayload},
+		}
+	}
+	t.Cleanup(func() { configSkillServiceFactory = oldFactory })
+
+	prompter := &fakeScriptedPrompter{}
+	oldPrompter := skillPrompter
+	skillPrompter = prompter
+	t.Cleanup(func() { skillPrompter = oldPrompter })
+
+	if err := runConfigSkillAdd(cmd, []string{"owner/repo"}); err != nil {
+		t.Fatalf("runConfigSkillAdd failed: %v", err)
+	}
+
+	if prompter.multiselectCalled {
+		t.Error("expected single skill discovery to require no prompt")
+	}
+
+	loaded := catalog.LoadUserSkills(domain.SkillDir())
+	if len(loaded) != 1 || string(loaded[0].ID) != "solo" {
+		t.Errorf("expected solo skill to be saved, got %+v", loaded)
+	}
+}
+
+// A source that holds a single skill (e.g. a /tree/<branch>/<path> URL) has
+// nothing to choose from, so --no-interactive must not demand --all or --pick.
+func TestRunConfigSkillAdd_Discovery_SingleSkillNonInteractive(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	cmd := newTestConfigSkillAddCmd(t)
+
+	singlePayload := &skillsdiscovery.DiscoveredRaw{
+		RawJSON: []byte(`[{"name":"pdf","status":"installed","source":"anthropics/skills","path":"/tmp/test/.claude/skills/pdf"}]`),
+		SkillMDs: map[string][]byte{
+			"/tmp/test/.claude/skills/pdf": []byte("---\nname: pdf\ndescription: PDF skill.\n---\n# PDF"),
+		},
+	}
+
+	oldFactory := configSkillServiceFactory
+	configSkillServiceFactory = func() service.ConfigService {
+		return service.ConfigService{
+			Report:          console,
+			DiscoveryRunner: &fakeDiscoveryRunner{payload: singlePayload},
+		}
+	}
+	t.Cleanup(func() { configSkillServiceFactory = oldFactory })
+
+	if err := runConfigSkillAdd(cmd, []string{"https://github.com/anthropics/skills/tree/main/skills/pdf"}); err != nil {
+		t.Fatalf("expected a single discovered skill to be saved without --all or --pick: %v", err)
+	}
+
+	loaded := catalog.LoadUserSkills(domain.SkillDir())
+	if len(loaded) != 1 || string(loaded[0].ID) != "pdf" {
+		t.Errorf("expected pdf skill to be saved, got %+v", loaded)
+	}
+}
+
+func TestRunConfigSkillAdd_Discovery_MultiselectPrompt(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	cmd := newConfigSkillAddCommand() // interactive mode
+
+	oldFactory := configSkillServiceFactory
+	configSkillServiceFactory = func() service.ConfigService {
+		return service.ConfigService{
+			Report:          console,
+			DiscoveryRunner: &fakeDiscoveryRunner{payload: sampleTestDiscoveryPayload()},
+		}
+	}
+	t.Cleanup(func() { configSkillServiceFactory = oldFactory })
+
+	prompter := &fakeScriptedPrompter{
+		multiselectResult: []service.Option{
+			{Value: "convex-best-practices", Label: "Convex Best Practices — Best practices for Convex. [snyk: medium]"},
+		},
+	}
+	oldPrompter := skillPrompter
+	skillPrompter = prompter
+	t.Cleanup(func() { skillPrompter = oldPrompter })
+
+	if err := runConfigSkillAdd(cmd, []string{"anthropics/skills"}); err != nil {
+		t.Fatalf("runConfigSkillAdd failed: %v", err)
+	}
+
+	if !prompter.multiselectCalled {
+		t.Error("expected multiselect to be called for multiple discovered skills")
+	}
+
+	loaded := catalog.LoadUserSkills(domain.SkillDir())
+	if len(loaded) != 1 || string(loaded[0].ID) != "convex-best-practices" {
+		t.Errorf("expected convex-best-practices to be saved, got %+v", loaded)
+	}
+}
+
+func TestRunConfigSkillAdd_Discovery_SkipExistingWithoutForce(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	cmd := newTestConfigSkillAddCmd(t)
+	cmd.Flags().Set("all", "true")
+
+	oldFactory := configSkillServiceFactory
+	configSkillServiceFactory = func() service.ConfigService {
+		return service.ConfigService{
+			Report:          console,
+			DiscoveryRunner: &fakeDiscoveryRunner{payload: sampleTestDiscoveryPayload()},
+		}
+	}
+	t.Cleanup(func() { configSkillServiceFactory = oldFactory })
+
+	// First run creates both skills
+	if err := runConfigSkillAdd(cmd, []string{"anthropics/skills"}); err != nil {
+		t.Fatalf("first add failed: %v", err)
+	}
+
+	// Second run without force should succeed (skips existing with warning)
+	if err := runConfigSkillAdd(cmd, []string{"anthropics/skills"}); err != nil {
+		t.Fatalf("second add should succeed by skipping existing skills: %v", err)
+	}
+
+	// Third run with force should overwrite
+	cmdForce := newTestConfigSkillAddCmd(t)
+	cmdForce.Flags().Set("all", "true")
+	cmdForce.Flags().Set("force", "true")
+	if err := runConfigSkillAdd(cmdForce, []string{"anthropics/skills"}); err != nil {
+		t.Fatalf("third add with force failed: %v", err)
+	}
+}
+
+func TestRunConfigSkillAdd_Discovery_NodeRequirementError(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	cmd := newTestConfigSkillAddCmd(t)
+	cmd.Flags().Set("all", "true")
+
+	oldFactory := configSkillServiceFactory
+	configSkillServiceFactory = func() service.ConfigService {
+		return service.ConfigService{
+			Report: console,
+			DiscoveryRunner: &fakeDiscoveryRunner{
+				err: fmt.Errorf("requires Node >= 22.20 on the host; or add a single skill with 'config skill add <id> --ref <source> --skill <name>'"),
+			},
+		}
+	}
+	t.Cleanup(func() { configSkillServiceFactory = oldFactory })
+
+	err := runConfigSkillAdd(cmd, []string{"anthropics/skills"})
+	if err == nil {
+		t.Fatal("expected error when Node requirement is not met")
+	}
+	expected := "requires Node >= 22.20 on the host; or add a single skill with 'config skill add <id> --ref <source> --skill <name>'"
+	if !strings.Contains(err.Error(), expected) {
+		t.Errorf("expected error %q, got %q", expected, err.Error())
+	}
+}
+
+func TestRunConfigSkillAdd_SourceStartingWithDash_Rejected(t *testing.T) {
+	cmd := newTestConfigSkillAddCmd(t)
+	err := runConfigSkillAdd(cmd, []string{"-malicious-flag/repo"})
+	if err == nil {
+		t.Fatal("expected error for source starting with '-'")
+	}
+	if !strings.Contains(err.Error(), "cannot start with '-'") {
+		t.Errorf("unexpected error: %v", err)
+	}
 }

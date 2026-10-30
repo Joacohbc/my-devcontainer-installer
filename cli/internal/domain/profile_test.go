@@ -264,35 +264,37 @@ func TestPartitionCustomScriptsAllowsExactDuplicates(t *testing.T) {
 	}
 }
 
-// A repo-shipped profile resolves its scripts against the embedded tree, not the
-// host filesystem — nothing of it exists on disk.
-func TestProfileScriptsForEmbeddedProfile(t *testing.T) {
-	p, ok := catalog.Resolve("scraper", "")
-	if !ok {
-		t.Fatal("expected to resolve the scraper profile")
+// A user profile resolves its scripts against its directory on the host filesystem.
+func TestProfileScriptsForUserProfile(t *testing.T) {
+	dir := t.TempDir()
+	scriptPath := filepath.Join(dir, "setup.sh")
+	if err := os.WriteFile(scriptPath, []byte("#!/bin/sh\necho hello\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	p := catalog.Profile{
+		ID:      "custom-profile",
+		Dir:     dir,
+		Scripts: []types.CustomScript{{File: "setup.sh", When: types.ScriptWhenBuild}},
 	}
 
 	scripts, err := domain.ProfileScripts(p)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(scripts) == 0 {
-		t.Fatal("expected the profile to carry scripts")
+	if len(scripts) != 1 {
+		t.Fatalf("expected 1 script, got %d", len(scripts))
 	}
-	for _, s := range scripts {
-		if !s.Embedded {
-			t.Errorf("a built-in profile's script must be marked embedded: %+v", s)
-		}
-		if want := "profiles/scraper/" + s.File; s.Source != want {
-			t.Errorf("expected a slash-separated embedded path %q, got %q", want, s.Source)
-		}
-		data, err := domain.ReadCustomScript(s)
-		if err != nil {
-			t.Fatalf("the embedded script %q must be readable: %v", s.File, err)
-		}
-		if !strings.HasPrefix(string(data), "#!") {
-			t.Errorf("expected %q to start with a shebang", s.File)
-		}
+	s := scripts[0]
+	if s.Source != scriptPath {
+		t.Errorf("expected source %q, got %q", scriptPath, s.Source)
+	}
+	data, err := domain.ReadCustomScript(s)
+	if err != nil {
+		t.Fatalf("the script %q must be readable: %v", s.File, err)
+	}
+	if !strings.HasPrefix(string(data), "#!") {
+		t.Errorf("expected %q to start with a shebang", s.File)
 	}
 }
 
@@ -309,7 +311,7 @@ func TestReadCustomScript(t *testing.T) {
 	if _, err := domain.ReadCustomScript(types.CustomScript{File: "setup.sh"}); err == nil {
 		t.Error("expected an error for a script with no source")
 	}
-	if _, err := domain.ReadCustomScript(types.CustomScript{File: "nope.sh", Source: "profiles/nope/nope.sh", Embedded: true}); err == nil {
-		t.Error("expected an error for a missing embedded script")
+	if _, err := domain.ReadCustomScript(types.CustomScript{File: "nope.sh", Source: "/does/not/exist/nope.sh"}); err == nil {
+		t.Error("expected an error for a missing script")
 	}
 }

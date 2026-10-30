@@ -207,16 +207,7 @@ func TestGenerateDockerfile_ZellijModule(t *testing.T) {
 	assertContainsStr(t, df, "/home/devuser/.config/zellij/config.kdl", "zellij")
 }
 
-func TestGenerateDockerfile_NgrokModule(t *testing.T) {
-	cfg := makeConfig(func(c *types.DevcontainerConfig) {
-		c.Dockerfile.Modules = []types.SelectedModule{{ID: "ngrok"}}
-	})
-	df := mustGenerateDockerfile(t, cfg)
-	assertContainsStr(t, df, "ngrok-agent.s3.amazonaws.com/ngrok.asc", "ngrok")
-	assertContainsStr(t, df, "apt-get install -y --no-install-recommends ngrok", "ngrok")
-}
-
-// cloudflared is installed into the image (like ngrok) rather than run as a
+// cloudflared is installed into the image rather than run as a
 // sibling container, so a tunnel started here reaches localhost directly.
 func TestGenerateDockerfile_CloudflaredModule(t *testing.T) {
 	cfg := makeConfig(func(c *types.DevcontainerConfig) {
@@ -1008,32 +999,27 @@ func TestGenerateDockerfile_ClaudeCode(t *testing.T) {
 	assertContainsStr(t, df, "ln -sfn start.d/50-install-claude-code.sh /home/devuser/post-script/install-claude-code.sh", "claude-code manual symlink")
 }
 
-// Auto-start installers go to start.d/ with an order prefix; the agent-wiring
-// tools (graphify/caveman/claude-mem/context-mode) carry order 90 so they run
-// after the agents, and the skills module carries order 95 so it runs after
-// those.
+// Auto-start installers go to start.d/ with an order prefix; agents carry order
+// 50 so they run first, and the skills module carries order 95 so it runs after
+// them.
 func TestGenerateDockerfile_AutoStartOrdering(t *testing.T) {
 	cfg := makeConfig(func(c *types.DevcontainerConfig) {
 		c.Dockerfile.Modules = []types.SelectedModule{
-			{ID: "python"}, {ID: "nodejs"},
-			{ID: "claude-code"}, {ID: "graphify"}, {ID: "caveman"},
+			{ID: "nodejs"},
+			{ID: "claude-code"},
 		}
-		c.Skills = types.SkillsConfig{Skills: []types.SkillID{types.SkillFirecrawl}}
+		c.Skills = types.SkillsConfig{Skills: []types.SkillID{types.SkillAgentBrowser}}
 	})
 	domain.ApplySelectedSkills(cfg)
 	df := mustGenerateDockerfile(t, cfg)
 	assertContainsStr(t, df, "/home/devuser/post-script/start.d/50-install-claude-code.sh", "claude order 50")
-	assertContainsStr(t, df, "/home/devuser/post-script/start.d/90-install-graphify.sh", "graphify order 90")
-	assertContainsStr(t, df, "/home/devuser/post-script/start.d/90-install-caveman.sh", "caveman order 90")
 	assertContainsStr(t, df, "/home/devuser/post-script/start.d/95-autostart-project-skills.sh", "skills order 95")
-	// The agent (50-) must be COPYed before the wiring tools (90-), which must
-	// be COPYed before skills (95-), so the sorted glob in the entrypoint runs
-	// them in that order.
+	// The agent (50-) must be COPYed before skills (95-), so the sorted glob in
+	// the entrypoint runs them in that order.
 	claudeIdx := strings.Index(df, "50-install-claude-code.sh")
-	graphifyIdx := strings.Index(df, "90-install-graphify.sh")
 	skillsIdx := strings.Index(df, "95-autostart-project-skills.sh")
-	if claudeIdx < 0 || graphifyIdx < 0 || skillsIdx < 0 || claudeIdx > graphifyIdx || graphifyIdx > skillsIdx {
-		t.Errorf("agent installer must be ordered before the wiring tools, before skills:\nclaude=%d graphify=%d skills=%d", claudeIdx, graphifyIdx, skillsIdx)
+	if claudeIdx < 0 || skillsIdx < 0 || claudeIdx > skillsIdx {
+		t.Errorf("agent installer must be ordered before skills:\nclaude=%d skills=%d", claudeIdx, skillsIdx)
 	}
 }
 
@@ -1083,60 +1069,6 @@ func TestGenerateDockerfile_CopilotCli(t *testing.T) {
 	})
 	df := mustGenerateDockerfile(t, cfg)
 	assertContainsStr(t, df, "install-copilot.sh", "copilot-cli script")
-}
-
-func TestGenerateDockerfile_Graphify(t *testing.T) {
-	cfg := makeConfig(func(c *types.DevcontainerConfig) {
-		c.Dockerfile.Modules = []types.SelectedModule{{ID: "graphify"}}
-	})
-	df := mustGenerateDockerfile(t, cfg)
-	assertContainsStr(t, df, "install-graphify.sh", "graphify script")
-	// graphify requires python
-	assertContainsStr(t, df, "python3", "graphify requires python")
-}
-
-func TestGenerateDockerfile_Caveman(t *testing.T) {
-	cfg := makeConfig(func(c *types.DevcontainerConfig) {
-		c.Dockerfile.Modules = []types.SelectedModule{{ID: "caveman"}}
-	})
-	df := mustGenerateDockerfile(t, cfg)
-	assertContainsStr(t, df, "install-caveman.sh", "caveman script")
-	// caveman requires nodejs
-	assertContainsStr(t, df, "fnm install --lts", "caveman requires nodejs")
-}
-
-func TestGenerateDockerfile_BrowserHarness(t *testing.T) {
-	cfg := makeConfig(func(c *types.DevcontainerConfig) {
-		c.Dockerfile.Modules = []types.SelectedModule{{ID: "browser-harness"}}
-	})
-	df := mustGenerateDockerfile(t, cfg)
-	assertContainsStr(t, df, "install-browser-harness.sh", "browser-harness script")
-	assertContainsStr(t, df, "start.d/90-install-browser-harness.sh", "browser-harness start.d auto-start")
-	// browser-harness requires python, chrome (chromium), and ffmpeg
-	assertContainsStr(t, df, "python3", "browser-harness requires python")
-	assertContainsStr(t, df, "chromium", "browser-harness requires chromium")
-	assertContainsStr(t, df, "ffmpeg", "browser-harness requires ffmpeg")
-	assertContainsStr(t, df, "CHROME_PATH", "browser-harness provides CHROME_PATH")
-}
-
-func TestGenerateDockerfile_ClaudeMem(t *testing.T) {
-	cfg := makeConfig(func(c *types.DevcontainerConfig) {
-		c.Dockerfile.Modules = []types.SelectedModule{{ID: "claude-mem"}}
-	})
-	df := mustGenerateDockerfile(t, cfg)
-	assertContainsStr(t, df, "install-claude-mem.sh", "claude-mem script")
-	// claude-mem requires nodejs
-	assertContainsStr(t, df, "fnm install --lts", "claude-mem requires nodejs")
-}
-
-func TestGenerateDockerfile_ContextMode(t *testing.T) {
-	cfg := makeConfig(func(c *types.DevcontainerConfig) {
-		c.Dockerfile.Modules = []types.SelectedModule{{ID: "context-mode"}}
-	})
-	df := mustGenerateDockerfile(t, cfg)
-	assertContainsStr(t, df, "install-context-mode.sh", "context-mode script")
-	// context-mode requires nodejs
-	assertContainsStr(t, df, "fnm install --lts", "context-mode requires nodejs")
 }
 
 func TestGenerateCompose_DependsOnSortedRegardlessOfInputOrder(t *testing.T) {

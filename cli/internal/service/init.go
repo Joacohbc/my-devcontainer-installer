@@ -209,8 +209,13 @@ func (s InitService) applyConfigOptions(config *types.DevcontainerConfig, opts I
 		config.Mode = types.BuildMode(opts.Mode)
 	}
 	if opts.Profile != "" {
-		p, ok := catalog.Resolve(opts.Profile, domain.ProfileDirs()...)
-		if ok {
+		var pList []string
+		for _, part := range strings.Split(opts.Profile, ",") {
+			if t := strings.TrimSpace(part); t != "" {
+				pList = append(pList, t)
+			}
+		}
+		if p, err := catalog.ResolveComposed(pList, domain.ProfileDirs()...); err == nil {
 			config.Dockerfile.Scripts = append(config.Dockerfile.Scripts, p.Scripts...)
 			config.Compose.Ports = append(config.Compose.Ports, p.Ports...)
 			config.ForwardPorts = append(config.ForwardPorts, p.ForwardPorts...)

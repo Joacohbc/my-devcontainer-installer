@@ -15,25 +15,7 @@ import (
 // section. A skill has no scripts/directory shape like a profile does: its
 // install source is already a git ref the Skills CLI resolves, not files this
 // repo ships, so a flat <id>.yml is the only shape.
-type userSkillManifest struct {
-	ID    string `yaml:"id"`
-	Label string `yaml:"label"`
-	// Ref is the source the Skills CLI resolves: an owner/repo shorthand or a
-	// repository URL. Skill names the one skill to take when Ref holds several
-	// (see skills.Spec.Skill for why this matters).
-	Ref             string   `yaml:"ref"`
-	Skill           string   `yaml:"skill,omitempty"`
-	RequiresModules []string `yaml:"requires_modules,omitempty"`
-	// Context becomes the skill's entry in the generated ~/CONTEXT.md, same
-	// section shape a Dockerfile module renders. Omit it and the skill simply
-	// has nothing to say there — not an error.
-	Context *struct {
-		Title string `yaml:"title"`
-		Body  string `yaml:"body"`
-	} `yaml:"context,omitempty"`
-}
-
-func (m userSkillManifest) toSpec() *skills.Spec {
+func userSkillToSpec(m types.UserSkillManifest) *skills.Spec {
 	requires := make([]types.ModuleID, 0, len(m.RequiresModules))
 	for _, id := range m.RequiresModules {
 		requires = append(requires, types.ModuleID(id))
@@ -76,11 +58,11 @@ func LoadUserSkills(dir string) []*skills.Spec {
 		if rerr != nil {
 			continue
 		}
-		var m userSkillManifest
+		var m types.UserSkillManifest
 		if yaml.Unmarshal(data, &m) != nil || m.ID == "" || m.Ref == "" {
 			continue
 		}
-		out = append(out, m.toSpec())
+		out = append(out, userSkillToSpec(m))
 	}
 	return out
 }

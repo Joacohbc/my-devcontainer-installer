@@ -88,27 +88,27 @@ func TestLoadUserSkills_MissingDir(t *testing.T) {
 // catalog.All gives a user profile.
 func TestAllAgentSkills_UserShadowsBuiltin(t *testing.T) {
 	dir := t.TempDir()
-	manifest := "id: firecrawl\nlabel: My Firecrawl Fork\nref: me/firecrawl\n"
-	if err := os.WriteFile(filepath.Join(dir, "firecrawl.yml"), []byte(manifest), 0o644); err != nil {
+	manifest := "id: agent-browser\nlabel: My Agent Browser Fork\nref: me/agent-browser\n"
+	if err := os.WriteFile(filepath.Join(dir, "agent-browser.yml"), []byte(manifest), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
 	all := catalog.AllAgentSkills(dir)
 	found := false
 	for _, s := range all {
-		if s.ID != types.SkillFirecrawl {
+		if s.ID != types.SkillAgentBrowser {
 			continue
 		}
 		found = true
-		if s.Ref != "me/firecrawl" {
-			t.Errorf("expected the user-defined firecrawl to win, got ref %q", s.Ref)
+		if s.Ref != "me/agent-browser" {
+			t.Errorf("expected the user-defined agent-browser to win, got ref %q", s.Ref)
 		}
 	}
 	if !found {
-		t.Fatal("expected firecrawl in the merged list")
+		t.Fatal("expected agent-browser in the merged list")
 	}
 	// Built-ins not shadowed still show up.
-	if catalog.GetAgentSkill(types.SkillAgentBrowser, dir) == nil {
+	if catalog.GetAgentSkill(types.SkillImpeccable, dir) == nil {
 		t.Error("expected an unshadowed built-in to still resolve")
 	}
 }

@@ -31,17 +31,10 @@ const (
 	ModuleCodexCli       ModuleID = "codex-cli"
 	ModuleAntigravityCli ModuleID = "antigravity-cli"
 	ModuleCopilotCli     ModuleID = "copilot-cli"
-	ModuleGraphify       ModuleID = "graphify"
-	ModuleCaveman        ModuleID = "caveman"
-	ModuleClaudeMem      ModuleID = "claude-mem"
-	ModuleContextMode    ModuleID = "context-mode"
-	ModuleEcc            ModuleID = "ecc"
-	ModuleBrowserHarness ModuleID = "browser-harness"
 	ModuleZellij         ModuleID = "zellij"
 	ModuleChrome         ModuleID = "chrome"
 	ModuleFfmpeg         ModuleID = "ffmpeg"
 	ModuleDod            ModuleID = "dod"
-	ModuleNgrok          ModuleID = "ngrok"
 	ModuleCloudflared    ModuleID = "cloudflared"
 	ModuleSkills         ModuleID = "skills"
 	ModuleCleanup        ModuleID = "cleanup"
@@ -73,8 +66,8 @@ const PostScriptDir = DevUserHome + "/post-script"
 // PostScriptStartDir holds the non-interactive installer scripts the entrypoint
 // runs automatically (in the background, once per container) on start. Scripts
 // are copied here with a numeric "NN-" prefix so the entrypoint's sorted glob
-// runs them in the intended order (agents first, then the agent-wiring tools
-// graphify/caveman last). Manual/interactive scripts stay under PostScriptDir.
+// runs them in the intended order (agents first, then downstream tools and skills
+// last). Manual/interactive scripts stay under PostScriptDir.
 const PostScriptStartDir = PostScriptDir + "/start.d"
 
 // PostScriptServicesDir holds background service scripts the entrypoint runs
@@ -209,27 +202,16 @@ type SelectedModule struct {
 type SkillID string
 
 const (
-	SkillFirecrawl           SkillID = "firecrawl"
-	SkillAgentBrowser        SkillID = "agent-browser"
-	SkillWebappTesting       SkillID = "webapp-testing"
-	SkillDataScience         SkillID = "data-science"
-	SkillChoosePythonLibrary SkillID = "choose-python-library"
-	SkillRemotion            SkillID = "remotion-create"
-	SkillHyperframes         SkillID = "hyperframes"
-	SkillClaudeVideo         SkillID = "claude-video"
-	SkillImpeccable          SkillID = "impeccable"
-	SkillWayfinder           SkillID = "wayfinder"
-	SkillFrontendDesign      SkillID = "frontend-design"
-	SkillUIUXProMax          SkillID = "ui-ux-pro-max"
-	SkillFindSkills          SkillID = "find-skills"
+	SkillAgentBrowser   SkillID = "agent-browser"
+	SkillImpeccable     SkillID = "impeccable"
+	SkillFrontendDesign SkillID = "frontend-design"
+	SkillUIUXProMax     SkillID = "ui-ux-pro-max"
+	SkillFindSkills     SkillID = "find-skills"
 
 	// Functional Category IDs (expandable via ExpandSkillGroups)
-	SkillCategoryCoreAgents           SkillID = "core-agents"
-	SkillCategoryFrontendDesign       SkillID = "frontend-ux-design"
-	SkillCategoryArchitecturePlanning SkillID = "architecture-planning"
-	SkillCategoryQualityTesting       SkillID = "quality-testing"
-	SkillCategoryDocsContent          SkillID = "docs-content"
-	SkillCategoryAutomationN8n        SkillID = "automation-n8n"
+	SkillCategoryCoreAgents     SkillID = "core-agents"
+	SkillCategoryFrontendDesign SkillID = "frontend-ux-design"
+	SkillCategoryDocsContent    SkillID = "docs-content"
 )
 
 // SkillMode says who installs the project's agent skills.
@@ -330,14 +312,10 @@ const CustomScriptPrefix = "custom-"
 type CustomScript struct {
 	File string     `json:"file" yaml:"file"`
 	When ScriptWhen `json:"when,omitempty" yaml:"when,omitempty"`
-	// Source is where the script is copied from: an absolute host path, or a
-	// path inside the embedded built-in profile tree when Embedded is set. It is
+	// Source is where the script is copied from: an absolute host path. It is
 	// only set while a profile is being applied — it is never persisted, because
 	// the materialized copy in the build dir is the source of truth afterwards.
 	Source string `json:"-" yaml:"-"`
-	// Embedded marks Source as a path inside the CLI's own embedded profile
-	// tree rather than on the host filesystem.
-	Embedded bool `json:"-" yaml:"-"`
 }
 
 // ResolvedWhen is When with the default applied.

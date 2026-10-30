@@ -491,7 +491,7 @@ func (w wizardContext) categorySteps(s *State) []Step {
 			}
 
 			// Pre-select any module in this category that is required by an
-			// already selected module or service (e.g. browser-harness -> python, chrome, ffmpeg).
+			// already selected module or service (e.g. codex-cli -> nodejs -> github-cli).
 			reqs := requiredModulesForSelected(w.selectedEntryIDs(s))
 			for reqID := range reqs {
 				if spec := catalog.GetDockerfileModule(reqID); spec != nil && spec.UICategory == category {
@@ -851,7 +851,7 @@ func (s GenerateService) SelectModules(base *types.DevcontainerConfig, prompt Pr
 // ProfileChoices lists the profiles usable for --profile under the "profiles"
 // build mode: those with Profile.Remote set, i.e. a published
 // ghcr.io/devcontainer-<id> image built by CI. A profile without one (e.g.
-// 'scraper') can still be applied locally via --profile in mode=custom, but
+// 'base' or a user profile) can still be applied locally via --profile in mode=custom, but
 // is left out here — offering it would just fail the pull.
 func ProfileChoices(dirs ...string) []Option {
 	var choices []Option

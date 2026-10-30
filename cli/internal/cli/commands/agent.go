@@ -40,7 +40,7 @@ container, 'config' for global settings.`,
   devcontainer-cli agent list /home/devuser --json
 
   # Install agent skills
-  devcontainer-cli agent skill install firecrawl
+  devcontainer-cli agent skill install agent-browser
 
   # Tear it down
   devcontainer-cli agent clean --yes`,
@@ -498,7 +498,7 @@ func newAgentSkillCommand() *cobra.Command {
 Subcommands:
   install [skill-ids...]  Install agent skills at project level in an ephemeral container.`,
 		Example: `  # Install specific skills
-  devcontainer-cli agent skill install firecrawl
+  devcontainer-cli agent skill install agent-browser
 
   # Install all available skills
   devcontainer-cli agent skill install --all`,
@@ -521,7 +521,7 @@ If no skills are configured and no arguments are provided, it reports an actiona
 
 Use --all to install all available agent skills (both built-in and user-defined).`,
 		Example: `  # Install specific skills
-  devcontainer-cli agent skill install firecrawl
+  devcontainer-cli agent skill install agent-browser
 
   # Install all available skills
   devcontainer-cli agent skill install --all

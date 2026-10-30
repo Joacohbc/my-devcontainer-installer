@@ -47,7 +47,6 @@ classDiagram
         +[]CustomScript Scripts
         +[]string Skills
         +bool Remote
-        +bool Embedded
         +string Dir
     }
 
@@ -90,6 +89,11 @@ Entidad que representa una imagen reutilizable e independiente de proyectos, per
 - `Modules`: módulos Dockerfile integrados en la imagen base.
 - `Scripts`: scripts personalizados de compilación.
 - `Namespace`: las imágenes locales construidas se etiquetan bajo `devcontainer-cli-img/<name>:<tag>` para aislarlas del ciclo de vida de los proyectos.
+
+### `UserSkillManifest` y `DiscoveredSkill`
+Entidades asociadas a habilidades de asistente definidas por el usuario (`~/.devcontainer-cli/skills/<id>.yml`):
+- `UserSkillManifest`: manifiesto en formato YAML que especifica identificador normalizado (`ID`), etiqueta descriptiva (`Label`), origen Git o URL (`Ref`), selector secundario opcional (`Skill`), módulos requeridos (`RequiresModules`) y directiva de orientación contextual para `~/CONTEXT.md` (`Context.Title`, `Context.Body`).
+- `DiscoveredSkill`: representación en memoria obtenida durante el proceso de descubrimiento (`npx skills add <source> --copy -y --json` en directorio temporal). Almacena auditoría de seguridad provista por Snyk (`Snyk`), estado de instalación (`Status`), descripción extraída del frontmatter YAML de `SKILL.md` y manifiesto preparado para su persistencia.
 
 ---
 
@@ -136,18 +140,9 @@ Servicios complementarios definidos en `docker-compose.yml`:
 
 ## 4. Perfiles y Temporización de Scripts (`CustomScript.When`)
 
-Un perfil agrupa módulos, configuraciones de puertos y scripts personalizados. Existen perfiles planos de un solo lenguaje o combo (`nodejs`, `python`, `node-go`, etc.) y perfiles integrados especializados que empaquetan scripts propios y habilidades de agente:
+Un perfil agrupa módulos, configuraciones de puertos y scripts personalizados. La CLI incluye 12 perfiles planos integrados (`base`, `nodejs`, `bun`, `java-temurin`, `python`, `go`, `node-go`, `node-python`, `node-java-temurin`, `bun-go`, `bun-python`, `bun-java-temurin`), y permite a los usuarios definir perfiles propios en `~/.devcontainer-cli/profiles/<id>/` (como un archivo plano `<id>.yml` o como un directorio `<id>/profile.yml` acompañado de sus scripts `.sh`).
 
-| Perfil ID | Propósito y Herramientas | Módulos Base | Scripts y Habilidades |
-|---|---|---|---|
-| `browser-tools` | Automatización de navegador y herramientas de agente (Chromium, `agent-browser`, Playwright Node/Python). | `github-cli`, `nodejs`, `pnpm`, `python`, `chrome` | `install-browser-tools.sh` (`when: build`), skill `agent-browser`. |
-| `android` | Desarrollo Android con herramientas de línea de comandos y Gradle (`cmdline-tools`, `adb`, `build-tools`, `platforms;android-34`). | `github-cli`, `java-temurin` | `install-android-tools.sh` (`when: build`), puertos `5554`, `5555`. |
-| `media-editor` | Manipulación multimedia (FFmpeg, ImageMagick, PDF utils, Pandoc, Remotion, HyperFrames). | `github-cli`, `nodejs`, `pnpm`, `chrome`, `ffmpeg` | `install-media-tools.sh` (`when: build`), skills `remotion-create`, `claude-video`, `hyperframes`. |
-| `data-science` | Ciencia de datos y análisis interactivo (JupyterLab, pandas, scikit-learn, duckdb, polars). | `github-cli`, `python`, `sqlite` | `install-datascience-tools.sh` (`when: build`), skill `data-science`. |
-| `n8n` | Automatización de flujos de trabajo local con n8n y pruebas de UI con Playwright. | `github-cli`, `nodejs`, `pnpm`, `chrome` | `install-n8n-automation-tools.sh` (`when: build`), skills `automation-n8n`, `agent-browser`. |
-| `scraper` | Web scraping avanzado y extracción (Crawl4AI, Playwright, Firecrawl, Markitdown, Trafilatura). | `github-cli`, `nodejs`, `pnpm`, `python`, `chrome`, `sqlite`, `ffmpeg` | `install-scraper-tools.sh` (`when: build`), skills `firecrawl`, `agent-browser`, `webapp-testing`. |
-
-Los scripts se ejecutan en momentos precisos según su propiedad `When`:
+Los scripts personalizados definidos por el usuario o provistos en sus perfiles se ejecutan en momentos precisos según su propiedad `When`:
 
 | Momento (`when`) | Destino en Contenedor | Mecanismo de Ejecución |
 |---|---|---|
@@ -155,6 +150,16 @@ Los scripts se ejecutan en momentos precisos según su propiedad `When`:
 | `start` | `~/post-script/start.d/90-<script>.sh` | Ejecutado por `entrypoint.sh` en orden lexicográfico una sola vez por vida de contenedor (protegido por archivo centinela `.done`). |
 | `service` | `~/post-script/services.d/<script>.sh` | Ejecutado en segundo plano por `entrypoint.sh` en cada arranque del contenedor (sin centinela `.done`). |
 | `manual` | `~/post-script/<script>.sh` | No se ejecuta automáticamente; queda disponible para ejecución manual por parte del usuario. |
+
+### Composición de Múltiples Perfiles (`--profile a,b`)
+
+En `mode=custom`, la bandera `--profile` acepta una lista de identificadores separados por comas que se fusionan en un único perfil efectivo antes de compilar la imagen local:
+
+- **Unión de Módulos**: Se combinan los módulos de todos los perfiles preservando el orden de primera aparición y eliminando duplicados. Los conflictos entre módulos incompatibles (ej. `java-temurin` y `java-openjdk`) son detectados por el resolver del catálogo.
+- **Concatenación de Scripts**: Los scripts personalizados se concatenan en el orden especificado. Si dos perfiles declaran scripts con el mismo nombre de archivo de destino en el directorio de construcción (`custom-<archivo>.sh`), el comando falla inmediatamente nombrando a ambos perfiles en conflicto.
+- **Unión de Habilidades y Puertos**: Las habilidades de agente (`skills`), puertos publicados (`ports`) y túneles SSH (`forward_ports`) se combinan mediante unión deduplicada en orden de primera aparición.
+- **Validación de Modo de Habilidades**: Si dos o más perfiles especifican modos explícitos de instalación (`skills_mode`) que entren en contradicción (por ejemplo, `manual` y `auto`), la generación se rechaza con error explícito.
+- **Invariante de Perfil Único para Descarga Remota**: `mode=profiles` y `devcontainer-cli run` únicamente admiten un único perfil remoto publicado (`[remote]`). Si se pasa una lista separada por comas a estos comandos, se genera un error descriptivo no interactivo.
 
 ---
 
