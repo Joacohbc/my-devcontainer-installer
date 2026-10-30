@@ -32,9 +32,40 @@ curl -fsSL https://raw.githubusercontent.com/Joacohbc/my-devcontainer-installer/
 
 ### 2. Habilidad de Host para Agentes de IA (Opcional, Muy Recomendado)
 Enseña a los asistentes que corren en su máquina física (Claude Code, Antigravity, etc.) a operar esta CLI para que ejecuten builds, tests y migraciones dentro de contenedores:
+
+**Con `npx skills`:**
 ```bash
 npx skills add Joacohbc/my-devcontainer-installer@devcontainer-cli -g
 ```
+
+**Sin `npx` (descarga directa vía `curl`):**
+
+- **Global (en `~/` para todos sus proyectos):**
+  ```bash
+  # Antigravity / OpenCode / agentes compatibles (~/.agents/skills)
+  mkdir -p ~/.agents/skills/devcontainer-cli && \
+  curl -fsSL https://raw.githubusercontent.com/Joacohbc/my-devcontainer-installer/main/skills/devcontainer-cli/SKILL.md \
+    -o ~/.agents/skills/devcontainer-cli/SKILL.md
+
+  # Claude Code (~/.claude/skills)
+  mkdir -p ~/.claude/skills/devcontainer-cli && \
+  curl -fsSL https://raw.githubusercontent.com/Joacohbc/my-devcontainer-installer/main/skills/devcontainer-cli/SKILL.md \
+    -o ~/.claude/skills/devcontainer-cli/SKILL.md
+  ```
+
+- **Local en el proyecto actual (en `./`):**
+  ```bash
+  # En el repositorio actual (.agents/skills)
+  mkdir -p .agents/skills/devcontainer-cli && \
+  curl -fsSL https://raw.githubusercontent.com/Joacohbc/my-devcontainer-installer/main/skills/devcontainer-cli/SKILL.md \
+    -o .agents/skills/devcontainer-cli/SKILL.md
+
+  # En el repositorio actual (.claude/skills)
+  mkdir -p .claude/skills/devcontainer-cli && \
+  curl -fsSL https://raw.githubusercontent.com/Joacohbc/my-devcontainer-installer/main/skills/devcontainer-cli/SKILL.md \
+    -o .claude/skills/devcontainer-cli/SKILL.md
+  ```
+*(También puede copiar directamente la carpeta local `skills/devcontainer-cli` a cualquiera de estas rutas).*
 
 ### 3. Actualización y Desinstalación
 ```bash
