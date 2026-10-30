@@ -134,10 +134,14 @@ func LastHost(cidr string) (string, bool) {
 // own network: regenerating a project whose stack is up would otherwise find
 // its own subnet taken and move the project onto a different one on every run.
 func ListUsedSubnets(capture CaptureFunc, ignoreNetworks ...string) []CidrRange {
-	ignored := make(map[string]bool, len(ignoreNetworks))
+	ignored := make(map[string]bool, len(ignoreNetworks)*2)
 	for _, name := range ignoreNetworks {
 		if name != "" {
 			ignored[name] = true
+			if strings.HasSuffix(name, "-network") {
+				ws := strings.TrimSuffix(name, "-network")
+				ignored[ws+"_"+name] = true
+			}
 		}
 	}
 	return listUsedSubnets(capture, ignored)

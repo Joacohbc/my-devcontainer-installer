@@ -349,3 +349,16 @@ func TestAgentCleanDryRunRemovesNothing(t *testing.T) {
 		t.Error("dry run must not delete the config file")
 	}
 }
+
+func TestAgentCleanDryRunAllowedWithoutYesInNonInteractive(t *testing.T) {
+	target := agentCleanProject(t)
+	const image = types.ImageNamespace + "/abc123def456:latest"
+
+	runner := &imageListRunner{images: image + "\tsha256:abc"}
+	defer useFakeDocker(runner)()
+
+	svc := AgentService{Report: nopReporter{}, Prompt: scriptedPrompter{}}
+	if err := svc.Clean(target, image, AgentCleanOptions{DryRun: true, Yes: false, Interactive: false}); err != nil {
+		t.Fatalf("expected dry run without --yes to succeed, got: %v", err)
+	}
+}

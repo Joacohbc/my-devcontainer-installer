@@ -550,7 +550,7 @@ func validateConfig(cwd string, config *types.DevcontainerConfig, flags *genFlag
 	}
 
 	if config.Compose.Subnet != "" {
-		used := svc.UsedSubnets(domain.WorkspaceNetworkName(config.Workspace))
+		used := svc.UsedSubnets(domain.WorkspaceNetworkNames(config.Workspace)...)
 		resolved, err := resolveSubnet(config.Compose.Subnet, used, flags.interactive)
 		if err != nil {
 			return err

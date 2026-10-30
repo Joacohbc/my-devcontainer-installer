@@ -1,6 +1,7 @@
 package domain_test
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
@@ -153,5 +154,29 @@ func TestListUsedSubnetsAcceptsSubnetOnlyLines(t *testing.T) {
 func TestWorkspaceNetworkName(t *testing.T) {
 	if got := domain.WorkspaceNetworkName("api"); got != "api-network" {
 		t.Errorf("WorkspaceNetworkName = %q, want %q", got, "api-network")
+	}
+}
+
+func TestListUsedSubnetsIgnoresComposePrefixedNetwork(t *testing.T) {
+	// Docker Compose v2 names networks <project>_<networkName> (e.g. api_api-network).
+	// ListUsedSubnets must ignore the compose-prefixed network when ignoring the workspace network.
+	inspect := "bridge 172.17.0.0/16\napi_api-network 172.25.0.0/28\n"
+	used := domain.ListUsedSubnets(fakeNetworkCapture(inspect), "api-network")
+	if len(used) != 1 {
+		t.Fatalf("expected api_api-network to be excluded, got %v", used)
+	}
+	if domain.FormatCidr(used[0]) != "172.17.0.0/16" {
+		t.Errorf("expected the other network to survive, got %s", domain.FormatCidr(used[0]))
+	}
+	if domain.SubnetConflict("172.25.0.0/28", used) != nil {
+		t.Error("the project's compose network must not conflict with itself on re-run")
+	}
+}
+
+func TestWorkspaceNetworkNames(t *testing.T) {
+	names := domain.WorkspaceNetworkNames("api")
+	expected := []string{"api-network", "api_api-network", "api_default"}
+	if !slices.Equal(names, expected) {
+		t.Errorf("WorkspaceNetworkNames = %v, want %v", names, expected)
 	}
 }
