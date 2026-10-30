@@ -342,7 +342,7 @@ type AgentCleanOptions struct {
 // locally built one, since a pulled ghcr.io image is shared with every other
 // project on the same profile.
 func (s AgentService) Clean(target DestroyTarget, image string, opts AgentCleanOptions) error {
-	if !opts.Yes && !opts.Interactive {
+	if !opts.DryRun && !opts.Yes && !opts.Interactive {
 		return fmt.Errorf("agent clean is irreversible; pass --yes to confirm in non-interactive mode")
 	}
 
