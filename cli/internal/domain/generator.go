@@ -448,7 +448,7 @@ func GenerateCompose(config *types.DevcontainerConfig) (string, error) {
 // here untouched.
 func unknownServiceError(id string) error {
 	if id == legacyTunnelService {
-		return fmt.Errorf("compose service %q was replaced by the %q dockerfile module, which installs cloudflared inside the container: use --with %s", id, types.ModuleCloudflared, types.ModuleCloudflared)
+		return fmt.Errorf("compose service %q was replaced by the %q dockerfile module, which installs cloudflared inside the container: use --modules %s", id, types.ModuleCloudflared, types.ModuleCloudflared)
 	}
 	return fmt.Errorf("unknown compose service: %s", id)
 }

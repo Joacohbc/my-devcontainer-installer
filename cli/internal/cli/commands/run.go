@@ -33,7 +33,7 @@ unrelated container entirely — the prompt rejects it and asks again (and
 the existing container first.
 
 --profile takes exactly one profile id with a published image — run
-'devcontainer-cli config profile list' and look for the [remote] tag — or the
+'devcontainer-cli profile list' and look for the [remote] tag — or the
 special value 'ssh' for the hand-built full image. A [local] profile (e.g.
 'base', or one of your own) has no matching ghcr.io/devcontainer-<id>
 image and is rejected here; build it instead with 'devcontainer-cli --profile

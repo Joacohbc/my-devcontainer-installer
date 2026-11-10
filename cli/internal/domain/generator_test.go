@@ -1133,7 +1133,7 @@ func TestGenerateCompose_RemovedTunnelServiceErrorPointsAtTheModule(t *testing.T
 	if err == nil {
 		t.Fatal("expected an error for the removed tunnel service")
 	}
-	for _, frag := range []string{"tunnel", "cloudflared", "--with"} {
+	for _, frag := range []string{"tunnel", "cloudflared", "--modules"} {
 		if !strings.Contains(err.Error(), frag) {
 			t.Errorf("error %q must mention %q", err, frag)
 		}

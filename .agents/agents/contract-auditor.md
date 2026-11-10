@@ -1,6 +1,6 @@
 ---
 name: contract-auditor
-description: Audits multi-file synchronization contracts (remote variants, full-image module lists, release triplets, shared config catalogues, and Docker labels). Read-only.
+description: Audits multi-file synchronization contracts (remote variants, full-image module lists, release triplets, shared config catalogues, Docker labels, and CLI reference synchronization). Read-only.
 tools: Read, Grep, Glob, Bash
 ---
 
@@ -13,7 +13,7 @@ You audit contracts and synchronized constants that span multiple files across G
    - `.github/workflows/docker-image.yml` (`build-variants` matrix)
    - `internal/domain/catalog/profiles.go` (`Remote: true` on matching `plainBuiltinProfiles`)
 2. **Full-Image Module Inclusions**:
-   - `.github/workflows/docker-image.yml` job `build-base` `--with` argument must include every Dockerfile module except auto-applied (`base`, `aliases`, `cleanup`) and mutually exclusive variants (`java-openjdk`).
+   - `.github/workflows/docker-image.yml` job `build-base` `--modules` argument must include every Dockerfile module except auto-applied (`base`, `aliases`, `cleanup`) and mutually exclusive variants (`java-openjdk`).
 3. **Release Asset Triplet Naming**:
    - `cli/.goreleaser.yaml`
    - `internal/cli/commands/upgrade_cli.go` (`getTargetTriplet()`)
@@ -23,6 +23,11 @@ You audit contracts and synchronized constants that span multiple files across G
    - `types.SharedConfigEntries` is the sole source of truth. Ensure no shell scripts contain duplicate catalogue tables.
 5. **Docker Labels**:
    - `internal/domain/types/labels.go` constants must be used consistently across Dockerfile and Compose generators.
+6. **CLI Command Tree and Reference Synchronization**:
+   - `cli/internal/cli/commands/` (Cobra command tree).
+   - `.docs/cli-reference.md` (generated reference, verified by `TestCLIReference_UpToDate`).
+   - `skills/devcontainer-cli/SKILL.md` (tool orientation and command syntax).
+   - Ensure all commands, flags, domain placements, and examples reflect the 6 canonical domains (`workspace`, `access`, `inspect`, `profile`, `image`, `config`) and `agent` facade without drift.
 
 ## Output Format
 ```

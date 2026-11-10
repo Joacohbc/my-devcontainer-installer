@@ -18,7 +18,10 @@ import (
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/assets"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/sshdefaults"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/service"
+	"unicode"
+
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 func TestNewRootCommand_RegistersAllSubcommands(t *testing.T) {
@@ -47,6 +50,114 @@ func TestNewRootCommand_RegistersAllSubcommands(t *testing.T) {
 			t.Errorf("legacy flat command %q should NOT be registered at root", name)
 		}
 	}
+}
+
+func TestCLIParadigmInvariants(t *testing.T) {
+	root := NewRootCommand("test")
+
+	// 1. Top-level domain boundary:
+	// Root command only registers the 7 canonical domain/facade groups
+	// (workspace, access, inspect, profile, image, config, agent) plus Cobra built-ins (help, completion).
+	allowedTopLevel := map[string]bool{
+		"workspace":  true,
+		"access":     true,
+		"inspect":    true,
+		"profile":    true,
+		"image":      true,
+		"config":     true,
+		"agent":      true,
+		"help":       true,
+		"completion": true,
+	}
+	for _, c := range root.Commands() {
+		if !allowedTopLevel[c.Name()] {
+			t.Errorf("top-level command %q violates 7 canonical domain boundary (workspace, access, inspect, profile, image, config, agent)", c.Name())
+		}
+	}
+
+	bannedFlags := []string{
+		"preset",
+		"non-interactive",
+		"no-build",
+		"service",
+		"skill",
+		"with",
+		"setup-external",
+		"temporal",
+	}
+
+	reservedShorthands := map[string]string{
+		"c": "container",
+		"y": "yes",
+		"a": "all",
+		"f": "follow",
+		"w": "workdir",
+		"v": "volumes",
+	}
+
+	var checkCommand func(cmd *cobra.Command)
+	checkCommand = func(cmd *cobra.Command) {
+		if cmd.Name() == "help" || cmd.Name() == "completion" {
+			return
+		}
+
+		// 2. Zero command aliases
+		if len(cmd.Aliases) > 0 {
+			t.Errorf("command %q has aliases %v; expected zero aliases across entire tree", cmd.CommandPath(), cmd.Aliases)
+		}
+
+		// 3. Non-empty Short description: capitalized and without trailing period
+		short := strings.TrimSpace(cmd.Short)
+		if short == "" {
+			t.Errorf("command %q has empty Short description", cmd.CommandPath())
+		} else {
+			firstRune := []rune(short)[0]
+			if !unicode.IsUpper(firstRune) {
+				t.Errorf("command %q Short %q must be capitalized", cmd.CommandPath(), short)
+			}
+			if strings.HasSuffix(short, ".") {
+				t.Errorf("command %q Short %q must not end with a period", cmd.CommandPath(), short)
+			}
+		}
+
+		// 4. Banned / eliminated flag names
+		for _, banned := range bannedFlags {
+			// Exempt legitimate single-entity selector / target parameters on specific non-generation commands:
+			// --service on 'forward' specifies a target compose service host for port forwarding.
+			// --skill on 'config skill add' selects a specific skill from a multi-skill repository.
+			if banned == "service" && cmd.Name() == "forward" {
+				continue
+			}
+			if banned == "skill" && cmd.Name() == "add" && cmd.Parent() != nil && cmd.Parent().Name() == "skill" {
+				continue
+			}
+
+			if cmd.Flags().Lookup(banned) != nil {
+				t.Errorf("command %q registers banned flag --%s", cmd.CommandPath(), banned)
+			}
+		}
+
+		// 5. Reserved shorthands: must map to their canonical long flag name
+		cmd.Flags().VisitAll(func(f *pflag.Flag) {
+			if f.Shorthand != "" {
+				if expectedLong, isReserved := reservedShorthands[f.Shorthand]; isReserved {
+					if f.Name != expectedLong {
+						t.Errorf("command %q shorthand -%s maps to --%s; must only map to --%s",
+							cmd.CommandPath(), f.Shorthand, f.Name, expectedLong)
+					}
+				}
+				if f.Shorthand == "v" && f.Name == "version" {
+					t.Errorf("command %q flag --version must not use shorthand -v (reserved for --volumes)", cmd.CommandPath())
+				}
+			}
+		})
+
+		for _, sub := range cmd.Commands() {
+			checkCommand(sub)
+		}
+	}
+
+	checkCommand(root)
 }
 
 func TestComposeCommand_Passthrough(t *testing.T) {

@@ -42,7 +42,7 @@ func (s NetworkService) ResolveNetwork(workspace string) (string, error) {
 	names := splitNonEmptyLines(stdout)
 	switch len(names) {
 	case 0:
-		return "", fmt.Errorf("no managed network found for workspace %q; bring it up first with 'devcontainer-cli up'", workspace)
+		return "", fmt.Errorf("no managed network found for workspace %q; bring it up first with 'devcontainer-cli workspace up'", workspace)
 	case 1:
 		return names[0], nil
 	default:

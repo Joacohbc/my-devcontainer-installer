@@ -21,7 +21,7 @@ any running session afterwards to use the new binary.
 
 By default the latest stable release is installed; a newer pre-release is only
 offered (prompted) unless you pass --pre-release to opt in. This updates the CLI
-itself — to update a project's container images use 'devcontainer-cli update'.
+itself — to update a project's container images use 'devcontainer-cli image update'.
 
 Environment:
   GITHUB_TOKEN    Optional token to avoid GitHub's 60 req/hour anonymous limit.`,
@@ -51,7 +51,7 @@ func runSelfUpdate(cmd *cobra.Command, _ []string) error {
 
 	svc := service.UpgradeService{Report: console}
 
-	console.Debug("Note: 'devcontainer-cli update' now manages container images. Self-update lives at 'devcontainer-cli upgrade-cli'.")
+	console.Debug("Note: 'devcontainer-cli image update' now manages container images. Self-update lives at 'devcontainer-cli config upgrade-cli'.")
 
 	current := version
 	console.Info("Current version: %s", current)

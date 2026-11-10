@@ -126,7 +126,7 @@ func remoteVariantError(v string) error {
 	if p, ok := catalog.Resolve(v, domain.ProfileDirs()...); ok && !p.Remote {
 		return fmt.Errorf("profile %q has no published remote image, so mode=profiles can't pull it; use --profile %s with mode=custom to build it locally instead", v, v)
 	}
-	return fmt.Errorf("unknown profile: %s. Run 'devcontainer-cli config profile list' to see available profiles", v)
+	return fmt.Errorf("unknown profile: %s. Run 'devcontainer-cli profile list' to see available profiles", v)
 }
 
 type genFlags struct {
@@ -496,7 +496,7 @@ func validateConfig(cwd string, config *types.DevcontainerConfig, flags *genFlag
 			return fmt.Errorf("mode=profiles accepts exactly one profile, got %q (multiple profiles can only be combined with mode=custom)", config.Remote.Variant)
 		}
 		if config.Remote == nil {
-			return fmt.Errorf("mode=profiles requires --profile (a [remote]-tagged profile id — run 'devcontainer-cli config profile list' to see them, or 'ssh' for the full image)")
+			return fmt.Errorf("mode=profiles requires --profile (a [remote]-tagged profile id — run 'devcontainer-cli profile list' to see them, or 'ssh' for the full image)")
 		}
 	}
 	// "ssh" names the hand-built full image rather than a catalog profile, so
@@ -794,7 +794,7 @@ func saveAndPostProcess(cwd string, config *types.DevcontainerConfig, plan *serv
 		console.Done()
 	}
 	console.NewLine()
-	console.Info("SSH access: run 'devcontainer-cli ssh --setup' to generate a key and register the host automatically.")
+	console.Info("SSH access: run 'devcontainer-cli access ssh --setup' to generate a key and register the host automatically.")
 	return nil
 }
 

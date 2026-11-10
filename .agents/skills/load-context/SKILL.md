@@ -24,7 +24,7 @@ Goal: before writing code, know the domain rules, architectural contracts, and p
 |---|---|
 | Dockerfile modules (`internal/domain/modules/dockerfile/`, `internal/domain/catalog/`) | `.docs/domain-model.md` §2, `.docs/architecture.md` §3 (Environment as Data, Python Contract); skill `add-dockerfile-module` |
 | Compose services (`internal/domain/modules/compose/`, `internal/domain/catalog/`) | `.docs/domain-model.md` §3, `.docs/architecture.md` §1; skill `add-compose-service` |
-| CLI commands and subcommands (`internal/cli/commands/`, `internal/cli/ui/`) | `.docs/code-conventions.md` §2–§3, `.docs/architecture.md` §1; skill `add-cli-command` |
+| CLI commands and subcommands (`internal/cli/commands/`, `internal/cli/ui/`) | `.docs/code-conventions.md` §2–§3, `.docs/architecture.md` §1, §4 (D18), `.docs/cli-reference.md`; skill `add-cli-command` |
 | Service orchestration (`internal/service/`) | `.docs/architecture.md` §1–§2, `.docs/testing.md` §2, `.docs/code-conventions.md` §1 |
 | Generator and fingerprint logic (`internal/domain/{generator,resolver,fingerprint}.go`) | `.docs/architecture.md` §3–§4 (D5, D6, D10), `.docs/domain-model.md` §1; skill `add-dockerfile-module` |
 | Profiles and custom scripts (`internal/domain/catalog/profiles/`, `profiles.go`) | `.docs/domain-model.md` §4, `.docs/architecture.md` §4 (D8); skill `add-profile` |

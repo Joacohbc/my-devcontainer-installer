@@ -149,7 +149,7 @@ func parsePort(value, label string) (int, error) {
 func parsePortMapping(mapping, defaultService string, defaultReverse bool) (parsedMapping, error) {
 	mapping, reverse := splitDirection(mapping, defaultReverse)
 	if reverse && defaultService != "" {
-		return parsedMapping{}, fmt.Errorf("--service names a compose service inside the container network, which a reverse tunnel never dials; use the 'reverse:LOCAL:HOST:CONTAINER' form to name a host reachable from this machine")
+		return parsedMapping{}, fmt.Errorf("the target service names a compose service inside the container network, which a reverse tunnel never dials; use the 'reverse:LOCAL:HOST:CONTAINER' form to name a host reachable from this machine")
 	}
 	bind, mapping := splitBindAddress(mapping)
 	if bind != "" && reverse {
@@ -237,7 +237,7 @@ func parsePortFields(mapping, defaultService string, reverse bool) (parsedMappin
 			return parsedMapping{}, err
 		}
 		if defaultService != "" && defaultService != targetHost {
-			return parsedMapping{}, fmt.Errorf("conflicting target hosts: mapping specifies '%s' but --service is '%s'", targetHost, defaultService)
+			return parsedMapping{}, fmt.Errorf("conflicting target hosts: mapping specifies '%s' but service target is '%s'", targetHost, defaultService)
 		}
 		return parsedMapping{localPort: local, targetHost: targetHost, containerPort: container, reverse: reverse}, nil
 	default:
@@ -412,7 +412,7 @@ func buildTunnelsInteractive(flagAlias string, reverse, interactive bool) ([]ser
 	// down to running ones here.
 	containers := runningContainers(pick.ListAll())
 	if len(containers) == 0 {
-		return nil, fmt.Errorf("no running containers found. Start one with 'devcontainer-cli up', or create a project first with 'devcontainer-cli agent create'")
+		return nil, fmt.Errorf("no running containers found. Start one with 'devcontainer-cli workspace up', or create a project first with 'devcontainer-cli agent create'")
 	}
 	aliases := getSSHAliases()
 	var tunnels []service.Tunnel

@@ -130,7 +130,7 @@ func newProfileListCommand() *cobra.Command {
 
 			printGroup("Built-in profiles", builtin, "(none)")
 			console.Print("\n")
-			printGroup("Your profiles", user, "(none — create one with 'config profile create')")
+			printGroup("Your profiles", user, "(none — create one with 'profile create')")
 			return nil
 		},
 	}
