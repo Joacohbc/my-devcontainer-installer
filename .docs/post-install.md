@@ -11,38 +11,38 @@ Acciones y comandos para conectar y trabajar dentro del contenedor una vez inici
 
 Es posible conectarse al contenedor desde el anfitrión mediante `devcontainer-cli` o mediante un cliente OpenSSH estándar, tanto en modo **interactivo** como **no interactivo**:
 
-### 1. Vía CLI Shell (`devcontainer-cli shell`)
+### 1. Vía CLI Shell (`devcontainer-cli access shell`)
 
 Utiliza `docker exec` internamente, resolviendo automáticamente el contenedor del espacio de trabajo actual:
 
 - **Modo Interactivo (predeterminado)**: Abre una terminal interactiva (Zsh) con soporte completo de pseudo-terminal (TTY).
   ```bash
-  devcontainer-cli shell                       # Entra a la shell interactiva del devcontainer
-  devcontainer-cli shell -- bash               # Abre la shell especificando bash
-  devcontainer-cli shell -c <contenedor>       # Entra a un contenedor específico del stack (ej. postgres)
+  devcontainer-cli access shell                       # Entra a la shell interactiva del devcontainer
+  devcontainer-cli access shell -- bash               # Abre la shell especificando bash
+  devcontainer-cli access shell -c <contenedor>       # Entra a un contenedor específico del stack (ej. postgres)
   ```
 - **Modo No Interactivo (`-T` / `--no-tty`)**: Ejecuta comandos aislados o canalizaciones (*pipes* / redirecciones de archivos) desactivando la asignación de TTY para evitar la corrupción de datos binarios (como retornos de carro `\r`).
   ```bash
-  devcontainer-cli shell -- uname -a           # Ejecuta un comando puntual y retorna la salida
-  devcontainer-cli shell -T -- pg_dump -U devuser devdb > backup.sql # Generación limpia de volcados de BD
-  cat script.sh | devcontainer-cli shell -T -- bash                 # Envío de un script local al contenedor
+  devcontainer-cli access shell -- uname -a           # Ejecuta un comando puntual y retorna la salida
+  devcontainer-cli access shell -T -- pg_dump -U devuser devdb > backup.sql # Generación limpia de volcados de BD
+  cat script.sh | devcontainer-cli access shell -T -- bash                 # Envío de un script local al contenedor
   ```
 
-### 2. Vía SSH (`devcontainer-cli ssh` / cliente `ssh`)
+### 2. Vía SSH (`devcontainer-cli access ssh` / cliente `ssh`)
 
 Proporciona acceso mediante OpenSSH, idóneo para **VS Code Remote - SSH** o sesiones multiplexadas con **Zellij**:
 
 - **Modo Persistente (predeterminado)**:
   ```bash
-  devcontainer-cli ssh                         # Abre sesión SSH (ejecuta configuración automática la primera vez)
-  devcontainer-cli ssh --remote user@server    # Conecta por SSH a un devcontainer en un servidor remoto
-  ssh <workspace>                              # Conexión directa mediante el alias registrado por la CLI
+  devcontainer-cli access ssh                         # Abre sesión SSH (ejecuta configuración automática la primera vez)
+  devcontainer-cli access ssh --via user@server -c <contenedor> # Conecta por SSH a un devcontainer en un servidor remoto
+  ssh <workspace>                                     # Conexión directa mediante el alias registrado por la CLI
   ```
   El alias reside en `~/.ssh/devcontainer-cli.config` (archivo propio de la CLI, incluido desde `~/.ssh/config` con una directiva `Include`).
 
 - **Modo Efímero (`--ephemeral`)**:
   ```bash
-  devcontainer-cli ssh --ephemeral             # Conecta directamente a la IP sin tocar archivos ~/.ssh/
+  devcontainer-cli access ssh --ephemeral             # Conecta directamente a la IP sin tocar archivos ~/.ssh/
   ```
   Ideal para scripts de automatización, agentes de IA y CI/CD donde no se desea registrar alias ni modificar configuraciones locales en el host.
 
@@ -76,7 +76,7 @@ Los instaladores no interactivos se ejecutan automáticamente en segundo plano a
 
 Si no incluyó un módulo en la imagen inicial, puede materializar cualquiera de estos instaladores en un contenedor en ejecución con:
 ```bash
-devcontainer-cli copy --asset <nombre>
+devcontainer-cli access copy --asset <nombre>
 ```
 
 ---
@@ -88,11 +88,11 @@ Los siguientes comandos se ejecutan desde el anfitrión utilizando el prefijo de
 ### Reiniciar la Base de Datos (Reset)
 Elimina y recrea el esquema `public` de PostgreSQL:
 ```bash
-devcontainer-cli shell -c <workspace>-postgres -- psql -U devuser -d devdb -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
+devcontainer-cli access shell -c <workspace>-postgres -- psql -U devuser -d devdb -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
 ```
 
 ### Exportar la Base de Datos (Backup)
 Utilice el parámetro `-T` para no corromper el volcado con caracteres de control de terminal:
 ```bash
-devcontainer-cli shell -c <workspace>-postgres -T -- pg_dump -U devuser --no-owner --no-acl devdb > backup.sql
+devcontainer-cli access shell -c <workspace>-postgres -T -- pg_dump -U devuser --no-owner --no-acl devdb > backup.sql
 ```

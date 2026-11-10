@@ -38,11 +38,11 @@ Este manual proporciona una guía directa, exhaustiva y orientada a la práctica
 4. Una vez completado, la CLI generará la carpeta oculta `.dc_api-pagos/` con el Dockerfile y compose.
 5. Inicie el entorno:
    ```bash
-   devcontainer-cli up
+   devcontainer-cli workspace up
    ```
 6. Conéctese a la terminal interactiva:
    ```bash
-   devcontainer-cli shell
+   devcontainer-cli access shell
    ```
 
 ---
@@ -63,11 +63,11 @@ Este manual proporciona una guía directa, exhaustiva y orientada a la práctica
    *(Variantes disponibles: `nodejs`, `bun`, `python`, `go`, `java-temurin`, `node-go`, `node-python`, `node-java-temurin`, `bun-go`, `bun-python`, `bun-java-temurin`)*.
 3. Inicie el contenedor (descargará la imagen precompilada en segundos sin compilar Dockerfile):
    ```bash
-   devcontainer-cli up
+   devcontainer-cli workspace up
    ```
 4. Acceda por SSH o shell:
    ```bash
-   devcontainer-cli ssh
+   devcontainer-cli access ssh
    ```
 
 ---
@@ -79,8 +79,8 @@ Este manual proporciona una guía directa, exhaustiva y orientada a la práctica
 **Paso a paso**:
 1. Genere el devcontainer incluyendo los servicios deseados y los clientes de consola:
    ```bash
-   devcontainer-cli --with nodejs,pnpm,dbclients --service postgres,redis
-   devcontainer-cli up
+   devcontainer-cli --modules nodejs,pnpm,postgres-client,redis-client --services postgres,redis
+   devcontainer-cli workspace up
    ```
 2. **Conexión desde el código dentro del contenedor**:
    - Host de PostgreSQL: `postgres` (resuelto internamente por la red privada de Docker, **nunca** `localhost`).
@@ -88,14 +88,14 @@ Este manual proporciona una guía directa, exhaustiva y orientada a la práctica
    - Host de Redis: `redis` | Puerto: `6379`.
 3. **Consulta interactiva desde la terminal del contenedor**:
    ```bash
-   devcontainer-cli shell -- psql -h postgres -U devuser -d devdb
-   devcontainer-cli shell -- redis-cli -h redis ping
+   devcontainer-cli access shell -- psql -h postgres -U devuser -d devdb
+   devcontainer-cli access shell -- redis-cli -h redis ping
    ```
 4. **Conexión desde el Host (DBeaver, TablePlus, Navicat)**:
    - Dado que los puertos están publicados en el host, configure la conexión en su cliente local apuntando a:
      - Host: `127.0.0.1` | Puerto: `5432` | Usuario: `devuser` | Contraseña: `devpass`.
 5. **Persistencia de Datos**:
-   - Los datos se almacenan en volúmenes Docker independientes (`<workspace>-postgres-data` y `<workspace>-redis-data`). Un `devcontainer-cli down` o reinicio conserva toda su información intacta.
+   - Los datos se almacenan en volúmenes Docker independientes (`<workspace>-postgres-data` y `<workspace>-redis-data`). Un `devcontainer-cli workspace down` o reinicio conserva toda su información intacta.
 
 ---
 
@@ -107,16 +107,16 @@ Este manual proporciona una guía directa, exhaustiva y orientada a la práctica
 
 | Método | Comando | Mecanismo | Modifica `~/.ssh/` en Host | Caso de Uso Ideal |
 |---|---|---|---|---|
-| **SSH Persistente** | `devcontainer-cli ssh` | OpenSSH (puerto 2222) | **Sí** (registra bloque `Host` en `devcontainer-cli.config`) | Desarrollo interactivo diario, editores gráficos (VS Code Remote - SSH), alias corto `ssh <workspace>`. |
-| **SSH Efímero** | `devcontainer-cli ssh --ephemeral` | OpenSSH (puerto 2222) | **No** (conecta directo a IP sin dejar rastro) | Tareas puntuales por SSH, scripts, automatizaciones o cuando no desea alterar su configuración SSH local. |
-| **Shell Directa** | `devcontainer-cli shell` | `docker exec` | **No** (interactúa vía socket de Docker) | Entrada rápida a la terminal, pipes y redirecciones limpias (`-T`), acceso a BD auxiliares (`-c`). |
+| **SSH Persistente** | `devcontainer-cli access ssh` | OpenSSH (puerto 2222) | **Sí** (registra bloque `Host` en `devcontainer-cli.config`) | Desarrollo interactivo diario, editores gráficos (VS Code Remote - SSH), alias corto `ssh <workspace>`. |
+| **SSH Efímero** | `devcontainer-cli access ssh --ephemeral` | OpenSSH (puerto 2222) | **No** (conecta directo a IP sin dejar rastro) | Tareas puntuales por SSH, scripts, automatizaciones o cuando no desea alterar su configuración SSH local. |
+| **Shell Directa** | `devcontainer-cli access shell` | `docker exec` | **No** (interactúa vía socket de Docker) | Entrada rápida a la terminal, pipes y redirecciones limpias (`-T`), acceso a BD auxiliares (`-c`). |
 
 ---
 
 #### 1. Modo SSH Persistente y VS Code Remote - SSH
 1. Ejecute la conexión por primera vez:
    ```bash
-   devcontainer-cli ssh
+   devcontainer-cli access ssh
    ```
    *La CLI genera automáticamente las claves SSH en `~/.config/devcontainer-cli/ssh/`, inyecta la clave pública en el contenedor y crea el bloque de conexión permanente en `~/.ssh/devcontainer-cli.config`.*
 2. **Conexión desde VS Code**:
@@ -134,26 +134,26 @@ Este manual proporciona una guía directa, exhaustiva y orientada a la práctica
 #### 2. Modo SSH Efímero (`--ephemeral`)
 Conéctese directamente sin tocar su archivo de configuración SSH ni registrar alias:
 ```bash
-devcontainer-cli ssh --ephemeral
+devcontainer-cli access ssh --ephemeral
 ```
 *La CLI resuelve la IP del contenedor y utiliza la clave privada gestionada (`-i ~/.config/devcontainer-cli/ssh/id_devcontainer`) para abrir la sesión OpenSSH en el puerto 2222, garantizando **cero polución** en sus archivos de configuración locales.*
 
 ---
 
-#### 3. Modo Shell Directa (`devcontainer-cli shell`)
+#### 3. Modo Shell Directa (`devcontainer-cli access shell`)
 Entrada inmediata sin necesidad de claves SSH ni daemon sshd:
 ```bash
 # Terminal interactiva Zsh
-devcontainer-cli shell
+devcontainer-cli access shell
 
 # Terminal Bash explícita
-devcontainer-cli shell -- bash
+devcontainer-cli access shell -- bash
 
 # Acceso a contenedores secundarios del stack (ej. Postgres)
-devcontainer-cli shell -c mi-proyecto-postgres
+devcontainer-cli access shell -c mi-proyecto-postgres
 
 # Comandos no interactivos o pipes limpios (sin caracteres de control TTY)
-devcontainer-cli shell -T -- uname -a
+devcontainer-cli access shell -T -- uname -a
 ```
 
 ---
@@ -161,24 +161,24 @@ devcontainer-cli shell -T -- uname -a
 #### 4. Multiplexación de Terminal con Zellij
 Si prefiere trabajar 100% en consola, inicie una sesión multiplexada dentro del contenedor:
 ```bash
-devcontainer-cli shell -- zellij
+devcontainer-cli access shell -- zellij
 ```
 *Puede dividir paneles, crear pestañas y desacoplarse (`Ctrl+o`, luego `d`) sin perder los procesos en ejecución.*
 
 ---
 
-### Caso 1.5: Reenvío de Puertos y Túneles Inversos (`port-forward`)
+### Caso 1.5: Reenvío de Puertos y Túneles Inversos (`access forward`)
 
 **Escenario A (Forward directo)**: Desea probar una aplicación web iniciada dentro del contenedor en el puerto `3000` navegando desde el browser de su máquina anfitriona.
 ```bash
 # Escucha en 127.0.0.1:3000 de su máquina física y reenvía hacia el puerto 3000 del contenedor
-devcontainer-cli port-forward 3000
+devcontainer-cli access forward 3000
 ```
 
 **Escenario B (Túnel Inverso - Host hacia Contenedor)**: Su contenedor necesita consumir un servicio que ya está corriendo en su máquina anfitriona (por ejemplo, una base de datos local en el host en el puerto `5432` o un mock API en el puerto `8080`).
 ```bash
 # Abre el puerto 5432 en el loopback del contenedor y reenvía las peticiones hacia su máquina física
-devcontainer-cli port-forward reverse:5432
+devcontainer-cli access forward reverse:5432
 ```
 *Dentro del contenedor, su aplicación podrá conectarse directamente a `localhost:5432` para alcanzar el servicio de su host.*
 
@@ -191,7 +191,7 @@ devcontainer-cli port-forward reverse:5432
 **Paso a paso**:
 1. Desde su laptop, conéctese al contenedor remoto a través del salto SSH:
    ```bash
-   devcontainer-cli ssh --via usuario@servidor-lan --container <workspace>-devcontainer-ssh
+   devcontainer-cli access ssh --via usuario@servidor-lan --container <workspace>-devcontainer-ssh
    ```
 2. La CLI utilizará la conexión SSH existente hacia el servidor como túnel de control (`DOCKER_HOST=ssh://...`), configurará la clave pública en el contenedor remoto y registrará el alias de conexión local.
 3. Su clave privada **nunca abandona su laptop**.
@@ -209,12 +209,12 @@ devcontainer-cli port-forward reverse:5432
 **Paso a paso**:
 1. Genere el devcontainer con el módulo `cloudflared`:
    ```bash
-   devcontainer-cli --with cloudflared
-   devcontainer-cli up
+   devcontainer-cli --modules cloudflared
+   devcontainer-cli workspace up
    ```
 2. Inicie el túnel dentro del contenedor con su token de conector obtenido en el panel de Cloudflare Zero Trust:
    ```bash
-   devcontainer-cli shell -- cloudflared tunnel run --token <SU_TOKEN>
+   devcontainer-cli access shell -- cloudflared tunnel run --token <SU_TOKEN>
    ```
 3. En el panel de Cloudflare Zero Trust (**Networks** -> **Tunnels** -> **Private Network**), agregue la subred que figura en su `.env` (ej. `172.25.0.0/28`).
 4. Encienda la aplicación Cloudflare WARP en su laptop o móvil.
@@ -239,30 +239,30 @@ devcontainer-cli port-forward reverse:5432
 2. **Definir alias de terminal globales**:
    ```bash
    devcontainer-cli config alias set gs "git status -sb"
-   devcontainer-cli config alias set dcu "devcontainer-cli up"
+   devcontainer-cli config alias set dcu "devcontainer-cli workspace up"
    devcontainer-cli config alias sync
    ```
    *Los alias se aplican inmediatamente en la próxima shell de todos sus contenedores sin necesidad de recompilar imágenes.*
 
 ---
 
-### Caso 1.9: Higiene y Limpieza del Sistema (`clean` / `destroy`)
+### Caso 1.9: Higiene y Limpieza del Sistema (`config clean` / `workspace destroy`)
 
 **Escenario**: Ha terminado un proyecto o desea liberar espacio en disco eliminando recursos Docker huérfanos.
 
 **Paso a paso**:
 1. **Destruir el proyecto actual**:
    ```bash
-   devcontainer-cli destroy
+   devcontainer-cli workspace destroy
    ```
    *Detiene el stack, remueve volúmenes asociados, borra la carpeta `.dc_<workspace>/`, limpia el bloque en `~/.ssh/devcontainer-cli.config` y olvida la clave de host en `known_hosts`.*
 2. **Limpiar bloques SSH obsoletos de proyectos ya eliminados**:
    ```bash
-   devcontainer-cli clean ssh -y
+   devcontainer-cli config clean ssh -y
    ```
 3. **Limpieza integral del sistema Docker gestionado**:
    ```bash
-   devcontainer-cli clean all
+   devcontainer-cli config clean all
    ```
 
 ---
@@ -342,7 +342,7 @@ devcontainer-cli config skill add mi-habilidad --ref owner/repo --label "Mi Habi
 
 ---
 
-### Invariantes Críticos para Agentes
+#### Invariantes Críticos para Agentes
 Los agentes de IA que operan en proyectos bajo `devcontainer-cli` deben observar estas cuatro reglas fundamentales:
 1. **Nunca tocar Docker directamente**: Queda terminantemente prohibido invocar `docker`, `docker compose` o `docker exec` desnudos. Toda interacción se realiza a través de `devcontainer-cli agent <verbo>`.
 2. **Ejecución obligatoria como usuario regular (`devuser`)**: La fachada `agent exec` fuerza la ejecución como `devuser`, evitando que se creen archivos propiedad de `root` en el checkout del host.
@@ -357,7 +357,7 @@ Los agentes de IA que operan en proyectos bajo `devcontainer-cli` deben observar
 
 **Comando**:
 ```bash
-devcontainer-cli agent create --profile node-python --service postgres --build
+devcontainer-cli agent create --profile node-python --services postgres --build
 ```
 
 **Comportamiento**:
@@ -368,14 +368,14 @@ devcontainer-cli agent create --profile node-python --service postgres --build
 
 ---
 
-### Caso 2.2: Orientación y Auto-Inspección de Contexto (`agent context`)
+### Caso 2.2: Orientación y Auto-Inspección de Contexto (`inspect context`)
 
 **Escenario**: Antes de ejecutar compilaciones, pruebas o migraciones, el agente debe saber con precisión matemática qué versiones de herramientas, rutas y credenciales existen en el contenedor.
 
 **Paso a paso**:
 1. El agente consulta el contexto dinámico en formato JSON:
    ```bash
-   devcontainer-cli agent context --json
+   devcontainer-cli inspect context --json
    ```
 2. La salida entrega un inventario estructurado:
    - Versión exacta de Node.js, Python, Go, etc.
@@ -410,13 +410,13 @@ devcontainer-cli agent exec -w -- bash -lc 'uv pip install -e . && pytest -v'
 
 ---
 
-### Caso 2.4: Aprovisionamiento de Habilidades con Alcance de Proyecto (`agent skill install`)
+### Caso 2.4: Aprovisionamiento de Habilidades con Alcance de Proyecto (`config skill install`)
 
 **Escenario**: El agente requiere herramientas o guías especializadas provistas por el ecosistema de Skills (ej. `playwright`, `security-auditor`), pero no debe contaminar el volumen compartido del usuario.
 
 **Comando**:
 ```bash
-devcontainer-cli agent skill install webapp-testing
+devcontainer-cli config skill install webapp-testing
 ```
 
 **Mecanismo**:
@@ -432,8 +432,8 @@ devcontainer-cli agent skill install webapp-testing
 
 **Comandos**:
 ```bash
-# Sesión SSH desatendida efímera (cero polución en ~/.ssh/config)
-devcontainer-cli agent ssh
+# Sesión SSH desatendida efímera ejecutando un comando (cero polución en ~/.ssh/config)
+devcontainer-cli agent ssh -- go version
 
 # Reenvío de puerto directo a 127.0.0.1:8080 en el host
 devcontainer-cli agent forward 8080
@@ -449,33 +449,33 @@ devcontainer-cli agent forward reverse:5432
 
 ---
 
-### Caso 2.6: Entornos Desechables y Temporales (`--temporal`)
+### Caso 2.6: Entornos Desechables y Temporales (`agent run`)
 
 **Escenario**: El agente necesita clonar una librería externa, reproducir un fallo o ejecutar un script potencialmente riesgoso sin afectar ningún proyecto del usuario.
 
 **Comando**:
 ```bash
-devcontainer-cli agent create --temporal --profile python
+devcontainer-cli agent run --profile python --name scratch
 ```
 
 **Comportamiento**:
-- Se crea un directorio temporal aislado.
-- Se levanta el contenedor con un tiempo de vida efímero.
+- Se descarga o utiliza la imagen del perfil indicado.
+- Se levanta un contenedor temporal aislado con un tiempo de vida efímero.
 - Al concluir la prueba, se invoca:
-  ```bash
-  devcontainer-cli agent clean
-  ```
-  *Todo rastro del entorno temporal, contenedores e imágenes huérfanas se elimina por completo.*
+   ```bash
+   devcontainer-cli agent destroy --container scratch --yes
+   ```
+   *Todo rastro del entorno temporal, contenedores e imágenes huérfanas se elimina por completo.*
 
 ---
 
-### Caso 2.7: Limpieza y Cierre de Tarea (`agent clean`)
+### Caso 2.7: Limpieza y Cierre de Tarea (`agent destroy`)
 
 **Escenario**: Al concluir un pipeline o sprint de trabajo autónomo, el agente debe liberar memoria RAM y almacenamiento.
 
 **Comando**:
 ```bash
-devcontainer-cli agent clean
+devcontainer-cli agent destroy --yes
 ```
 - Detiene los contenedores del proyecto.
 - Elimina la red y volúmenes temporales.
