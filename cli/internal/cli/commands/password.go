@@ -9,8 +9,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func init() { register(newPasswordCommand()) }
-
 func newPasswordCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "password",

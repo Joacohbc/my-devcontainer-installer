@@ -11,8 +11,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func init() { register(newDestroyCommand()) }
-
 func newDestroyCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "destroy",

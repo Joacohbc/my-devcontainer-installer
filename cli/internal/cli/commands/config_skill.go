@@ -434,9 +434,8 @@ func runConfigSkillAddManual(cmd *cobra.Command, id string) error {
 
 func newConfigSkillRemoveCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "remove <skill-id...>",
-		Aliases: []string{"rm", "delete"},
-		Short:   "Delete user-defined agent skills (built-ins cannot be removed)",
+		Use:   "remove <skill-id...>",
+		Short: "Delete user-defined agent skills (built-ins cannot be removed)",
 		Long: `devcontainer-cli config skill remove — delete one or more of your own agent
 skills from ~/.config/devcontainer-cli/skills/.
 

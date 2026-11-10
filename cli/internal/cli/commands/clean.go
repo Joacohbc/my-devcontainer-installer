@@ -5,8 +5,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func init() { register(newCleanCommand()) }
-
 func newCleanCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "clean",
@@ -65,9 +63,8 @@ func cleanIncludeActiveFlag(cmd *cobra.Command) bool {
 
 func newCleanCatalogCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "catalog",
-		Aliases: []string{"deprecated", "registry"},
-		Short:   "Prune entries in images.json whose project directory no longer exists",
+		Use:   "catalog",
+		Short: "Prune entries in images.json whose project directory no longer exists",
 		Long: `devcontainer-cli clean catalog — prune stale registry entries in ~/.config/devcontainer-cli/images.json
 where the referenced project directory no longer exists on disk.`,
 		SilenceUsage: true,
@@ -92,9 +89,8 @@ func runCleanCatalog(cmd *cobra.Command, _ []string) error {
 
 func newCleanContainersCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "containers [name...]",
-		Aliases: []string{"container", "rm"},
-		Short:   "Remove CLI-managed containers (by name, non-running, or --include-active)",
+		Use:   "containers [name...]",
+		Short: "Remove CLI-managed containers (by name, non-running, or --include-active)",
 		Long: `devcontainer-cli clean containers — remove containers created by this CLI, identified by the managed label.
 
 Give one or more container names to remove exactly those (names tab-complete managed containers).
@@ -129,9 +125,8 @@ func runCleanContainers(cmd *cobra.Command, args []string) error {
 
 func newCleanImagesCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "images [ref...]",
-		Aliases: []string{"image", "rmi"},
-		Short:   "Remove CLI-managed images (by reference, unused, or --include-active)",
+		Use:   "images [ref...]",
+		Short: "Remove CLI-managed images (by reference, unused, or --include-active)",
 		Long: `devcontainer-cli clean images — remove images created by this CLI, identified by the managed label.
 
 Give one or more image references to remove exactly those (refs tab-complete managed images).
@@ -166,9 +161,8 @@ func runCleanImages(cmd *cobra.Command, args []string) error {
 
 func newCleanSshCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "ssh",
-		Aliases: []string{"sshs"},
-		Short:   "Prune stale SSH config blocks and their pinned host keys",
+		Use:   "ssh",
+		Short: "Prune stale SSH config blocks and their pinned host keys",
 		Long: `devcontainer-cli clean ssh — prune stale SSH entries this CLI wrote.
 
 'ssh' tags every Host block it adds to the CLI's managed SSH config with a marker recording what it targets
@@ -222,9 +216,8 @@ func runCleanSsh(cmd *cobra.Command, _ []string) error {
 
 func newCleanNetworksCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "networks",
-		Aliases: []string{"network"},
-		Short:   "Remove CLI-managed Docker networks",
+		Use:   "networks",
+		Short: "Remove CLI-managed Docker networks",
 		Long: `devcontainer-cli clean networks — remove CLI-managed bridge networks that no container is attached to.
 --include-active removes every managed network, even ones in use.`,
 		SilenceUsage: true,
@@ -248,9 +241,8 @@ func runCleanNetworks(cmd *cobra.Command, _ []string) error {
 
 func newCleanVolumesCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "volumes",
-		Aliases: []string{"volume"},
-		Short:   "Remove CLI-managed Docker volumes (--shared includes shared tool config)",
+		Use:   "volumes",
+		Short: "Remove CLI-managed Docker volumes (--shared includes shared tool config)",
 		Long: `devcontainer-cli clean volumes — remove CLI-managed volumes that no container is using.
 --include-active removes every managed volume, and --shared also drops the global shared tool-config volume.`,
 		SilenceUsage: true,

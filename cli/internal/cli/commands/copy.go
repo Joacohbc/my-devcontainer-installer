@@ -10,13 +10,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func init() { register(newCopyCommand()) }
-
 func newCopyCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "copy [src] [dest]",
-		Aliases: []string{"cp"},
-		Short:   "Copy files or directories between the host and the container",
+		Use:   "copy [src] [dest]",
+		Short: "Copy files or directories between the host and the container",
 		Long: `devcontainer-cli copy — copy a file or directory between the host and the
 running devcontainer (a friendlier 'docker cp' that resolves the container for
 you).

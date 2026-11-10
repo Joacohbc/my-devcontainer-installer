@@ -6,8 +6,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func init() { register(newDownCommand()) }
-
 func newDownCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "down",

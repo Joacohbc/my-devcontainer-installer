@@ -10,8 +10,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func init() { register(newRunCommand()) }
-
 func newRunCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "run",

@@ -9,8 +9,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func init() { register(newNetworkCommand()) }
-
 func newNetworkCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "network",

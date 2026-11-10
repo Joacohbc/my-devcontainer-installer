@@ -16,14 +16,15 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// The profile group is attached under `config` (see newConfigCommand); it is not
-// registered as a top-level command.
+func init() {
+	register(newProfileCommand())
+}
+
 func newProfileCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "profile",
-		Aliases: []string{"preset"},
-		Short:   "Manage reusable profiles (module bundles + custom scripts)",
-		Long: `devcontainer-cli config profile — manage profiles, named bundles of Dockerfile
+		Use:   "profile",
+		Short: "Manage reusable devcontainer profiles",
+		Long: `devcontainer-cli profile — manage profiles, named bundles of Dockerfile
 modules plus your own scripts, that you can reuse when generating projects.
 
 Built-in profiles ship with the CLI; your own are saved under ~/.config/devcontainer-cli/profiles/. A
@@ -63,13 +64,11 @@ Subcommands:
   info <id>           Print one profile's full resolved definition.
   create              Create a user profile via an interactive picker.
   copy <from> <to>    Copy any profile into a new user profile.
-  remove <id...>      Delete user profiles (built-ins cannot be removed).
-
-'preset' is accepted as a deprecated alias for this command.`,
-		Example: `  devcontainer-cli config profile list
-  devcontainer-cli config profile info nodejs
-  devcontainer-cli config profile create
-  devcontainer-cli config profile copy nodejs my-node
+  remove <id...>      Delete user profiles (built-ins cannot be removed).`,
+		Example: `  devcontainer-cli profile list
+  devcontainer-cli profile info nodejs
+  devcontainer-cli profile create
+  devcontainer-cli profile copy nodejs my-node
   devcontainer-cli --profile my-node
   devcontainer-cli --profile nodejs,my-tools`,
 	}
@@ -472,10 +471,9 @@ func runProfileCopy(cmd *cobra.Command, args []string) error {
 
 func newProfileRemoveCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "remove <profile-id...>",
-		Aliases: []string{"rm", "delete"},
-		Short:   "Delete user profiles (built-ins cannot be removed)",
-		Long: `devcontainer-cli config profile remove — delete one or more of your own profiles
+		Use:   "remove <profile-id...>",
+		Short: "Delete user profiles (built-ins cannot be removed)",
+		Long: `devcontainer-cli profile remove — delete one or more of your own profiles
 from ~/.config/devcontainer-cli/profiles/.
 
 Only user profiles can be removed; attempting to remove a built-in profile

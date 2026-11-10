@@ -8,8 +8,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func init() { register(newUpdateCommand()) }
-
 func newUpdateCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "update",

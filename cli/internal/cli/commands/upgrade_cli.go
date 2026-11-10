@@ -7,8 +7,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func init() { register(newUpgradeCliCommand()) }
-
 func newUpgradeCliCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "upgrade-cli",

@@ -5,8 +5,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func init() { register(newContextCommand()) }
-
 func newContextCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "context",

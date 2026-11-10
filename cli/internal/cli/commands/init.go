@@ -8,8 +8,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func init() { register(newInitCommand()) }
-
 func newInitCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "init [repo-url|dir] [target-dir] [flags]",

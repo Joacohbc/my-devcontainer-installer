@@ -14,8 +14,6 @@ import (
 // --container bypasses workspace resolution entirely.
 const sshNoWorkspace = "(none)"
 
-func init() { register(newSshCommand()) }
-
 func newSshCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "ssh [flags] [-- command args...]",

@@ -509,7 +509,7 @@ func TestProfileCopy_CarriesPortsAndSkills(t *testing.T) {
 	}
 
 	root := NewRootCommand("test")
-	root.SetArgs([]string{"config", "profile", "copy", "src", "dst", "--no-interactive"})
+	root.SetArgs([]string{"profile", "copy", "src", "dst", "--no-interactive"})
 	if err := root.Execute(); err != nil {
 		t.Fatalf("unexpected error copying the profile: %v", err)
 	}

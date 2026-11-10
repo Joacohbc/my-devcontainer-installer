@@ -17,13 +17,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func init() { register(newPortForwardCommand()) }
-
 func newPortForwardCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "port-forward [port_mapping]",
+		Use:   "forward [port_mapping]",
 		Short: "Forward host ports into a running container over SSH",
-		Long: `devcontainer-cli port-forward — open SSH tunnels between your machine and
+		Long: `devcontainer-cli access forward — open SSH tunnels between your machine and
 a running container, in either direction. A listener binds 127.0.0.1 unless the
 mapping names another address, so a tunnel is only exposed on another
 interface when you ask for it. The session stays in the foreground; press

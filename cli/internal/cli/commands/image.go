@@ -31,7 +31,8 @@ Subcommands:
   build <name>      Build the Dockerfile for an image definition
   pull <name>       Pull a remote image and verify compatibility
   export <name> <d> Export the Dockerfile, assets, and build instructions to a directory
-  remove <name>     Remove an image definition (and optionally the Docker image)`,
+  remove <name>     Remove an image definition (and optionally the Docker image)
+  update            Update (pull or rebuild) a project's container images`,
 		Example: `  # List registered images
   devcontainer-cli image list
 
@@ -59,6 +60,7 @@ Subcommands:
 	cmd.AddCommand(newImagePullCommand())
 	cmd.AddCommand(newImageExportCommand())
 	cmd.AddCommand(newImageRemoveCommand())
+	cmd.AddCommand(newUpdateCommand())
 
 	return cmd
 }
@@ -66,7 +68,6 @@ Subcommands:
 func newImageListCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:          "list",
-		Aliases:      []string{"ls"},
 		Short:        "List registered devcontainer image definitions",
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -206,7 +207,6 @@ func newImageExportCommand() *cobra.Command {
 func newImageRemoveCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:          "remove <name>",
-		Aliases:      []string{"rm"},
 		Short:        "Remove an image definition",
 		SilenceUsage: true,
 		Args:         cobra.ExactArgs(1),

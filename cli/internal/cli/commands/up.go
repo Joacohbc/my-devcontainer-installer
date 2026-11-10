@@ -6,8 +6,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func init() { register(newUpCommand()) }
-
 func newUpCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "up",

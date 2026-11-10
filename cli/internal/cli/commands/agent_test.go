@@ -264,7 +264,9 @@ func TestAgentExec_ExplicitUserWins(t *testing.T) {
 // explicit command leaves --user alone so it still works against a container
 // that has no devuser.
 func TestShell_KeepsItsOwnUserSemantics(t *testing.T) {
-	cmd := findCommand(t, NewRootCommand("test"), "shell")
+	root := NewRootCommand("test")
+	accessCmd := findCommand(t, root, "access")
+	cmd := findCommand(t, accessCmd, "shell")
 	if cmd.PreRunE != nil {
 		t.Error("shell must not inherit the agent facade's defaults")
 	}
@@ -302,7 +304,9 @@ func TestShellWorkdir_ResolvesTheProjectMount(t *testing.T) {
 	}
 	t.Chdir(dir)
 
-	cmd := findCommand(t, NewRootCommand("test"), "shell")
+	root := NewRootCommand("test")
+	accessCmd := findCommand(t, root, "access")
+	cmd := findCommand(t, accessCmd, "shell")
 
 	got, err := shellWorkdir(cmd)
 	if err != nil {
@@ -347,22 +351,24 @@ func TestAgentDestroy_Flags(t *testing.T) {
 func TestExtractedFlagHelpers_KeepTheOriginalFlags(t *testing.T) {
 	root := NewRootCommand("test")
 	cases := []struct {
+		parent  string
 		command string
 		flags   []string
 	}{
-		{"ssh", []string{"yes", flagNoInteractive, "container", "setup", "via", "key", "user", "forward", "ports", "ephemeral"}},
-		{"shell", []string{"user", "type", "no-tty", "workdir", "via", "container"}},
-		{"port-forward", []string{"alias", "service", "reverse", flagNoInteractive, "ephemeral", "container", "key", "user"}},
-		{"copy", []string{"container", "asset"}},
-		{"ls", []string{"all", "long", "container"}},
-		{"context", []string{"container", "json"}},
+		{"access", "ssh", []string{"yes", flagNoInteractive, "container", "setup", "via", "key", "user", "forward", "ports", "ephemeral"}},
+		{"access", "shell", []string{"user", "type", "no-tty", "workdir", "via", "container"}},
+		{"access", "forward", []string{"alias", "service", "reverse", flagNoInteractive, "ephemeral", "container", "key", "user"}},
+		{"access", "copy", []string{"container", "asset"}},
+		{"inspect", "ls", []string{"all", "long", "container"}},
+		{"inspect", "context", []string{"container", "json"}},
 	}
 	for _, c := range cases {
-		t.Run(c.command, func(t *testing.T) {
-			cmd := findCommand(t, root, c.command)
+		t.Run(c.parent+"/"+c.command, func(t *testing.T) {
+			parent := findCommand(t, root, c.parent)
+			cmd := findCommand(t, parent, c.command)
 			for _, name := range c.flags {
 				if cmd.Flags().Lookup(name) == nil {
-					t.Errorf("%s lost its --%s flag", c.command, name)
+					t.Errorf("%s %s lost its --%s flag", c.parent, c.command, name)
 				}
 			}
 		})
@@ -461,17 +467,24 @@ func TestAgentDirEntries_MarkDirectories(t *testing.T) {
 	}
 }
 
-// The facade is additive: the commands it wraps stay top-level.
+// The facade is additive: the human commands it wraps stay available under their canonical domains.
 func TestAgentGroup_DoesNotReplaceTheHumanCommands(t *testing.T) {
 	root := NewRootCommand("test")
-	have := map[string]bool{}
-	for _, c := range root.Commands() {
-		have[c.Name()] = true
+	checks := []struct {
+		parent  string
+		command string
+	}{
+		{"access", "ssh"},
+		{"access", "shell"},
+		{"access", "forward"},
+		{"access", "copy"},
+		{"inspect", "ls"},
+		{"workspace", "destroy"},
+		{"config", "clean"},
 	}
-	for _, name := range []string{"ssh", "shell", "port-forward", "copy", "ls", "destroy", "clean"} {
-		if !have[name] {
-			t.Errorf("%q must stay available as a top-level command", name)
-		}
+	for _, check := range checks {
+		parent := findCommand(t, root, check.parent)
+		_ = findCommand(t, parent, check.command)
 	}
 	if !slices.Contains(agentSubcommands, "destroy") {
 		t.Error("agentSubcommands drifted from the documented set")

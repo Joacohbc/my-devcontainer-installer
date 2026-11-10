@@ -13,8 +13,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func init() { register(newStatusCommand()) }
-
 func newStatusCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "status",

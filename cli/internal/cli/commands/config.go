@@ -16,9 +16,8 @@ func init() { register(newConfigCommand()) }
 func newConfigCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "config",
-		Short: "Read or write the global CLI config and manage profiles",
-		Long: `devcontainer-cli config — read and write the global, machine-wide CLI defaults
-and manage reusable profiles.
+		Short: "Manage global CLI settings, skills, shared volume, and maintenance",
+		Long: `devcontainer-cli config — manage global settings, skills, shared volume, and maintenance.
 
 These defaults are applied to every project so you don't repeat them on each
 generate (e.g. a default registry, DB credentials, the shared SSH key). Run a
@@ -27,29 +26,30 @@ or with --unset to revert to the built-in default.
 
 Subcommands:
   registry            Default container registry prefix for remote images.
+  git-init            Whether generate offers to 'git init' a project directory
+                      that is not a repository yet (true/false, default false).
   db-user             Default database user for DB services.
   db-password         Default database password for DB services.
   ssh-key             Path to the shared managed SSH key (and key utilities).
   ssh-config-file     Path of the CLI-managed SSH config file (Include'd from
                       ~/.ssh/config, which the CLI otherwise leaves alone).
-  git-init            Whether generate offers to 'git init' a project directory
-                      that is not a repository yet (true/false, default false).
   alias               Your own shell aliases, applied to every container.
-  profile             List/create/copy/remove reusable profiles (module
-                      bundles + custom scripts). Aliased as 'preset'.
+  shared              Sync/backup/restore the shared tool-config volume.
   skill               List built-in and user-defined agent skills, selectable
                       with --skills.
-  shared              Sync/backup/restore the shared tool-config volume.
-  export / import     Export the project config to YAML / import it back.
+  clean               Clean up CLI-managed resources and stale configuration entries.
+  upgrade-cli         Self-update the CLI binary from the latest GitHub release.
 
 Config file: ` + domain.GlobalConfigPath(),
 		Example: `  # Show or set the default registry
   devcontainer-cli config registry
   devcontainer-cli config registry ghcr.io/myuser
 
-  # Manage profiles and export the current project config
-  devcontainer-cli config profile list
-  devcontainer-cli config export -o devcontainer.yml`,
+  # Clean up unused Docker resources
+  devcontainer-cli config clean
+
+  # Upgrade CLI binary
+  devcontainer-cli config upgrade-cli`,
 		SilenceUsage: true,
 	}
 	cmd.AddCommand(newConfigKeyCommand("registry", "image registry"))
@@ -59,11 +59,10 @@ Config file: ` + domain.GlobalConfigPath(),
 	cmd.AddCommand(newConfigSSHKeyCommand())
 	cmd.AddCommand(newConfigKeyCommand("ssh-config-file", "CLI-managed SSH config file"))
 	cmd.AddCommand(newConfigAliasCommand())
-	cmd.AddCommand(newConfigExportCommand())
-	cmd.AddCommand(newConfigImportCommand())
-	cmd.AddCommand(newProfileCommand())
-	cmd.AddCommand(newConfigSkillCommand())
 	cmd.AddCommand(newConfigSharedCommand())
+	cmd.AddCommand(newConfigSkillCommand())
+	cmd.AddCommand(newCleanCommand())
+	cmd.AddCommand(newUpgradeCliCommand())
 	return cmd
 }
 

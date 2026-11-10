@@ -24,11 +24,7 @@ import (
 func TestNewRootCommand_RegistersAllSubcommands(t *testing.T) {
 	root := NewRootCommand("test")
 	want := []string{
-		"ssh", "clean", "port-forward", "run", "down", "destroy",
-		"start", "stop", "restart", "update",
-		"upgrade-cli", "config", "shell", "logs", "copy",
-		"up", "status", "ls", "info", "network", "context", "compose",
-		"agent", "route", "init", "image",
+		"workspace", "access", "inspect", "profile", "image", "config", "agent",
 	}
 	have := map[string]bool{}
 	for _, c := range root.Commands() {
@@ -36,25 +32,35 @@ func TestNewRootCommand_RegistersAllSubcommands(t *testing.T) {
 	}
 	for _, name := range want {
 		if !have[name] {
-			t.Errorf("expected subcommand %q to be registered", name)
+			t.Errorf("expected subcommand %q to be registered at root", name)
+		}
+	}
+
+	legacyFlat := []string{
+		"ssh", "clean", "port-forward", "forward", "run", "down", "destroy",
+		"start", "stop", "restart", "update", "upgrade-cli", "shell", "logs",
+		"copy", "up", "status", "ls", "info", "network", "context", "compose",
+		"route", "init",
+	}
+	for _, name := range legacyFlat {
+		if have[name] {
+			t.Errorf("legacy flat command %q should NOT be registered at root", name)
 		}
 	}
 }
 
-func TestComposeCommand_AliasAndPassthrough(t *testing.T) {
+func TestComposeCommand_Passthrough(t *testing.T) {
 	root := NewRootCommand("test")
-	var compose *cobra.Command
-	for _, c := range root.Commands() {
-		if c.Name() == "compose" {
-			compose = c
-			break
-		}
+	wsCmd := findSubcommand(root, "workspace")
+	if wsCmd == nil {
+		t.Fatal("workspace command not registered")
 	}
+	compose := findSubcommand(wsCmd, "compose")
 	if compose == nil {
-		t.Fatal("compose command not registered")
+		t.Fatal("compose command not registered under workspace")
 	}
-	if !slices.Contains(compose.Aliases, "dc") {
-		t.Errorf("expected compose to have alias %q, got %v", "dc", compose.Aliases)
+	if len(compose.Aliases) > 0 {
+		t.Errorf("expected compose to have zero aliases, got %v", compose.Aliases)
 	}
 	// Flag parsing must be disabled so tokens like "-it" reach docker compose
 	// instead of being consumed (and rejected) by cobra.
@@ -124,56 +130,33 @@ func TestCompleteComposeArgs(t *testing.T) {
 	}
 }
 
-func TestCleanSubcommands_HaveAliases(t *testing.T) {
+func TestCleanSubcommands_ZeroAliases(t *testing.T) {
 	root := NewRootCommand("test")
-	var clean *cobra.Command
-	for _, c := range root.Commands() {
-		if c.Name() == "clean" {
-			clean = c
-			break
-		}
+	cfgCmd := findSubcommand(root, "config")
+	if cfgCmd == nil {
+		t.Fatal("config command not registered")
 	}
+	clean := findSubcommand(cfgCmd, "clean")
 	if clean == nil {
-		t.Fatal("clean command not registered")
-	}
-
-	want := map[string][]string{
-		"containers": {"container", "rm"},
-		"images":     {"image", "rmi"},
-		"catalog":    {"deprecated", "registry"},
-		"ssh":        {"sshs"},
-		"networks":   {"network"},
-		"volumes":    {"volume"},
+		t.Fatal("clean command not registered under config")
 	}
 
 	for _, sub := range clean.Commands() {
-		aliases, ok := want[sub.Name()]
-		if !ok {
-			continue
+		if len(sub.Aliases) > 0 {
+			t.Errorf("clean subcommand %q must have zero aliases, got %v", sub.Name(), sub.Aliases)
 		}
-		for _, a := range aliases {
-			if !slices.Contains(sub.Aliases, a) {
-				t.Errorf("expected clean subcommand %q to have alias %q, got %v", sub.Name(), a, sub.Aliases)
-			}
-		}
-		delete(want, sub.Name())
-	}
-	for name := range want {
-		t.Errorf("clean subcommand %q not found", name)
 	}
 }
 
 func TestCleanCommands_AcceptArgsAndComplete(t *testing.T) {
 	root := NewRootCommand("test")
-	var clean *cobra.Command
-	for _, c := range root.Commands() {
-		if c.Name() == "clean" {
-			clean = c
-			break
-		}
+	cfgCmd := findSubcommand(root, "config")
+	if cfgCmd == nil {
+		t.Fatal("config command not registered")
 	}
+	clean := findSubcommand(cfgCmd, "clean")
 	if clean == nil {
-		t.Fatal("clean command not registered")
+		t.Fatal("clean command not registered under config")
 	}
 
 	byName := map[string]*cobra.Command{}
@@ -199,15 +182,13 @@ func TestCleanCommands_AcceptArgsAndComplete(t *testing.T) {
 
 func TestCleanCommand_HasResourceSubcommands(t *testing.T) {
 	root := NewRootCommand("test")
-	var clean *cobra.Command
-	for _, c := range root.Commands() {
-		if c.Name() == "clean" {
-			clean = c
-			break
-		}
+	cfgCmd := findSubcommand(root, "config")
+	if cfgCmd == nil {
+		t.Fatal("config command not registered")
 	}
+	clean := findSubcommand(cfgCmd, "clean")
 	if clean == nil {
-		t.Fatal("clean command not registered")
+		t.Fatal("clean command not registered under config")
 	}
 	have := map[string]bool{}
 	for _, c := range clean.Commands() {
@@ -222,15 +203,13 @@ func TestCleanCommand_HasResourceSubcommands(t *testing.T) {
 
 func TestNetworkCommand_HasConnectAndDisconnect(t *testing.T) {
 	root := NewRootCommand("test")
-	var network *cobra.Command
-	for _, c := range root.Commands() {
-		if c.Name() == "network" {
-			network = c
-			break
-		}
+	accessCmd := findSubcommand(root, "access")
+	if accessCmd == nil {
+		t.Fatal("access command not registered")
 	}
+	network := findSubcommand(accessCmd, "network")
 	if network == nil {
-		t.Fatal("network command not registered")
+		t.Fatal("network command not registered under access")
 	}
 	have := map[string]*cobra.Command{}
 	for _, c := range network.Commands() {
@@ -256,15 +235,13 @@ func TestNetworkCommand_HasConnectAndDisconnect(t *testing.T) {
 
 func TestCleanAndSubcommands_HaveAllFlag(t *testing.T) {
 	root := NewRootCommand("test")
-	var clean *cobra.Command
-	for _, c := range root.Commands() {
-		if c.Name() == "clean" {
-			clean = c
-			break
-		}
+	cfgCmd := findSubcommand(root, "config")
+	if cfgCmd == nil {
+		t.Fatal("config command not registered")
 	}
+	clean := findSubcommand(cfgCmd, "clean")
 	if clean == nil {
-		t.Fatal("clean command not registered")
+		t.Fatal("clean command not registered under config")
 	}
 	if clean.Flags().Lookup("include-active") == nil {
 		t.Error("expected clean command to have --include-active flag")
@@ -334,15 +311,13 @@ func TestParseGenFlags_PluralCSVFlags(t *testing.T) {
 
 func TestCleanSshCommand_Flags(t *testing.T) {
 	root := NewRootCommand("test")
-	var clean *cobra.Command
-	for _, c := range root.Commands() {
-		if c.Name() == "clean" {
-			clean = c
-			break
-		}
+	cfgCmd := findSubcommand(root, "config")
+	if cfgCmd == nil {
+		t.Fatal("config command not registered")
 	}
+	clean := findSubcommand(cfgCmd, "clean")
 	if clean == nil {
-		t.Fatal("clean command not registered")
+		t.Fatal("clean command not registered under config")
 	}
 	var sshSub *cobra.Command
 	for _, c := range clean.Commands() {
@@ -586,21 +561,15 @@ func TestShellInteractiveDefaults(t *testing.T) {
 
 func TestCleanVolumesCommand_HasSharedFlag(t *testing.T) {
 	root := NewRootCommand("test")
-	var clean *cobra.Command
-	for _, c := range root.Commands() {
-		if c.Name() == "clean" {
-			clean = c
-		}
+	cfgCmd := findSubcommand(root, "config")
+	if cfgCmd == nil {
+		t.Fatal("config command not found")
 	}
+	clean := findSubcommand(cfgCmd, "clean")
 	if clean == nil {
-		t.Fatal("clean command not found")
+		t.Fatal("clean command not found under config")
 	}
-	var vol *cobra.Command
-	for _, c := range clean.Commands() {
-		if c.Name() == "volumes" {
-			vol = c
-		}
-	}
+	vol := findSubcommand(clean, "volumes")
 	if vol == nil {
 		t.Fatal("clean volumes subcommand not found")
 	}
@@ -759,9 +728,13 @@ func TestConfigCommand_HasSSHConfigFileSubcommand(t *testing.T) {
 
 func TestContextCommand_Flags(t *testing.T) {
 	root := NewRootCommand("test")
-	ctx := findSubcommand(root, "context")
+	inspectCmd := findSubcommand(root, "inspect")
+	if inspectCmd == nil {
+		t.Fatal("expected 'inspect' command to be registered")
+	}
+	ctx := findSubcommand(inspectCmd, "context")
 	if ctx == nil {
-		t.Fatal("expected 'context' command to be registered")
+		t.Fatal("expected 'inspect context' command to be registered")
 	}
 	for _, name := range []string{"container", "json"} {
 		if ctx.Flags().Lookup(name) == nil {
@@ -966,9 +939,13 @@ func TestBuildSshTunnels_ReversePrefix(t *testing.T) {
 
 func TestSshCommandRegistered(t *testing.T) {
 	root := NewRootCommand("test")
-	sshCmd := findSubcommand(root, "ssh")
+	accessCmd := findSubcommand(root, "access")
+	if accessCmd == nil {
+		t.Fatal("expected 'access' command to be registered")
+	}
+	sshCmd := findSubcommand(accessCmd, "ssh")
 	if sshCmd == nil {
-		t.Fatal("expected 'ssh' command to be registered")
+		t.Fatal("expected 'access ssh' command to be registered")
 	}
 	for _, name := range []string{"yes", "no-interactive", "forward", "ports", "container", "via", "setup", "key", "user"} {
 		if sshCmd.Flags().Lookup(name) == nil {
@@ -1066,9 +1043,13 @@ func TestRunAgentSsh_ViaRequiresContainer_EmptyContainer(t *testing.T) {
 
 func TestDestroyCommandRegistered(t *testing.T) {
 	root := NewRootCommand("test")
-	destroyCmd := findSubcommand(root, "destroy")
+	wsCmd := findSubcommand(root, "workspace")
+	if wsCmd == nil {
+		t.Fatal("expected 'workspace' command to be registered")
+	}
+	destroyCmd := findSubcommand(wsCmd, "destroy")
 	if destroyCmd == nil {
-		t.Fatal("expected 'destroy' command to be registered")
+		t.Fatal("expected 'destroy' command to be registered under workspace")
 	}
 	for _, name := range []string{"yes", "no-interactive", "container"} {
 		if destroyCmd.Flags().Lookup(name) == nil {
@@ -1460,15 +1441,13 @@ services:
 
 func TestShellCommand_HasFlags(t *testing.T) {
 	root := NewRootCommand("test")
-	var shell *cobra.Command
-	for _, c := range root.Commands() {
-		if c.Name() == "shell" {
-			shell = c
-			break
-		}
+	accessCmd := findSubcommand(root, "access")
+	if accessCmd == nil {
+		t.Fatal("access command not found")
 	}
+	shell := findSubcommand(accessCmd, "shell")
 	if shell == nil {
-		t.Fatal("shell command not found")
+		t.Fatal("shell command not found under access")
 	}
 	for _, name := range []string{"user", "no-tty", "via"} {
 		if shell.Flags().Lookup(name) == nil {
@@ -1496,15 +1475,13 @@ func TestRunShell_ViaRequiresContainer(t *testing.T) {
 
 func TestLogsCommand_HasFlags(t *testing.T) {
 	root := NewRootCommand("test")
-	var logs *cobra.Command
-	for _, c := range root.Commands() {
-		if c.Name() == "logs" {
-			logs = c
-			break
-		}
+	inspectCmd := findSubcommand(root, "inspect")
+	if inspectCmd == nil {
+		t.Fatal("inspect command not found")
 	}
+	logs := findSubcommand(inspectCmd, "logs")
 	if logs == nil {
-		t.Fatal("logs command not found")
+		t.Fatal("logs command not found under inspect")
 	}
 	for _, name := range []string{"follow", "tail"} {
 		if logs.Flags().Lookup(name) == nil {
@@ -1515,15 +1492,13 @@ func TestLogsCommand_HasFlags(t *testing.T) {
 
 func TestCopyCommand_AssetFlag(t *testing.T) {
 	root := NewRootCommand("test")
-	var copyCmd *cobra.Command
-	for _, c := range root.Commands() {
-		if c.Name() == "copy" {
-			copyCmd = c
-			break
-		}
+	accessCmd := findSubcommand(root, "access")
+	if accessCmd == nil {
+		t.Fatal("access command not found")
 	}
+	copyCmd := findSubcommand(accessCmd, "copy")
 	if copyCmd == nil {
-		t.Fatal("copy command not found")
+		t.Fatal("copy command not found under access")
 	}
 	if copyCmd.Flags().Lookup("asset") == nil {
 		t.Fatal("expected copy flag --asset")
@@ -1618,15 +1593,13 @@ func TestResolveProjectComposeFile(t *testing.T) {
 
 func TestCopyCommand_HasFlags(t *testing.T) {
 	root := NewRootCommand("test")
-	var copyCmd *cobra.Command
-	for _, c := range root.Commands() {
-		if c.Name() == "copy" {
-			copyCmd = c
-			break
-		}
+	accessCmd := findSubcommand(root, "access")
+	if accessCmd == nil {
+		t.Fatal("access command not found")
 	}
+	copyCmd := findSubcommand(accessCmd, "copy")
 	if copyCmd == nil {
-		t.Fatal("copy command not found")
+		t.Fatal("copy command not found under access")
 	}
 	for _, name := range []string{"container", "asset"} {
 		if copyCmd.Flags().Lookup(name) == nil {
@@ -1637,15 +1610,13 @@ func TestCopyCommand_HasFlags(t *testing.T) {
 
 func TestUpCommand_HasFlags(t *testing.T) {
 	root := NewRootCommand("test")
-	var upCmd *cobra.Command
-	for _, c := range root.Commands() {
-		if c.Name() == "up" {
-			upCmd = c
-			break
-		}
+	wsCmd := findSubcommand(root, "workspace")
+	if wsCmd == nil {
+		t.Fatal("workspace command not found")
 	}
+	upCmd := findSubcommand(wsCmd, "up")
 	if upCmd == nil {
-		t.Fatal("up command not found")
+		t.Fatal("up command not found under workspace")
 	}
 	for _, name := range []string{"build"} {
 		if upCmd.Flags().Lookup(name) == nil {
@@ -1656,29 +1627,25 @@ func TestUpCommand_HasFlags(t *testing.T) {
 
 func TestStatusCommand_Exists(t *testing.T) {
 	root := NewRootCommand("test")
-	var statusCmd *cobra.Command
-	for _, c := range root.Commands() {
-		if c.Name() == "status" {
-			statusCmd = c
-			break
-		}
+	inspectCmd := findSubcommand(root, "inspect")
+	if inspectCmd == nil {
+		t.Fatal("inspect command not found")
 	}
+	statusCmd := findSubcommand(inspectCmd, "status")
 	if statusCmd == nil {
-		t.Fatal("status command not found")
+		t.Fatal("status command not found under inspect")
 	}
 }
 
 func TestLsCommand_HasFlags(t *testing.T) {
 	root := NewRootCommand("test")
-	var lsCmd *cobra.Command
-	for _, c := range root.Commands() {
-		if c.Name() == "ls" {
-			lsCmd = c
-			break
-		}
+	inspectCmd := findSubcommand(root, "inspect")
+	if inspectCmd == nil {
+		t.Fatal("inspect command not found")
 	}
+	lsCmd := findSubcommand(inspectCmd, "ls")
 	if lsCmd == nil {
-		t.Fatal("ls command not found")
+		t.Fatal("ls command not found under inspect")
 	}
 	for _, name := range []string{"all", "long"} {
 		if lsCmd.Flags().Lookup(name) == nil {
@@ -1689,52 +1656,82 @@ func TestLsCommand_HasFlags(t *testing.T) {
 
 func TestAllCommands_HaveContainerFlag(t *testing.T) {
 	root := NewRootCommand("test")
-	cmds := []string{"copy", "update", "ls", "logs", "status", "shell", "start", "stop", "restart", "info"}
-	for _, name := range cmds {
-		var target *cobra.Command
-		for _, c := range root.Commands() {
-			if c.Name() == name {
-				target = c
-				break
-			}
+	accessCmd := findSubcommand(root, "access")
+	imageCmd := findSubcommand(root, "image")
+	inspectCmd := findSubcommand(root, "inspect")
+	wsCmd := findSubcommand(root, "workspace")
+
+	type lookup struct {
+		parent *cobra.Command
+		name   string
+	}
+	cmds := []lookup{
+		{accessCmd, "copy"},
+		{imageCmd, "update"},
+		{inspectCmd, "ls"},
+		{inspectCmd, "logs"},
+		{inspectCmd, "status"},
+		{accessCmd, "shell"},
+		{wsCmd, "start"},
+		{wsCmd, "stop"},
+		{wsCmd, "restart"},
+		{inspectCmd, "info"},
+	}
+	for _, l := range cmds {
+		if l.parent == nil {
+			t.Fatalf("parent for %q not found", l.name)
 		}
+		target := findSubcommand(l.parent, l.name)
 		if target == nil {
-			t.Fatalf("command %q not found", name)
+			t.Fatalf("command %q not found under %q", l.name, l.parent.Name())
 		}
 		if target.Flags().Lookup("container") == nil {
-			t.Errorf("expected command %q to have --container flag", name)
+			t.Errorf("expected command %q to have --container flag", l.name)
 		}
 	}
 }
 
 func TestOperationalCommands_HaveNoWorkspaceFlag(t *testing.T) {
 	root := NewRootCommand("test")
-	byName := map[string]*cobra.Command{}
-	for _, c := range root.Commands() {
-		byName[c.Name()] = c
+	accessCmd := findSubcommand(root, "access")
+	inspectCmd := findSubcommand(root, "inspect")
+	wsCmd := findSubcommand(root, "workspace")
+
+	type lookup struct {
+		parent *cobra.Command
+		name   string
 	}
-	// Operational commands act only on the current directory's project; none of
-	// them expose a --workspace flag to target another one.
-	for _, name := range []string{"up", "down", "start", "stop", "restart", "shell", "ssh", "copy", "info", "status", "logs", "ls"} {
-		cmd := byName[name]
+	cmds := []lookup{
+		{wsCmd, "up"},
+		{wsCmd, "down"},
+		{wsCmd, "start"},
+		{wsCmd, "stop"},
+		{wsCmd, "restart"},
+		{accessCmd, "shell"},
+		{accessCmd, "ssh"},
+		{accessCmd, "copy"},
+		{inspectCmd, "info"},
+		{inspectCmd, "status"},
+		{inspectCmd, "logs"},
+		{inspectCmd, "ls"},
+	}
+	for _, l := range cmds {
+		if l.parent == nil {
+			t.Fatalf("parent for %q not found", l.name)
+		}
+		cmd := findSubcommand(l.parent, l.name)
 		if cmd == nil {
-			t.Fatalf("command %q not found", name)
+			t.Fatalf("command %q not found under %q", l.name, l.parent.Name())
 		}
 		if cmd.Flags().Lookup("workspace") != nil {
-			t.Errorf("command %q must not have a --workspace flag", name)
+			t.Errorf("command %q must not have a --workspace flag", l.name)
 		}
-		// -w is reserved so it can never read as a workspace selector. 'shell'
-		// is the one holder, where it is --workdir: it changes the directory
-		// *inside* the current project's container, which is the opposite of
-		// targeting another project.
 		if sh := cmd.Flags().ShorthandLookup("w"); sh != nil && sh.Name != "workdir" {
-			t.Errorf("command %q binds -w to %q; -w must only ever be --workdir", name, sh.Name)
+			t.Errorf("command %q binds -w to %q; -w must only ever be --workdir", l.name, sh.Name)
 		}
 	}
 
-	// And pin that the one -w in the tree really is the workdir flag, so it
-	// cannot quietly turn into a workspace selector later.
-	shell := byName["shell"]
+	shell := findSubcommand(accessCmd, "shell")
 	sh := shell.Flags().ShorthandLookup("w")
 	if sh == nil || sh.Name != "workdir" {
 		t.Errorf("shell -w should be --workdir, got %v", sh)
@@ -1771,16 +1768,14 @@ func TestFilterContainerNames_ByState(t *testing.T) {
 
 func TestStartStopCompletion_FilterByState(t *testing.T) {
 	root := NewRootCommand("test")
-	byName := map[string]*cobra.Command{}
-	for _, c := range root.Commands() {
-		byName[c.Name()] = c
+	wsCmd := findSubcommand(root, "workspace")
+	if wsCmd == nil {
+		t.Fatal("workspace command not found")
 	}
-	// start completes stopped containers, stop completes running ones; both
-	// register a flag completion func for --container.
 	for _, name := range []string{"start", "stop"} {
-		cmd := byName[name]
+		cmd := findSubcommand(wsCmd, name)
 		if cmd == nil {
-			t.Fatalf("command %q not found", name)
+			t.Fatalf("command %q not found under workspace", name)
 		}
 		if _, ok := cmd.GetFlagCompletionFunc("container"); !ok {
 			t.Errorf("expected %q to register --container completion", name)
@@ -1862,18 +1857,14 @@ func findSubcommand(parent *cobra.Command, name string) *cobra.Command {
 	return nil
 }
 
-func TestConfigProfileCommand_Exists(t *testing.T) {
+func TestProfileCommand_Exists(t *testing.T) {
 	root := NewRootCommand("test")
-	configCmd := findSubcommand(root, "config")
-	if configCmd == nil {
-		t.Fatal("expected 'config' command to be registered")
-	}
-	profileCmd := findSubcommand(configCmd, "profile")
+	profileCmd := findSubcommand(root, "profile")
 	if profileCmd == nil {
-		t.Fatal("expected 'config profile' command to be registered")
+		t.Fatal("expected 'profile' command to be registered")
 	}
 	if findSubcommand(profileCmd, "list") == nil {
-		t.Error("expected 'config profile list' subcommand")
+		t.Error("expected 'profile list' subcommand")
 	}
 }
 
@@ -1901,15 +1892,14 @@ func TestConfigSkillCommand_Exists(t *testing.T) {
 	}
 }
 
-func TestConfigProfileInfoCommand_Exists(t *testing.T) {
+func TestProfileInfoCommand_Exists(t *testing.T) {
 	root := NewRootCommand("test")
-	configCmd := findSubcommand(root, "config")
-	profileCmd := findSubcommand(configCmd, "profile")
+	profileCmd := findSubcommand(root, "profile")
 	if profileCmd == nil {
-		t.Fatal("expected 'config profile' command to be registered")
+		t.Fatal("expected 'profile' command to be registered")
 	}
 	if findSubcommand(profileCmd, "info") == nil {
-		t.Error("expected 'config profile info' subcommand")
+		t.Error("expected 'profile info' subcommand")
 	}
 }
 
@@ -1964,27 +1954,30 @@ func TestRunConfigSkillInfo_UserDefinedSkill(t *testing.T) {
 	}
 }
 
-// 'preset' was the old name of the group and stays as an alias, so an existing
-// script or muscle-memory invocation keeps working.
-func TestConfigProfileCommand_PresetAlias(t *testing.T) {
+func TestProfileCommand_ZeroAliases(t *testing.T) {
 	root := NewRootCommand("test")
-	configCmd := findSubcommand(root, "config")
-	if configCmd == nil {
-		t.Fatal("expected 'config' command to be registered")
+	profileCmd := findSubcommand(root, "profile")
+	if profileCmd == nil {
+		t.Fatal("expected 'profile' command to be registered at root")
 	}
-	aliased, _, err := configCmd.Find([]string{"preset", "list"})
-	if err != nil {
-		t.Fatalf("expected 'config preset list' to still resolve: %v", err)
+	if len(profileCmd.Aliases) != 0 {
+		t.Errorf("expected zero aliases on 'profile', got %v", profileCmd.Aliases)
 	}
-	if aliased.Name() != "list" || aliased.Parent().Name() != "profile" {
-		t.Errorf("expected 'config preset' to alias 'config profile', got %s under %s", aliased.Name(), aliased.Parent().Name())
+	for _, sub := range profileCmd.Commands() {
+		if len(sub.Aliases) != 0 {
+			t.Errorf("expected zero aliases on 'profile %s', got %v", sub.Name(), sub.Aliases)
+		}
 	}
 }
 
-func TestProfileCommand_NotTopLevel(t *testing.T) {
+func TestProfileCommand_IsTopLevel(t *testing.T) {
 	root := NewRootCommand("test")
-	if findSubcommand(root, "profile") != nil {
-		t.Error("expected no top-level 'profile' command; it lives under 'config profile'")
+	if findSubcommand(root, "profile") == nil {
+		t.Error("expected top-level 'profile' command")
+	}
+	configCmd := findSubcommand(root, "config")
+	if configCmd != nil && findSubcommand(configCmd, "profile") != nil {
+		t.Error("expected 'profile' to NOT be registered under 'config'")
 	}
 }
 
@@ -2427,13 +2420,9 @@ func TestCompleteCSV_Profiles(t *testing.T) {
 
 func TestProfileCommand_CreateAndCopy(t *testing.T) {
 	root := NewRootCommand("test")
-	configCmd := findSubcommand(root, "config")
-	if configCmd == nil {
-		t.Fatal("expected 'config' command to be registered")
-	}
-	profileCmd := findSubcommand(configCmd, "profile")
+	profileCmd := findSubcommand(root, "profile")
 	if profileCmd == nil {
-		t.Fatal("expected 'config profile' command to be registered")
+		t.Fatal("expected 'profile' command to be registered")
 	}
 
 	// Verify all subcommands exist
@@ -2454,7 +2443,7 @@ func TestProfileCreate_NoInteractiveFails(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", tmpHome)
 
 	root := NewRootCommand("test")
-	root.SetArgs([]string{"config", "profile", "create", "--no-interactive"})
+	root.SetArgs([]string{"profile", "create", "--no-interactive"})
 	if err := root.Execute(); err == nil {
 		t.Fatal("expected error: 'profile create' must fail in --no-interactive mode")
 	}
@@ -2463,7 +2452,7 @@ func TestProfileCreate_NoInteractiveFails(t *testing.T) {
 func TestProfileCreate_RejectsPositionalArg(t *testing.T) {
 	// create no longer takes a positional id; the id is prompted interactively.
 	root := NewRootCommand("test")
-	root.SetArgs([]string{"config", "profile", "create", "some-id"})
+	root.SetArgs([]string{"profile", "create", "some-id"})
 	if err := root.Execute(); err == nil {
 		t.Fatal("expected error: 'profile create' no longer accepts a positional profile id")
 	}
@@ -2476,7 +2465,7 @@ func TestProfileCopy(t *testing.T) {
 
 	root := NewRootCommand("test")
 	// Copy 'nodejs' (builtin) to 'my-copied-nodejs' with --no-interactive
-	root.SetArgs([]string{"config", "profile", "copy", "nodejs", "my-copied-nodejs", "--no-interactive"})
+	root.SetArgs([]string{"profile", "copy", "nodejs", "my-copied-nodejs", "--no-interactive"})
 
 	// Run command
 	if err := root.Execute(); err != nil {
@@ -2528,7 +2517,7 @@ func TestProfileCopy_CarriesScripts(t *testing.T) {
 	}
 
 	root := NewRootCommand("test")
-	root.SetArgs([]string{"config", "profile", "copy", "src", "dst", "--no-interactive"})
+	root.SetArgs([]string{"profile", "copy", "src", "dst", "--no-interactive"})
 	if err := root.Execute(); err != nil {
 		t.Fatalf("unexpected error executing profile copy: %v", err)
 	}
@@ -2555,7 +2544,7 @@ func TestProfileRemove_UserProfile(t *testing.T) {
 	}
 
 	root := NewRootCommand("test")
-	root.SetArgs([]string{"config", "profile", "remove", "scratch", "--yes"})
+	root.SetArgs([]string{"profile", "remove", "scratch", "--yes"})
 	if err := root.Execute(); err != nil {
 		t.Fatalf("unexpected error removing profile: %v", err)
 	}
@@ -2581,7 +2570,7 @@ func TestProfileRemove_DirectoryShaped(t *testing.T) {
 	}
 
 	root := NewRootCommand("test")
-	root.SetArgs([]string{"config", "profile", "remove", "withscripts", "--yes"})
+	root.SetArgs([]string{"profile", "remove", "withscripts", "--yes"})
 	if err := root.Execute(); err != nil {
 		t.Fatalf("unexpected error removing profile: %v", err)
 	}
@@ -2604,7 +2593,7 @@ func TestProfileRemove_LegacyPresetsDir(t *testing.T) {
 	}
 
 	root := NewRootCommand("test")
-	root.SetArgs([]string{"config", "profile", "remove", "old", "--yes"})
+	root.SetArgs([]string{"profile", "remove", "old", "--yes"})
 	if err := root.Execute(); err != nil {
 		t.Fatalf("unexpected error removing legacy profile: %v", err)
 	}
@@ -2618,7 +2607,7 @@ func TestProfileRemove_BuiltinIsRejected(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", tmpHome)
 
 	root := NewRootCommand("test")
-	root.SetArgs([]string{"config", "profile", "remove", "nodejs", "--yes"})
+	root.SetArgs([]string{"profile", "remove", "nodejs", "--yes"})
 	if err := root.Execute(); err == nil {
 		t.Fatal("expected error: built-in profile 'nodejs' must not be removable")
 	}
@@ -2629,7 +2618,7 @@ func TestProfileRemove_UnknownFails(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", tmpHome)
 
 	root := NewRootCommand("test")
-	root.SetArgs([]string{"config", "profile", "remove", "does-not-exist", "--yes"})
+	root.SetArgs([]string{"profile", "remove", "does-not-exist", "--yes"})
 	if err := root.Execute(); err == nil {
 		t.Fatal("expected error removing a non-existent user profile")
 	}
@@ -2904,7 +2893,7 @@ func TestImageCommand_StructureAndFlags(t *testing.T) {
 		t.Fatal("image command not registered")
 	}
 
-	subWant := []string{"list", "info", "create", "build", "pull", "export", "remove"}
+	subWant := []string{"list", "info", "create", "build", "pull", "export", "remove", "update"}
 	subHave := map[string]bool{}
 	for _, c := range imageCmd.Commands() {
 		subHave[c.Name()] = true

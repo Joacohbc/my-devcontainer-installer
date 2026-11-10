@@ -80,12 +80,12 @@ Las siguientes banderas y reglas de nomenclatura son obligatorias en todos los c
 
 La CLI estructura todas sus operaciones en 6 dominios canónicos orientados a recursos, junto con una fachada `agent` especializada:
 
-1. **`workspace`**: Ciclo de vida completo del devcontainer asociado al proyecto (`create`, `up`, `down`, `start`, `stop`, `destroy`, `rebuild`, `clean`).
-2. **`access`**: Sesiones interactivas y conectividad de red con el contenedor (`shell`, `ssh`, `forward`).
-3. **`inspect`**: Observabilidad, inspección y telemetría de recursos (`ps`, `logs`, `stats`, `context`).
-4. **`profile`**: Gestión, catálogo y autoría de perfiles y plantillas modulares (`list`, `create`, `copy`, `remove`).
-5. **`image`**: Ciclo de vida y registro de imágenes independientes de proyecto (`build`, `list`, `prune`, `import`).
-6. **`config`**: Parámetros globales y gestión del catálogo de usuario (`skill`, etc.).
+1. **`workspace`**: Ciclo de vida completo del devcontainer asociado al proyecto (`init`, `up`, `down`, `start`, `stop`, `restart`, `destroy`, `run`, `compose`, `export`, `import`).
+2. **`access`**: Sesiones interactivas y conectividad de red con el contenedor (`shell`, `ssh`, `forward`, `route`, `network`, `copy`, `password`).
+3. **`inspect`**: Observabilidad, inspección y telemetría de recursos (`status`, `info`, `logs`, `context`, `ls`).
+4. **`profile`**: Gestión, catálogo y autoría de perfiles y plantillas modulares (`list`, `info`, `create`, `copy`, `remove`).
+5. **`image`**: Ciclo de vida y registro de imágenes independientes de proyecto (`list`, `info`, `create`, `build`, `pull`, `export`, `remove`, `update`).
+6. **`config`**: Parámetros globales y mantenimiento (`registry`, `git-init`, `db-user`, `db-password`, `ssh-key`, `ssh-config-file`, `alias`, `shared`, `skill`, `clean`, `upgrade-cli`).
 
 **Fachada `agent`**:
 - Contiene exclusivamente comandos que presentan valores predeterminados y semántica inherentemente desatendida para agentes de IA: `exec`, `ssh`, `forward`, `create`, `run`, `destroy`, `list`, `cli-info`.
