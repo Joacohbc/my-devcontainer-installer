@@ -19,29 +19,26 @@ import (
 
 // Flag names for the default generate command flow.
 const (
-	flagMode           = "mode"
-	flagRegistry       = "registry"
-	flagWith           = "with"
-	flagService        = "service"
-	flagServices       = "services"
-	flagImage          = "image"
-	flagWorkspace      = "workspace"
-	flagPorts          = "ports"
-	flagVolumes        = "volumes"
-	flagSharedConfig   = "shared-config"
-	flagProfile        = "profile"
-	flagPreset         = "preset"
-	flagScript         = "script"
-	flagSkill          = "skill"
-	flagSkillsMode     = "skills-mode"
-	flagForwardPorts   = "forward-ports"
-	flagNoInteractive  = "no-interactive"
-	flagNonInteractive = "non-interactive"
-	flagForcePrompt    = "force-prompt"
-	flagForce          = "force"
-	flagBuild          = "build"
-	flagNoBuild        = "no-build"
-	flagVersion        = "version"
+	flagMode          = "mode"
+	flagRegistry      = "registry"
+	flagWith          = "with"
+	flagService       = "service"
+	flagServices      = "services"
+	flagImage         = "image"
+	flagWorkspace     = "workspace"
+	flagPorts         = "ports"
+	flagVolumes       = "volumes"
+	flagSharedConfig  = "shared-config"
+	flagProfile       = "profile"
+	flagScript        = "script"
+	flagSkill         = "skill"
+	flagSkillsMode    = "skills-mode"
+	flagForwardPorts  = "forward-ports"
+	flagNoInteractive = "no-interactive"
+	flagForcePrompt   = "force-prompt"
+	flagForce         = "force"
+	flagBuild         = "build"
+	flagVersion       = "version"
 )
 
 func addGenerateFlags(cmd *cobra.Command) {
@@ -58,24 +55,19 @@ func addGenerateFlags(cmd *cobra.Command) {
 	f.String(flagForwardPorts, "", "Ports 'port-forward' tunnels when called with no argument (e.g. 3000,8080:80, reverse:5432 for a host port reachable inside the container); 'none' clears them")
 	f.Bool(flagSharedConfig, true, "Mount the global shared AI/dev tool config volume (devcontainer-shared-config) so logins/sessions persist across containers; --shared-config=false to opt out")
 	f.String(flagProfile, "", "Apply profile(s): comma-separated module bundles for mode=custom (e.g. 'nodejs,my-tools'), or a single pull target for mode=profiles (must be [remote]-tagged). See 'config profile list'.")
-	f.String(flagPreset, "", "Deprecated alias for --profile")
-	_ = f.MarkDeprecated(flagPreset, "use --profile instead")
 	f.StringArray(flagScript, nil, "Custom script to add, as <path>[:build|start|service|manual] (default build); repeatable. build bakes it into the image, start runs once per container, service runs as background service on every start, manual only copies it to ~/post-script/")
 	f.String(flagSkill, "", "Comma-separated agent skills installed into the project workspace; implies the nodejs module. See 'config skill list' (built-in + your own)")
 	f.String(flagSkillsMode, "", "How the project's agent skills get installed: manual (default — you run 'install-skills') or auto (on every container start, writing into the workspace unprompted)")
-	f.Bool(flagNoInteractive, false, "Fail if any value is missing instead of prompting")
-	f.Bool(flagNonInteractive, false, "Alias for --no-interactive")
+	addInteractiveFlag(cmd)
 	f.Bool(flagForcePrompt, false, "Prompt even if config file exists")
 	f.Bool(flagForce, false, "Overwrite existing files without prompting")
-	f.Bool(flagBuild, false, "Run 'docker compose build/pull' after generating")
-	f.Bool(flagNoBuild, false, "Skip the build/pull step after generating")
-	f.BoolP(flagVersion, "v", false, "Print the CLI version")
+	addBuildFlag(cmd, false, "Run 'docker compose build/pull' after generating")
+	f.Bool(flagVersion, false, "Print the CLI version")
 
 	completeProfileFunc := func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return completeCSV(toComplete, profileIDs(false)), cobra.ShellCompDirectiveNoFileComp
 	}
 	_ = cmd.RegisterFlagCompletionFunc(flagProfile, completeProfileFunc)
-	_ = cmd.RegisterFlagCompletionFunc(flagPreset, completeProfileFunc)
 	_ = cmd.RegisterFlagCompletionFunc(flagSkill, func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return completeCSV(toComplete, catalog.AgentSkillIDs(domain.SkillDirs()...)), cobra.ShellCompDirectiveNoFileComp
 	})
@@ -255,10 +247,8 @@ func populateProfileFlags(g *genFlags) error {
 
 func parseGenFlags(cmd *cobra.Command) (*genFlags, error) {
 	f := cmd.Flags()
-	noI, _ := f.GetBool(flagNoInteractive)
-	nonI, _ := f.GetBool(flagNonInteractive)
 	g := &genFlags{
-		interactive: !(noI || nonI),
+		interactive: interactiveFlag(cmd),
 	}
 	g.forcePrompt, _ = f.GetBool(flagForcePrompt)
 	g.force, _ = f.GetBool(flagForce)
@@ -267,12 +257,6 @@ func parseGenFlags(cmd *cobra.Command) (*genFlags, error) {
 	g.mode, _ = f.GetString(flagMode)
 	g.registry, _ = f.GetString(flagRegistry)
 	g.profile, _ = f.GetString(flagProfile)
-	if g.profile == "" {
-		// --preset is the deprecated spelling; it resolves to the same thing,
-		// whichever role the mode ends up giving it (a module bundle for
-		// mode=custom, a pull target for mode=profiles).
-		g.profile, _ = f.GetString(flagPreset)
-	}
 
 	if err := populateProfileFlags(g); err != nil {
 		return nil, err
@@ -300,10 +284,6 @@ func parseGenFlags(cmd *cobra.Command) (*genFlags, error) {
 
 	if f.Changed(flagBuild) {
 		val, _ := f.GetBool(flagBuild)
-		g.build = &val
-	}
-	if f.Changed(flagNoBuild) {
-		val := false
 		g.build = &val
 	}
 

@@ -21,7 +21,7 @@ by 'config export') and write it to the project's devcontainer.config.json.
 This recreates a project's configuration from a shared/checked-in file. Run
 'devcontainer-cli agent create' afterwards to (re)generate the Dockerfile and
 compose from it.
-If a config already exists you are asked before overwriting (use --force or --yes
+If a config already exists you are asked before overwriting (use --force
 to skip the prompt).`,
 		Example: `  # Recreate the project config from a YAML file
   devcontainer-cli config import devcontainer.yml
@@ -32,7 +32,6 @@ to skip the prompt).`,
 		SilenceUsage: true,
 		RunE:         runConfigImport,
 	}
-	addYesFlag(cmd)
 	addInteractiveFlag(cmd)
 	cmd.Flags().Bool("force", false, "Overwrite existing devcontainer.config.json without prompt")
 	return cmd
@@ -58,19 +57,16 @@ func runConfigImport(cmd *cobra.Command, args []string) error {
 
 	force, _ := cmd.Flags().GetBool("force")
 	if !force && existingConfig(cwd) {
-		if yesFlag(cmd) || !interactiveFlag(cmd) {
-			if !yesFlag(cmd) {
-				return fmt.Errorf("devcontainer.config.json exists. Pass --force or --yes")
-			}
-		} else {
-			ok, err := console.ConfirmDefault("devcontainer.config.json exists. Overwrite?", false)
-			if err != nil {
-				return err
-			}
-			if !ok {
-				console.Cancelled()
-				return nil
-			}
+		if !interactiveFlag(cmd) {
+			return fmt.Errorf("devcontainer.config.json exists. Pass --force")
+		}
+		ok, err := console.ConfirmDefault("devcontainer.config.json exists. Overwrite?", false)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			console.Cancelled()
+			return nil
 		}
 	}
 	return svc.SaveProjectConfig(cwd, cfg)

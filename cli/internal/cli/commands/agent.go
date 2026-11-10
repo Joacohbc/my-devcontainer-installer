@@ -35,12 +35,8 @@ container, 'config' for global settings.`,
   devcontainer-cli agent create --with nodejs,pnpm --service postgres
 
   # Work inside it
-  devcontainer-cli agent context --json
   devcontainer-cli agent exec -- go test ./...
   devcontainer-cli agent list /home/devuser --json
-
-  # Install agent skills
-  devcontainer-cli agent skill install agent-browser
 
   # Tear it down
   devcontainer-cli agent clean --yes`,
@@ -53,11 +49,8 @@ container, 'config' for global settings.`,
 		newAgentSshCommand(),
 		newAgentExecCommand(),
 		newAgentForwardCommand(),
-		newAgentCopyCommand(),
 		newAgentListCommand(),
-		newAgentContextCommand(),
 		newAgentCleanCommand(),
-		newAgentSkillCommand(),
 	)
 	return cmd
 }
@@ -66,6 +59,7 @@ container, 'config' for global settings.`,
 // human command, leaving anything the caller passed explicitly alone — so
 // '--no-interactive=false' still opts back into prompting.
 func agentDefaults(cmd *cobra.Command, values map[string]string) error {
+	_ = cmd.InheritedFlags()
 	for name, value := range values {
 		if cmd.Flags().Changed(name) {
 			continue
@@ -258,7 +252,7 @@ project instead — regenerate with 'agent create --ports <spec>'.`,
 		PreRunE:      agentForwardDefaults,
 		RunE:         runPortForward,
 	}
-	addAgentForwardFlags(cmd)
+	addForwardFlags(cmd)
 	return cmd
 }
 
@@ -267,59 +261,6 @@ func agentForwardDefaults(cmd *cobra.Command, _ []string) error {
 		flagNoInteractive: "true",
 		"ephemeral":       "true",
 	})
-}
-
-func addAgentForwardFlags(cmd *cobra.Command) {
-	cmd.Flags().String("alias", "", "SSH host alias to use when --ephemeral=false")
-	cmd.Flags().String("service", "", "Compose service to map port to (default: localhost)")
-	cmd.Flags().Bool("reverse", false, "Reverse the mapping: the container listens and reaches a service on this machine (a mapping can also opt in with 'reverse:')")
-	cmd.Flags().Bool("ephemeral", false, "Forward directly via SSH without modifying ~/.ssh/config or relying on existing Host blocks (default true for agent)")
-	addContainerFlag(cmd)
-	cmd.Flags().String("key", "", "Private key path (default: the shared managed key under the CLI config dir)")
-	cmd.Flags().String("user", sshdefaults.User, "SSH user inside the container")
-	addInteractiveFlag(cmd)
-
-	_ = cmd.RegisterFlagCompletionFunc("alias", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		return listSshHosts(), cobra.ShellCompDirectiveNoFileComp
-	})
-	_ = cmd.RegisterFlagCompletionFunc("service", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		cwd, err := currentDir()
-		if err != nil {
-			return nil, cobra.ShellCompDirectiveNoFileComp
-		}
-		return listComposeServices(defaultComposeFile(cwd)), cobra.ShellCompDirectiveNoFileComp
-	})
-	_ = cmd.MarkFlagFilename("key")
-}
-
-func newAgentCopyCommand() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "copy [src] [dest]",
-		Short: "Copy files between the host and the container",
-		Long: `devcontainer-cli agent copy — copy a file or directory between this machine
-and the running devcontainer.
-
-Same as 'copy'. Prefix a path with ':' to mean "inside the container"; the
-direction is inferred from which side carries it, and the container is resolved
-for you. With --asset it copies one of the CLI's own built-in scripts in
-instead ('agent cli-info' lists them).`,
-		Example: `  # Host -> container
-  devcontainer-cli agent copy ./seed.sql :/home/devuser/seed.sql
-
-  # Container -> host
-  devcontainer-cli agent copy :/home/devuser/out.log ./out.log
-
-  # Drop a built-in installer script into the container
-  devcontainer-cli agent copy --asset install-claude-code`,
-		Args:              copyArgs,
-		SilenceUsage:      true,
-		PreRunE:           agentNonInteractive,
-		ValidArgsFunction: runCopyCompletion,
-		RunE:              runCopy,
-	}
-	addCopyFlags(cmd)
-	addInteractiveFlag(cmd)
-	return cmd
 }
 
 func newAgentListCommand() *cobra.Command {
@@ -390,43 +331,6 @@ func runAgentList(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func newAgentContextCommand() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "context",
-		Short: "Read the container's own ~/CONTEXT.md and installed tools",
-		Long: `devcontainer-cli agent context — print what this container is and what it
-has installed. Read it before running anything inside one.
-
-Same as 'context'. It streams the container's own ~/CONTEXT.md, generated at
-build time from the modules and services that project selected, so it names the
-actual package managers, versions, database endpoints and published ports —
-followed by a live inventory of the detected tools and the reachable services.
-That makes it the answer to "which Python is in here", "how do I reach the
-database", "is pnpm installed" without guessing or probing.
-
-Prefer --json when the answer feeds a decision rather than a human.
-
-It reports what is INSIDE the container. For Docker metadata (image, mounts,
-port bindings) use 'status'; for this CLI's own catalogue of what a project
-could be built with, 'agent cli-info'.`,
-		Example: `  # The current project's container
-  devcontainer-cli agent context
-
-  # Structured output, easier to consume than the markdown
-  devcontainer-cli agent context --json
-
-  # A specific container
-  devcontainer-cli agent context --container myproject-devcontainer`,
-		Args:         cobra.NoArgs,
-		SilenceUsage: true,
-		PreRunE:      agentNonInteractive,
-		RunE:         runContext,
-	}
-	addContextFlags(cmd)
-	addInteractiveFlag(cmd)
-	return cmd
-}
-
 func newAgentCleanCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "clean",
@@ -487,53 +391,4 @@ func runAgentClean(cmd *cobra.Command, _ []string) error {
 		Yes:         yesFlag(cmd),
 		Interactive: interactiveFlag(cmd),
 	})
-}
-
-func newAgentSkillCommand() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "skill",
-		Short: "Manage and install agent skills non-interactively",
-		Long: `devcontainer-cli agent skill — the agent-facing face of skill management.
-
-Subcommands:
-  install [skill-ids...]  Install agent skills at project level in an ephemeral container.`,
-		Example: `  # Install specific skills
-  devcontainer-cli agent skill install agent-browser
-
-  # Install all available skills
-  devcontainer-cli agent skill install --all`,
-		SilenceUsage: true,
-	}
-	cmd.AddCommand(newAgentSkillInstallCommand())
-	return cmd
-}
-
-func newAgentSkillInstallCommand() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "install [skill-ids...]",
-		Short: "Install agent skills at project level in an ephemeral container",
-		Long: `devcontainer-cli agent skill install — install agent skills into the project workspace
-using a temporary lightweight Node container ('npx --yes skills add').
-
-This is the non-interactive agent equivalent of 'config skill install'. If no skill IDs
-are provided, it installs the project's configured skills from devcontainer.config.json.
-If no skills are configured and no arguments are provided, it reports an actionable error without prompting.
-
-Use --all to install all available agent skills (both built-in and user-defined).`,
-		Example: `  # Install specific skills
-  devcontainer-cli agent skill install agent-browser
-
-  # Install all available skills
-  devcontainer-cli agent skill install --all
-
-  # Install skills configured in devcontainer.config.json
-  devcontainer-cli agent skill install`,
-		SilenceUsage:      true,
-		PreRunE:           agentNonInteractive,
-		ValidArgsFunction: completeInstallSkillArgs,
-		RunE:              runConfigSkillInstall,
-	}
-	addSkillInstallFlags(cmd)
-	addInteractiveFlag(cmd)
-	return cmd
 }

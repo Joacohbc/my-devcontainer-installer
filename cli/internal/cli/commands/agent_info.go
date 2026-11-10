@@ -17,7 +17,7 @@ func newAgentCLIInfoCommand() *cobra.Command {
 		Long: `devcontainer-cli agent cli-info — print what this CLI can put in a
 devcontainer: the Dockerfile modules, the compose services, the profiles that
 bundle them, the agent skills, how to add scripts of your own, the built-in
-scripts 'agent copy --asset' can drop into a container, and the paths every
+scripts 'copy --asset' can drop into a container, and the paths every
 project follows.
 
 Read it before composing an 'agent create': it is generated from the live
@@ -237,7 +237,7 @@ func printAgentAssets(info service.AgentInfo) {
 	for _, a := range info.Assets {
 		lines = append(lines, agentInfoRow(a.Name, width, ui.Subtle(a.Label)))
 	}
-	agentInfoSection("Built-in scripts — names for 'agent copy --asset <name>'", lines)
+	agentInfoSection("Built-in scripts — names for 'copy --asset <name>'", lines)
 }
 
 func printAgentPaths(info service.AgentInfo) {

@@ -15,13 +15,18 @@ func TestInitCommand_RegistrationAndFlags(t *testing.T) {
 	flags := []string{
 		flagMode, flagRegistry, flagWith, flagService, flagServices,
 		flagWorkspace, flagPorts, flagVolumes, flagForwardPorts,
-		flagSharedConfig, flagProfile, flagNoUp, flagNoBuild,
-		flagNoInteractive, flagNonInteractive, flagForce,
+		flagSharedConfig, flagProfile, flagNoUp, flagBuild,
 	}
 
 	for _, f := range flags {
 		if cmd.Flags().Lookup(f) == nil {
 			t.Errorf("expected flag --%s to be defined on init command", f)
+		}
+	}
+
+	for _, removed := range []string{"no-build", "non-interactive", "force"} {
+		if cmd.Flags().Lookup(removed) != nil {
+			t.Errorf("expected flag --%s to be removed from init command", removed)
 		}
 	}
 }
@@ -33,7 +38,7 @@ func TestInitCommand_Execution(t *testing.T) {
 	}
 
 	cmd := newInitCommand()
-	cmd.SetArgs([]string{dir, "--no-build", "--no-up", "--no-interactive"})
+	cmd.SetArgs([]string{dir, "--build=false", "--no-up"})
 
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("cmd.Execute() failed: %v", err)

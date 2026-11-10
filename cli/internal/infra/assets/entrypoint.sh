@@ -210,7 +210,7 @@ stage_user_aliases() {
 #
 # NOTE: the shared-config volume is not mounted in this container, so this file
 # is local to it and is lost when the container is recreated. Configure aliases
-# on the host with `devcontainer-cli config alias set` (and `config alias sync`)
+# on the host with `devcontainer-cli config alias set` (and `config shared sync`)
 # to have them persist across every container.
 USER_ALIASES
     chown "$DEV_UID:$DEV_GID" "$DEV_HOME/.alias.sh" 2>/dev/null || true

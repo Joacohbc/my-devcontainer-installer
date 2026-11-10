@@ -31,8 +31,8 @@ clean containers, clean images, clean ssh, clean networks, clean volumes, clean 
 for the full details of any one.
 
 For AI assistants: the 'agent' group is a small, never-interactive command set
-covering the whole loop (agent cli-info, create, exec, connect, forward, copy,
-list, skill, clean), and 'context' reports what a container has inside it.
+covering the whole loop (agent cli-info, create, ssh, exec, forward, list, clean),
+and 'context' reports what a container has inside it.
 
 Build modes:
   custom    Build the full Dockerfile/compose pipeline locally and tag the
@@ -86,10 +86,21 @@ Run 'devcontainer-cli --help' for the full flag list, or
 	}
 	root.PersistentFlags().Bool("verbose", false, "Enable debug logging (shortcut for --log-level debug)")
 	root.PersistentFlags().String("log-level", "warn", "Log level: debug|info|warn|error")
+	root.PersistentFlags().Bool(flagNoInteractive, false, "Fail if any value is missing instead of prompting")
 
 	addGenerateFlags(root)
 	for _, c := range subcommands {
 		root.AddCommand(c)
 	}
+
+	var initInherited func(*cobra.Command)
+	initInherited = func(c *cobra.Command) {
+		_ = c.InheritedFlags()
+		for _, child := range c.Commands() {
+			initInherited(child)
+		}
+	}
+	initInherited(root)
+
 	return root
 }

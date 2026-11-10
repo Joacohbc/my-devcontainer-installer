@@ -17,7 +17,7 @@ import (
 // Renaming one breaks every skill and script that drives this CLI, so the set
 // is pinned here.
 var agentSubcommands = []string{
-	"cli-info", "create", "ssh", "exec", "forward", "copy", "list", "context", "clean",
+	"cli-info", "create", "ssh", "exec", "forward", "list", "clean",
 }
 
 func findCommand(t *testing.T, parent *cobra.Command, name string) *cobra.Command {
@@ -46,6 +46,11 @@ func TestAgentCommand_HasEverySubcommand(t *testing.T) {
 	for _, name := range agentSubcommands {
 		if !have[name] {
 			t.Errorf("expected agent subcommand %q to be registered", name)
+		}
+	}
+	for _, eliminated := range []string{"copy", "context", "skill"} {
+		if have[eliminated] {
+			t.Errorf("agent %s should be eliminated per D1", eliminated)
 		}
 	}
 }
@@ -143,21 +148,14 @@ func TestAgentDefaults_DoNotOverrideExplicitFlags(t *testing.T) {
 	}
 }
 
-// 'create' is generate + build + up, so it must not stop at the overwrite
-// question or the build question either.
+// 'create' is generate + build + up, so it defaults to non-interactive and supports --no-up.
 func TestAgentCreate_ForcesTheFullFlow(t *testing.T) {
 	cmd := findCommand(t, agentCommand(t), "create")
 	if err := cmd.PreRunE(cmd, nil); err != nil {
 		t.Fatalf("PreRunE: %v", err)
 	}
-	for _, name := range []string{flagForce, flagBuild} {
-		v, err := cmd.Flags().GetBool(name)
-		if err != nil {
-			t.Fatalf("flag --%s: %v", name, err)
-		}
-		if !v {
-			t.Errorf("agent create must default --%s to true", name)
-		}
+	if interactiveFlag(cmd) {
+		t.Error("agent create must default to non-interactive")
 	}
 	if cmd.Flags().Lookup(flagNoUp) == nil {
 		t.Errorf("agent create is missing --%s", flagNoUp)
@@ -174,7 +172,7 @@ func TestAgentCreate_KeepsGenerateFlagsAndOmitsNoise(t *testing.T) {
 		}
 	}
 	// Irrelevant flags must be omitted entirely rather than registered/hidden.
-	for _, name := range []string{flagVersion, flagPreset, flagNonInteractive, flagForcePrompt} {
+	for _, name := range []string{flagVersion, "preset", "non-interactive", flagForcePrompt, "no-build", "force", "build"} {
 		if f := cmd.Flags().Lookup(name); f != nil {
 			t.Errorf("--%s should not be registered on agent create", name)
 		}
@@ -420,7 +418,6 @@ func TestAgentWrappers_KeepFlagCompletion(t *testing.T) {
 		{"ssh", "via"},
 		{"exec", "user"},
 		{"forward", "alias"},
-		{"copy", "asset"},
 	}
 	for _, c := range cases {
 		t.Run(c.command+"/"+c.flag, func(t *testing.T) {

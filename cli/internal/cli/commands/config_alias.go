@@ -26,7 +26,7 @@ every container. Each container sources two files, in this order:
   ~/.alias.sh                  YOURS — rendered from these aliases
 
 Because yours is sourced last it always wins. Set them with 'config alias set',
-then push them into the shared volume with 'config alias sync' so every
+then push them into the shared volume with 'config shared sync' so every
 container picks them up — no image rebuild, no restart (a new shell is enough).
 
 With no subcommand this lists the configured aliases.`,
@@ -35,7 +35,7 @@ With no subcommand this lists the configured aliases.`,
 
   # Add or update one, then apply it everywhere
   devcontainer-cli config alias set ll "ls -la"
-  devcontainer-cli config alias sync
+  devcontainer-cli config shared sync
 
   # Remove one
   devcontainer-cli config alias unset ll`,
@@ -45,7 +45,6 @@ With no subcommand this lists the configured aliases.`,
 	}
 	cmd.AddCommand(newConfigAliasSetCommand())
 	cmd.AddCommand(newConfigAliasUnsetCommand())
-	cmd.AddCommand(newConfigAliasSyncCommand())
 	return cmd
 }
 
@@ -56,7 +55,7 @@ func newConfigAliasSetCommand() *cobra.Command {
 		Long: `devcontainer-cli config alias set — store an alias in the CLI config.
 
 The name must be a shell identifier (letters, digits, '_', '-', '.'); the command
-is everything after it. This only writes the config — run 'config alias sync' to
+is everything after it. This only writes the config — run 'config shared sync' to
 push it into running containers.`,
 		Example: `  devcontainer-cli config alias set gs "git status"
   devcontainer-cli config alias set k kubectl`,
@@ -70,26 +69,12 @@ func newConfigAliasUnsetCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:               "unset <name>",
 		Short:             "Remove an alias from the CLI config",
-		Long:              `devcontainer-cli config alias unset — remove an alias. Run 'config alias sync' afterwards to drop it from running containers.`,
+		Long:              `devcontainer-cli config alias unset — remove an alias. Run 'config shared sync' afterwards to drop it from running containers.`,
 		Example:           `  devcontainer-cli config alias unset gs`,
 		Args:              cobra.ExactArgs(1),
 		SilenceUsage:      true,
 		ValidArgsFunction: completeAliasNames,
 		RunE:              runConfigAliasUnset,
-	}
-}
-
-func newConfigAliasSyncCommand() *cobra.Command {
-	return &cobra.Command{
-		Use:   "sync",
-		Short: "Push the configured aliases into the shared volume",
-		Long: `devcontainer-cli config alias sync — render the configured aliases into the
-shared-config volume as ~/.alias.sh, so every container that mounts it applies
-them. Running containers pick the change up in the next shell; no rebuild.`,
-		Example:      `  devcontainer-cli config alias sync`,
-		Args:         cobra.NoArgs,
-		SilenceUsage: true,
-		RunE:         runConfigAliasSync,
 	}
 }
 
@@ -106,7 +91,7 @@ func runConfigAliasList(_ *cobra.Command, _ []string) error {
 		console.Print(fmt.Sprintf("  %s = %s\n", name, aliases[name]))
 	}
 	console.NewLine()
-	console.Info("Apply them to every container with: devcontainer-cli config alias sync")
+	console.Info("Apply them to every container with: devcontainer-cli config shared sync")
 	return nil
 }
 
@@ -116,7 +101,7 @@ func runConfigAliasSet(_ *cobra.Command, args []string) error {
 	if err := svc.SetAlias(name, command); err != nil {
 		return err
 	}
-	console.Info("Apply it to every container with: devcontainer-cli config alias sync")
+	console.Info("Apply it to every container with: devcontainer-cli config shared sync")
 	return nil
 }
 
@@ -130,20 +115,7 @@ func runConfigAliasUnset(_ *cobra.Command, args []string) error {
 		console.Warn("No alias named %q.", args[0])
 		return nil
 	}
-	console.Info("Apply the removal to every container with: devcontainer-cli config alias sync")
-	return nil
-}
-
-func runConfigAliasSync(_ *cobra.Command, _ []string) error {
-	cfg := service.ConfigService{Report: console}
-	content := cfg.RenderedAliases()
-
-	shared := service.SharedConfigService{Report: console}
-	if err := shared.SyncAliases(content); err != nil {
-		return err
-	}
-	console.Success("Pushed %d alias(es) into the shared volume.", len(cfg.Aliases()))
-	console.Info("Open a new shell in any running container to pick them up.")
+	console.Info("Apply the removal to every container with: devcontainer-cli config shared sync")
 	return nil
 }
 

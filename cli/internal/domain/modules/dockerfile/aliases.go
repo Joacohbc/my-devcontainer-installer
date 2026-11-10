@@ -13,7 +13,7 @@ const BakedAliasFile = ".devcontainer_aliases.sh"
 // UserAliasFile is the user's own alias file inside the container. The
 // entrypoint symlinks it into the shared-config volume (types.SharedConfigEntries)
 // so it persists across every container; its contents come from the CLI config
-// (`config alias set`), pushed into the volume with `config alias sync`. It is
+// (`config alias set`), pushed into the volume with `config shared sync`. It is
 // sourced AFTER BakedAliasFile so user definitions win.
 const UserAliasFile = ".alias.sh"
 

@@ -26,7 +26,7 @@ func TestNewRootCommand_RegistersAllSubcommands(t *testing.T) {
 	want := []string{
 		"ssh", "clean", "port-forward", "run", "down", "destroy",
 		"start", "stop", "restart", "update",
-		"upgrade-cli", "config", "cleanup-tips", "shell", "logs", "copy",
+		"upgrade-cli", "config", "shell", "logs", "copy",
 		"up", "status", "ls", "info", "network", "context", "compose",
 		"agent", "route", "init", "image",
 	}
@@ -289,9 +289,14 @@ func TestCleanAndSubcommands_HaveAllFlag(t *testing.T) {
 
 func TestRootCommand_HasGenerateFlags(t *testing.T) {
 	root := NewRootCommand("test")
-	for _, name := range []string{"mode", "profile", "with", "service", "image", "workspace", "force", "build", "no-build", "version"} {
+	for _, name := range []string{"mode", "profile", "with", "service", "image", "workspace", "force", "build", "version"} {
 		if root.Flags().Lookup(name) == nil {
 			t.Errorf("expected root flag --%s", name)
+		}
+	}
+	for _, name := range []string{"no-build", "preset", "non-interactive"} {
+		if root.Flags().Lookup(name) != nil {
+			t.Errorf("expected root flag --%s to be permanently removed per D4", name)
 		}
 	}
 }
@@ -370,33 +375,11 @@ func TestParseGenFlags_Ports(t *testing.T) {
 	}
 }
 
-func TestCleanupInstructionLines(t *testing.T) {
-	cfg := &types.DevcontainerConfig{Workspace: "myws"}
-	out := strings.Join(cleanupInstructionLines(cfg), "\n")
-
-	// Native commands must be surfaced as the primary action.
-	for _, native := range []string{
-		"devcontainer-cli ls",
-		"devcontainer-cli down -v",
-		"devcontainer-cli destroy",
-		"devcontainer-cli clean containers",
-		"devcontainer-cli clean images",
-		"devcontainer-cli clean",
-		"devcontainer-cli update",
-	} {
-		if !strings.Contains(out, native) {
-			t.Errorf("expected cleanup tips to mention native command %q", native)
-		}
-	}
-
-	// The raw docker equivalents must still be shown for reference.
-	for _, raw := range []string{
-		"docker compose down -v",
-		"docker image prune -a",
-		"docker compose build --no-cache",
-	} {
-		if !strings.Contains(out, raw) {
-			t.Errorf("expected cleanup tips to keep docker equivalent %q", raw)
+func TestCleanupTips_CommandRemoved(t *testing.T) {
+	root := NewRootCommand("test")
+	for _, c := range root.Commands() {
+		if c.Name() == "cleanup-tips" {
+			t.Errorf("cleanup-tips should no longer be registered on root")
 		}
 	}
 }
@@ -688,10 +671,13 @@ func TestConfigAliasCommand_Structure(t *testing.T) {
 	if err := aliasCmd.Args(aliasCmd, []string{"extra"}); err == nil {
 		t.Error("expected 'config alias' to reject positional arguments")
 	}
-	for _, name := range []string{"set", "unset", "sync"} {
+	for _, name := range []string{"set", "unset"} {
 		if findSubcommand(aliasCmd, name) == nil {
 			t.Errorf("expected 'config alias %s' subcommand", name)
 		}
+	}
+	if findSubcommand(aliasCmd, "sync") != nil {
+		t.Error("expected 'config alias sync' to be folded into 'config shared sync' and removed")
 	}
 	// set takes a name plus a command; unset takes exactly the name.
 	if err := findSubcommand(aliasCmd, "set").Args(nil, []string{"only-name"}); err == nil {

@@ -27,7 +27,7 @@ compose file exists.`,
 		SilenceUsage: true,
 		RunE:         runUp,
 	}
-	cmd.Flags().Bool("build", false, "Build images before starting (docker compose up -d --build); use after changing the Dockerfile or modules")
+	addBuildFlag(cmd, false, "Build images before starting (docker compose up -d --build); use after changing the Dockerfile or modules")
 	return cmd
 }
 

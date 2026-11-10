@@ -32,8 +32,6 @@ type InitOptions struct {
 	Scripts      []types.CustomScript
 	NoUp         bool
 	NoBuild      bool
-	Interactive  bool
-	Force        bool
 }
 
 type InitService struct {

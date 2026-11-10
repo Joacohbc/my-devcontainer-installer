@@ -153,7 +153,7 @@ func (s ConfigService) Aliases() map[string]string {
 
 // SetAlias validates and persists a single alias in the global config. An
 // existing name is overwritten. It does not touch any container — call
-// SyncAliasesToVolume (or `config alias sync`) to apply it.
+// SyncAliasesToVolume (or `config shared sync`) to apply it.
 func (s ConfigService) SetAlias(name, command string) error {
 	if !domain.IsValidAliasName(name) {
 		return fmt.Errorf("invalid alias name %q: use letters, digits, '_', '-' or '.', starting with a letter or '_'", name)

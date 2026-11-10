@@ -60,8 +60,14 @@ func runSyncConfig(cmd *cobra.Command, args []string) error {
 		kept = append(kept, e)
 	}
 	entries = kept
+
+	sharedSvc := service.SharedConfigService{Report: console}
 	if aliasRequested {
-		console.Info("Aliases are managed with 'devcontainer-cli config alias' — use 'config alias sync' to push them.")
+		cfgSvc := service.ConfigService{Report: console}
+		if err := sharedSvc.SyncAliases(cfgSvc.RenderedAliases()); err != nil {
+			return err
+		}
+		console.Success("Pushed %d alias(es) into the shared volume.", len(cfgSvc.Aliases()))
 	}
 	if len(entries) == 0 {
 		return nil

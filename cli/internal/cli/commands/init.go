@@ -58,10 +58,7 @@ func addInitFlags(cmd *cobra.Command) {
 	f.Bool(flagSharedConfig, true, "Mount global shared tool config volume")
 	f.String(flagProfile, "", "Apply profile bundle(s) (comma-separated for custom builds)")
 	f.Bool(flagNoUp, false, "Generate and build only; leave containers stopped")
-	f.Bool(flagNoBuild, false, "Skip image build step after generating")
-	f.Bool(flagNoInteractive, false, "Non-interactive mode")
-	f.Bool(flagNonInteractive, false, "Alias for --no-interactive")
-	f.Bool(flagForce, false, "Overwrite existing files without prompting")
+	addBuildFlag(cmd, true, "Build or pull container images after generating")
 
 	completeProfileFunc := func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return completeCSV(toComplete, profileIDs(false)), cobra.ShellCompDirectiveNoFileComp
@@ -80,17 +77,12 @@ func addInitFlags(cmd *cobra.Command) {
 
 func runInit(cmd *cobra.Command, args []string) error {
 	f := cmd.Flags()
-	noI, _ := f.GetBool(flagNoInteractive)
-	nonI, _ := f.GetBool(flagNonInteractive)
-	force, _ := f.GetBool(flagForce)
 	noUp, _ := f.GetBool(flagNoUp)
-	noBuild, _ := f.GetBool(flagNoBuild)
+	build, _ := f.GetBool(flagBuild)
 
 	opts := service.InitOptions{
-		Interactive: !(noI || nonI),
-		Force:       force,
-		NoUp:        noUp,
-		NoBuild:     noBuild,
+		NoUp:    noUp,
+		NoBuild: !build,
 	}
 
 	if len(args) > 0 {

@@ -197,23 +197,15 @@ func TestParseGenFlags_Profile(t *testing.T) {
 	}
 }
 
-// --preset is the old spelling. It is deprecated, not removed: an existing
-// script must keep working.
-func TestParseGenFlags_PresetIsADeprecatedAliasOfProfile(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-
-	flags, err := parseGenFlagsFor(t, "--preset", "nodejs")
-	if err != nil {
-		t.Fatalf("parseGenFlags: %v", err)
-	}
-	if flags.profile != "nodejs" {
-		t.Errorf("expected --preset to resolve to the profile, got %q", flags.profile)
-	}
-
+// --preset was permanently removed per D4 (no backward-compatible alias).
+func TestParseGenFlags_PresetFlagDoesNotExist(t *testing.T) {
 	cmd := &cobra.Command{Use: "generate"}
 	addGenerateFlags(cmd)
-	if f := cmd.Flags().Lookup(flagPreset); f == nil || f.Deprecated == "" {
-		t.Error("expected --preset to be marked deprecated")
+	if cmd.Flags().Lookup("preset") != nil {
+		t.Error("expected --preset to be removed completely per D4")
+	}
+	if err := cmd.ParseFlags([]string{"--preset", "nodejs"}); err == nil {
+		t.Error("expected parsing --preset to fail as unknown flag")
 	}
 }
 

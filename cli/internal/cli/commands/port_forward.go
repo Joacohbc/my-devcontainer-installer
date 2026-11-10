@@ -96,34 +96,8 @@ are opened in parallel after you confirm.`,
 		SilenceUsage: true,
 		RunE:         runPortForward,
 	}
-	addPortForwardFlags(cmd)
+	addForwardFlags(cmd)
 	return cmd
-}
-
-// addPortForwardFlags registers the flags runPortForward reads. It is shared
-// with the 'agent forward' facade, which reuses runPortForward with agent-safe
-// defaults.
-func addPortForwardFlags(cmd *cobra.Command) {
-	cmd.Flags().String("alias", "", "SSH host alias to use (bypasses auto-discovery)")
-	cmd.Flags().String("service", "", "Compose service to map port to (default: localhost)")
-	addInteractiveFlag(cmd)
-	cmd.Flags().Bool("reverse", false, "Reverse every mapping without an explicit prefix: the container listens and reaches a service on this machine (a single mapping can still opt in with 'reverse:')")
-	cmd.Flags().Bool("ephemeral", false, "Forward directly via SSH without modifying ~/.ssh/config or relying on existing Host blocks")
-	addContainerFlag(cmd)
-	cmd.Flags().String("key", "", "Private key path (default: the shared managed key under the CLI config dir)")
-	cmd.Flags().String("user", sshdefaults.User, "SSH user inside the container")
-
-	_ = cmd.RegisterFlagCompletionFunc("alias", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		return listSshHosts(), cobra.ShellCompDirectiveNoFileComp
-	})
-	_ = cmd.RegisterFlagCompletionFunc("service", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		cwd, err := currentDir()
-		if err != nil {
-			return nil, cobra.ShellCompDirectiveNoFileComp
-		}
-		return listComposeServices(defaultComposeFile(cwd)), cobra.ShellCompDirectiveNoFileComp
-	})
-	_ = cmd.MarkFlagFilename("key")
 }
 
 type parsedMapping struct {

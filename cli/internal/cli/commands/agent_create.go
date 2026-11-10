@@ -81,10 +81,6 @@ func addAgentCreateFlags(cmd *cobra.Command) {
 	f.StringArray(flagScript, nil, "Custom script to add, as <path>[:build|start|service|manual] (default build); repeatable. build bakes it into the image, start runs once per container, service runs as background service on every start, manual only copies it to ~/post-script/")
 	f.String(flagSkill, "", "Comma-separated agent skills installed into the project workspace; implies the nodejs module. See 'config skill list' (built-in + your own)")
 	f.String(flagSkillsMode, "", "How the project's agent skills get installed: manual (default — you run 'install-skills') or auto (on every container start, writing into the workspace unprompted)")
-	f.Bool(flagNoInteractive, false, "Fail if any value is missing instead of prompting")
-	f.Bool(flagForce, false, "Overwrite existing files without prompting")
-	f.Bool(flagBuild, false, "Run 'docker compose build/pull' after generating")
-	f.Bool(flagNoBuild, false, "Skip the build/pull step after generating")
 
 	completeProfileFunc := func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return completeCSV(toComplete, profileIDs(false)), cobra.ShellCompDirectiveNoFileComp
@@ -106,12 +102,10 @@ func addAgentCreateFlags(cmd *cobra.Command) {
 }
 
 // agentCreateDefaults applies what makes this "create" rather than "generate":
-// no prompts, no overwrite question, and a build that just runs.
+// no prompts; force and build are handled internally.
 func agentCreateDefaults(cmd *cobra.Command, _ []string) error {
 	return agentDefaults(cmd, map[string]string{
 		flagNoInteractive: "true",
-		flagForce:         "true",
-		flagBuild:         "true",
 	})
 }
 
