@@ -27,11 +27,9 @@ every container. Each container sources two files, in this order:
 
 Because yours is sourced last it always wins. Set them with 'config alias set',
 then push them into the shared volume with 'config shared sync' so every
-container picks them up — no image rebuild, no restart (a new shell is enough).
-
-With no subcommand this lists the configured aliases.`,
+container picks them up — no image rebuild, no restart (a new shell is enough).`,
 		Example: `  # List configured aliases
-  devcontainer-cli config alias
+  devcontainer-cli config alias list
 
   # Add or update one, then apply it everywhere
   devcontainer-cli config alias set ll "ls -la"
@@ -39,13 +37,24 @@ With no subcommand this lists the configured aliases.`,
 
   # Remove one
   devcontainer-cli config alias unset ll`,
+		SilenceUsage: true,
+	}
+	cmd.AddCommand(newConfigAliasListCommand())
+	cmd.AddCommand(newConfigAliasSetCommand())
+	cmd.AddCommand(newConfigAliasUnsetCommand())
+	return cmd
+}
+
+func newConfigAliasListCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:          "list",
+		Short:        "List configured shell aliases",
+		Long:         `devcontainer-cli config alias list — print every shell alias currently stored in the CLI config.`,
+		Example:      `  devcontainer-cli config alias list`,
 		Args:         cobra.NoArgs,
 		SilenceUsage: true,
 		RunE:         runConfigAliasList,
 	}
-	cmd.AddCommand(newConfigAliasSetCommand())
-	cmd.AddCommand(newConfigAliasUnsetCommand())
-	return cmd
 }
 
 func newConfigAliasSetCommand() *cobra.Command {

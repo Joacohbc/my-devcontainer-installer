@@ -34,7 +34,7 @@ Optionally accepts a Git repository URL to clone first.`,
   devcontainer-cli init ./backend --no-up
 
   # Initialize with extra modules and compose services
-  devcontainer-cli init --with redis-client --service redis`,
+  devcontainer-cli init --modules redis-client --services redis`,
 		Args:         cobra.MaximumNArgs(2),
 		SilenceUsage: true,
 		RunE:         runInit,
@@ -48,9 +48,8 @@ func addInitFlags(cmd *cobra.Command) {
 	f := cmd.Flags()
 	f.String(flagMode, "", "Build mode: custom (default) or profiles (pull prebuilt image)")
 	f.String(flagRegistry, "", "Container registry prefix for remote images")
-	f.String(flagWith, "", "Additional dockerfile modules (e.g. nodejs,golang,rust)")
-	f.String(flagService, "", "Additional compose services (e.g. mongo,postgres,redis)")
-	f.String(flagServices, "", "Alias for --service")
+	f.String(flagModules, "", "Additional dockerfile modules (e.g. nodejs,golang,rust)")
+	f.String(flagServices, "", "Additional compose services (e.g. mongo,postgres,redis)")
 	f.String(flagWorkspace, "", "Workspace name (default: directory name or repo name)")
 	f.String(flagPorts, "", "Ports to publish on the devcontainer (e.g. 8080:80,5432:5432)")
 	f.String(flagVolumes, "", "Extra volume mounts on the devcontainer")
@@ -65,13 +64,12 @@ func addInitFlags(cmd *cobra.Command) {
 	}
 	_ = cmd.RegisterFlagCompletionFunc(flagProfile, completeProfileFunc)
 	_ = cmd.RegisterFlagCompletionFunc(flagMode, staticCompletion(string(types.BuildModeCustom), string(types.BuildModeProfiles)))
-	_ = cmd.RegisterFlagCompletionFunc(flagWith, func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	_ = cmd.RegisterFlagCompletionFunc(flagModules, func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return completeCSV(toComplete, catalog.ModuleIDs()), cobra.ShellCompDirectiveNoFileComp
 	})
 	completeServiceFunc := func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return completeCSV(toComplete, catalog.ServiceIDs()), cobra.ShellCompDirectiveNoFileComp
 	}
-	_ = cmd.RegisterFlagCompletionFunc(flagService, completeServiceFunc)
 	_ = cmd.RegisterFlagCompletionFunc(flagServices, completeServiceFunc)
 }
 
@@ -102,15 +100,12 @@ func runInit(cmd *cobra.Command, args []string) error {
 	opts.Registry, _ = f.GetString(flagRegistry)
 	opts.Profile, _ = f.GetString(flagProfile)
 
-	if f.Changed(flagWith) {
-		w, _ := f.GetString(flagWith)
+	if f.Changed(flagModules) {
+		w, _ := f.GetString(flagModules)
 		opts.WithModules = splitCSV(w)
 	}
-	if f.Changed(flagService) || f.Changed(flagServices) {
-		s, _ := f.GetString(flagService)
-		if s == "" {
-			s, _ = f.GetString(flagServices)
-		}
+	if f.Changed(flagServices) {
+		s, _ := f.GetString(flagServices)
 		opts.Services = splitCSV(s)
 	}
 	if f.Changed(flagPorts) {

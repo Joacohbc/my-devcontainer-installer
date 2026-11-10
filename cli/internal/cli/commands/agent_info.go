@@ -131,8 +131,8 @@ func printAgentModules(info service.AgentInfo) {
 		automatic = append(automatic, agentInfoRow(m.ID, width, ui.Subtle(m.Label), ui.Subtle("("+reason+")")))
 	}
 
-	agentInfoSection("Modules — ids for 'agent create --with a,b,c'", selectable)
-	agentInfoSection("Modules applied automatically — never pass these to --with", automatic)
+	agentInfoSection("Modules — ids for 'agent create --modules a,b,c'", selectable)
+	agentInfoSection("Modules applied automatically — never pass these to --modules", automatic)
 }
 
 func printAgentServices(info service.AgentInfo) {
@@ -153,7 +153,7 @@ func printAgentServices(info service.AgentInfo) {
 		}
 		lines = append(lines, agentInfoRow(s.ID, width, notes...))
 	}
-	agentInfoSection("Services — ids for 'agent create --service a,b'; reachable inside by service name", lines)
+	agentInfoSection("Services — ids for 'agent create --services a,b'; reachable inside by service name", lines)
 }
 
 func printAgentProfiles(info service.AgentInfo) {
@@ -201,7 +201,7 @@ func printAgentSkills(info service.AgentInfo) {
 		}
 		lines = append(lines, agentInfoRow(s.ID, width, notes...))
 	}
-	agentInfoSection("Agent skills — ids for 'agent create --skill a,b'; installed into the project workspace", lines)
+	agentInfoSection("Agent skills — ids for 'agent create --skills a,b'; installed into the project workspace", lines)
 }
 
 func printAgentScripts(info service.AgentInfo) {

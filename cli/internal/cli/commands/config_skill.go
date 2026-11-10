@@ -19,13 +19,13 @@ import (
 // The skill group is attached under `config` (see newConfigCommand); it is not
 // registered as a top-level command. Not to be confused with the top-level
 // `skill` command, which installs the host-side devcontainer-cli skill — this
-// one manages the agent skills selectable with --skill when generating a
+// one manages the agent skills selectable with --skills when generating a
 // project.
 func newConfigSkillCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "skill",
 		Short: "List built-in and user-defined agent skills",
-		Long: `devcontainer-cli config skill — the agent skills selectable with --skill (or
+		Long: `devcontainer-cli config skill — the agent skills selectable with --skills (or
 in the interactive wizard), installed project-scoped into the workspace via
 the Skills CLI ('npx skills add').
 
@@ -45,7 +45,7 @@ repo ships:
       What it teaches an agent to do.
 
 A user-defined id shadows a built-in of the same id. Pass it to
-'--skill <id>' (comma-separated for several).
+'--skills <id>' (comma-separated for several).
 
 Subcommands:
   list                  List built-in and user-defined skills.
@@ -62,7 +62,7 @@ Subcommands:
   devcontainer-cli config skill remove my-skill
   devcontainer-cli config skill install agent-browser
   devcontainer-cli config skill install --all
-  devcontainer-cli --with nodejs --skill my-skill`,
+  devcontainer-cli --modules nodejs --skills my-skill`,
 	}
 	cmd.AddCommand(newConfigSkillListCommand())
 	cmd.AddCommand(newConfigSkillInfoCommand())
@@ -201,7 +201,7 @@ func newConfigSkillAddCommand() *cobra.Command {
 		Use:   "add <skill-id|source>",
 		Short: "Add a user-defined agent skill or discover skills from a source",
 		Long: `devcontainer-cli config skill add — add user-defined agent skills saved at
-~/.config/devcontainer-cli/skills/<id>.yml, selectable with --skill exactly like built-in
+~/.config/devcontainer-cli/skills/<id>.yml, selectable with --skills exactly like built-in
 skills.
 
 When passed a repository or source (containing '/', ':', or starting with '.'),

@@ -13,13 +13,13 @@ func newCleanCommand() *cobra.Command {
 		Short: "Clean up CLI-managed resources and stale configuration entries",
 		Long: `devcontainer-cli clean — unified cleanup command for Docker resources and configuration entries.
 
-Run with no subcommand to interactively select cleanup actions or pass --all / --yes
+Run with no subcommand to interactively select cleanup actions or pass --include-active / --yes
 to sweep across all categories at once.
 
 Subcommands:
   clean catalog      Prune entries in images.json whose project directory no longer exists.
-  clean containers   Remove CLI-managed containers (by name, non-running, or --all).
-  clean images       Remove CLI-managed images (by reference, unused, or --all).
+  clean containers   Remove CLI-managed containers (by name, non-running, or --include-active).
+  clean images       Remove CLI-managed images (by reference, unused, or --include-active).
   clean ssh          Prune stale SSH config blocks and the host keys they pinned.
   clean networks     Remove CLI-managed Docker networks.
   clean volumes      Remove CLI-managed Docker volumes (--shared includes shared tool config).
@@ -28,7 +28,7 @@ Subcommands:
   devcontainer-cli clean
 
   # Sweep all categories without prompting
-  devcontainer-cli clean --all --yes
+  devcontainer-cli clean --include-active --yes
 
   # Clean specific resource categories
   devcontainer-cli clean containers
@@ -37,7 +37,7 @@ Subcommands:
 		SilenceUsage: true,
 		RunE:         runCleanRoot,
 	}
-	addAllFlag(cmd)
+	addCleanAllFlag(cmd)
 	addYesFlag(cmd)
 	addInteractiveFlag(cmd)
 	cmd.Flags().Bool("dry-run", false, "Preview items that would be removed without executing")
@@ -54,12 +54,12 @@ Subcommands:
 	return cmd
 }
 
-func addAllFlag(cmd *cobra.Command) {
-	cmd.Flags().Bool("all", false, "Remove ALL managed resources, not just unused ones")
+func addCleanAllFlag(cmd *cobra.Command) {
+	cmd.Flags().Bool("include-active", false, "Remove active/running resources in addition to unused ones")
 }
 
-func allFlag(cmd *cobra.Command) bool {
-	v, _ := cmd.Flags().GetBool("all")
+func cleanIncludeActiveFlag(cmd *cobra.Command) bool {
+	v, _ := cmd.Flags().GetBool("include-active")
 	return v
 }
 
@@ -94,11 +94,11 @@ func newCleanContainersCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "containers [name...]",
 		Aliases: []string{"container", "rm"},
-		Short:   "Remove CLI-managed containers (by name, non-running, or --all)",
+		Short:   "Remove CLI-managed containers (by name, non-running, or --include-active)",
 		Long: `devcontainer-cli clean containers — remove containers created by this CLI, identified by the managed label.
 
 Give one or more container names to remove exactly those (names tab-complete managed containers).
-With no names it removes managed containers that are NOT running, or — with --all — every managed container regardless of state.`,
+With no names it removes managed containers that are NOT running, or — with --include-active — every managed container regardless of state.`,
 		Example: `  # Remove stopped managed containers
   devcontainer-cli clean containers
 
@@ -106,12 +106,12 @@ With no names it removes managed containers that are NOT running, or — with --
   devcontainer-cli clean containers myproject-postgres myproject-redis
 
   # Remove every managed container, no prompt
-  devcontainer-cli clean containers --all --yes`,
+  devcontainer-cli clean containers --include-active --yes`,
 		SilenceUsage:      true,
 		RunE:              runCleanContainers,
 		ValidArgsFunction: completeManagedContainerArgs,
 	}
-	addAllFlag(cmd)
+	addCleanAllFlag(cmd)
 	addYesFlag(cmd)
 	addInteractiveFlag(cmd)
 	return cmd
@@ -120,7 +120,7 @@ With no names it removes managed containers that are NOT running, or — with --
 func runCleanContainers(cmd *cobra.Command, args []string) error {
 	svc := service.PruneService{Report: console, Prompt: console}
 	_, err := svc.CleanContainers(args, service.CleanOptions{
-		All:         allFlag(cmd),
+		All:         cleanIncludeActiveFlag(cmd),
 		Yes:         yesFlag(cmd),
 		Interactive: interactiveFlag(cmd),
 	})
@@ -131,11 +131,11 @@ func newCleanImagesCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "images [ref...]",
 		Aliases: []string{"image", "rmi"},
-		Short:   "Remove CLI-managed images (by reference, unused, or --all)",
+		Short:   "Remove CLI-managed images (by reference, unused, or --include-active)",
 		Long: `devcontainer-cli clean images — remove images created by this CLI, identified by the managed label.
 
 Give one or more image references to remove exactly those (refs tab-complete managed images).
-With no refs it removes managed images that are NOT in use by any container, or — with --all — every managed image regardless.`,
+With no refs it removes managed images that are NOT in use by any container, or — with --include-active — every managed image regardless.`,
 		Example: `  # Remove unused managed images
   devcontainer-cli clean images
 
@@ -143,12 +143,12 @@ With no refs it removes managed images that are NOT in use by any container, or 
   devcontainer-cli clean images devcontainer-cli/ab12cd34ef56:latest
 
   # Remove every managed image, no prompt
-  devcontainer-cli clean images --all --yes`,
+  devcontainer-cli clean images --include-active --yes`,
 		SilenceUsage:      true,
 		RunE:              runCleanImages,
 		ValidArgsFunction: completeManagedImageArgs,
 	}
-	addAllFlag(cmd)
+	addCleanAllFlag(cmd)
 	addYesFlag(cmd)
 	addInteractiveFlag(cmd)
 	return cmd
@@ -157,7 +157,7 @@ With no refs it removes managed images that are NOT in use by any container, or 
 func runCleanImages(cmd *cobra.Command, args []string) error {
 	svc := service.PruneService{Report: console, Prompt: console}
 	_, err := svc.CleanImages(args, service.CleanOptions{
-		All:         allFlag(cmd),
+		All:         cleanIncludeActiveFlag(cmd),
 		Yes:         yesFlag(cmd),
 		Interactive: interactiveFlag(cmd),
 	})
@@ -182,9 +182,9 @@ removed or renamed, the machine is off, ...) its blocks are never auto-removed, 
 unverified — in interactive mode you can still select them for removal if you know they're really gone;
 non-interactive (--yes) runs skip them and report how many were skipped.
 
---all additionally lists every managed SSH block regardless of status, including ones that are currently
+--include-active additionally lists every managed SSH block regardless of status, including ones that are currently
 alive and working — useful to review or manually remove a healthy entry. It only widens what is shown and
-selectable in interactive mode: --yes never auto-removes an alive block just because --all was passed.
+selectable in interactive mode: --yes never auto-removes an alive block just because --include-active was passed.
 
 It then sweeps the CLI-managed known_hosts, dropping the host keys no remaining Host block dials — the ones
 left behind by the blocks just removed, by an earlier 'destroy', or by a container that came back on a
@@ -196,23 +196,24 @@ different address. Your own ~/.ssh/known_hosts is never touched.`,
   devcontainer-cli clean ssh
 
   # Review every managed SSH block, including healthy ones
-  devcontainer-cli clean ssh --all --dry-run`,
+  devcontainer-cli clean ssh --include-active --dry-run`,
 		SilenceUsage: true,
 		RunE:         runCleanSsh,
 	}
 	addYesFlag(cmd)
 	addInteractiveFlag(cmd)
 	cmd.Flags().Bool("dry-run", false, "List stale blocks and orphaned host keys without removing them")
-	cmd.Flags().Bool("all", false, "Also list every managed block regardless of status, including alive ones (never auto-removed by --yes)")
+	cmd.Flags().Bool("include-active", false, "Also list every managed block regardless of status, including alive ones (never auto-removed by --yes)")
 	return cmd
 }
 
 func runCleanSsh(cmd *cobra.Command, _ []string) error {
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
+	includeActive, _ := cmd.Flags().GetBool("include-active")
 	svc := service.PruneService{Report: console, Prompt: console}
 	_, err := svc.CleanSSH(service.CleanOptions{
 		DryRun:      dryRun,
-		All:         allFlag(cmd),
+		All:         includeActive,
 		Yes:         yesFlag(cmd),
 		Interactive: interactiveFlag(cmd),
 	})
@@ -225,11 +226,11 @@ func newCleanNetworksCommand() *cobra.Command {
 		Aliases: []string{"network"},
 		Short:   "Remove CLI-managed Docker networks",
 		Long: `devcontainer-cli clean networks — remove CLI-managed bridge networks that no container is attached to.
---all removes every managed network, even ones in use.`,
+--include-active removes every managed network, even ones in use.`,
 		SilenceUsage: true,
 		RunE:         runCleanNetworks,
 	}
-	addAllFlag(cmd)
+	addCleanAllFlag(cmd)
 	addYesFlag(cmd)
 	addInteractiveFlag(cmd)
 	return cmd
@@ -238,7 +239,7 @@ func newCleanNetworksCommand() *cobra.Command {
 func runCleanNetworks(cmd *cobra.Command, _ []string) error {
 	svc := service.PruneService{Report: console, Prompt: console}
 	_, err := svc.CleanNetworks(service.CleanOptions{
-		All:         allFlag(cmd),
+		All:         cleanIncludeActiveFlag(cmd),
 		Yes:         yesFlag(cmd),
 		Interactive: interactiveFlag(cmd),
 	})
@@ -251,11 +252,11 @@ func newCleanVolumesCommand() *cobra.Command {
 		Aliases: []string{"volume"},
 		Short:   "Remove CLI-managed Docker volumes (--shared includes shared tool config)",
 		Long: `devcontainer-cli clean volumes — remove CLI-managed volumes that no container is using.
---all removes every managed volume, and --shared also drops the global shared tool-config volume.`,
+--include-active removes every managed volume, and --shared also drops the global shared tool-config volume.`,
 		SilenceUsage: true,
 		RunE:         runCleanVolumes,
 	}
-	addAllFlag(cmd)
+	addCleanAllFlag(cmd)
 	addYesFlag(cmd)
 	addInteractiveFlag(cmd)
 	cmd.Flags().Bool("shared", false, "Also remove global shared tool-config volume (devcontainer-shared-config)")
@@ -266,7 +267,7 @@ func runCleanVolumes(cmd *cobra.Command, _ []string) error {
 	shared, _ := cmd.Flags().GetBool("shared")
 	svc := service.PruneService{Report: console, Prompt: console, IncludeSharedConfig: shared}
 	_, err := svc.CleanVolumes(service.CleanOptions{
-		All:         allFlag(cmd),
+		All:         cleanIncludeActiveFlag(cmd),
 		Yes:         yesFlag(cmd),
 		Interactive: interactiveFlag(cmd),
 	})
@@ -282,11 +283,11 @@ func newCleanAllCommand() *cobra.Command {
   devcontainer-cli clean all
 
   # Sweep all categories without prompting
-  devcontainer-cli clean all --yes --all`,
+  devcontainer-cli clean all --yes --include-active`,
 		SilenceUsage: true,
 		RunE:         runCleanAll,
 	}
-	addAllFlag(cmd)
+	addCleanAllFlag(cmd)
 	addYesFlag(cmd)
 	addInteractiveFlag(cmd)
 	cmd.Flags().Bool("dry-run", false, "List items that would be removed without executing")
@@ -300,7 +301,7 @@ func runCleanAll(cmd *cobra.Command, _ []string) error {
 	svc := service.PruneService{Report: console, Prompt: console, IncludeSharedConfig: shared}
 	return svc.CleanAll(service.CleanOptions{
 		DryRun:      dryRun,
-		All:         allFlag(cmd),
+		All:         cleanIncludeActiveFlag(cmd),
 		Yes:         yesFlag(cmd),
 		Interactive: interactiveFlag(cmd),
 	})
@@ -312,7 +313,7 @@ func runCleanRoot(cmd *cobra.Command, _ []string) error {
 	svc := service.PruneService{Report: console, Prompt: console, IncludeSharedConfig: shared}
 	return svc.RunClean(service.CleanOptions{
 		DryRun:      dryRun,
-		All:         allFlag(cmd),
+		All:         cleanIncludeActiveFlag(cmd),
 		Yes:         yesFlag(cmd),
 		Interactive: interactiveFlag(cmd),
 	})

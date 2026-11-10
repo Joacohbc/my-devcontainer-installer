@@ -32,25 +32,26 @@ compose verb, 'ssh --via' for another Docker host, 'run' for a throwaway
 container, 'config' for global settings.`,
 		Example: `  # Read the catalogue, then create an environment from it
   devcontainer-cli agent cli-info --json
-  devcontainer-cli agent create --with nodejs,pnpm --service postgres
+  devcontainer-cli agent create --modules nodejs,pnpm --services postgres
 
   # Work inside it
   devcontainer-cli agent exec -- go test ./...
   devcontainer-cli agent list /home/devuser --json
 
   # Tear it down
-  devcontainer-cli agent clean --yes`,
+  devcontainer-cli agent destroy --yes`,
 		SilenceUsage: true,
 	}
 
 	cmd.AddCommand(
 		newAgentCLIInfoCommand(),
 		newAgentCreateCommand(),
+		newAgentRunCommand(),
 		newAgentSshCommand(),
 		newAgentExecCommand(),
 		newAgentForwardCommand(),
 		newAgentListCommand(),
-		newAgentCleanCommand(),
+		newAgentDestroyCommand(),
 	)
 	return cmd
 }
@@ -331,11 +332,44 @@ func runAgentList(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func newAgentCleanCommand() *cobra.Command {
+func newAgentRunCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "clean",
+		Use:   "run",
+		Short: "Spin up an ephemeral container from a prebuilt remote image (no project files)",
+		Long: `devcontainer-cli agent run — start a one-off devcontainer from a prebuilt remote
+image without generating project files. Prompting is disabled by default:
+every value must come from flags (--profile is required, --name falls back to dc-<profile>).`,
+		Example: `  # Run a throwaway Python container
+  devcontainer-cli agent run --profile python --name my-task
+
+  # Expose ports and copy AI installer scripts
+  devcontainer-cli agent run --profile nodejs --ports 8080:80 --expose-all --copy-ai-scripts`,
+		SilenceUsage: true,
+		PreRunE:      agentNonInteractive,
+		RunE:         runQuickRun,
+	}
+	cmd.Flags().String("profile", "", "Single [remote]-tagged profile id to run as a prebuilt image, e.g. ssh, nodejs, python; see 'config profile list'")
+	cmd.Flags().String("name", "", "Container name (default: dc-<profile>); if it belongs to an existing quick-run container it is reused/restarted, but a name already used by any other container is rejected")
+	cmd.Flags().StringSlice("volumes", nil, "Volume mounts (e.g. myvol:/workspace); repeatable or comma-separated")
+	cmd.Flags().StringSlice("ports", nil, "Port mappings (e.g. 2222:22); bound to 127.0.0.1 unless --expose-all; repeatable or comma-separated")
+	cmd.Flags().Bool("expose-all", false, "Publish ports on all interfaces (0.0.0.0) instead of binding to 127.0.0.1")
+	cmd.Flags().Bool("shared-config", true, "Mount the global shared AI/dev tool config volume (devcontainer-shared-config) so logins/sessions persist across containers; --shared-config=false to opt out")
+	cmd.Flags().Bool("copy-ai-scripts", false, "Copy the AI/dev tool installer scripts into the container; in non-interactive mode copies all of them")
+	cmd.Flags().String("registry", "", "Registry prefix override")
+	addInteractiveFlag(cmd)
+
+	_ = cmd.RegisterFlagCompletionFunc("profile", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		return profileIDs(true), cobra.ShellCompDirectiveNoFileComp
+	})
+
+	return cmd
+}
+
+func newAgentDestroyCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "destroy",
 		Short: "Destroy the current project and remove what it left behind",
-		Long: `devcontainer-cli agent clean — tear down the project in the current directory
+		Long: `devcontainer-cli agent destroy — tear down the project in the current directory
 and remove the resources it owns. This cannot be undone.
 
 It brings the stack down with its volumes (all data in them is deleted),
@@ -344,32 +378,44 @@ prunes the project's managed SSH host block and pinned host keys, and removes
 the image built for it. An image pulled from a registry is left alone: other
 projects on the same profile share it.
 
+Pass -c, --container to instead tear down a standalone or temporal container that
+isn't part of a workspace project.
+
 By default nothing outside this project is touched. --all additionally sweeps
 every managed container, image, network and volume on the machine, including
 other projects' — get the user's agreement before using it.
 
 Because it is irreversible it requires --yes. Preview with --dry-run first.`,
 		Example: `  # See what would go
-  devcontainer-cli agent clean --dry-run
+  devcontainer-cli agent destroy --dry-run
 
   # Tear down this project
-  devcontainer-cli agent clean --yes
+  devcontainer-cli agent destroy --yes
+
+  # Tear down a single container
+  devcontainer-cli agent destroy --container dc-python --yes
 
   # Also sweep every other managed resource on the machine
-  devcontainer-cli agent clean --all --yes`,
+  devcontainer-cli agent destroy --all --yes`,
 		Args:         cobra.NoArgs,
 		SilenceUsage: true,
 		PreRunE:      agentNonInteractive,
-		RunE:         runAgentClean,
+		RunE:         runAgentDestroy,
 	}
 	addYesFlag(cmd)
 	addInteractiveFlag(cmd)
+	addContainerFlag(cmd)
 	cmd.Flags().Bool("all", false, "Also remove every OTHER managed container, image, network and volume on this machine")
 	cmd.Flags().Bool("dry-run", false, "Report what would be removed without removing anything")
 	return cmd
 }
 
-func runAgentClean(cmd *cobra.Command, _ []string) error {
+func runAgentDestroy(cmd *cobra.Command, _ []string) error {
+	if cmd.Flags().Changed("container") {
+		container, _ := cmd.Flags().GetString("container")
+		return runDestroyContainer(cmd, console, container)
+	}
+
 	cwd, err := currentDir()
 	if err != nil {
 		return err

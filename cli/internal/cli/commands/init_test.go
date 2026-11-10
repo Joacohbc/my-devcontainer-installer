@@ -13,7 +13,7 @@ func TestInitCommand_RegistrationAndFlags(t *testing.T) {
 	}
 
 	flags := []string{
-		flagMode, flagRegistry, flagWith, flagService, flagServices,
+		flagMode, flagRegistry, flagModules, flagServices,
 		flagWorkspace, flagPorts, flagVolumes, flagForwardPorts,
 		flagSharedConfig, flagProfile, flagNoUp, flagBuild,
 	}
@@ -24,7 +24,7 @@ func TestInitCommand_RegistrationAndFlags(t *testing.T) {
 		}
 	}
 
-	for _, removed := range []string{"no-build", "non-interactive", "force"} {
+	for _, removed := range []string{"with", "service", "no-build", "non-interactive", "force"} {
 		if cmd.Flags().Lookup(removed) != nil {
 			t.Errorf("expected flag --%s to be removed from init command", removed)
 		}

@@ -21,8 +21,7 @@ import (
 const (
 	flagMode          = "mode"
 	flagRegistry      = "registry"
-	flagWith          = "with"
-	flagService       = "service"
+	flagModules       = "modules"
 	flagServices      = "services"
 	flagImage         = "image"
 	flagWorkspace     = "workspace"
@@ -31,7 +30,7 @@ const (
 	flagSharedConfig  = "shared-config"
 	flagProfile       = "profile"
 	flagScript        = "script"
-	flagSkill         = "skill"
+	flagSkills        = "skills"
 	flagSkillsMode    = "skills-mode"
 	flagForwardPorts  = "forward-ports"
 	flagNoInteractive = "no-interactive"
@@ -45,9 +44,8 @@ func addGenerateFlags(cmd *cobra.Command) {
 	f := cmd.Flags()
 	f.String(flagMode, "", "Build mode: custom (default, full local build), profiles (pull a prebuilt image), or image (use a reusable image)")
 	f.String(flagRegistry, "", "Container registry prefix for remote images (overrides global)")
-	f.String(flagWith, "", "Comma-separated dockerfile modules (e.g. nodejs,golang,rust)")
-	f.String(flagService, "", "Comma-separated compose services (e.g. mongo,postgres,redis)")
-	f.String(flagServices, "", "Alias for --service")
+	f.String(flagModules, "", "Comma-separated dockerfile modules (e.g. nodejs,golang,rust)")
+	f.String(flagServices, "", "Comma-separated compose services (e.g. mongo,postgres,redis)")
 	f.String(flagImage, "", "Image name (default: derived from fingerprint for mode=custom)")
 	f.String(flagWorkspace, "", "Workspace name (default: current dir name)")
 	f.String(flagPorts, "", "Ports to publish on the devcontainer (e.g. 8080:80,5432:5432); bound to 127.0.0.1 unless an IP is given; 'none' clears them")
@@ -56,7 +54,7 @@ func addGenerateFlags(cmd *cobra.Command) {
 	f.Bool(flagSharedConfig, true, "Mount the global shared AI/dev tool config volume (devcontainer-shared-config) so logins/sessions persist across containers; --shared-config=false to opt out")
 	f.String(flagProfile, "", "Apply profile(s): comma-separated module bundles for mode=custom (e.g. 'nodejs,my-tools'), or a single pull target for mode=profiles (must be [remote]-tagged). See 'config profile list'.")
 	f.StringArray(flagScript, nil, "Custom script to add, as <path>[:build|start|service|manual] (default build); repeatable. build bakes it into the image, start runs once per container, service runs as background service on every start, manual only copies it to ~/post-script/")
-	f.String(flagSkill, "", "Comma-separated agent skills installed into the project workspace; implies the nodejs module. See 'config skill list' (built-in + your own)")
+	f.String(flagSkills, "", "Comma-separated agent skills installed into the project workspace; implies the nodejs module. See 'config skill list' (built-in + your own)")
 	f.String(flagSkillsMode, "", "How the project's agent skills get installed: manual (default — you run 'install-skills') or auto (on every container start, writing into the workspace unprompted)")
 	addInteractiveFlag(cmd)
 	f.Bool(flagForcePrompt, false, "Prompt even if config file exists")
@@ -68,18 +66,17 @@ func addGenerateFlags(cmd *cobra.Command) {
 		return completeCSV(toComplete, profileIDs(false)), cobra.ShellCompDirectiveNoFileComp
 	}
 	_ = cmd.RegisterFlagCompletionFunc(flagProfile, completeProfileFunc)
-	_ = cmd.RegisterFlagCompletionFunc(flagSkill, func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	_ = cmd.RegisterFlagCompletionFunc(flagSkills, func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return completeCSV(toComplete, catalog.AgentSkillIDs(domain.SkillDirs()...)), cobra.ShellCompDirectiveNoFileComp
 	})
 	_ = cmd.RegisterFlagCompletionFunc(flagSkillsMode, staticCompletion(string(types.SkillModeAuto), string(types.SkillModeManual)))
 	_ = cmd.RegisterFlagCompletionFunc(flagMode, staticCompletion(string(types.BuildModeCustom), string(types.BuildModeProfiles), string(types.BuildModeImage)))
-	_ = cmd.RegisterFlagCompletionFunc(flagWith, func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	_ = cmd.RegisterFlagCompletionFunc(flagModules, func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return completeCSV(toComplete, catalog.ModuleIDs()), cobra.ShellCompDirectiveNoFileComp
 	})
 	completeServiceFunc := func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return completeCSV(toComplete, catalog.ServiceIDs()), cobra.ShellCompDirectiveNoFileComp
 	}
-	_ = cmd.RegisterFlagCompletionFunc(flagService, completeServiceFunc)
 	_ = cmd.RegisterFlagCompletionFunc(flagServices, completeServiceFunc)
 }
 
@@ -262,8 +259,8 @@ func parseGenFlags(cmd *cobra.Command) (*genFlags, error) {
 		return nil, err
 	}
 
-	if f.Changed(flagSkill) {
-		raw, _ := f.GetString(flagSkill)
+	if f.Changed(flagSkills) {
+		raw, _ := f.GetString(flagSkills)
 		for _, id := range splitCSV(raw) {
 			g.skills = append(g.skills, types.SkillID(id))
 		}
@@ -287,15 +284,12 @@ func parseGenFlags(cmd *cobra.Command) (*genFlags, error) {
 		g.build = &val
 	}
 
-	if f.Changed(flagWith) {
-		w, _ := f.GetString(flagWith)
+	if f.Changed(flagModules) {
+		w, _ := f.GetString(flagModules)
 		g.withModules = splitCSV(w)
 	}
-	if f.Changed(flagService) || f.Changed(flagServices) {
-		s, _ := f.GetString(flagService)
-		if s == "" {
-			s, _ = f.GetString(flagServices)
-		}
+	if f.Changed(flagServices) {
+		s, _ := f.GetString(flagServices)
 		g.services = splitCSV(s)
 	}
 	if f.Changed(flagPorts) {
@@ -486,7 +480,7 @@ func validateConfig(cwd string, config *types.DevcontainerConfig, flags *genFlag
 		for _, id := range missing {
 			ids = append(ids, string(id))
 		}
-		console.Warn("The selected skills expect module(s) this project does not have: %s. Add them with --with, or the skills will describe tools that are not installed.",
+		console.Warn("The selected skills expect module(s) this project does not have: %s. Add them with --modules, or the skills will describe tools that are not installed.",
 			strings.Join(ids, ", "))
 	}
 

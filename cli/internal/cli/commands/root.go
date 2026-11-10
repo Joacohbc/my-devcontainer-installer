@@ -31,7 +31,7 @@ clean containers, clean images, clean ssh, clean networks, clean volumes, clean 
 for the full details of any one.
 
 For AI assistants: the 'agent' group is a small, never-interactive command set
-covering the whole loop (agent cli-info, create, ssh, exec, forward, list, clean),
+covering the whole loop (agent cli-info, create, run, ssh, exec, forward, list, destroy),
 and 'context' reports what a container has inside it.
 
 Build modes:
@@ -50,7 +50,7 @@ Run 'devcontainer-cli --help' for the full flag list, or
   devcontainer-cli
 
   # Non-interactive generation with explicit modules and a database service
-  devcontainer-cli --with nodejs,golang --service postgres --no-interactive --force
+  devcontainer-cli --modules nodejs,golang --services postgres --no-interactive --force
 
   # Pull a prebuilt remote image instead of building locally
   devcontainer-cli --mode profiles --profile nodejs
@@ -59,7 +59,7 @@ Run 'devcontainer-cli --help' for the full flag list, or
   devcontainer-cli --profile my-node --ports 3000:3000
 
   # Add a script of your own, baked into the image
-  devcontainer-cli --with nodejs --script ./scripts/setup.sh:build
+  devcontainer-cli --modules nodejs --script ./scripts/setup.sh:build
 
   # Work with the running container, then tear it down
   devcontainer-cli shell

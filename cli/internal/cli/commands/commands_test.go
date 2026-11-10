@@ -266,8 +266,11 @@ func TestCleanAndSubcommands_HaveAllFlag(t *testing.T) {
 	if clean == nil {
 		t.Fatal("clean command not registered")
 	}
-	if clean.Flags().Lookup("all") == nil {
-		t.Error("expected clean command to have --all flag")
+	if clean.Flags().Lookup("include-active") == nil {
+		t.Error("expected clean command to have --include-active flag")
+	}
+	if clean.Flags().Lookup("all") != nil {
+		t.Error("expected clean command NOT to have --all flag (renamed to --include-active)")
 	}
 
 	byName := map[string]*cobra.Command{}
@@ -281,23 +284,51 @@ func TestCleanAndSubcommands_HaveAllFlag(t *testing.T) {
 			t.Errorf("clean subcommand %q not registered", name)
 			continue
 		}
-		if sub.Flags().Lookup("all") == nil {
-			t.Errorf("expected clean subcommand %q to have --all flag", name)
+		if sub.Flags().Lookup("include-active") == nil {
+			t.Errorf("expected clean subcommand %q to have --include-active flag", name)
+		}
+		if sub.Flags().Lookup("all") != nil {
+			t.Errorf("expected clean subcommand %q NOT to have --all flag", name)
 		}
 	}
 }
 
 func TestRootCommand_HasGenerateFlags(t *testing.T) {
 	root := NewRootCommand("test")
-	for _, name := range []string{"mode", "profile", "with", "service", "image", "workspace", "force", "build", "version"} {
+	for _, name := range []string{"mode", "profile", "modules", "services", "skills", "image", "workspace", "force", "build", "version"} {
 		if root.Flags().Lookup(name) == nil {
 			t.Errorf("expected root flag --%s", name)
 		}
 	}
-	for _, name := range []string{"no-build", "preset", "non-interactive"} {
+	for _, name := range []string{"with", "service", "skill", "no-build", "preset", "non-interactive"} {
 		if root.Flags().Lookup(name) != nil {
 			t.Errorf("expected root flag --%s to be permanently removed per D4", name)
 		}
+	}
+}
+
+func TestParseGenFlags_PluralCSVFlags(t *testing.T) {
+	cmd := &cobra.Command{Use: "generate"}
+	addGenerateFlags(cmd)
+	if err := cmd.ParseFlags([]string{
+		"--modules", "nodejs,golang",
+		"--services", "postgres,redis",
+		"--skills", "agent-browser",
+	}); err != nil {
+		t.Fatalf("ParseFlags: %v", err)
+	}
+	flags, err := parseGenFlags(cmd)
+	if err != nil {
+		t.Fatalf("parseGenFlags: %v", err)
+	}
+	if !slices.Equal(flags.withModules, []string{"nodejs", "golang"}) {
+		t.Errorf("modules = %v, want [nodejs golang]", flags.withModules)
+	}
+	if !slices.Equal(flags.services, []string{"postgres", "redis"}) {
+		t.Errorf("services = %v, want [postgres redis]", flags.services)
+	}
+	if len(flags.skills) != 1 || flags.skills[0] != types.SkillAgentBrowser {
+		t.Errorf("skills = %v, want [agent-browser]", flags.skills)
 	}
 }
 
@@ -667,13 +698,19 @@ func TestConfigAliasCommand_Structure(t *testing.T) {
 	if aliasCmd == nil {
 		t.Fatal("expected 'config alias' command to be registered")
 	}
-	// Bare `config alias` lists the aliases; it takes no positional args.
-	if err := aliasCmd.Args(aliasCmd, []string{"extra"}); err == nil {
-		t.Error("expected 'config alias' to reject positional arguments")
+	// Bare `config alias` shows help (no RunE).
+	if aliasCmd.RunE != nil {
+		t.Error("expected bare 'config alias' to have no RunE so it shows help")
 	}
-	for _, name := range []string{"set", "unset"} {
+	for _, name := range []string{"list", "set", "unset"} {
 		if findSubcommand(aliasCmd, name) == nil {
 			t.Errorf("expected 'config alias %s' subcommand", name)
+		}
+	}
+	listCmd := findSubcommand(aliasCmd, "list")
+	if listCmd != nil && listCmd.Args != nil {
+		if err := listCmd.Args(listCmd, []string{"extra"}); err == nil {
+			t.Error("expected 'config alias list' to reject positional arguments")
 		}
 	}
 	if findSubcommand(aliasCmd, "sync") != nil {
@@ -810,7 +847,7 @@ func TestConfigSSHKeyCommand_Flags(t *testing.T) {
 	if sshKey == nil {
 		t.Fatal("config ssh-key subcommand not found")
 	}
-	for _, flag := range []string{"unset", "generate", "public", "private"} {
+	for _, flag := range []string{"unset", "generate", "public", "private", "export"} {
 		if sshKey.Flags().Lookup(flag) == nil {
 			t.Errorf("expected config ssh-key to define --%s", flag)
 		}
@@ -933,10 +970,13 @@ func TestSshCommandRegistered(t *testing.T) {
 	if sshCmd == nil {
 		t.Fatal("expected 'ssh' command to be registered")
 	}
-	for _, name := range []string{"yes", "no-interactive", "forward", "ports", "container", "via", "setup", "setup-external", "key", "user"} {
+	for _, name := range []string{"yes", "no-interactive", "forward", "ports", "container", "via", "setup", "key", "user"} {
 		if sshCmd.Flags().Lookup(name) == nil {
 			t.Errorf("expected 'ssh' to register --%s", name)
 		}
+	}
+	if sshCmd.Flags().Lookup("setup-external") != nil {
+		t.Errorf("expected 'ssh' NOT to register --setup-external (moved to 'config ssh-key --export')")
 	}
 }
 
@@ -1305,55 +1345,39 @@ func TestSshCommand_ContainerShorthand(t *testing.T) {
 	}
 }
 
-// --via is a separate flag from --setup-external, both string-valued and unset
-// by default; collectSetupSshFlags must read it into f.via without touching
-// f.remote (which only --setup-external fills).
-func TestCollectSetupSshFlags_Via(t *testing.T) {
+// config ssh-key --export prints the remote setup snippet.
+func TestConfigSSHKey_Export(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	cmd := newSshCommand()
-	if err := cmd.Flags().Parse([]string{"--via", "me@docker-host", "-c", "dc-ssh"}); err != nil {
-		t.Fatalf("parse flags: %v", err)
+	root := NewRootCommand("test")
+	root.SetArgs([]string{"config", "ssh-key", "--generate"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("config ssh-key --generate: %v", err)
 	}
-	f, err := collectSetupSshFlags(cmd)
-	if err != nil {
-		t.Fatalf("collectSetupSshFlags: %v", err)
-	}
-	if f.via != "me@docker-host" {
-		t.Errorf("via = %q, want %q", f.via, "me@docker-host")
-	}
-	if f.remote != "" {
-		t.Errorf("remote = %q, want empty", f.remote)
-	}
-}
 
-// --setup-external maps onto f.remote (the paste-a-private-key jump mode).
-func TestCollectSetupSshFlags_SetupExternal(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	cmd := newSshCommand()
-	if err := cmd.Flags().Parse([]string{"--setup-external", "me@docker-host"}); err != nil {
-		t.Fatalf("parse flags: %v", err)
-	}
-	f, err := collectSetupSshFlags(cmd)
+	root = NewRootCommand("test")
+	orig := os.Stdout
+	r, w, err := os.Pipe()
 	if err != nil {
-		t.Fatalf("collectSetupSshFlags: %v", err)
+		t.Fatalf("os.Pipe: %v", err)
 	}
-	if f.remote != "me@docker-host" {
-		t.Errorf("remote = %q, want %q", f.remote, "me@docker-host")
+	os.Stdout = w
+	root.SetArgs([]string{"config", "ssh-key", "--export", "me@docker-host"})
+	execErr := root.Execute()
+	_ = w.Close()
+	os.Stdout = orig
+	if execErr != nil {
+		t.Fatalf("config ssh-key --export: %v", execErr)
 	}
-}
-
-// --setup-external and --via are two different ways of routing setup through a
-// second host (paste-a-private-key vs. client-driven); combining them is
-// ambiguous and must be rejected before any docker/ssh work starts.
-func TestRunSshSetup_ExternalAndViaMutuallyExclusive(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	cmd := newSshCommand()
-	if err := cmd.Flags().Parse([]string{"--setup-external", "me@host", "--via", "me@host", "-c", "dc-ssh"}); err != nil {
-		t.Fatalf("parse flags: %v", err)
+	out, err := io.ReadAll(r)
+	if err != nil {
+		t.Fatalf("read output: %v", err)
 	}
-	_, err := runSshSetup(cmd)
-	if err == nil || !strings.Contains(err.Error(), "mutually exclusive") {
-		t.Errorf("runSshSetup error = %v, want a mutually-exclusive error", err)
+	got := string(out)
+	if !strings.Contains(got, "ProxyCommand ssh me@docker-host") {
+		t.Errorf("export snippet missing ProxyCommand, got:\n%s", got)
+	}
+	if !strings.Contains(got, "Remote setup — run these steps on the machine you'll connect FROM:") {
+		t.Errorf("export output missing header, got:\n%s", got)
 	}
 }
 
@@ -1503,6 +1527,9 @@ func TestCopyCommand_AssetFlag(t *testing.T) {
 	}
 	if copyCmd.Flags().Lookup("asset") == nil {
 		t.Fatal("expected copy flag --asset")
+	}
+	if copyCmd.Flags().ShorthandLookup("a") != nil {
+		t.Error("expected copy command NOT to have shorthand -a on --asset (-a is reserved for --all)")
 	}
 
 	// Completion lists the copyable asset names.

@@ -357,7 +357,7 @@ func TestIndexOfScriptFindsANameCollision(t *testing.T) {
 func TestParseGenFlags_Skills(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 
-	flags, err := parseGenFlagsFor(t, "--skill", "agent-browser", "--skills-mode", "manual")
+	flags, err := parseGenFlagsFor(t, "--skills", "agent-browser", "--skills-mode", "manual")
 	if err != nil {
 		t.Fatalf("parseGenFlags: %v", err)
 	}
@@ -372,7 +372,7 @@ func TestParseGenFlags_Skills(t *testing.T) {
 func TestParseGenFlags_RejectsUnknownSkillAndMode(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 
-	if _, err := parseGenFlagsFor(t, "--skill", "no-such-skill"); err == nil {
+	if _, err := parseGenFlagsFor(t, "--skills", "no-such-skill"); err == nil {
 		t.Error("expected an error for an unknown skill")
 	}
 	if _, err := parseGenFlagsFor(t, "--skills-mode", "someday"); err == nil {
