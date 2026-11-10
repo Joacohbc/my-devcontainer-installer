@@ -338,6 +338,26 @@ devcontainer-cli config skill add mi-habilidad --ref owner/repo --label "Mi Habi
 
 ---
 
+### Caso 1.12: Contenedor Desechable sin Proyecto (`devcontainer-cli run`)
+
+**Escenario**: Desea iniciar un entorno de pruebas o experimentación rápido a partir de una imagen remota preconstruida, sin inicializar un repositorio, sin generar archivos `.dc_<workspace>/` ni depender de un workspace en disco.
+
+**Paso a paso**:
+1. Inicie un contenedor desechable interactivo o no interactivo:
+   ```bash
+   devcontainer-cli run --profile nodejs --ports 8080:80
+   ```
+2. Conéctese mediante una shell o configure acceso SSH directo:
+   ```bash
+   devcontainer-cli access shell -c dc-nodejs
+   ```
+3. Una vez finalizadas las pruebas, detenga o elimine el contenedor mediante Docker o el comando de limpieza:
+   ```bash
+   devcontainer-cli config clean containers
+   ```
+
+---
+
 # PARTE II: Casos de Uso para Agentes Autónomos de IA
 
 ---

@@ -27,7 +27,7 @@ import (
 func TestNewRootCommand_RegistersAllSubcommands(t *testing.T) {
 	root := NewRootCommand("test")
 	want := []string{
-		"workspace", "access", "inspect", "profile", "image", "config", "agent",
+		"workspace", "access", "inspect", "profile", "image", "config", "agent", "run",
 	}
 	have := map[string]bool{}
 	for _, c := range root.Commands() {
@@ -40,7 +40,7 @@ func TestNewRootCommand_RegistersAllSubcommands(t *testing.T) {
 	}
 
 	legacyFlat := []string{
-		"ssh", "clean", "port-forward", "forward", "run", "down", "destroy",
+		"ssh", "clean", "port-forward", "forward", "down", "destroy",
 		"start", "stop", "restart", "update", "upgrade-cli", "shell", "logs",
 		"copy", "up", "status", "ls", "info", "network", "context", "compose",
 		"route", "init",
@@ -55,9 +55,10 @@ func TestNewRootCommand_RegistersAllSubcommands(t *testing.T) {
 func TestCLIParadigmInvariants(t *testing.T) {
 	root := NewRootCommand("test")
 
-	// 1. Top-level domain boundary:
-	// Root command only registers the 7 canonical domain/facade groups
-	// (workspace, access, inspect, profile, image, config, agent) plus Cobra built-ins (help, completion).
+	// 1. Top-level boundary:
+	// Root command only registers the 6 canonical resource domains (workspace, access,
+	// inspect, profile, image, config), the agent facade, the standalone run command,
+	// plus Cobra built-ins (help, completion).
 	allowedTopLevel := map[string]bool{
 		"workspace":  true,
 		"access":     true,
@@ -66,12 +67,13 @@ func TestCLIParadigmInvariants(t *testing.T) {
 		"image":      true,
 		"config":     true,
 		"agent":      true,
+		"run":        true,
 		"help":       true,
 		"completion": true,
 	}
 	for _, c := range root.Commands() {
 		if !allowedTopLevel[c.Name()] {
-			t.Errorf("top-level command %q violates 7 canonical domain boundary (workspace, access, inspect, profile, image, config, agent)", c.Name())
+			t.Errorf("top-level command %q violates canonical domain boundary (workspace, access, inspect, profile, image, config, agent, run)", c.Name())
 		}
 	}
 

@@ -38,7 +38,6 @@ passthrough, and import or export configurations for the current project workspa
 		newStopCommand(),
 		newRestartCommand(),
 		newDestroyCommand(),
-		newRunCommand(),
 		newComposeCommand(),
 		newConfigExportCommand(),
 		newConfigImportCommand(),

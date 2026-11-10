@@ -497,7 +497,7 @@ managed label). Use `--dry-run` first and show the user what would go.
 ## Rules
 
 - **Prefer `agent <verb>`.** Those never prompt. If you drop to a plain command
-  that can prompt (generation, `workspace run`, `workspace down`, `workspace destroy`, `config clean`,
+  that can prompt (generation, `run`, `workspace down`, `workspace destroy`, `config clean`,
   `access forward`), pass `--no-interactive` or it opens a wizard and hangs. Add
   `-y/--yes` for destructive commands — and get the user's agreement first for
   `agent destroy`, `workspace destroy`, `workspace down -v` and `config clean all`.
