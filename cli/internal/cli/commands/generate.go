@@ -299,8 +299,8 @@ func parseGenFlags(cmd *cobra.Command) (*genFlags, error) {
 	}
 
 	if f.Changed(flagBuild) {
-		t := true
-		g.build = &t
+		val, _ := f.GetBool(flagBuild)
+		g.build = &val
 	}
 	if f.Changed(flagNoBuild) {
 		val := false
