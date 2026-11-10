@@ -24,7 +24,7 @@
 
 1. **Detección o Selección de Stack**:
    - Vía interactiva: el usuario ejecuta `devcontainer-cli` y navega el asistente para elegir módulos del Dockerfile, servicios de base de datos (PostgreSQL, Redis, MongoDB), puertos y habilidades de agente.
-   - Vía plantilla/perfil: selección de perfiles predefinidos (`nodejs`, `python`, `go`, `bun`, etc.) o perfiles personalizados en `~/.devcontainer-cli/profiles/`.
+   - Vía plantilla/perfil: selección de perfiles predefinidos (`nodejs`, `python`, `go`, `bun`, etc.) o perfiles personalizados en `~/.config/devcontainer-cli/profiles/`.
    - Vía automática: `devcontainer-cli init` inspecciona los archivos del proyecto (ej. `package.json`, `go.mod`, `requirements.txt`, `pom.xml`) para seleccionar los módulos requeridos automáticamente.
 2. **Materialización del Directorio `.dc_<workspace>/`**:
    - Se crea el directorio de configuración del proyecto con `docker-compose.yml`, `Dockerfile` (en modo `custom`), `.env` y el directorio `build/` con los scripts necesarios.

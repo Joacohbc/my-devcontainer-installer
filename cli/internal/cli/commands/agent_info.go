@@ -21,7 +21,7 @@ scripts 'agent copy --asset' can drop into a container, and the paths every
 project follows.
 
 Read it before composing an 'agent create': it is generated from the live
-catalogue, including any profile or skill defined under ~/.devcontainer-cli/,
+catalogue, including any profile or skill defined under ~/.config/devcontainer-cli/,
 so the ids it lists are the ids this binary accepts. --json emits the same
 content structured.
 

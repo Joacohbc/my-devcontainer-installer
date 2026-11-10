@@ -30,7 +30,7 @@ in the interactive wizard), installed project-scoped into the workspace via
 the Skills CLI ('npx skills add').
 
 Built-in skills ship with the CLI. Your own are saved as
-~/.devcontainer-cli/skills/<id>.yml — a flat manifest, no scripts or directory
+~/.config/devcontainer-cli/skills/<id>.yml — a flat manifest, no scripts or directory
 shape, since a skill's install source is already a git ref, not files this
 repo ships:
 
@@ -117,7 +117,7 @@ func newConfigSkillListCommand() *cobra.Command {
 
 			printGroup("Built-in skills", builtin, "(none)")
 			console.Print("\n")
-			printGroup("Your skills", user, "(none — add one at ~/.devcontainer-cli/skills/<id>.yml)")
+			printGroup("Your skills", user, "(none — add one at ~/.config/devcontainer-cli/skills/<id>.yml)")
 			return nil
 		},
 	}
@@ -201,7 +201,7 @@ func newConfigSkillAddCommand() *cobra.Command {
 		Use:   "add <skill-id|source>",
 		Short: "Add a user-defined agent skill or discover skills from a source",
 		Long: `devcontainer-cli config skill add — add user-defined agent skills saved at
-~/.devcontainer-cli/skills/<id>.yml, selectable with --skill exactly like built-in
+~/.config/devcontainer-cli/skills/<id>.yml, selectable with --skill exactly like built-in
 skills.
 
 When passed a repository or source (containing '/', ':', or starting with '.'),
@@ -438,7 +438,7 @@ func newConfigSkillRemoveCommand() *cobra.Command {
 		Aliases: []string{"rm", "delete"},
 		Short:   "Delete user-defined agent skills (built-ins cannot be removed)",
 		Long: `devcontainer-cli config skill remove — delete one or more of your own agent
-skills from ~/.devcontainer-cli/skills/.
+skills from ~/.config/devcontainer-cli/skills/.
 
 Only user-defined skills can be removed; attempting to remove a built-in
 errors out. Every id is validated before anything is deleted, so a bad id

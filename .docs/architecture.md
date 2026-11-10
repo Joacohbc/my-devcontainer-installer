@@ -176,3 +176,12 @@ El orden es estricto: `stage_workspace` determina el UID/GID de devuser; `stage_
 - **Contexto**: Descargar imágenes arbitrarias de Docker Hub o GHCR que carecen de `devuser`, OpenSSH o el script de inicialización provoca fallos silenciosos o cuelgues en el arranque.
 - **Decisión**: Exigir que toda imagen consumida mediante el modo `image` cumpla el contrato formal inspeccionado vía `CheckImageCompat`: entrypoint en `/entrypoint.sh` y etiqueta `dev.devcontainer-installer.managed="true"`.
 - **Consecuencias**: Mensajes de error claros e inmediatos ante imágenes incompatibles antes de intentar levantar el stack de contenedores.
+
+### D18: Consolidación en 6 Dominios Canónicos y Estandarización Estricta de Banderas (Cero Alias)
+- **Contexto**: El crecimiento de la CLI acumuló subcomandos dispersos en la raíz, duplicación de comandos entre flujos humanos y de agente, nombres singulares inconsistentes para listas (`--service`, `--skill`, `--with`), banderas booleanas con negaciones asimétricas (`--x` / `--no-x`) y alias heredados que complicaban el mantenimiento, la documentación y el modelo mental de humanos y agentes autónomos.
+- **Decisión**:
+  1. Estructurar la CLI estrictamente en torno a 6 dominios canónicos de recursos: `workspace` (ciclo de vida del devcontainer del proyecto: `create`, `up`, `down`, `start`, `stop`, `destroy`, `rebuild`, `clean`), `access` (sesiones interactivas y conectividad: `shell`, `ssh`, `forward`), `inspect` (observabilidad y telemetría: `ps`, `logs`, `stats`, `context`), `profile` (gestión de plantillas modulares), `image` (gestión e importación de imágenes desacopladas) y `config` (configuración global: `skill`, etc.).
+  2. Mantener la fachada `agent` únicamente para comandos con semántica y valores predeterminados explícitamente desatendidos (`exec`, `ssh`, `forward`, `create`, `run`, `destroy`, `list`, `cli-info`), prohibiendo clones 1:1 de comandos humanos y eliminando alias retrocompatibles innecesarios.
+  3. Estandarizar banderas plurales separadas por comas (`--services`, `--skills`, `--modules`, `--ports`, `--volumes`, `--forward-ports`), prohibiendo formas singulares redundantes.
+  4. Eliminar banderas tri-state, unificando la negación booleana bajo `--x` / `--x=false` (reservando `--no-interactive`, `--no-tty` y `--no-up` como excepciones canónicas).
+- **Consecuencias**: Reducción drástica de superficie de comandos, contratos predecibles y consistentes para scripts y agentes, y eliminación total de ambigüedad en el autocompletado y documentación técnica.

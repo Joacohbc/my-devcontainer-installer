@@ -9,7 +9,7 @@ Goal: Safely create or update a reusable devcontainer profile bundle.
 
 ## 1. Architectural Invariants
 
-1. **Built-ins Are Plain Module Bundles**: Every built-in profile is a Go literal in `catalog.plainBuiltinProfiles` (`profiles.go`). The CLI ships no profile with scripts: tool-specific setup (scrapers, media tools, accessory AI tools) belongs in a user profile under `~/.devcontainer-cli/profiles/<id>/` (`profile.yml` plus its `.sh` scripts). Do not reintroduce a repo-shipped script profile; `TestRetiredProfilesAreAbsent` guards the retired ones.
+1. **Built-ins Are Plain Module Bundles**: Every built-in profile is a Go literal in `catalog.plainBuiltinProfiles` (`profiles.go`). The CLI ships no profile with scripts: tool-specific setup (scrapers, media tools, accessory AI tools) belongs in a user profile under `~/.config/devcontainer-cli/profiles/<id>/` (`profile.yml` plus its `.sh` scripts). Do not reintroduce a repo-shipped script profile; `TestRetiredProfilesAreAbsent` guards the retired ones.
 2. **Profiles Compose**: `--profile a,b` merges profiles in `mode=custom` (`catalog.MergeProfiles`): modules and skills are unioned, scripts concatenated, and two scripts with the same destination file fail. A built-in should stay a minimal language or toolchain bundle so it stacks cleanly with user add-on profiles.
 3. **Script Execution Timing (`when`)** for user profiles:
    - `build`: Emitted as a `RUN` layer in Dockerfile, staging dir removed in same layer.

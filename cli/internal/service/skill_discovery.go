@@ -63,7 +63,7 @@ func (s ConfigService) DiscoverSkills(source string) ([]*domain.DiscoveredSkill,
 }
 
 // SaveUserSkill validates and writes a single user-defined skill manifest to
-// ~/.devcontainer-cli/skills/<id>.yml. Refuses to overwrite an existing user skill unless force is true.
+// ~/.config/devcontainer-cli/skills/<id>.yml. Refuses to overwrite an existing user skill unless force is true.
 func (s ConfigService) SaveUserSkill(manifest types.UserSkillManifest, force bool) error {
 	id := manifest.ID
 	if err := domain.ValidateSkillID(id); err != nil {
@@ -98,7 +98,7 @@ func (s ConfigService) SaveUserSkill(manifest types.UserSkillManifest, force boo
 	return nil
 }
 
-// SaveUserSkills writes a slice of discovered skills to ~/.devcontainer-cli/skills/<id>.yml.
+// SaveUserSkills writes a slice of discovered skills to ~/.config/devcontainer-cli/skills/<id>.yml.
 // If a user skill with the same id exists and force is false, it skips that skill with a warning,
 // delegating actual persistence to SaveUserSkill.
 func (s ConfigService) SaveUserSkills(selected []*domain.DiscoveredSkill, force bool) error {

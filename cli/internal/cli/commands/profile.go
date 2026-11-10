@@ -26,7 +26,7 @@ func newProfileCommand() *cobra.Command {
 		Long: `devcontainer-cli config profile — manage profiles, named bundles of Dockerfile
 modules plus your own scripts, that you can reuse when generating projects.
 
-Built-in profiles ship with the CLI; your own are saved under ~/.devcontainer-cli/profiles/. A
+Built-in profiles ship with the CLI; your own are saved under ~/.config/devcontainer-cli/profiles/. A
 profile with no scripts is a single <id>.yml; one that carries scripts is an
 <id>/ directory holding profile.yml and the .sh files next to it. Pass one or
 more profiles to 'devcontainer-cli --profile <id1>,<id2>' (or pick one in the
@@ -221,7 +221,7 @@ func newProfileCreateCommand() *cobra.Command {
 It prompts for a profile id and label, opens the module picker so you can choose
 which Dockerfile modules the profile bundles, then lets you add your own scripts
 (copied into the profile, so it stays self-contained) and pick when each one
-runs. Saved under ~/.devcontainer-cli/profiles/. This is an interactive command:
+runs. Saved under ~/.config/devcontainer-cli/profiles/. This is an interactive command:
 it cannot run with --no-interactive.`,
 		Example:      "  devcontainer-cli config profile create",
 		Args:         cobra.NoArgs,
@@ -400,7 +400,7 @@ func newProfileCopyCommand() *cobra.Command {
 		Long: `devcontainer-cli config profile copy — duplicate an existing profile (built-in or
 user) into a new user profile you can then edit.
 
-The new profile is saved under ~/.devcontainer-cli/profiles/ with the same
+The new profile is saved under ~/.config/devcontainer-cli/profiles/ with the same
 modules and a copy of the source profile's scripts. In interactive mode you're
 asked for a label; with --no-interactive the source label is kept.`,
 		Example: `  # Fork the built-in 'nodejs' profile
@@ -476,7 +476,7 @@ func newProfileRemoveCommand() *cobra.Command {
 		Aliases: []string{"rm", "delete"},
 		Short:   "Delete user profiles (built-ins cannot be removed)",
 		Long: `devcontainer-cli config profile remove — delete one or more of your own profiles
-from ~/.devcontainer-cli/profiles/.
+from ~/.config/devcontainer-cli/profiles/.
 
 Only user profiles can be removed; attempting to remove a built-in profile
 errors out. Every id is validated before anything is deleted, so a bad id aborts

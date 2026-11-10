@@ -272,7 +272,7 @@ devcontainer-cli port-forward reverse:5432
 **Escenario**: Dispone de un perfil personal con herramientas y scripts propios (por ejemplo, `my-ai-tools` con utilidades de SQLite, scripts de inicialización y habilidades de agente) y desea reutilizarlo sobre cualquier perfil de lenguaje (`python`, `nodejs` o `go`) sin duplicar definiciones de perfiles.
 
 **Paso a paso**:
-1. Cree su perfil personal de complementos en `~/.devcontainer-cli/profiles/my-ai-tools/`:
+1. Cree su perfil personal de complementos en `~/.config/devcontainer-cli/profiles/my-ai-tools/`:
    - `profile.yml`:
      ```yaml
      id: my-ai-tools
@@ -303,7 +303,7 @@ devcontainer-cli port-forward reverse:5432
 
 ### Caso 1.11: Descubrimiento e Incorporación de Habilidades de Agente (`config skill add <source>`)
 
-**Escenario**: Desea inspeccionar un repositorio de habilidades de agente (por ejemplo `anthropics/skills` o una URL Git) e incorporar habilidades seleccionadas en su catálogo de usuario (`~/.devcontainer-cli/skills/`) sin declarar manifiestos manualmente.
+**Escenario**: Desea inspeccionar un repositorio de habilidades de agente (por ejemplo `anthropics/skills` o una URL Git) e incorporar habilidades seleccionadas en su catálogo de usuario (`~/.config/devcontainer-cli/skills/`) sin declarar manifiestos manualmente.
 
 **Requisitos previos**:
 - Node.js >= 22.20 instalado en la máquina anfitriona.

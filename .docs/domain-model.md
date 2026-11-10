@@ -91,7 +91,7 @@ Entidad que representa una imagen reutilizable e independiente de proyectos, per
 - `Namespace`: las imágenes locales construidas se etiquetan bajo `devcontainer-cli-img/<name>:<tag>` para aislarlas del ciclo de vida de los proyectos.
 
 ### `UserSkillManifest` y `DiscoveredSkill`
-Entidades asociadas a habilidades de asistente definidas por el usuario (`~/.devcontainer-cli/skills/<id>.yml`):
+Entidades asociadas a habilidades de asistente definidas por el usuario (`~/.config/devcontainer-cli/skills/<id>.yml`):
 - `UserSkillManifest`: manifiesto en formato YAML que especifica identificador normalizado (`ID`), etiqueta descriptiva (`Label`), origen Git o URL (`Ref`), selector secundario opcional (`Skill`), módulos requeridos (`RequiresModules`) y directiva de orientación contextual para `~/CONTEXT.md` (`Context.Title`, `Context.Body`).
 - `DiscoveredSkill`: representación en memoria obtenida durante el proceso de descubrimiento (`npx skills add <source> --copy -y --json` en directorio temporal). Almacena auditoría de seguridad provista por Snyk (`Snyk`), estado de instalación (`Status`), descripción extraída del frontmatter YAML de `SKILL.md` y manifiesto preparado para su persistencia.
 
@@ -140,7 +140,7 @@ Servicios complementarios definidos en `docker-compose.yml`:
 
 ## 4. Perfiles y Temporización de Scripts (`CustomScript.When`)
 
-Un perfil agrupa módulos, configuraciones de puertos y scripts personalizados. La CLI incluye 12 perfiles planos integrados (`base`, `nodejs`, `bun`, `java-temurin`, `python`, `go`, `node-go`, `node-python`, `node-java-temurin`, `bun-go`, `bun-python`, `bun-java-temurin`), y permite a los usuarios definir perfiles propios en `~/.devcontainer-cli/profiles/<id>/` (como un archivo plano `<id>.yml` o como un directorio `<id>/profile.yml` acompañado de sus scripts `.sh`).
+Un perfil agrupa módulos, configuraciones de puertos y scripts personalizados. La CLI incluye 12 perfiles planos integrados (`base`, `nodejs`, `bun`, `java-temurin`, `python`, `go`, `node-go`, `node-python`, `node-java-temurin`, `bun-go`, `bun-python`, `bun-java-temurin`), y permite a los usuarios definir perfiles propios en `~/.config/devcontainer-cli/profiles/<id>/` (como un archivo plano `<id>.yml` o como un directorio `<id>/profile.yml` acompañado de sus scripts `.sh`).
 
 Los scripts personalizados definidos por el usuario o provistos en sus perfiles se ejecutan en momentos precisos según su propiedad `When`:
 
