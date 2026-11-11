@@ -470,8 +470,19 @@ func validateConfig(cwd string, config *types.DevcontainerConfig, flags *genFlag
 			strings.Join(ids, ", "))
 	}
 
-	if config.Mode == types.BuildModeImage && config.Image == "" {
-		return fmt.Errorf("mode=image requires --image <name> (run 'devcontainer-cli image list' to see available images)")
+	if config.Mode == types.BuildModeImage {
+		if config.Image == "" {
+			return fmt.Errorf("mode=image requires --image <name> (run 'devcontainer-cli image list' to see available images)")
+		}
+		// Every source of a mode=image project's image (--image, the wizard, a
+		// profile's image:) meets here, so a definition is resolved and checked
+		// once: a build definition must be built, a remote one is pulled and
+		// verified against the image contract.
+		ref, err := service.ImageService{Report: console}.RunnableRef(config.Image)
+		if err != nil {
+			return err
+		}
+		config.Image = ref
 	}
 
 	if config.Mode == types.BuildModeProfiles {
@@ -837,11 +848,7 @@ func applyGenFlags(config *types.DevcontainerConfig, flags *genFlags) error {
 		config.Remote = &types.RemoteConfig{Variant: variant, Registry: perProject}
 	}
 	if flags.image != "" {
-		image, err := imageFlagRef(config.Mode, flags.image)
-		if err != nil {
-			return err
-		}
-		config.Image = image
+		config.Image = flags.image
 	} else if config.Mode == types.BuildModeProfiles && config.Remote != nil {
 		config.Image = domain.ResolveRemoteImage(config.Remote.Variant, domain.ResolveRegistry(flags.registry, config.Remote.Registry))
 	}
@@ -850,16 +857,6 @@ func applyGenFlags(config *types.DevcontainerConfig, flags *genFlags) error {
 	// has to survive that: it is derived from the selected skills, not chosen.
 	domain.ApplySelectedSkills(config)
 	return nil
-}
-
-// imageFlagRef is the image --image names: under mode=image a definition is
-// resolved to its runnable reference (failing early when it was never built);
-// otherwise the value is taken as given.
-func imageFlagRef(mode types.BuildMode, image string) (string, error) {
-	if mode != types.BuildModeImage {
-		return image, nil
-	}
-	return service.ImageService{}.RunnableRef(image)
 }
 
 func writeOutput(filePath, content string, force bool) bool {
