@@ -61,7 +61,7 @@ La implementación única de terminal es `ui.Console{}` (`internal/cli/ui`). En 
 `PATH` y las variables de entorno pertenecen al entorno del proceso, no a las configuraciones de la shell. Un módulo declara su entorno mediante `dockerfile.ModuleSpec.ProvidesEnv func(opts) ContainerEnv`.
 
 El generador compila este modelo de datos a múltiples destinos:
-1. Directiva `ENV` en el `Dockerfile`: alcanza a todos los procesos sin necesidad de invocar una shell (ej. `devcontainer-cli shell -- uv pip install x`).
+1. Directiva `ENV` en el `Dockerfile`: alcanza a todos los procesos sin necesidad de invocar una shell (ej. `devcontainer-cli access shell -- uv pip install x`).
 2. Script `~/.dc-env.sh`: exporta variables para shells interactivas y sesiones SSH no interactivas (`.zshenv`).
 
 ### Aislamiento de Workspace por Repositorio

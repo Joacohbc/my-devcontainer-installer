@@ -15,7 +15,7 @@ func newDestroyCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "destroy",
 		Short: "Tear down the project completely and delete its generated files",
-		Long: `devcontainer-cli destroy — completely remove the current project. This is the
+		Long: `devcontainer-cli workspace destroy — completely remove the current project. This is the
 nuclear option and cannot be undone.
 
 It runs 'docker compose down -v' (removing containers, the network AND the named
@@ -27,26 +27,26 @@ to stop containers but keep your files and data.
 The project image is removed too unless another project shares it: images are
 named by content, so identical projects use one image until the last one goes.
 
-It also prunes the SSH state 'ssh' wrote for the target: its managed
+It also prunes the SSH state 'access ssh' wrote for the target: its managed
 managed Host block and the container host keys pinned for the address that
 block dialed, unless another Host block still dials it. Your own
 ~/.ssh/known_hosts is never touched.
 
 Pass --container to instead tear down a single loose container that isn't part
-of a workspace project (e.g. one set up via 'ssh --container'): it stops and
+of a workspace project (e.g. one set up via 'access ssh --container'): it stops and
 removes just that container and prunes the same
 SSH state — there is no compose stack, project directory, or config file to
 remove in this mode.
 
 Because it is irreversible, with --no-interactive you must also pass --yes.`,
 		Example: `  # Interactive: asks for confirmation first
-  devcontainer-cli destroy
+  devcontainer-cli workspace destroy
 
   # Unattended teardown in a script
-  devcontainer-cli destroy --yes
+  devcontainer-cli workspace destroy --yes
 
   # Tear down a single loose container and its managed SSH config
-  devcontainer-cli destroy --container dc-ssh`,
+  devcontainer-cli workspace destroy --container dc-base`,
 		SilenceUsage: true,
 		RunE:         runDestroy,
 	}

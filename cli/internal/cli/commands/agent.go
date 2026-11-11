@@ -28,7 +28,7 @@ services, profiles, skills, how to add your own scripts — so a create command
 can be composed without guessing at ids.
 
 The human commands stay available and are the escape hatch: 'compose' for any
-compose verb, 'ssh --via' for another Docker host, 'run' for a throwaway
+compose verb, 'access ssh --via' for another Docker host, 'run' for a throwaway
 container, 'config' for global settings.`,
 		Example: `  # Read the catalogue, then create an environment from it
   devcontainer-cli agent cli-info --json
@@ -85,7 +85,7 @@ func newAgentSshCommand() *cobra.Command {
 		Long: `devcontainer-cli agent ssh — connect to the project's devcontainer over
 SSH.
 
-Same as 'ssh', with prompting off and ephemeral mode on by default (bypassing
+Same as 'access ssh', with prompting off and ephemeral mode on by default (bypassing
 ~/.ssh/config Host block modifications). Give it a command after '--': without
 one it opens an interactive session that never returns, which is of no use to
 an agent — 'agent exec' is the better tool for running a command anyway, and
@@ -133,9 +133,9 @@ func newAgentExecCommand() *cobra.Command {
 devcontainer and propagate its exit code. This is the normal way to do work
 inside a container.
 
-Same as 'shell --', with two differences. A command is required: 'shell' with no
+Same as 'access shell --', with two differences. A command is required: 'access shell' with no
 command opens a login shell, which for an unattended agent is a hang rather than
-a session. And it runs as devuser, who owns the workspace files — 'shell' with a
+a session. And it runs as devuser, who owns the workspace files — 'access shell' with a
 command runs as root, which silently leaves root-owned files behind in the bind
 mount, on the real project directory.
 
@@ -205,7 +205,7 @@ func addAgentExecFlags(cmd *cobra.Command) {
 func agentExecArgs(_ *cobra.Command, args []string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("agent exec requires a command, e.g. 'agent exec -- go test ./...'; " +
-			"use 'shell' if you really want an interactive login shell")
+			"use 'access shell' if you really want an interactive login shell")
 	}
 	return nil
 }
@@ -219,7 +219,7 @@ a port inside the running container, in either direction. A mapping that starts
 with an IP of this machine ('0.0.0.0:8000:8000') listens there instead of on
 127.0.0.1, so other machines can reach the tunnel.
 
-Same as 'port-forward', with prompting off and ephemeral mode on by default,
+Same as 'access forward', with prompting off and ephemeral mode on by default,
 so the port mapping is given as an argument and connects directly via SSH.
 
 By default the tunnel listens here and reaches into the container. Prefix the

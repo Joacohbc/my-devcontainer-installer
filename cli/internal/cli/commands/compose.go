@@ -25,13 +25,13 @@ without retyping the compose file and env-file paths. Because arguments pass
 straight through, use flags exactly as docker compose expects them (e.g.
 'compose exec -it postgres psql').`,
 		Example: `  # Open psql in the postgres service
-  devcontainer-cli dc exec -it postgres psql -U devuser
+  devcontainer-cli workspace compose exec -it postgres psql -U devuser
 
   # Compose-native ps for the project
-  devcontainer-cli dc ps
+  devcontainer-cli workspace compose ps
 
   # Follow logs for two services
-  devcontainer-cli compose logs -f devcontainer redis`,
+  devcontainer-cli workspace compose logs -f devcontainer redis`,
 		SilenceUsage:       true,
 		DisableFlagParsing: true,
 		RunE:               runCompose,

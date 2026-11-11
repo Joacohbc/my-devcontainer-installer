@@ -11,7 +11,7 @@ func newUpgradeCliCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "upgrade-cli",
 		Short: "Self-update the CLI binary from the latest GitHub release",
-		Long: `devcontainer-cli upgrade-cli — replace the running CLI binary with the latest
+		Long: `devcontainer-cli config upgrade-cli — replace the running CLI binary with the latest
 release published on GitHub.
 
 It fetches the release list, picks the right asset for your OS/architecture,
@@ -26,13 +26,13 @@ itself — to update a project's container images use 'devcontainer-cli image up
 Environment:
   GITHUB_TOKEN    Optional token to avoid GitHub's 60 req/hour anonymous limit.`,
 		Example: `  # See whether an update is available
-  devcontainer-cli upgrade-cli --check
+  devcontainer-cli config upgrade-cli --check
 
   # Install the latest stable release
-  devcontainer-cli upgrade-cli
+  devcontainer-cli config upgrade-cli
 
   # Opt into the latest pre-release
-  devcontainer-cli upgrade-cli --pre-release`,
+  devcontainer-cli config upgrade-cli --pre-release`,
 		SilenceUsage: true,
 		RunE:         runSelfUpdate,
 	}

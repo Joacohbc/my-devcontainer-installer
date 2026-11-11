@@ -12,7 +12,7 @@ func newUpdateCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "update",
 		Short: "Update (pull or rebuild) a project's container images",
-		Long: `devcontainer-cli update — refresh the container images for a devcontainer.
+		Long: `devcontainer-cli image update — refresh the container images for a devcontainer.
 
 What it does depends on the project's build mode: 'profiles' projects pull the
 newest image from the registry, while 'custom' projects rebuild the image
@@ -22,14 +22,14 @@ in the current directory and records the new image.
 Note: this updates container IMAGES, not the CLI. To update the CLI binary
 itself, run 'devcontainer-cli config upgrade-cli'.`,
 		Example: `  # Update the current project's images
-  devcontainer-cli update
+  devcontainer-cli image update
 
   # Update every recorded project
-  devcontainer-cli update --all
+  devcontainer-cli image update --all
 
   # Force a fresh pull / rebuild
-  devcontainer-cli update --pull
-  devcontainer-cli update --rebuild`,
+  devcontainer-cli image update --pull
+  devcontainer-cli image update --rebuild`,
 		SilenceUsage: true,
 		RunE:         runUpdateImages,
 	}

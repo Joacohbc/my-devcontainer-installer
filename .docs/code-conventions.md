@@ -109,7 +109,7 @@ La CLI estructura todas sus operaciones en 6 dominios canónicos orientados a re
 
 ### Regla de Oro en Sugerencias de Recuperación (*Recovery Hints*)
 Los mensajes de error que instruyen al usuario o al agente sobre qué comando ejecutar a continuación representan la documentación de mayor valor en tiempo de ejecución.
-- **Regla Inviolable**: Las sugerencias de recuperación deben nombrar comandos que **no abran prompts interactivos** (ej. sugerir `devcontainer-cli up`, `devcontainer-cli start` o `devcontainer-cli agent create`).
+- **Regla Inviolable**: Las sugerencias de recuperación deben nombrar comandos que **no abran prompts interactivos** (ej. sugerir `devcontainer-cli workspace up`, `devcontainer-cli workspace start` o `devcontainer-cli agent create`).
 - **Prohibido**: Sugerir el comando raíz interactivo `devcontainer-cli`, ya que provocaría que un agente o script desatendido se bloquee indefinidamente sin capacidad de respuesta.
 - La suite de pruebas `TestErrorMessagesDoNotPointAtTheWizard` (`commands/recovery_hints_test.go`) valida automáticamente que ninguna cadena de error sugiera la invocación del wizard interactivo desnudo.
 

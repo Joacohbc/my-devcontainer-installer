@@ -47,7 +47,7 @@ different values, or two different images, is an error). Explicit flags win over
 the profile. Under mode=profiles or 'run', exactly one profile is accepted.
 
 Every profile builds locally this way, regardless of the [remote]/[local] tag
-'config profile list' shows: [remote] means it also has a published
+'profile list' shows: [remote] means it also has a published
 ghcr.io/devcontainer-<id> image, so the same --profile <id> can instead be
 pulled with '--mode profiles --profile <id>' (or 'run --profile <id>', which
 only ever pulls) instead of built; [local] (e.g. any profile you create yourself)
@@ -62,7 +62,7 @@ script gets only DC_SCRIPT_PHASE=build, because no project is mounted while the
 image builds — the build warns when a build script references the project.
 
 A profile can also carry ports: 'ports:' are published by the generated stack,
-'forward_ports:' are the tunnels 'port-forward' opens when called with no
+'forward_ports:' are the tunnels 'access forward' opens when called with no
 argument. Both take a bare container port (3000 — Docker picks a free host port,
 so two projects from one profile can run at once) or an explicit mapping
 (3000:3000 — predictable, but the second project collides). A forward port
@@ -99,7 +99,7 @@ func newProfileListCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:          "list",
 		Short:        "List built-in and user profiles with their modules",
-		Long:         "devcontainer-cli config profile list — show every available profile, grouped\ninto built-in and your own, with the module ids each one bundles and the custom\nscripts it carries. Each is tagged [remote] (--profile also pulls it under\nmode=profiles) or [local] (--profile only builds it under mode=custom).",
+		Long:         "devcontainer-cli profile list — show every available profile, grouped\ninto built-in and your own, with the module ids each one bundles and the custom\nscripts it carries. Each is tagged [remote] (--profile also pulls it under\nmode=profiles) or [local] (--profile only builds it under mode=custom).",
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			service.NewProfileStore(console).LegacyWarnings()
@@ -167,11 +167,11 @@ func newProfileInfoCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:   "info <profile-id>",
 		Short: "Show one profile's full resolved definition",
-		Long: `devcontainer-cli config profile info — print one profile's full definition:
+		Long: `devcontainer-cli profile info — print one profile's full definition:
 where it comes from (built-in or user, and its directory for a user
 profile), whether it is [remote]-pullable, and the resolved yaml (modules or
 image, scripts, services, volumes, env, skills, ports).`,
-		Example:           "  devcontainer-cli config profile info nodejs",
+		Example:           "  devcontainer-cli profile info nodejs",
 		Args:              cobra.ExactArgs(1),
 		SilenceUsage:      true,
 		RunE:              runProfileInfo,
@@ -196,7 +196,7 @@ func runProfileInfo(cmd *cobra.Command, args []string) error {
 
 	// p.Source and p.Dir are tagged yaml:"-", so this reproduces exactly
 	// the manifest a project resolving this profile would read (or that
-	// 'config profile copy'/'create' would write).
+	// 'profile copy'/'create' would write).
 	data, err := yaml.Marshal(p)
 	if err != nil {
 		return err
@@ -231,7 +231,7 @@ func newProfileCreateCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "create",
 		Short: "Create a user profile via an interactive picker",
-		Long: `devcontainer-cli config profile create — interactively create a new user profile.
+		Long: `devcontainer-cli profile create — interactively create a new user profile.
 
 It prompts for a profile id and label, opens the module picker so you can choose
 which Dockerfile modules the profile bundles, then lets you add your own scripts
@@ -240,7 +240,7 @@ runs. Saved as ~/.config/devcontainer-cli/profiles/<id>/profile.yml and committe
 to the configuration repository. Add services, volumes, env or an image by
 editing that profile.yml. This is an interactive command: it cannot run
 with --no-interactive.`,
-		Example:      "  devcontainer-cli config profile create",
+		Example:      "  devcontainer-cli profile create",
 		Args:         cobra.NoArgs,
 		SilenceUsage: true,
 		RunE:         runProfileCreate,
@@ -414,7 +414,7 @@ func newProfileCopyCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "copy <existing-profile-id> <new-profile-id>",
 		Short: "Copy any profile into a new user profile",
-		Long: `devcontainer-cli config profile copy — duplicate an existing profile (built-in or
+		Long: `devcontainer-cli profile copy — duplicate an existing profile (built-in or
 user) into a new user profile you can then edit.
 
 The new profile is saved as ~/.config/devcontainer-cli/profiles/<new-id>/profile.yml
@@ -422,7 +422,7 @@ The new profile is saved as ~/.config/devcontainer-cli/profiles/<new-id>/profile
 of the source profile's scripts. In interactive mode you're
 asked for a label; with --no-interactive the source label is kept.`,
 		Example: `  # Fork the built-in 'nodejs' profile
-  devcontainer-cli config profile copy nodejs my-node`,
+  devcontainer-cli profile copy nodejs my-node`,
 		Args:              cobra.ExactArgs(2),
 		SilenceUsage:      true,
 		RunE:              runProfileCopy,
@@ -500,8 +500,8 @@ errors out. Every id is validated before anything is deleted, so a bad id aborts
 the whole operation. A profile is a directory, so removing it removes its scripts
 with it; the removal is recorded as one commit in the profiles/ git repository
 (revert it to bring the profiles back). Profile ids tab-complete.`,
-		Example: `  devcontainer-cli config profile remove my-node
-  devcontainer-cli config profile rm old-profile another --yes`,
+		Example: `  devcontainer-cli profile remove my-node
+  devcontainer-cli profile remove old-profile another --yes`,
 		Args:              cobra.MinimumNArgs(1),
 		SilenceUsage:      true,
 		RunE:              runProfileRemove,

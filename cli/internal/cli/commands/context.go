@@ -9,7 +9,7 @@ func newContextCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "context",
 		Short: "Print the container's context and installed tools",
-		Long: `devcontainer-cli context — print what an AI agent (or a new teammate) needs to
+		Long: `devcontainer-cli inspect context — print what an AI agent (or a new teammate) needs to
 know about the container: the conventions it runs under and the tools actually
 installed in it.
 
@@ -24,13 +24,13 @@ Unlike 'info', which reports Docker metadata (image, ports, mounts), this
 reports what is inside the container. Inside a container the same report is one
 command away: 'get-devcontainer-context'.`,
 		Example: `  # Human-readable report for the current project's container
-  devcontainer-cli context
+  devcontainer-cli inspect context
 
   # Structured output, easier for an agent or a script to consume
-  devcontainer-cli context --json
+  devcontainer-cli inspect context --json
 
   # A specific container
-  devcontainer-cli context --container myproject-devcontainer`,
+  devcontainer-cli inspect context --container myproject-devcontainer`,
 		Args:         cobra.NoArgs,
 		SilenceUsage: true,
 		RunE:         runContext,

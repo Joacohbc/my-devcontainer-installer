@@ -10,7 +10,7 @@ func newDownCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "down",
 		Short: "Stop and remove the project's containers",
-		Long: `devcontainer-cli down — stop and remove the containers (and network) for the
+		Long: `devcontainer-cli workspace down — stop and remove the containers (and network) for the
 current project, leaving the generated files and named volumes intact.
 
 Wraps 'docker compose -f .dc_<workspace>/build/docker-compose.yml down'. Named
@@ -18,13 +18,13 @@ volumes hold your data (databases, the shared config) and are kept by default;
 pass -v to delete them too. To also remove the generated .dc_<workspace>/
 directory and config, use 'destroy' instead.`,
 		Example: `  # Stop and remove containers, keep data volumes
-  devcontainer-cli down
+  devcontainer-cli workspace down
 
   # Also delete the named volumes (destroys data)
-  devcontainer-cli down -v
+  devcontainer-cli workspace down -v
 
   # Non-interactive teardown in a script (keeps volumes)
-  devcontainer-cli down --yes`,
+  devcontainer-cli workspace down --yes`,
 		SilenceUsage: true,
 		RunE:         runDown,
 	}

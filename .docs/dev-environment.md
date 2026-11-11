@@ -67,7 +67,7 @@ La versión se inyecta en `cmd/devcontainer-cli/main.go` mediante banderas del e
 
 Si el binario se compila localmente sin inyección, el valor por defecto de `version` es `dev`.
 
-### Mecanismo de Auto-Actualización (`devcontainer-cli upgrade-cli`)
+### Mecanismo de Auto-Actualización (`devcontainer-cli config upgrade-cli`)
 - Consulta la API de lanzamientos de GitHub (`/repos/<owner>/<repo>/releases`), respetando `GITHUB_TOKEN` para evitar límites de tasa.
 - Compara versiones semánticas y selecciona la versión estable más reciente (o pre-lanzamientos si se pasa `--pre-release`).
 - Descarga el binario correspondiente al triplete de la máquina actual y su hash `.sha256`.

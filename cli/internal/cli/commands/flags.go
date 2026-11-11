@@ -24,7 +24,7 @@ func addBuildFlag(cmd *cobra.Command, defaultVal bool, usage string) {
 	cmd.Flags().Bool(flagBuild, defaultVal, usage)
 }
 
-// addForwardFlags registers the shared flags for 'port-forward' and 'agent forward'.
+// addForwardFlags registers the shared flags for 'access forward' and 'agent forward'.
 func addForwardFlags(cmd *cobra.Command) {
 	cmd.Flags().String("alias", "", "SSH host alias to use (bypasses auto-discovery)")
 	cmd.Flags().String("service", "", "Compose service to map port to (default: localhost)")

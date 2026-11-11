@@ -48,7 +48,7 @@ var PostgresService = &ServiceSpec{
 				"    psql -h postgres -U "+user+" devdb   # needs the postgres-client module",
 				"",
 				"Its data lives in the `postgres_data` volume, so it survives a restart but",
-				"is deleted by `devcontainer-cli down -v` and `destroy`.",
+				"is deleted by `devcontainer-cli workspace down -v` and `destroy`.",
 			),
 		}
 	},

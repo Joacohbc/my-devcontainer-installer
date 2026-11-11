@@ -711,7 +711,7 @@ func (s PruneService) removeCleanTargets(t cleanTargets) (removedTotal, failedTo
 	return removedTotal, failedTotal
 }
 
-// RunClean drives bare devcontainer-cli clean.
+// RunClean drives bare devcontainer-cli config clean.
 func (s PruneService) RunClean(opts CleanOptions) error {
 	if opts.All || opts.Yes || !opts.Interactive || s.Prompt == nil {
 		return s.CleanAll(opts)

@@ -288,7 +288,7 @@ Puede definir sus propios alias globales que se propagan a **todos** los contene
 devcontainer-cli config alias                    # Listar alias configurados
 devcontainer-cli config alias set ll "ls -la"    # Crear o actualizar un alias
 devcontainer-cli config alias unset ll           # Eliminar un alias
-devcontainer-cli config alias sync               # Sincronizar hacia el volumen compartido
+devcontainer-cli config shared sync alias.sh    # Sincronizar hacia el volumen compartido
 ```
 
 ### 3. Conectar Otros Contenedores a la Red (`access network`)

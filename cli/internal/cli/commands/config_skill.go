@@ -442,7 +442,7 @@ Only user-defined skills can be removed; attempting to remove a built-in
 errors out. Every id is validated before anything is deleted, so a bad id
 aborts the whole operation. Skill ids tab-complete.`,
 		Example: `  devcontainer-cli config skill remove my-skill
-  devcontainer-cli config skill rm old-skill another --yes`,
+  devcontainer-cli config skill remove old-skill another --yes`,
 		Args:              cobra.MinimumNArgs(1),
 		SilenceUsage:      true,
 		RunE:              runConfigSkillRemove,

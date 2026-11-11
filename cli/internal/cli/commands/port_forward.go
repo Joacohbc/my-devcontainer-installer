@@ -62,34 +62,34 @@ With no argument it runs an interactive picker: choose any running container,
 enter one or more ports, optionally repeat for other containers, then all tunnels
 are opened in parallel after you confirm.`,
 		Example: `  # Interactive multi-container picker
-  devcontainer-cli port-forward
+  devcontainer-cli access forward
 
   # 127.0.0.1:3000 -> container:3000
-  devcontainer-cli port-forward 3000
+  devcontainer-cli access forward 3000
 
   # 127.0.0.1:8080 -> container:80
-  devcontainer-cli port-forward 8080:80
+  devcontainer-cli access forward 8080:80
 
   # Reach the 'postgres' service inside the container network
-  devcontainer-cli port-forward 5432:postgres:5432
-  devcontainer-cli port-forward 5432 --service postgres
+  devcontainer-cli access forward 5432:postgres:5432
+  devcontainer-cli access forward 5432 --service postgres
 
   # The other way round: container:5432 -> this machine's 5432
-  devcontainer-cli port-forward reverse:5432
-  devcontainer-cli port-forward 5432 --reverse
+  devcontainer-cli access forward reverse:5432
+  devcontainer-cli access forward 5432 --reverse
 
   # This machine's 5432, answering on container:15432
-  devcontainer-cli port-forward reverse:5432:15432
+  devcontainer-cli access forward reverse:5432:15432
 
   # container:5432 -> a host on your LAN, as seen from this machine
-  devcontainer-cli port-forward reverse:5432:192.168.1.20:5432
+  devcontainer-cli access forward reverse:5432:192.168.1.20:5432
 
   # Listen on this machine's 100.102.62.110 (e.g. its Tailscale IP) so other
   # machines on that network reach container:8000; 0.0.0.0 = every interface
-  devcontainer-cli port-forward 100.102.62.110:8000:8000
+  devcontainer-cli access forward 100.102.62.110:8000:8000
 
   # Pin the SSH alias to tunnel through
-  devcontainer-cli port-forward 3000 --alias my-custom-host`,
+  devcontainer-cli access forward 3000 --alias my-custom-host`,
 		Args:         cobra.MaximumNArgs(1),
 		SilenceUsage: true,
 		RunE:         runPortForward,

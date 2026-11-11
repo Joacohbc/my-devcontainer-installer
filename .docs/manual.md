@@ -241,7 +241,7 @@ devcontainer-cli access forward reverse:5432
    ```bash
    devcontainer-cli config alias set gs "git status -sb"
    devcontainer-cli config alias set dcu "devcontainer-cli workspace up"
-   devcontainer-cli config alias sync
+   devcontainer-cli config shared sync alias.sh
    ```
    *Los alias se aplican inmediatamente en la próxima shell de todos sus contenedores sin necesidad de recompilar imágenes.*
 
@@ -428,7 +428,7 @@ Los agentes de IA que operan en proyectos bajo `devcontainer-cli` deben observar
 
 **Comando**:
 ```bash
-devcontainer-cli agent create --profile node-python --services postgres --build
+devcontainer-cli agent create --profile node-python --services postgres
 ```
 
 **Comportamiento**:
