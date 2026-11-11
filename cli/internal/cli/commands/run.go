@@ -162,7 +162,7 @@ func resolveRunOptions(cmd *cobra.Command, svc service.RunService) (runOptions, 
 	opts.volumes = filterEmpty(rawVolumes)
 	opts.ports = filterEmpty(rawPorts)
 
-	kind, variant, image, err := resolveRunSource(cmd, interactive)
+	kind, variant, image, err := resolveRunSource(cmd, interactive, console, console)
 	if err != nil {
 		return runOptions{}, err
 	}
@@ -212,9 +212,9 @@ func resolveRunOptions(cmd *cobra.Command, svc service.RunService) (runOptions, 
 // resolveRunSource picks what 'run' starts from: --image (an image definition,
 // returned with its runnable reference, pulled and verified when remote) or
 // --profile. With neither flag it asks, offering the image choice only when
-// definitions exist. It returns the source kind, its name and, for an image,
-// the reference to run.
-func resolveRunSource(cmd *cobra.Command, interactive bool) (string, string, string, error) {
+// definitions exist and --registry (a profile-only flag) is unset. It returns
+// the source kind, its name and, for an image, the reference to run.
+func resolveRunSource(cmd *cobra.Command, interactive bool, p service.Prompter, report service.Reporter) (string, string, string, error) {
 	imageName, _ := cmd.Flags().GetString(flagImage)
 	profile, _ := cmd.Flags().GetString(flagProfile)
 	registry, _ := cmd.Flags().GetString("registry")
@@ -228,17 +228,19 @@ func resolveRunSource(cmd *cobra.Command, interactive bool) (string, string, str
 		if !interactive {
 			return "", "", "", fmt.Errorf("--profile or --image required in non-interactive mode")
 		}
-		picked, err := promptRunImage(console)
-		if err != nil {
-			return "", "", "", err
+		if registry == "" {
+			picked, err := promptRunImage(p, report)
+			if err != nil {
+				return "", "", "", err
+			}
+			imageName = picked
 		}
-		imageName = picked
 	}
 	if imageName == "" {
-		variant, err := resolveRunProfile(cmd)
+		variant, err := resolveRunProfile(cmd, p)
 		return service.QuickRunProfile, variant, "", err
 	}
-	ref, err := service.ImageService{Report: console}.Ready(imageName)
+	ref, err := service.ImageService{Report: report}.Ready(imageName)
 	if err != nil {
 		return "", "", "", err
 	}
@@ -248,7 +250,7 @@ func resolveRunSource(cmd *cobra.Command, interactive bool) (string, string, str
 // promptRunImage asks whether to run a profile or an image definition, and
 // which definition, asking again while the chosen one cannot run yet; an
 // empty answer means a profile. Without definitions it asks nothing.
-func promptRunImage(p service.Prompter) (string, error) {
+func promptRunImage(p service.Prompter, report service.Reporter) (string, error) {
 	defs, _ := domain.LoadImageDefs(domain.UserImageDir())
 	if len(defs) == 0 {
 		return "", nil
@@ -268,7 +270,7 @@ func promptRunImage(p service.Prompter) (string, error) {
 			return "", err
 		}
 		if _, err := (service.ImageService{}).Available(picked.Value); err != nil {
-			console.Warn("%v", err)
+			report.Warn("%v", err)
 			continue
 		}
 		return picked.Value, nil
@@ -278,10 +280,10 @@ func promptRunImage(p service.Prompter) (string, error) {
 // resolveRunProfile reads --profile, validating it against the
 // [remote]-tagged profiles the run command can actually pull; with no
 // --profile (only reachable interactively) it asks for one.
-func resolveRunProfile(cmd *cobra.Command) (string, error) {
+func resolveRunProfile(cmd *cobra.Command, p service.Prompter) (string, error) {
 	profile, _ := cmd.Flags().GetString("profile")
 	if profile == "" {
-		return promptVariant()
+		return promptVariant(p)
 	}
 	if len(splitCSV(profile)) > 1 {
 		return "", fmt.Errorf("'run' accepts exactly one profile, got %q (run pulls a prebuilt image; multiple profiles can only be combined with mode=custom)", profile)
@@ -292,7 +294,7 @@ func resolveRunProfile(cmd *cobra.Command) (string, error) {
 	return profile, nil
 }
 
-func promptVariant() (string, error) {
+func promptVariant(p service.Prompter) (string, error) {
 	choices := service.ProfileChoices(domain.ProfileDirs()...)
 	var initial service.Option
 	for _, c := range choices {
@@ -301,7 +303,7 @@ func promptVariant() (string, error) {
 			break
 		}
 	}
-	picked, err := console.Select("Profile:", choices, initial)
+	picked, err := p.Select("Profile:", choices, initial)
 	if err != nil {
 		return "", err
 	}

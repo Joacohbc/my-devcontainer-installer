@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -144,9 +145,13 @@ func TestRunImagePickerReasksForAnUnbuiltDefinition(t *testing.T) {
 	useLocalImages(t, "devcontainer-cli-img/api:latest")
 
 	p := &selectPrompter{answers: []string{"image", "android", "api"}}
-	got, err := promptRunImage(p)
+	report := &warnRecorder{}
+	got, err := promptRunImage(p, report)
 	if err != nil || got != "api" {
 		t.Fatalf("picked %q, %v; want api after android was refused", got, err)
+	}
+	if len(report.warnings) != 1 || !strings.Contains(report.warnings[0], "image build android") {
+		t.Errorf("warnings = %v, want the refusal reported through the given reporter", report.warnings)
 	}
 	if len(p.offered) != 3 {
 		t.Fatalf("asked %d times, want source + two picks", len(p.offered))
@@ -157,5 +162,40 @@ func TestRunImagePickerReasksForAnUnbuiltDefinition(t *testing.T) {
 	}
 	if !slices.Contains(labels, "api — API toolchain") {
 		t.Errorf("image choices %v lack the definition label", labels)
+	}
+}
+
+// warnRecorder is a Reporter that keeps its warnings.
+type warnRecorder struct {
+	warnings []string
+}
+
+func (r *warnRecorder) Info(string, ...any)    {}
+func (r *warnRecorder) Success(string, ...any) {}
+func (r *warnRecorder) Error(string, ...any)   {}
+func (r *warnRecorder) Fatal(string, ...any)   {}
+func (r *warnRecorder) Debug(string, ...any)   {}
+func (r *warnRecorder) Warn(format string, args ...any) {
+	r.warnings = append(r.warnings, fmt.Sprintf(format, args...))
+}
+
+// --registry only applies to a profile, so an interactive run that sets it
+// goes straight to the profile picker instead of offering image definitions
+// it would then ignore --registry for.
+func TestRunWithRegistrySkipsTheSourceQuestion(t *testing.T) {
+	seedImageDefs(t)
+	useLocalImages(t, "devcontainer-cli-img/api:latest")
+
+	cmd := newRunCommand()
+	if err := cmd.Flags().Set("registry", "ghcr.io/acme"); err != nil {
+		t.Fatal(err)
+	}
+	p := &selectPrompter{answers: []string{"nodejs"}}
+	kind, variant, _, err := resolveRunSource(cmd, true, p, &warnRecorder{})
+	if err != nil || kind != service.QuickRunProfile || variant != "nodejs" {
+		t.Fatalf("source = %s %s, %v; want profile nodejs", kind, variant, err)
+	}
+	if len(p.offered) != 1 || slices.ContainsFunc(p.offered[0], func(o service.Option) bool { return o.Value == service.QuickRunImage }) {
+		t.Errorf("offered %v, want only the profile picker", p.offered)
 	}
 }
