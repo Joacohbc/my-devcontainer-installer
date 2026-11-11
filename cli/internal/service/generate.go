@@ -187,6 +187,9 @@ func (s GenerateService) MaterializeCustomScripts(config *types.DevcontainerConf
 		if rerr != nil {
 			return nil, rerr
 		}
+		for _, warning := range domain.LintCustomScript(sc, data) {
+			s.Report.Warn("%s", warning)
+		}
 		if werr := os.WriteFile(filepath.Join(buildDir, sc.BuildFile()), data, 0o755); werr != nil {
 			return nil, werr
 		}

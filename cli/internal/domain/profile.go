@@ -155,6 +155,33 @@ func ReadCustomScript(s types.CustomScript) ([]byte, error) {
 	return data, nil
 }
 
+// projectPathRe matches the references that only resolve once a project is
+// mounted: the mount root, the per-project alias, the contract variable and the
+// ad-hoc $WORKSPACE scripts tend to invent for the same thing.
+var projectPathRe = regexp.MustCompile(`/workspaces\b|/workspace/|\$\{?DC_WORKSPACE|\$\{?WORKSPACE\b`)
+
+// LintCustomScript returns advisory warnings for a script whose content cannot
+// work in the phase it declares. Today that is one mistake: a build script that
+// touches the project, which does not exist inside `docker build`. Comment lines
+// are skipped so a script may explain itself without tripping the lint.
+func LintCustomScript(s types.CustomScript, content []byte) []string {
+	if s.ResolvedWhen() != types.ScriptWhenBuild {
+		return nil
+	}
+	var warnings []string
+	for i, line := range strings.Split(string(content), "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "#") {
+			continue
+		}
+		if match := projectPathRe.FindString(line); match != "" {
+			warnings = append(warnings, fmt.Sprintf(
+				"script %s:%d references %q but runs at build time, when no project is mounted; declare it 'when: start' and use $DC_WORKSPACE_DIR",
+				s.File, i+1, match))
+		}
+	}
+	return warnings
+}
+
 // CollectCustomScriptFiles returns every configured custom script's build-dir
 // name, whatever its `when`. It is the list the build directory must contain
 // and that feeds the image fingerprint.

@@ -309,3 +309,40 @@ func TestReadCustomScript(t *testing.T) {
 		t.Error("expected an error for a missing script")
 	}
 }
+
+// A build script runs inside `docker build`, where no project is mounted: any
+// project path it touches fails the build (`mkdir: cannot create directory
+// '/workspaces'`). The lint names that before the build starts, and stays quiet
+// for the phases where the project exists and for mentions in comments.
+func TestLintCustomScript(t *testing.T) {
+	cases := []struct {
+		name     string
+		when     types.ScriptWhen
+		body     string
+		wantWarn bool
+	}{
+		{"build writes under /workspaces", types.ScriptWhenBuild, "mkdir -p /workspaces/.claude\n", true},
+		{"default when is build", "", `WORKSPACE_DIR="${WORKSPACE:-/workspaces}"` + "\n", true},
+		{"build reads the contract var", types.ScriptWhenBuild, `cd "$DC_WORKSPACE_DIR"` + "\n", true},
+		{"build uses the alias root", types.ScriptWhenBuild, "touch /workspace/app/x\n", true},
+		{"build references $WORKSPACE", types.ScriptWhenBuild, "echo $WORKSPACE\n", true},
+		{"build installs a tool", types.ScriptWhenBuild, "uv tool install ruff\n", false},
+		{"build mentions the path in a comment", types.ScriptWhenBuild, "# writes to /workspaces at start, not here\nuv tool install ruff\n", false},
+		{"start may use the project", types.ScriptWhenStart, `mkdir -p "$DC_WORKSPACE_DIR/.cursor"` + "\n", false},
+		{"service may use the project", types.ScriptWhenService, "cd /workspaces/app && exec npm start\n", false},
+		{"manual may use the project", types.ScriptWhenManual, "cd /workspaces/app\n", false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			warnings := domain.LintCustomScript(types.CustomScript{File: "s.sh", When: c.when}, []byte(c.body))
+			if got := len(warnings) > 0; got != c.wantWarn {
+				t.Fatalf("LintCustomScript warnings = %q, want warning: %v", warnings, c.wantWarn)
+			}
+			for _, w := range warnings {
+				if !strings.Contains(w, "s.sh") || !strings.Contains(w, "when: start") {
+					t.Errorf("warning %q must name the script and the fix (when: start)", w)
+				}
+			}
+		})
+	}
+}
