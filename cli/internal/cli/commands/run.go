@@ -48,8 +48,8 @@ image and is rejected here; build it instead with 'devcontainer-cli --profile
   # Non-interactive SSH box with a named volume and a forwarded port
   devcontainer-cli run --profile ssh --name dev --volumes work:/workspace --ports 2222:22
 
-  # Expose ports on the LAN and pre-install the AI CLI scripts
-  devcontainer-cli run --profile nodejs --ports 8080:80 --expose-all --copy-ai-scripts`,
+  # Expose ports on the LAN
+  devcontainer-cli run --profile nodejs --ports 8080:80 --expose-all`,
 		SilenceUsage: true,
 		RunE:         runQuickRun,
 	}
@@ -59,7 +59,6 @@ image and is rejected here; build it instead with 'devcontainer-cli --profile
 	cmd.Flags().StringSlice("ports", nil, "Port mappings (e.g. 2222:22); bound to 127.0.0.1 unless --expose-all; repeatable or comma-separated")
 	cmd.Flags().Bool("expose-all", false, "Publish ports on all interfaces (0.0.0.0) instead of binding to 127.0.0.1")
 	cmd.Flags().Bool("shared-config", true, "Mount the global shared AI/dev tool config volume (devcontainer-shared-config) so logins/sessions persist across containers; --shared-config=false to opt out")
-	cmd.Flags().Bool("copy-ai-scripts", false, "Copy the AI/dev tool installer scripts into the container; in non-interactive mode copies all of them")
 	cmd.Flags().String("registry", "", "Registry prefix override")
 	addInteractiveFlag(cmd)
 
@@ -167,7 +166,7 @@ func resolveRunOptions(cmd *cobra.Command, svc service.RunService) (runOptions, 
 		}
 	}
 
-	opts.aiScripts, err = resolveRunAIScripts(cmd, interactive)
+	opts.aiScripts, err = resolveRunAIScripts(interactive)
 	if err != nil {
 		return runOptions{}, err
 	}
@@ -230,15 +229,9 @@ func promptCommaList(prompt string) ([]string, error) {
 	return filterEmpty(strings.Split(raw, ",")), nil
 }
 
-// resolveRunAIScripts decides which installer scripts to copy: interactively it
-// asks (unless --copy-ai-scripts was set explicitly and lets the user pick);
-// non-interactively --copy-ai-scripts copies all of them.
-func resolveRunAIScripts(cmd *cobra.Command, interactive bool) ([]string, error) {
-	if interactive && !cmd.Flags().Changed("copy-ai-scripts") {
+func resolveRunAIScripts(interactive bool) ([]string, error) {
+	if interactive {
 		return promptAIScripts()
-	}
-	if copyAIScripts, _ := cmd.Flags().GetBool("copy-ai-scripts"); copyAIScripts {
-		return assets.CopyableNames(), nil
 	}
 	return nil, nil
 }

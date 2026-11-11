@@ -172,7 +172,7 @@ func TestAgentCreate_KeepsGenerateFlagsAndOmitsNoise(t *testing.T) {
 		}
 	}
 	// Irrelevant or pruned flags must be omitted entirely rather than registered/hidden.
-	for _, name := range []string{"with", "service", "skill", "temporal", "name", "expose-all", "copy-ai-scripts", flagVersion, "preset", "non-interactive", flagForcePrompt, "no-build", "force", "build"} {
+	for _, name := range []string{"with", "service", "skill", "temporal", "name", "expose-all", flagVersion, "preset", "non-interactive", flagForcePrompt, "no-build", "force", "build"} {
 		if f := cmd.Flags().Lookup(name); f != nil {
 			t.Errorf("--%s should not be registered on agent create", name)
 		}
@@ -182,7 +182,7 @@ func TestAgentCreate_KeepsGenerateFlagsAndOmitsNoise(t *testing.T) {
 func TestAgentRun_Flags(t *testing.T) {
 	cmd := findCommand(t, agentCommand(t), "run")
 
-	for _, name := range []string{"profile", "name", "volumes", "ports", "expose-all", "shared-config", "copy-ai-scripts", "registry"} {
+	for _, name := range []string{"profile", "name", "volumes", "ports", "expose-all", "shared-config", "registry"} {
 		if cmd.Flags().Lookup(name) == nil {
 			t.Errorf("agent run is missing flag --%s", name)
 		}

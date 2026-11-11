@@ -593,10 +593,20 @@ func TestRunCommand_HasSharedConfigFlag(t *testing.T) {
 	}
 }
 
-func TestRunCommand_HasCopyAIScriptsFlag(t *testing.T) {
+func TestRunCommand_HasNoCopyAIScriptsFlag(t *testing.T) {
 	cmd := newRunCommand()
-	if cmd.Flags().Lookup("copy-ai-scripts") == nil {
-		t.Error("expected run --copy-ai-scripts flag")
+	if cmd.Flags().Lookup("copy-ai-scripts") != nil {
+		t.Error("run --copy-ai-scripts flag must not exist")
+	}
+}
+
+func TestResolveRunAIScripts_NonInteractiveCopiesNothing(t *testing.T) {
+	names, err := resolveRunAIScripts(false)
+	if err != nil {
+		t.Fatalf("resolveRunAIScripts: %v", err)
+	}
+	if names != nil {
+		t.Errorf("expected no scripts non-interactively, got %v", names)
 	}
 }
 

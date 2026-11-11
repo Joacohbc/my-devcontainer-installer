@@ -394,7 +394,6 @@ Spin up an ephemeral container from a prebuilt remote image (no project files)
 
 | Bandera | Atajo | Tipo | Por defecto | Descripción |
 |---|---|---|---|---|
-| `--copy-ai-scripts` |  | bool | `false` | Copy the AI/dev tool installer scripts into the container; in non-interactive mode copies all of them |
 | `--expose-all` |  | bool | `false` | Publish ports on all interfaces (0.0.0.0) instead of binding to 127.0.0.1 |
 | `--log-level` |  | string | `warn` | Log level: debug\|info\|warn\|error |
 | `--name` |  | string | - | Container name (default: dc-<profile>); if it belongs to an existing quick-run container it is reused/restarted, but a name already used by any other container is rejected |
@@ -1119,7 +1118,6 @@ Spin up a container from a prebuilt remote image (no project files)
 
 | Bandera | Atajo | Tipo | Por defecto | Descripción |
 |---|---|---|---|---|
-| `--copy-ai-scripts` |  | bool | `false` | Copy the AI/dev tool installer scripts into the container; in non-interactive mode copies all of them |
 | `--expose-all` |  | bool | `false` | Publish ports on all interfaces (0.0.0.0) instead of binding to 127.0.0.1 |
 | `--log-level` |  | string | `warn` | Log level: debug\|info\|warn\|error |
 | `--name` |  | string | - | Container name (default: dc-<profile>); if it belongs to an existing quick-run container it is reused/restarted, but a name already used by any other container is rejected |
