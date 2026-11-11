@@ -490,3 +490,24 @@ func TestAgentGroup_DoesNotReplaceTheHumanCommands(t *testing.T) {
 		t.Error("agentSubcommands drifted from the documented set")
 	}
 }
+
+// An agent calling 'agent exec' from a pipeline has no terminal on stdin, and
+// docker rejects `exec -t` there; the TTY must be dropped without needing -T.
+func TestNeedsNoTTY(t *testing.T) {
+	cases := []struct {
+		name          string
+		flag          bool
+		stdinTerminal bool
+		want          bool
+	}{
+		{"terminal, no flag keeps the TTY", false, true, false},
+		{"terminal, -T drops it", true, true, true},
+		{"no terminal drops it without -T", false, false, true},
+		{"no terminal with -T drops it", true, false, true},
+	}
+	for _, c := range cases {
+		if got := needsNoTTY(c.flag, c.stdinTerminal); got != c.want {
+			t.Errorf("%s: needsNoTTY(%v, %v) = %v, want %v", c.name, c.flag, c.stdinTerminal, got, c.want)
+		}
+	}
+}

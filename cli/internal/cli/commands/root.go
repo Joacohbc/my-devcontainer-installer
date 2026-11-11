@@ -46,8 +46,7 @@ Build modes:
             a user-created profile.
   profiles  Skip the Dockerfile and pull a prebuilt ghcr.io image for the
             chosen --profile — a [remote]-tagged profile id (see
-            'profile list'), or 'ssh' for the full image; database
-            services are still generated.
+            'profile list'); database services are still generated.
 
 Run 'devcontainer-cli --help' for the full flag list, or
 'devcontainer-cli <command> --help' for any subcommand.`,

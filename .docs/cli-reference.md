@@ -239,7 +239,7 @@ Open a shell (or run a command) in the devcontainer
 | `--container` | -c | string | - | Explicit target container name (managed by devcontainer-cli) |
 | `--log-level` |  | string | `warn` | Log level: debug\|info\|warn\|error |
 | `--no-interactive` |  | bool | `false` | Fail if any value is missing instead of prompting |
-| `--no-tty` | -T | bool | `false` | Disable pseudo-TTY allocation (use when piping output to a file, e.g. a DB dump) |
+| `--no-tty` | -T | bool | `false` | Disable pseudo-TTY allocation (use when piping output to a file, e.g. a DB dump); implied when stdin is not a terminal |
 | `--type` |  | string | - | Shell to open: bash, zsh or sh (interactive shell defaults to zsh) |
 | `--user` |  | string | - | User to run the command as; always honoured, but only an interactive shell defaults it to devuser |
 | `--verbose` |  | bool | `false` | Enable debug logging (shortcut for --log-level debug) |
@@ -346,7 +346,7 @@ Run a command inside the devcontainer
 | `--container` | -c | string | - | Explicit target container name (managed by devcontainer-cli) |
 | `--log-level` |  | string | `warn` | Log level: debug\|info\|warn\|error |
 | `--no-interactive` |  | bool | `false` | Non-interactive mode (fail instead of prompting) |
-| `--no-tty` | -T | bool | `false` | Disable pseudo-TTY allocation (use when piping output to a file, e.g. a DB dump) |
+| `--no-tty` | -T | bool | `false` | Disable pseudo-TTY allocation (use when piping output to a file, e.g. a DB dump); implied when stdin is not a terminal |
 | `--user` |  | string | - | User to run the command as; always honoured, but only an interactive shell defaults it to devuser |
 | `--verbose` |  | bool | `false` | Enable debug logging (shortcut for --log-level debug) |
 | `--via` |  | string | - | Reach the container through an existing SSH connection to its Docker host (requires --container): USER@HOST or an ssh-config alias |
@@ -399,7 +399,7 @@ Spin up an ephemeral container from a prebuilt remote image (no project files)
 | `--name` |  | string | - | Container name (default: dc-<profile>); if it belongs to an existing quick-run container it is reused/restarted, but a name already used by any other container is rejected |
 | `--no-interactive` |  | bool | `false` | Non-interactive mode (fail instead of prompting) |
 | `--ports` |  | stringSlice | `[]` | Port mappings (e.g. 2222:22); bound to 127.0.0.1 unless --expose-all; repeatable or comma-separated |
-| `--profile` |  | string | - | Single [remote]-tagged profile id to run as a prebuilt image, e.g. ssh, nodejs, python; see 'config profile list' |
+| `--profile` |  | string | - | Single [remote]-tagged profile id to run as a prebuilt image, e.g. base, nodejs, python; see 'profile list' |
 | `--registry` |  | string | - | Registry prefix override |
 | `--shared-config` |  | bool | `true` | Mount the global shared AI/dev tool config volume (devcontainer-shared-config) so logins/sessions persist across containers; --shared-config=false to opt out |
 | `--verbose` |  | bool | `false` | Enable debug logging (shortcut for --log-level debug) |
@@ -1123,7 +1123,7 @@ Spin up a container from a prebuilt remote image (no project files)
 | `--name` |  | string | - | Container name (default: dc-<profile>); if it belongs to an existing quick-run container it is reused/restarted, but a name already used by any other container is rejected |
 | `--no-interactive` |  | bool | `false` | Non-interactive mode (fail instead of prompting) |
 | `--ports` |  | stringSlice | `[]` | Port mappings (e.g. 2222:22); bound to 127.0.0.1 unless --expose-all; repeatable or comma-separated |
-| `--profile` |  | string | - | Single [remote]-tagged profile id to run as a prebuilt image, e.g. ssh, nodejs, python (required with --no-interactive); see 'config profile list' |
+| `--profile` |  | string | - | Single [remote]-tagged profile id to run as a prebuilt image, e.g. base, nodejs, python (required with --no-interactive); see 'profile list' |
 | `--registry` |  | string | - | Registry prefix override |
 | `--shared-config` |  | bool | `true` | Mount the global shared AI/dev tool config volume (devcontainer-shared-config) so logins/sessions persist across containers; --shared-config=false to opt out |
 | `--verbose` |  | bool | `false` | Enable debug logging (shortcut for --log-level debug) |

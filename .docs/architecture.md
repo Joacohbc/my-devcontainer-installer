@@ -247,5 +247,5 @@ El orden es estricto: `stage_workspace` determina el UID/GID de devuser; `stage_
 
 ### D24: `base` es una Variante Publicada
 - **Contexto**: El asistente en modo `profiles` solo listaba perfiles con `Remote: true`, y `base` quedaba fuera aunque CI ya publica `devcontainer-base:latest` desde ese perfil.
-- **Decisión**: `base` lleva `Remote: true` y está en `types.RemoteVariants`, por lo que es la opción sin lenguaje del selector. No se agrega a la matriz `build-variants`: lo construye `build-base-cache`, y duplicarlo compilaría la misma imagen dos veces. `TestRemoteVariantsAreBuiltByCI` verifica el contrato.
+- **Decisión**: `base` lleva `Remote: true` y está en `types.RemoteVariants`, por lo que es la opción sin lenguaje del selector. No se agrega a las matrices `build-single`/`build-combo`: lo construye `build-base-cache`, y duplicarlo compilaría la misma imagen dos veces. `TestRemoteVariantsAreBuiltByCI` verifica el contrato.
 - **Consecuencias**: Si `devcontainer-base` dejara de ser el perfil `base`, el selector ofrecería una imagen distinta de la esperada.

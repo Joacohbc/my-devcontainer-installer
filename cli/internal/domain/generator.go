@@ -321,13 +321,7 @@ func ResolveRemoteImage(variant, registry string) string {
 	if registry == "" {
 		registry = DefaultRegistry
 	}
-	var suffix string
-	if variant == "ssh" {
-		suffix = "devcontainer-ssh"
-	} else {
-		suffix = "devcontainer-" + variant
-	}
-	return registry + suffix + ":latest"
+	return registry + "devcontainer-" + variant + ":latest"
 }
 
 func ResolveDevcontainerImageName(config *types.DevcontainerConfig) string {

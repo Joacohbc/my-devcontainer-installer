@@ -1,6 +1,6 @@
 ---
 name: contract-auditor
-description: Audits multi-file synchronization contracts (remote variants, full-image module lists, release triplets, shared config catalogues, Docker labels, and CLI reference synchronization). Read-only.
+description: Audits multi-file synchronization contracts (remote variants, release triplets, shared config catalogues, Docker labels, and CLI reference synchronization). Read-only.
 tools: Read, Grep, Glob, Bash
 ---
 
@@ -10,20 +10,19 @@ You audit contracts and synchronized constants that span multiple files across G
 
 1. **Remote Variants Synchronization**:
    - `internal/domain/types/types.go` (`RemoteVariants`)
-   - `.github/workflows/docker-image.yml` (`build-variants` matrix; `base` is built by `build-base-cache` instead)
+   - `.github/workflows/docker-image.yml` (`build-single`/`build-combo` matrices; `base` is built by `build-base-cache` instead)
    - `internal/domain/catalog/profiles.go` (`Remote: true` on matching `plainBuiltinProfiles`)
-2. **Full-Image Module Inclusions**:
-   - `.github/workflows/docker-image.yml` job `build-base` `--modules` argument must include every Dockerfile module except auto-applied (`base`, `aliases`, `cleanup`) and mutually exclusive variants (`java-openjdk`).
-3. **Release Asset Triplet Naming**:
+   - `internal/cli/commands/generate.go` (`validRemoteVariant`, `profileIDs(true)`): every accepted pull target is a published variant; there is no full-image `ssh` variant any more.
+2. **Release Asset Triplet Naming**:
    - `cli/.goreleaser.yaml`
-   - `internal/cli/commands/upgrade_cli.go` (`getTargetTriplet()`)
+   - `internal/service/upgrade.go` (`getTargetTriplet()`)
    - `cli/install.sh`
    - Triplets: `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`.
-4. **Shared Config Catalogue**:
+3. **Shared Config Catalogue**:
    - `types.SharedConfigEntries` is the sole source of truth. Ensure no shell scripts contain duplicate catalogue tables.
-5. **Docker Labels**:
+4. **Docker Labels**:
    - `internal/domain/types/labels.go` constants must be used consistently across Dockerfile and Compose generators.
-6. **CLI Command Tree and Reference Synchronization**:
+5. **CLI Command Tree and Reference Synchronization**:
    - `cli/internal/cli/commands/` (Cobra command tree).
    - `.docs/cli-reference.md` (generated reference, verified by `TestCLIReference_UpToDate`).
    - `skills/devcontainer-cli/SKILL.md` (tool orientation and command syntax).

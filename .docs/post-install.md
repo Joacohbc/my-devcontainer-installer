@@ -21,7 +21,7 @@ Utiliza `docker exec` internamente, resolviendo automáticamente el contenedor d
   devcontainer-cli access shell -- bash               # Abre la shell especificando bash
   devcontainer-cli access shell -c <contenedor>       # Entra a un contenedor específico del stack (ej. postgres)
   ```
-- **Modo No Interactivo (`-T` / `--no-tty`)**: Ejecuta comandos aislados o canalizaciones (*pipes* / redirecciones de archivos) desactivando la asignación de TTY para evitar la corrupción de datos binarios (como retornos de carro `\r`).
+- **Modo No Interactivo (`-T` / `--no-tty`)**: Ejecuta comandos aislados o canalizaciones (*pipes* / redirecciones de archivos) desactivando la asignación de TTY para evitar la corrupción de datos binarios (como retornos de carro `\r`). Cuando la entrada estándar no es una terminal (un agente, un pipe o `</dev/null`), `access shell` y `agent exec` omiten el TTY automáticamente; `-T` sigue siendo necesario si la entrada es una terminal pero la salida se redirige a un archivo.
   ```bash
   devcontainer-cli access shell -- uname -a           # Ejecuta un comando puntual y retorna la salida
   devcontainer-cli access shell -T -- pg_dump -U devuser devdb > backup.sql # Generación limpia de volcados de BD

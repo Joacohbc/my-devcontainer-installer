@@ -461,13 +461,13 @@ A throwaway container with no project to configure:
     devcontainer-cli agent run --profile nodejs --name scratch
     devcontainer-cli agent destroy --container scratch --yes
 
-`agent run --profile` only accepts a `[remote]`-tagged id (or `ssh` for the hand-built
-full image), since it always pulls.
+`agent run --profile` only accepts a `[remote]`-tagged id (`base` for no
+language), since it always pulls.
 
 A container on a **different Docker host**, through an existing SSH connection
 to it:
 
-    devcontainer-cli access shell --via me@docker-host -c dc-ssh -- uname -a
+    devcontainer-cli access shell --via me@docker-host -c dc-base -- uname -a
     devcontainer-cli access ssh --via me@docker-host --container dc-ssh
 
 Global config, profiles and shared logins:

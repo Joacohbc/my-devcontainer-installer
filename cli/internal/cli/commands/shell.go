@@ -2,10 +2,12 @@ package commands
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/ui"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/service"
+	"github.com/mattn/go-isatty"
 	"github.com/spf13/cobra"
 )
 
@@ -76,7 +78,7 @@ entirely on the 'docker exec' channel (no ssh-into-container step).`,
 func addShellFlags(cmd *cobra.Command) {
 	cmd.Flags().String("user", "", "User to run the command as; always honoured, but only an interactive shell defaults it to devuser")
 	cmd.Flags().String("type", "", "Shell to open: bash, zsh or sh (interactive shell defaults to zsh)")
-	cmd.Flags().BoolP("no-tty", "T", false, "Disable pseudo-TTY allocation (use when piping output to a file, e.g. a DB dump)")
+	cmd.Flags().BoolP("no-tty", "T", false, "Disable pseudo-TTY allocation (use when piping output to a file, e.g. a DB dump); implied when stdin is not a terminal")
 	cmd.Flags().BoolP("workdir", "w", false, "Run in the project's workspace mount instead of the container default; only the devcontainer has that directory, so a database container needs it left off")
 	cmd.Flags().String("via", "", "Reach the container through an existing SSH connection to its Docker host (requires --container): USER@HOST or an ssh-config alias")
 	addContainerFlag(cmd)
@@ -114,10 +116,26 @@ func shellInteractiveDefaults(user, shellType string, userSet, typeSet, hasComma
 	return user, shellType
 }
 
+// stdinIsTerminal reports whether stdin is a real terminal (not merely a
+// character device such as /dev/null). Docker refuses `exec -t` without one
+// ("cannot attach stdin to a TTY-enabled container"), which is exactly the
+// situation of an agent or a pipeline calling 'agent exec'.
+func stdinIsTerminal() bool {
+	fd := os.Stdin.Fd()
+	return isatty.IsTerminal(fd) || isatty.IsCygwinTerminal(fd)
+}
+
+// needsNoTTY drops the pseudo-TTY when asked to, or when stdin is not a
+// terminal, since a TTY request would then fail before the command runs.
+func needsNoTTY(noTTYFlag, stdinTerminal bool) bool {
+	return noTTYFlag || !stdinTerminal
+}
+
 func runShell(cmd *cobra.Command, args []string) error {
 	userFlag, _ := cmd.Flags().GetString("user")
 	shellType, _ := cmd.Flags().GetString("type")
-	noTTY, _ := cmd.Flags().GetBool("no-tty")
+	noTTYFlag, _ := cmd.Flags().GetBool("no-tty")
+	noTTY := needsNoTTY(noTTYFlag, stdinIsTerminal())
 	via, _ := cmd.Flags().GetString("via")
 	if via != "" && !cmd.Flags().Changed("container") {
 		return fmt.Errorf("--via requires --container <name>: there is no local compose project describing a container on a remote host")

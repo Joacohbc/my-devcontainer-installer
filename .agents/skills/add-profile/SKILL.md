@@ -17,12 +17,12 @@ Goal: Safely create or update a reusable devcontainer profile bundle.
    - `service`: Placed in `~/post-script/services.d/<script>.sh`, runs in background on every start.
    - `manual`: Placed in `~/post-script/<script>.sh`, run manually by user.
 4. **No Scripted Agent Skills**: Never install agent skills via custom scripts (`npx skills add -g`). Global directories link to the shared volume; use the `skills:` declaration in the profile instead.
-5. **Remote Variant Lockstep**: If `Remote: true` is declared, the ID MUST exist in `types.RemoteVariants` and in the `.github/workflows/docker-image.yml` `build-variants` matrix. The one exception is `base`: `build-base-cache` publishes it as `devcontainer-base`, so it is in `types.RemoteVariants` but not in the matrix.
+5. **Remote Variant Lockstep**: If `Remote: true` is declared, the ID MUST exist in `types.RemoteVariants` and in the `.github/workflows/docker-image.yml` `build-single`/`build-combo` matrices. The one exception is `base`: `build-base-cache` publishes it as `devcontainer-base`, so it is in `types.RemoteVariants` but in neither matrix.
 
 ## 2. Implementation Steps
 
 1. **Create/Update Profile**: Add or edit an entry in `plainBuiltinProfiles` in `internal/domain/catalog/profiles.go`, listing `github-cli` first so its layer is shared with the cached `devcontainer-base` image.
-2. **If Remote Prebuilt Image is Published**: Set `Remote: true`. Add the ID to `types.RemoteVariants` and the `docker-image.yml` `build-variants` matrix (not needed for `base`).
+2. **If Remote Prebuilt Image is Published**: Set `Remote: true`. Add the ID to `types.RemoteVariants` and the `docker-image.yml` `build-single`/`build-combo` matrices (not needed for `base`).
 
 ## 3. Mandatory Verification & Tests
 

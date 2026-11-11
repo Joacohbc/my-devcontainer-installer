@@ -64,5 +64,5 @@ El repositorio contiene una serie de pruebas automatizadas diseñadas específic
 | `TestEntrypointDoesNotTouchAgentMemoryFiles` | `assets_test.go` | Comprueba que el script de entrypoint jamás escriba directamente en archivos de memoria de agentes (`~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`). |
 | `TestAptInstallsSkipRecommends` | `render_test.go` | Inspecciona todos los comandos `apt-get install` generados por los módulos para asegurar la inclusión de `--no-install-recommends`. |
 | `TestBuiltinProfileRemoteFlagMatchesPublishedVariants` | `profiles_test.go` | Mantiene sincronizada la propiedad `Remote: true` de los perfiles con la matriz de publicación en CI (`types.RemoteVariants`). |
-| `TestRemoteVariantsAreBuiltByCI` | `profiles_test.go` | Exige que cada variante de `types.RemoteVariants` la construya el workflow: la matriz `build-variants`, o el job `build-base-cache` (con `devcontainer-base:latest`) para `base`. |
+| `TestRemoteVariantsAreBuiltByCI` | `profiles_test.go` | Exige que cada variante de `types.RemoteVariants` la construya el workflow: las matrices `build-single`/`build-combo`, o el job `build-base-cache` (con `devcontainer-base:latest`) para `base`. |
 | `TestAgentGroup_DoesNotReplaceTheHumanCommands` | `agent_test.go` | Garantiza que la fachada de agentes mantenga disponibles todos los comandos equivalentes para usuarios humanos. |

@@ -70,7 +70,7 @@ func TestPlainBuiltinProfilesHaveNoDefaultSkills(t *testing.T) {
 // the ids CI actually publishes (types.RemoteVariants), so a profile never
 // claims a pullable image that does not exist (or hides one that does).
 // 'base' is included: CI publishes devcontainer-base from the 'base' profile
-// (build-base-cache job, not the build-variants matrix).
+// (build-base-cache job, not the build-single/build-combo matrices).
 func TestBuiltinProfileRemoteFlagMatchesPublishedVariants(t *testing.T) {
 	remoteVariants := map[string]bool{}
 	for _, v := range types.RemoteVariants {
@@ -586,7 +586,7 @@ func TestMergeProfilesTemplateConflicts(t *testing.T) {
 	}
 }
 
-// Every published variant must be built by CI: either a build-variants matrix
+// Every published variant must be built by CI: either a build-single/build-combo matrix
 // entry, or 'base', which build-base-cache publishes before the matrix runs.
 func TestRemoteVariantsAreBuiltByCI(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join("..", "..", "..", "..", ".github", "workflows", "docker-image.yml"))
@@ -603,7 +603,7 @@ func TestRemoteVariantsAreBuiltByCI(t *testing.T) {
 			continue
 		}
 		if !strings.Contains(workflow, "- name: "+v+"\n") {
-			t.Errorf("variant %q missing from the build-variants matrix", v)
+			t.Errorf("variant %q missing from the build-single/build-combo matrices", v)
 		}
 	}
 }
