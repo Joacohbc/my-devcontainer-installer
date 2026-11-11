@@ -27,7 +27,7 @@ func newProfileCommand() *cobra.Command {
 use case, like a devcontainer.config.json you can apply to any project.
 
 A profile.yml may set:
-  modules        Dockerfile modules to build (or image, not both)
+  modules        Dockerfile modules to build (with image: only those it lacks)
   image          an 'image' definition name or registry reference to start from
   scripts        your own .sh files, copied into the profile directory
   services       companion compose services (postgres, redis, ...)

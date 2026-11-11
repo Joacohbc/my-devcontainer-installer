@@ -2,7 +2,7 @@
 
 The image replaces the usual tools, and the replacements live in shell
 functions and aliases — so the tool you reach for from `agent exec` is often the
-wrong one. Run `devcontainer-cli context` to see which of these the image has.
+wrong one. Run `devcontainer-cli inspect context` to see which of these the image has.
 
 - **Python: `uv`, never `pip`.** uv has one command per case, and they are not
   interchangeable:

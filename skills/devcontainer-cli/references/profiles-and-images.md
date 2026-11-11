@@ -67,6 +67,7 @@ Check it with `devcontainer-cli profile info <id>`.
 name: py-tools                 # must equal the directory name
 label: "Python toolbox"
 source: build                  # build | remote
+ref: ghcr.io/acme/img:1        # only with source: remote (set by image create --remote)
 tag: latest                    # optional
 from: base-image               # optional parent: another definition or a registry image built by the CLI
 modules:                       # objects here, not plain ids

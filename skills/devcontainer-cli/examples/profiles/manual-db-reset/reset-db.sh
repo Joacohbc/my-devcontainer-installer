@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# when: manual — copied to ~/post-script/reset-db.sh and never run on its own.
+# when: manual — copied to ~/post-script/custom-reset-db.sh and never run on its own.
 # It runs in the user's shell, so it may prompt; the DC_* variables are only
 # set for build/start/service scripts, so it works from the current directory.
 set -euo pipefail

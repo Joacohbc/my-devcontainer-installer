@@ -10,7 +10,7 @@ you whether a change needs `start`, `up`, a rebuild, or nothing.
    (Dockerfile, compose file, staged scripts). Never edit `.dc_<workspace>/`:
    re-run `agent create` with other flags instead.
 2. **Build** (part of `agent create`, or `workspace up --build`,
-   `image update`): `docker build` runs the modules, then the `build` scripts as
+   `image update --rebuild`): `docker build` runs the modules, then the `build` scripts as
    `devuser`. No project, no volumes, no services exist yet.
 3. **Create + start** (`workspace up`): compose creates the containers. The dev
    container mounts the project at `/workspaces/<workspace>` (alias

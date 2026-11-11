@@ -26,7 +26,7 @@ scripts:
 | Lands at | deleted after its layer | `~/post-script/start.d/90-custom-<file>` | `~/post-script/services.d/custom-<file>` | `~/post-script/custom-<file>` |
 
 `DC_WORKSPACE_DIR` is the project directory (`/workspaces/<workspace>`) and
-`DC_WORKSPACE` its name. `su -` starts from an empty environment, so only these
+`DC_WORKSPACE` its name; both are empty if no project is mounted. `su -` starts from an empty environment, so only these
 variables and what the login shell sets are guaranteed; do not rely on the
 compose `environment:` reaching a start or service script.
 
@@ -40,8 +40,8 @@ compose `environment:` reaching a start or service script.
 - **Prompts, logs in, or is destructive** → `manual`. Nothing interactive may run
   unattended.
 
-The CLI warns before building when a `build` script mentions `/workspaces`,
-`/workspace/`, `$WORKSPACE` or `$DC_WORKSPACE_DIR` outside a comment: that build
+The CLI warns before building when a `build` script mentions `/workspaces` or
+`/workspace` (not under `$HOME`), `$WORKSPACE` or `$DC_WORKSPACE*` outside a comment: that build
 would fail at its own layer with `Permission denied`.
 
 ## Rules

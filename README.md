@@ -62,6 +62,8 @@ devcontainer-cli config upgrade-cli
 curl -fsSL https://raw.githubusercontent.com/Joacohbc/my-devcontainer-installer/main/cli/uninstall.sh | sh
 ```
 
+Para actualizar la habilidad `devcontainer-cli` instalada con `curl`, borre su carpeta (`rm -rf "$DEST"`) y repita la descarga: extraer sobre la carpeta existente conserva archivos que ya no existen en el repositorio. Para desinstalarla, basta con borrar la carpeta. Con `npx skills`, use los comandos de actualización y eliminación de esa herramienta.
+
 ---
 
 ## Flujo Esencial en 60 Segundos

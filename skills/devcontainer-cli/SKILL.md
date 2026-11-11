@@ -216,7 +216,7 @@ with their versions and the reachable services. That is where the answers to
 "which Python is in here", "how do I reach postgres", "is pnpm installed" are,
 so you stop guessing and stop probing with throwaway `agent exec` calls.
 
-Read it again after any `agent create` re-run or `image update --build`: both can
+Read it again after any `agent create` re-run or `image update --rebuild`: both can
 change what is inside.
 
 ## Run commands inside
@@ -254,7 +254,7 @@ session, so switching versions works as usual.
 The exception is **an image built before this was in place**, which carries the
 PATH only in its rc files. If a tool you know is installed comes back as
 `executable file not found in $PATH`, re-run it wrapped in `bash -lc` and
-rebuild with `devcontainer-cli update --rebuild`.
+rebuild with `devcontainer-cli image update --rebuild`.
 
 Other notes that matter:
 
@@ -304,7 +304,7 @@ Why, and the exceptions: `references/package-managers.md`.
     devcontainer-cli workspace down -v --yes     # also delete the named volumes (data loss)
 
     devcontainer-cli image update                # rebuild (mode=custom) or pull (mode=profiles)
-    devcontainer-cli image update --build        # force a rebuild
+    devcontainer-cli image update --rebuild      # force a rebuild
 
 `start`/`stop`/`restart` accept `-c <container>` to act on one container.
 
@@ -384,7 +384,7 @@ A container on a **different Docker host**, through an existing SSH connection
 to it:
 
     devcontainer-cli access shell --via me@docker-host -c dc-base -- uname -a
-    devcontainer-cli access ssh --via me@docker-host --container dc-ssh
+    devcontainer-cli access ssh --via me@docker-host --container dc-base
 
 Global config, profiles and shared logins:
 
@@ -395,7 +395,7 @@ Global config, profiles and shared logins:
     devcontainer-cli config skill install [ids...] # install skills at project level in an ephemeral container
     devcontainer-cli config skill add <id> --ref owner/repo   # define your own
     devcontainer-cli config alias set ll "ls -la" # aliases for every container
-    devcontainer-cli config alias sync            # apply them without a rebuild
+    devcontainer-cli config shared sync alias.sh  # push them into running containers
 
 `config shared sync` seeds a shared Docker volume from this machine's tool
 configs (`~/.claude`, `~/.config/gh`, …) so logins persist across every
@@ -443,7 +443,7 @@ managed label). Use `--dry-run` first and show the user what would go.
   container's `pip`/`npm` indirections — not to find a binary, which the image
   PATH already handles. `command not found` from `agent exec` on an image built
   before that was in place means the PATH lives only in the rc files: re-run it
-  wrapped, check with `inspect context`, and rebuild with `image update --build`.
+  wrapped, check with `inspect context`, and rebuild with `image update --rebuild`.
 - **Install packages with the container's package manager**, and with the right
   one for the job: `uv add` for a project dependency, `uv tool install` for a
   CLI, `uv pip install` for something importable container-wide, `pnpm` for
