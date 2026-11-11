@@ -84,6 +84,7 @@ func addAgentCreateFlags(cmd *cobra.Command) {
 		return completeCSV(toComplete, catalog.ServiceIDs()), cobra.ShellCompDirectiveNoFileComp
 	}
 	_ = cmd.RegisterFlagCompletionFunc(flagServices, completeServiceFunc)
+	_ = cmd.RegisterFlagCompletionFunc(flagImage, completeImageNames)
 }
 
 // agentCreateDefaults applies what makes this "create" rather than "generate":

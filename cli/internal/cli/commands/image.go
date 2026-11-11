@@ -5,6 +5,8 @@ import (
 	"strings"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/ui"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/catalog"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/service"
 	"github.com/spf13/cobra"
 )
@@ -32,7 +34,10 @@ Subcommands:
   pull <name>       Pull a remote image and verify compatibility
   export <name> <d> Export the Dockerfile, assets, and build instructions to a directory
   remove <name>     Remove an image definition (and optionally the Docker image)
-  update            Update (pull or rebuild) a project's container images`,
+  update            Update (pull or rebuild) a project's container images
+
+Image names tab-complete: 'build' offers only definitions built locally, 'pull'
+only those pointing at a remote image, and the rest every definition.`,
 		Example: `  # List registered images
   devcontainer-cli image list
 
@@ -105,10 +110,11 @@ func newImageListCommand() *cobra.Command {
 
 func newImageInfoCommand() *cobra.Command {
 	return &cobra.Command{
-		Use:          "info <name>",
-		Short:        "Show detailed status of an image definition",
-		SilenceUsage: true,
-		Args:         cobra.ExactArgs(1),
+		Use:               "info <name>",
+		Short:             "Show detailed status of an image definition",
+		SilenceUsage:      true,
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: completeImageArg(),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			svc := service.ImageService{Report: ui.Console{}}
 			st, err := svc.Info(args[0])
@@ -187,15 +193,24 @@ definition (build it first) or a registry image built by devcontainer-cli.`,
 	cmd.Flags().String("remote", "", "Point image definition directly to a remote registry image reference")
 	cmd.Flags().String("tag", "latest", "Docker tag for the image")
 	cmd.Flags().String("label", "", "Human-readable description label")
+
+	_ = cmd.RegisterFlagCompletionFunc("from-profile", func(_ *cobra.Command, _ []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		return withPrefix(profileIDs(false), toComplete), cobra.ShellCompDirectiveNoFileComp
+	})
+	_ = cmd.RegisterFlagCompletionFunc("from", completeImageNames)
+	_ = cmd.RegisterFlagCompletionFunc(flagModules, func(_ *cobra.Command, _ []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		return completeCSV(toComplete, catalog.ModuleIDs()), cobra.ShellCompDirectiveNoFileComp
+	})
 	return cmd
 }
 
 func newImageBuildCommand() *cobra.Command {
 	return &cobra.Command{
-		Use:          "build <name>",
-		Short:        "Build the Docker image for an image definition",
-		SilenceUsage: true,
-		Args:         cobra.ExactArgs(1),
+		Use:               "build <name>",
+		Short:             "Build the Docker image for an image definition",
+		SilenceUsage:      true,
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: completeImageArg(domain.ImageSourceBuild),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			svc := service.ImageService{Report: ui.Console{}}
 			return svc.Build(args[0])
@@ -205,10 +220,11 @@ func newImageBuildCommand() *cobra.Command {
 
 func newImagePullCommand() *cobra.Command {
 	return &cobra.Command{
-		Use:          "pull <name>",
-		Short:        "Pull a remote image and verify compatibility",
-		SilenceUsage: true,
-		Args:         cobra.ExactArgs(1),
+		Use:               "pull <name>",
+		Short:             "Pull a remote image and verify compatibility",
+		SilenceUsage:      true,
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: completeImageArg(domain.ImageSourceRemote),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			svc := service.ImageService{Report: ui.Console{}}
 			return svc.Pull(args[0])
@@ -218,10 +234,11 @@ func newImagePullCommand() *cobra.Command {
 
 func newImageExportCommand() *cobra.Command {
 	return &cobra.Command{
-		Use:          "export <name> <dir>",
-		Short:        "Export image Dockerfile and assets to a directory",
-		SilenceUsage: true,
-		Args:         cobra.ExactArgs(2),
+		Use:               "export <name> <dir>",
+		Short:             "Export image Dockerfile and assets to a directory",
+		SilenceUsage:      true,
+		Args:              cobra.ExactArgs(2),
+		ValidArgsFunction: completeImageExportArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			svc := service.ImageService{Report: ui.Console{}}
 			return svc.Export(args[0], args[1])
@@ -244,8 +261,9 @@ remove only the definition. A failed 'docker rmi' is reported as an error.`,
 
   # Remove only the definition, keep the built image
   devcontainer-cli image remove android --keep-docker-image`,
-		SilenceUsage: true,
-		Args:         cobra.ExactArgs(1),
+		SilenceUsage:      true,
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: completeImageArg(),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			keepDocker, _ := cmd.Flags().GetBool("keep-docker-image")
 			svc := service.ImageService{Report: ui.Console{}}

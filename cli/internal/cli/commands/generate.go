@@ -77,6 +77,7 @@ func addGenerateFlags(cmd *cobra.Command) {
 		return completeCSV(toComplete, catalog.ServiceIDs()), cobra.ShellCompDirectiveNoFileComp
 	}
 	_ = cmd.RegisterFlagCompletionFunc(flagServices, completeServiceFunc)
+	_ = cmd.RegisterFlagCompletionFunc(flagImage, completeImageNames)
 }
 
 // profileIDs lists profile ids for completion on the shared --profile flag.
