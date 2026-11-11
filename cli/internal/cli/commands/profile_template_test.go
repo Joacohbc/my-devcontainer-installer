@@ -117,3 +117,21 @@ services: [nope]
 		t.Fatal("expected an unknown service error")
 	}
 }
+
+// Image plus modules derives the project image from that image.
+func TestProfileTemplateWithImageAndModulesDerives(t *testing.T) {
+	writeUserProfile(t, "android-app", `id: android-app
+image: android
+modules: [nodejs]
+`)
+	config, err := applyProfileFlag(t, "android-app", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if config.Mode != types.BuildModeCustom || config.Dockerfile.From != "android" {
+		t.Errorf("mode=%s from=%q", config.Mode, config.Dockerfile.From)
+	}
+	if !slices.ContainsFunc(config.Dockerfile.Modules, func(m types.SelectedModule) bool { return m.ID == types.ModuleNodejs }) {
+		t.Errorf("modules = %+v", config.Dockerfile.Modules)
+	}
+}

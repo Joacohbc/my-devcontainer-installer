@@ -24,15 +24,17 @@ const ImageManifestFileName = "image.yml"
 
 // ImageDef represents a reusable devcontainer image definition.
 type ImageDef struct {
-	Name       string                 `json:"name" yaml:"name"`
-	Label      string                 `json:"label,omitempty" yaml:"label,omitempty"`
-	Tag        string                 `json:"tag,omitempty" yaml:"tag,omitempty"`
-	Source     ImageSource            `json:"source" yaml:"source"`
-	Ref        string                 `json:"ref,omitempty" yaml:"ref,omitempty"`
-	Modules    []types.SelectedModule `json:"modules,omitempty" yaml:"modules,omitempty"`
-	Scripts    []types.CustomScript   `json:"scripts,omitempty" yaml:"scripts,omitempty"`
-	Dockerfile string                 `json:"dockerfile,omitempty" yaml:"dockerfile,omitempty"`
-	Files      []string               `json:"files,omitempty" yaml:"files,omitempty"`
+	Name   string      `json:"name" yaml:"name"`
+	Label  string      `json:"label,omitempty" yaml:"label,omitempty"`
+	Tag    string      `json:"tag,omitempty" yaml:"tag,omitempty"`
+	Source ImageSource `json:"source" yaml:"source"`
+	Ref    string      `json:"ref,omitempty" yaml:"ref,omitempty"`
+	// From derives this image from another one instead of ubuntu: the name of
+	// another image definition or a registry reference to an image built by
+	// devcontainer-cli. Only the modules the parent lacks are installed.
+	From    string                 `json:"from,omitempty" yaml:"from,omitempty"`
+	Modules []types.SelectedModule `json:"modules,omitempty" yaml:"modules,omitempty"`
+	Scripts []types.CustomScript   `json:"scripts,omitempty" yaml:"scripts,omitempty"`
 }
 
 // ValidateImageName checks if the image name matches the allowed character set.
@@ -190,4 +192,61 @@ func CheckImageCompat(ref string, capture CaptureFunc) error {
 	}
 
 	return nil
+}
+
+// ImageParent is what a derived build starts from: the image reference and the
+// modules that image already has.
+type ImageParent struct {
+	Ref     string
+	Modules []types.SelectedModule
+}
+
+// ResolveImageParent resolves a `from` value: an image definition name (whose
+// lineage is read from the definitions themselves, following its own `from`)
+// or a registry reference (whose modules are read from its labels). A cycle
+// of definitions is an error.
+func ResolveImageParent(from string, capture CaptureFunc, dirs ...string) (ImageParent, error) {
+	return resolveImageParent(from, capture, map[string]bool{}, dirs)
+}
+
+func resolveImageParent(from string, capture CaptureFunc, visiting map[string]bool, dirs []string) (ImageParent, error) {
+	def, ok, _ := ResolveImageDef(from, dirs...)
+	if !ok {
+		return imageParentFromLabels(from, capture)
+	}
+	if visiting[def.Name] {
+		return ImageParent{}, fmt.Errorf("image %q derives from itself through its 'from' chain", def.Name)
+	}
+	visiting[def.Name] = true
+	if def.Source == ImageSourceRemote {
+		return imageParentFromLabels(ImageTag(def), capture)
+	}
+	parent := ImageParent{Ref: ImageTag(def)}
+	if def.From != "" {
+		grand, err := resolveImageParent(def.From, capture, visiting, dirs)
+		if err != nil {
+			return ImageParent{}, err
+		}
+		parent.Modules = append(parent.Modules, grand.Modules...)
+	}
+	parent.Modules = append(parent.Modules, def.Modules...)
+	return parent, nil
+}
+
+func imageParentFromLabels(ref string, capture CaptureFunc) (ImageParent, error) {
+	status, stdout, _ := capture([]string{"image", "inspect", "-f", `{{index .Config.Labels "` + types.LabelModules + `"}}`, ref})
+	if status != 0 {
+		return ImageParent{}, fmt.Errorf("base image %s is not available locally; pull or build it first", ref)
+	}
+	value := strings.TrimSpace(stdout)
+	if value == "" || value == "<no value>" {
+		return ImageParent{}, fmt.Errorf("base image %s has no %s label: only images built by devcontainer-cli can be derived from", ref, types.LabelModules)
+	}
+	parent := ImageParent{Ref: ref}
+	for _, id := range strings.Split(value, ",") {
+		if id = strings.TrimSpace(id); id != "" {
+			parent.Modules = append(parent.Modules, types.SelectedModule{ID: types.ModuleID(id), Options: map[string]any{}})
+		}
+	}
+	return parent, nil
 }

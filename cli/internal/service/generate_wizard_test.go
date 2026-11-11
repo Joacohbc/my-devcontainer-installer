@@ -818,3 +818,39 @@ func TestCategorySteps_PreSelectsRequiredDependencies(t *testing.T) {
 		t.Errorf("expected github-cli to be pre-selected in dev-tools, got %v", devInitial)
 	}
 }
+
+// Starting from a profile in the wizard applies its template too: services
+// are preselected, and env and volumes reach the config.
+func TestConfigureProfileTemplateSeedsServicesEnvAndVolumes(t *testing.T) {
+	defer useFakeDocker(&fakeRunner{status: 0})()
+
+	tmp := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmp)
+	profilesDir := filepath.Join(tmp, "devcontainer-cli", "profiles", "webdb")
+	if err := os.MkdirAll(profilesDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	manifest := "id: webdb\nmodules: [nodejs]\nservices: [postgres]\nvolumes: [\"cache:/cache\"]\nenv:\n  APP_ENV: dev\n"
+	if err := os.WriteFile(filepath.Join(profilesDir, "profile.yml"), []byte(manifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	svc := GenerateService{Report: nopReporter{}}
+	base := &types.DevcontainerConfig{Env: map[string]string{}}
+	prompter := scriptedPrompter{answers: map[string]any{
+		stepKeyWorkspace: "ws",
+		stepKeyMode:      modeChoiceCustomFromProfile,
+		stepKeyProfile:   "webdb",
+		stepKeySubnet:    "172.20.0.0/24",
+	}}
+	cfg, err := svc.Configure(base, tmp, prompter)
+	if err != nil {
+		t.Fatalf("Configure: %v", err)
+	}
+	if !slices.ContainsFunc(cfg.Compose.Services, func(s types.SelectedService) bool { return s.ID == types.ServicePostgres }) {
+		t.Errorf("expected postgres preselected, got %+v", cfg.Compose.Services)
+	}
+	if cfg.Env["APP_ENV"] != "dev" || !slices.Contains(cfg.Compose.Volumes, "cache:/cache") {
+		t.Errorf("env=%v volumes=%v", cfg.Env, cfg.Compose.Volumes)
+	}
+}

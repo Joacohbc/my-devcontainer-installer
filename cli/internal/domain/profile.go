@@ -204,16 +204,14 @@ func PartitionCustomScripts(config *types.DevcontainerConfig) (build, start, ser
 // ApplyProfileTemplate copies a profile's project-level settings into config:
 // companion services (replacing the current set when the profile names any),
 // extra volumes (added), environment variables (set) and, for a profile that
-// starts from an image, mode=image with that image. Modules, scripts, ports and
+// starts from an image, mode=image with that image — or, when it also lists
+// modules, a derived custom build FROM that image. Modules, scripts, ports and
 // skills are applied by the caller, which also lets explicit flags win.
 func ApplyProfileTemplate(config *types.DevcontainerConfig, p catalog.Profile) error {
 	for _, svc := range p.Services {
 		if catalog.GetComposeService(svc.ID) == nil {
 			return fmt.Errorf("profile %q: %w", p.ID, unknownServiceError(string(svc.ID)))
 		}
-	}
-	if p.Image != "" && len(p.Modules) > 0 {
-		return fmt.Errorf("profile %q sets both image and modules; keep only one of them", p.ID)
 	}
 	for k := range p.Env {
 		if !envNamePattern.MatchString(k) {
@@ -241,9 +239,16 @@ func ApplyProfileTemplate(config *types.DevcontainerConfig, p catalog.Profile) e
 	for k, v := range p.Env {
 		config.Env[k] = v
 	}
-	if p.Image != "" {
+	switch {
+	case p.Image != "" && len(p.Modules) > 0:
+		// Image plus modules is a derived build: the project image starts FROM
+		// that image and adds only the modules it lacks.
+		config.Mode = types.BuildModeCustom
+		config.Dockerfile.From = p.Image
+	case p.Image != "":
 		config.Mode = types.BuildModeImage
 		config.Image = ResolveImageRef(p.Image)
+		config.Dockerfile.From = ""
 	}
 	return nil
 }

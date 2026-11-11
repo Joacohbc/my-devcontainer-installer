@@ -92,6 +92,15 @@ type GeneratePlan struct {
 // into the image. Plan records the fingerprint and image on config.
 func (s GenerateService) Plan(config *types.DevcontainerConfig, copyContents map[string]string) (GeneratePlan, error) {
 	resolveHostBuildIDs(config)
+	if config.Mode == types.BuildModeCustom && config.Dockerfile.From != "" && config.Dockerfile.BaseRef == "" {
+		dir := domain.UserImageDir()
+		if err := (ImageService{Report: s.Report}).ensureParent(config.Dockerfile.From, dir); err != nil {
+			return GeneratePlan{}, err
+		}
+		if err := resolveBaseImage(config, dir); err != nil {
+			return GeneratePlan{}, err
+		}
+	}
 
 	dockerfile, err := domain.GenerateDockerfile(config)
 	if err != nil {
@@ -104,7 +113,14 @@ func (s GenerateService) Plan(config *types.DevcontainerConfig, copyContents map
 		for _, m := range config.Dockerfile.Modules {
 			moduleIDs = append(moduleIDs, string(m.ID))
 		}
-		config.Fingerprint = domain.ComputeFingerprint(dockerfile, copyContents, moduleIDs, buildArgs(config))
+		args := buildArgs(config)
+		if config.Dockerfile.BaseRef != "" {
+			if args == nil {
+				args = map[string]string{}
+			}
+			args["BASE_IMAGE_ID"] = baseImageID(config.Dockerfile.BaseRef)
+		}
+		config.Fingerprint = domain.ComputeFingerprint(dockerfile, copyContents, moduleIDs, args)
 		if config.ImageKind != types.ImageKindNamed {
 			config.Image = domain.ContentImageTag(config.ResolvedOrigin(), config.Fingerprint)
 		}

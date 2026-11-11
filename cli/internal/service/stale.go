@@ -28,6 +28,11 @@ func StaleBuildReasons(config *types.DevcontainerConfig, paths project.Paths) []
 	if err != nil {
 		return nil
 	}
+	if config.Dockerfile.From != "" && config.Dockerfile.BaseRef == "" {
+		if err := resolveBaseImage(config, domain.UserImageDir()); err != nil {
+			return nil
+		}
+	}
 	var reasons []string
 	if fresh, err := domain.GenerateDockerfile(config); err == nil && !domain.SameDockerfile(string(onDisk), fresh) {
 		reasons = append(reasons, "the Dockerfile")

@@ -17,6 +17,8 @@ var DockerfileModules = []*dockerfile.ModuleSpec{
 	dockerfile.GithubCliModule,
 	dockerfile.JavaTemurinModule,
 	dockerfile.JavaOpenjdkModule,
+	// The Android SDK's sdkmanager needs the JDK above, so it renders after it.
+	dockerfile.AndroidSdkModule,
 	dockerfile.PythonModule,
 	dockerfile.SqliteModule,
 	dockerfile.GolangModule,

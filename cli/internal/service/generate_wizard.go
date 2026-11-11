@@ -330,7 +330,11 @@ func parseVolumesCSV(raw string) []string {
 
 func (w wizardContext) volumesStep() Step {
 	return Step{Key: stepKeyVolumes, Build: func(s *State) Field {
-		initial := strings.Join(w.base.Compose.Volumes, ",")
+		volumes := w.base.Compose.Volumes
+		if p, ok := w.pickedProfile(s); ok && s.String(stepKeyMode) == modeChoiceCustomFromProfile && len(p.Volumes) > 0 {
+			volumes = p.Volumes
+		}
+		initial := strings.Join(volumes, ",")
 		if s.Has(stepKeyVolumes) {
 			initial = s.String(stepKeyVolumes)
 		}
@@ -461,12 +465,18 @@ func (w wizardContext) pickedProfile(s *State) (catalog.Profile, bool) {
 	return w.profileByID(pid)
 }
 
-// profileCategoryIDs returns the profile's module ids that belong to UI category c.
+// profileCategoryIDs returns the profile's module and service ids that belong
+// to UI category c, so a profile's services are preselected like its modules.
 func profileCategoryIDs(p catalog.Profile, c types.UICategory) []string {
 	var ids []string
 	for _, id := range p.Modules {
 		if spec := catalog.GetDockerfileModule(types.ModuleID(id)); spec != nil && spec.UICategory == c {
 			ids = append(ids, id)
+		}
+	}
+	for _, svc := range p.Services {
+		if spec := catalog.GetComposeService(svc.ID); spec != nil && spec.UICategory == c {
+			ids = append(ids, string(svc.ID))
 		}
 	}
 	return ids
@@ -693,6 +703,17 @@ func (w wizardContext) reduce(s *State) *types.DevcontainerConfig {
 		draft.Compose.SharedConfig = &v
 	} else {
 		draft.Compose.SharedConfig = w.base.Compose.SharedConfig
+	}
+
+	if s.String(stepKeyMode) == modeChoiceCustomFromProfile {
+		if p, ok := w.pickedProfile(s); ok {
+			// Services and volumes were seeded into their steps and may have been
+			// changed there; the rest of the template applies as-is.
+			// ApplyProfileTemplate validates before changing anything, so an
+			// invalid profile leaves the draft as the user built it.
+			p.Services, p.Volumes = nil, nil
+			_ = domain.ApplyProfileTemplate(draft, p)
+		}
 	}
 
 	if mode == types.BuildModeProfiles {

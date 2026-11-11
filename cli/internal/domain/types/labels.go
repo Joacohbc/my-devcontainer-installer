@@ -67,10 +67,7 @@ func DockerfileLabelBlock(config *DevcontainerConfig) string {
 	if kind == "" {
 		kind = ImageKindProject
 	}
-	modules := make([]string, 0, len(config.Dockerfile.Modules))
-	for _, m := range config.Dockerfile.Modules {
-		modules = append(modules, string(m.ID))
-	}
+	modules := config.Dockerfile.AllModuleIDs()
 	pairs := [][2]string{
 		{LabelManaged, "true"},
 		{LabelProject, ProjectID(config)},

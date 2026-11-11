@@ -34,6 +34,7 @@ const (
 	ModuleZellij         ModuleID = "zellij"
 	ModuleChrome         ModuleID = "chrome"
 	ModuleFfmpeg         ModuleID = "ffmpeg"
+	ModuleAndroidSdk     ModuleID = "android-sdk"
 	ModuleDod            ModuleID = "dod"
 	ModuleCloudflared    ModuleID = "cloudflared"
 	ModuleSkills         ModuleID = "skills"
@@ -416,6 +417,29 @@ type DockerfileConfig struct {
 	// at generate time and persisted here so regenerating the project no longer
 	// depends on the profile that contributed them — exactly like Modules.
 	Scripts []CustomScript `json:"scripts,omitempty" yaml:"scripts,omitempty"`
+	// From makes this a derived build: the image starts from another image (an
+	// `image` definition name or a registry reference to a devcontainer-cli
+	// image) instead of ubuntu. It is what the user asked for and is persisted.
+	From string `json:"from,omitempty" yaml:"from,omitempty"`
+	// BaseRef and BaseModules are From resolved fresh before every generation:
+	// the image reference to build FROM and the modules it already has, so only
+	// the remaining modules are rendered.
+	BaseRef     string           `json:"-" yaml:"-"`
+	BaseModules []SelectedModule `json:"-" yaml:"-"`
+}
+
+// AllModuleIDs is every selected module id, the base image's first, without
+// duplicates: what the image ends up with.
+func (d DockerfileConfig) AllModuleIDs() []string {
+	seen := map[ModuleID]bool{}
+	var ids []string
+	for _, m := range append(append([]SelectedModule{}, d.BaseModules...), d.Modules...) {
+		if !seen[m.ID] {
+			seen[m.ID] = true
+			ids = append(ids, string(m.ID))
+		}
+	}
+	return ids
 }
 
 type ComposeConfig struct {

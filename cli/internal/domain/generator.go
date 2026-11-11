@@ -19,14 +19,27 @@ func GenerateDockerfile(config *types.DevcontainerConfig) (string, error) {
 	if config.Mode == types.BuildModeProfiles || config.Mode == types.BuildModeImage {
 		return "", nil
 	}
-	resolved, err := ResolveDockerfileModules(MatchDBClientVersions(config))
+	matched := MatchDBClientVersions(config)
+	resolved, err := ResolveDockerfileModules(append(append([]types.SelectedModule{}, config.Dockerfile.BaseModules...), matched...))
 	if err != nil {
 		return "", err
 	}
-	fragments := make([]string, 0, len(resolved)+4)
+	installed, err := baseImageModules(config)
+	if err != nil {
+		return "", err
+	}
+	fragments := make([]string, 0, len(resolved)+5)
+	if config.Dockerfile.From != "" {
+		fragments = append(fragments, derivedFromBlock(config.Dockerfile.BaseRef))
+	}
 	for _, r := range resolved {
+		if installed[r.Module.ID] {
+			continue
+		}
 		fragments = append(fragments, strings.TrimSpace(r.Module.Render(r.Options)))
 	}
+	// The environment is rendered from every module, inherited ones included:
+	// the derived ENV block and ~/.dc-env.sh replace the parent's.
 	fragments = append(fragments, renderEnvironmentBlocks(resolved)...)
 	postScripts, err := postScriptsDockerfileBlock(config)
 	if err != nil {
@@ -44,6 +57,48 @@ func GenerateDockerfile(config *types.DevcontainerConfig) (string, error) {
 	}
 	fragments = append(fragments, types.DockerfileLabelBlock(config))
 	return types.GeneratedHeader + "\n\n" + strings.Join(fragments, "\n\n") + "\n", nil
+}
+
+// baseImageModules is what a derived build's parent image already installed:
+// its resolved modules (always-on ones included), minus cleanup, which every
+// build re-renders so the entrypoint and apt state match this CLI version.
+// It is empty for a full build.
+func baseImageModules(config *types.DevcontainerConfig) (map[types.ModuleID]bool, error) {
+	installed := map[types.ModuleID]bool{}
+	if config.Dockerfile.From == "" {
+		return installed, nil
+	}
+	if config.Dockerfile.BaseRef == "" {
+		return nil, fmt.Errorf("base image %q was not resolved before generating the Dockerfile", config.Dockerfile.From)
+	}
+	base, err := ResolveDockerfileModules(config.Dockerfile.BaseModules)
+	if err != nil {
+		return nil, fmt.Errorf("base image %s: %w", config.Dockerfile.From, err)
+	}
+	for _, r := range base {
+		if r.Module.ID != types.ModuleCleanup {
+			installed[r.Module.ID] = true
+		}
+	}
+	return installed, nil
+}
+
+// derivedFromBlock starts a derived build. The parent was built with its own
+// USER_UID/USER_GID (1000 for a named image); when the host ids differ,
+// devuser is remapped so it still owns the bind-mounted workspace.
+func derivedFromBlock(ref string) string {
+	return fmt.Sprintf(`##
+## BASE IMAGE (derived build)
+##
+FROM %s
+USER root
+ARG USER_UID=1000
+ARG USER_GID=1000
+RUN if [ "$(id -u devuser)" != "${USER_UID}" ] || [ "$(id -g devuser)" != "${USER_GID}" ]; then \
+        groupmod -o -g "${USER_GID}" devuser && \
+        usermod -o -u "${USER_UID}" -g "${USER_GID}" devuser && \
+        chown -R devuser:devuser /home/devuser; \
+    fi`, ref)
 }
 
 // renderEnvironmentBlocks turns every resolved module's declared environment
