@@ -259,13 +259,61 @@ func (s ImageService) Available(name string) (string, error) {
 	return tag, nil
 }
 
-// RunnableRef resolves --image under mode=image: a definition name goes
-// through Available, anything else is a registry reference used as-is.
+// Ready is Available plus the image contract for a remote definition: it is
+// pulled and verified (as 'image pull' does) before a container runs it, so an
+// image without devuser or the CLI entrypoint is refused instead of starting a
+// container nothing can attach to.
+func (s ImageService) Ready(name string) (string, error) {
+	ref, err := s.Available(name)
+	if err != nil {
+		return "", err
+	}
+	def, _, err := domain.ResolveImageDef(name, s.getImagesDir())
+	if err != nil {
+		return "", err
+	}
+	if def.EffectiveSource() != domain.ImageSourceRemote {
+		return ref, nil
+	}
+	if err := s.Pull(name); err != nil {
+		return "", err
+	}
+	return ref, nil
+}
+
+// RunnableRef resolves the image of a mode=image project: a definition, named
+// directly or by the reference it resolves to, goes through Ready; anything
+// else is a registry reference used as-is.
 func (s ImageService) RunnableRef(image string) (string, error) {
-	if _, ok, _ := domain.ResolveImageDef(image, s.getImagesDir()); !ok {
+	def, ok, err := s.definitionFor(image)
+	if err != nil {
+		return "", err
+	}
+	if !ok {
 		return image, nil
 	}
-	return s.Available(image)
+	return s.Ready(def.Name)
+}
+
+// definitionFor finds the definition image names: by definition name, or by
+// the reference a definition resolves to.
+func (s ImageService) definitionFor(image string) (domain.ImageDef, bool, error) {
+	if domain.ValidateImageName(image) == nil {
+		def, ok, err := domain.ResolveImageDef(image, s.getImagesDir())
+		if err != nil || ok {
+			return def, ok, err
+		}
+	}
+	defs, err := domain.LoadImageDefs(s.getImagesDir())
+	if err != nil {
+		return domain.ImageDef{}, false, err
+	}
+	for _, def := range defs {
+		if domain.ImageTag(def) == image {
+			return def, true, nil
+		}
+	}
+	return domain.ImageDef{}, false, nil
 }
 
 // Build compiles a local Dockerfile for the image definition and tags it.

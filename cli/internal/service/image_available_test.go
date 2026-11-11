@@ -91,3 +91,74 @@ func TestImageRunnableRef(t *testing.T) {
 		t.Fatalf("unbuilt definition error = %v, want a build hint", err)
 	}
 }
+
+func pulled(r *daemonRunner, ref string) bool {
+	for _, call := range r.calls {
+		if len(call) > 2 && call[1] == "pull" && call[len(call)-1] == ref {
+			return true
+		}
+	}
+	return false
+}
+
+// A remote definition is pulled and checked against the image contract before
+// a container runs it; a build definition only has to be built.
+func TestImageReadyVerifiesARemoteDefinition(t *testing.T) {
+	svc := newImageSvc(t)
+	_ = svc.Create("built", CreateImageOpts{})
+	_ = svc.Create("team", CreateImageOpts{RemoteRef: "ghcr.io/acme/devcontainer:1"})
+	runner := &daemonRunner{local: map[string]bool{"devcontainer-cli-img/built:latest": true}}
+	defer useFakeDocker(runner)()
+
+	if got, err := svc.Ready("team"); err != nil || got != "ghcr.io/acme/devcontainer:1" {
+		t.Fatalf("Ready(team) = %q, %v; want its reference", got, err)
+	}
+	if !pulled(runner, "ghcr.io/acme/devcontainer:1") {
+		t.Errorf("a remote definition must be pulled before it runs; calls=%v", runner.calls)
+	}
+	if got, err := svc.Ready("built"); err != nil || got != "devcontainer-cli-img/built:latest" {
+		t.Fatalf("Ready(built) = %q, %v; want its tag", got, err)
+	}
+	if pulled(runner, "devcontainer-cli-img/built:latest") {
+		t.Error("a build definition is never pulled")
+	}
+}
+
+func TestImageReadyRejectsAnIncompatibleRemoteImage(t *testing.T) {
+	svc := newImageSvc(t)
+	_ = svc.Create("team", CreateImageOpts{RemoteRef: "ghcr.io/acme/devcontainer:1"})
+	defer useFakeDocker(&fakeRunner{})()
+
+	if _, err := svc.Ready("team"); err == nil || !strings.Contains(err.Error(), "incompatible") {
+		t.Fatalf("error = %v, want the image contract failure", err)
+	}
+}
+
+// Under mode=image the value may be a definition name or the reference a
+// definition resolves to (what the wizard and a profile's image: store); both
+// get the same checks. A malformed definition is reported, not run as a
+// registry reference.
+func TestImageRunnableRefChecksDefinitionsByNameOrReference(t *testing.T) {
+	svc := newImageSvc(t)
+	_ = svc.Create("team", CreateImageOpts{RemoteRef: "ghcr.io/acme/devcontainer:1"})
+	runner := &daemonRunner{local: map[string]bool{}}
+	defer useFakeDocker(runner)()
+
+	if got, err := svc.RunnableRef("ghcr.io/acme/devcontainer:1"); err != nil || got != "ghcr.io/acme/devcontainer:1" {
+		t.Fatalf("RunnableRef(ref) = %q, %v", got, err)
+	}
+	if !pulled(runner, "ghcr.io/acme/devcontainer:1") {
+		t.Errorf("a definition's reference must be verified like its name; calls=%v", runner.calls)
+	}
+
+	broken := filepath.Join(svc.ImagesDir, "broken")
+	if err := os.MkdirAll(broken, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(broken, domain.ImageManifestFileName), []byte("name: [unclosed"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.RunnableRef("broken"); err == nil || !strings.Contains(err.Error(), "parsing") {
+		t.Fatalf("RunnableRef(broken) error = %v, want the manifest parse error", err)
+	}
+}
