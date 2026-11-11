@@ -45,6 +45,10 @@ classDiagram
         +string Name
         +[]string Modules
         +[]CustomScript Scripts
+        +string Image
+        +[]SelectedService Services
+        +[]string Volumes
+        +map Env
         +[]string Skills
         +bool Remote
         +string Dir
@@ -71,7 +75,7 @@ classDiagram
 ### `DevcontainerConfig`
 Entidad raíz que representa la configuración completa persistida en `devcontainer.config.json` para un proyecto:
 - `Mode`: estrategia de compilación (`custom`, `profiles` o `image`).
-- `Image`: nombre o etiqueta de la imagen Docker final (`devcontainer-cli/<fp12>:latest`, imagen remota de GHCR, o imagen nombrada `devcontainer-cli-img/<name>:<tag>`).
+- `Image`: nombre o etiqueta de la imagen Docker final (`devcontainer-cli/<origen>-<fp8>:latest`, imagen remota de GHCR, o imagen nombrada `devcontainer-cli-img/<name>:<tag>`).
 - `Workspace`: identificador limpio del espacio de trabajo derivado del nombre del directorio del proyecto.
 - `Dockerfile.Modules`: lista ordenada de identificadores de módulos Dockerfile activados.
 - `Compose.Services`: lista de identificadores de servicios Compose complementarios (bases de datos, motores).
@@ -110,6 +114,7 @@ Cada módulo implementa `dockerfile.ModuleSpec` y declara sus contratos de const
 | `golang` | Lenguajes | Toolchain Go descargado y verificado en `/usr/local/go`. Añade `/usr/local/go/bin` y `~/go/bin` al `ProvidesEnv`. |
 | `java-temurin` | Lenguajes | Eclipse Temurin OpenJDK (versiones seleccionables: 17, 21, etc.). Incompatible con `java-openjdk`. |
 | `java-openjdk` | Lenguajes | OpenJDK estándar de distribución con `--no-install-recommends` (headless). Incompatible con `java-temurin`. |
+| `android-sdk` | Herramientas de desarrollo | Android SDK en `/opt/android-sdk` (`ANDROID_HOME`): cmdline-tools fijados, platform-tools (`adb`, `fastboot`), plataforma y build-tools del nivel de API elegido (34 o 35). Requiere `java-temurin` y se renderiza después del JDK. Sin emulador: los dispositivos se alcanzan con `adb connect`. |
 | `bun` | Lenguajes | Runtime de JavaScript Bun instalado en `~/.bun/bin`, integrado en `ProvidesEnv`. |
 | `pnpm` | Herramientas | Gestor de paquetes de Node.js. Requiere el módulo `nodejs`. |
 | `yarn` | Herramientas | Gestor de paquetes clásico/moderno de Node.js. Requiere el módulo `nodejs`. |
@@ -140,7 +145,17 @@ Servicios complementarios definidos en `docker-compose.yml`:
 
 ## 4. Perfiles y Temporización de Scripts (`CustomScript.When`)
 
-Un perfil agrupa módulos, configuraciones de puertos y scripts personalizados. La CLI incluye 12 perfiles planos integrados (`base`, `nodejs`, `bun`, `java-temurin`, `python`, `go`, `node-go`, `node-python`, `node-java-temurin`, `bun-go`, `bun-python`, `bun-java-temurin`), y permite a los usuarios definir perfiles propios en `~/.config/devcontainer-cli/profiles/<id>/` (siempre como directorio `<id>/profile.yml` acompañado de sus scripts `.sh`; los archivos planos `<id>.yml` y el directorio heredado `presets/` ya no se leen). Los perfiles, las definiciones de imagen y las habilidades de usuario se versionan juntos en el repositorio de configuración (ver D19).
+Un perfil es una plantilla de proyecto: agrupa módulos, una imagen de partida opcional (`image`), scripts personalizados, servicios compose, volúmenes, variables de entorno, puertos y habilidades, con el mismo significado que en `devcontainer.config.json`. El valor de `image` es el nombre de una definición de imagen o una referencia de registro de una imagen construida por la CLI. Un perfil con solo `image` deja el proyecto en `mode=image`; con `image` y `modules` el proyecto se construye derivado de esa imagen (ver D22).
+
+### Imágenes Derivadas (`from`)
+
+Una definición de imagen (`images/<name>/image.yml`) o un proyecto (`dockerfile.from` en `devcontainer.config.json`) puede partir de otra imagen en lugar de `ubuntu`:
+
+- **Linaje**: si `from` es una definición, sus módulos se leen de las propias definiciones siguiendo su cadena `from` (los ciclos son un error); si es una referencia de registro, se leen de su etiqueta `dev.devcontainer-installer.modules`. Una imagen sin esa etiqueta no puede usarse como base.
+- **Generación**: el Dockerfile comienza con `FROM <padre>`, reasigna el UID/GID de `devuser` si difieren de los del anfitrión, renderiza solo los módulos que el padre no tiene (más `cleanup`, que siempre se vuelve a renderizar) y emite el entorno completo (`ENV` y `~/.dc-env.sh`) de todo el linaje.
+- **Etiqueta de módulos**: lista el linaje completo, de modo que una imagen derivada puede a su vez ser padre.
+- **Disponibilidad del padre**: un padre definido debe estar construido (`image build <padre>`); una referencia de registro se descarga si falta. En ambos casos debe cumplir el contrato de imagen (D17).
+- **Huella**: en proyectos derivados, el ID del contenido del padre alimenta la huella, por lo que reconstruir el padre con la misma etiqueta genera una nueva imagen de proyecto. La CLI incluye 12 perfiles planos integrados (`base`, `nodejs`, `bun`, `java-temurin`, `python`, `go`, `node-go`, `node-python`, `node-java-temurin`, `bun-go`, `bun-python`, `bun-java-temurin`), y permite a los usuarios definir perfiles propios en `~/.config/devcontainer-cli/profiles/<id>/` (siempre como directorio `<id>/profile.yml` acompañado de sus scripts `.sh`; los archivos planos `<id>.yml` y el directorio heredado `presets/` ya no se leen). Los perfiles, las definiciones de imagen y las habilidades de usuario se versionan juntos en el repositorio de configuración (ver D19).
 
 Los scripts personalizados definidos por el usuario o provistos en sus perfiles se ejecutan en momentos precisos según su propiedad `When`:
 
@@ -157,7 +172,8 @@ En `mode=custom`, la bandera `--profile` acepta una lista de identificadores sep
 
 - **Unión de Módulos**: Se combinan los módulos de todos los perfiles preservando el orden de primera aparición y eliminando duplicados. Los conflictos entre módulos incompatibles (ej. `java-temurin` y `java-openjdk`) son detectados por el resolver del catálogo.
 - **Concatenación de Scripts**: Los scripts personalizados se concatenan en el orden especificado. Si dos perfiles declaran scripts con el mismo nombre de archivo de destino en el directorio de construcción (`custom-<archivo>.sh`), el comando falla inmediatamente nombrando a ambos perfiles en conflicto.
-- **Unión de Habilidades y Puertos**: Las habilidades de agente (`skills`), puertos publicados (`ports`) y túneles SSH (`forward_ports`) se combinan mediante unión deduplicada en orden de primera aparición.
+- **Unión de Habilidades, Puertos, Volúmenes y Servicios**: Las habilidades de agente (`skills`), puertos publicados (`ports`), túneles SSH (`forward_ports`), volúmenes (`volumes`) y servicios (`services`, por id; prevalecen las opciones del primer perfil) se combinan mediante unión deduplicada en orden de primera aparición.
+- **Fusión de Entorno e Imagen**: Las variables `env` se fusionan; si dos perfiles asignan valores distintos a la misma variable, o declaran imágenes de partida distintas, la generación se rechaza con error explícito.
 - **Validación de Modo de Habilidades**: Si dos o más perfiles especifican modos explícitos de instalación (`skills_mode`) que entren en contradicción (por ejemplo, `manual` y `auto`), la generación se rechaza con error explícito.
 - **Invariante de Perfil Único para Descarga Remota**: `mode=profiles` y `devcontainer-cli run` únicamente admiten un único perfil remoto publicado (`[remote]`). Si se pasa una lista separada por comas a estos comandos, se genera un error descriptivo no interactivo.
 
@@ -182,7 +198,7 @@ stateDiagram-v2
 
 1. **Unconfigured**: No existe `.dc_<workspace>/`.
 2. **Configured**: `devcontainer.config.json`, `docker-compose.yml` y `Dockerfile` han sido generados.
-3. **Building / Pulling**: Resolución de imagen según modo (`custom` calcula huella digital SHA-256; `profiles` verifica variante remota).
+3. **Building / Pulling**: Resolución de imagen según modo (`custom` calcula huella digital SHA-256 y nombra la imagen por origen y contenido; `profiles` verifica variante remota). Tras compilar se recolectan las imágenes de proyecto que ya nadie referencia.
 4. **Running**: El contenedor `devcontainer-ssh` se encuentra activo, el entrypoint completó sus etapas y el daemon OpenSSH escucha en el puerto 2222.
 5. **Stopped**: Contenedores detenidos conservando volúmenes y configuración.
-6. **Destroyed**: Eliminación total de contenedores, redes, volúmenes de datos, archivos en `.dc_<workspace>/` y desasociación de claves SSH y entradas en `known_hosts`.
+6. **Destroyed**: Eliminación total de contenedores, redes, volúmenes de datos, archivos en `.dc_<workspace>/` y desasociación de claves SSH y entradas en `known_hosts`. La imagen del proyecto se elimina si ningún otro proyecto la comparte.

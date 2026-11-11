@@ -34,6 +34,7 @@ const (
 	ModuleZellij         ModuleID = "zellij"
 	ModuleChrome         ModuleID = "chrome"
 	ModuleFfmpeg         ModuleID = "ffmpeg"
+	ModuleAndroidSdk     ModuleID = "android-sdk"
 	ModuleDod            ModuleID = "dod"
 	ModuleCloudflared    ModuleID = "cloudflared"
 	ModuleSkills         ModuleID = "skills"
@@ -416,6 +417,49 @@ type DockerfileConfig struct {
 	// at generate time and persisted here so regenerating the project no longer
 	// depends on the profile that contributed them — exactly like Modules.
 	Scripts []CustomScript `json:"scripts,omitempty" yaml:"scripts,omitempty"`
+	// From makes this a derived build: the image starts from another image (an
+	// `image` definition name or a registry reference to a devcontainer-cli
+	// image) instead of ubuntu. It is what the user asked for and is persisted.
+	From string `json:"from,omitempty" yaml:"from,omitempty"`
+	// BaseRef and BaseModules are From resolved fresh before every generation:
+	// the image reference to build FROM and the modules it already has, so only
+	// the remaining modules are rendered.
+	BaseRef     string           `json:"-" yaml:"-"`
+	BaseModules []SelectedModule `json:"-" yaml:"-"`
+}
+
+// ModuleOptionsJSON encodes the options of every module the image ends up
+// with (the base image's first, the project's overriding), leaving out modules
+// without options. Empty when none has any.
+func (d DockerfileConfig) ModuleOptionsJSON() string {
+	opts := map[string]map[string]any{}
+	for _, m := range append(append([]SelectedModule{}, d.BaseModules...), d.Modules...) {
+		if len(m.Options) > 0 {
+			opts[string(m.ID)] = m.Options
+		}
+	}
+	if len(opts) == 0 {
+		return ""
+	}
+	data, err := json.Marshal(opts)
+	if err != nil {
+		return ""
+	}
+	return string(data)
+}
+
+// AllModuleIDs is every selected module id, the base image's first, without
+// duplicates: what the image ends up with.
+func (d DockerfileConfig) AllModuleIDs() []string {
+	seen := map[ModuleID]bool{}
+	var ids []string
+	for _, m := range append(append([]SelectedModule{}, d.BaseModules...), d.Modules...) {
+		if !seen[m.ID] {
+			seen[m.ID] = true
+			ids = append(ids, string(m.ID))
+		}
+	}
+	return ids
 }
 
 type ComposeConfig struct {
@@ -454,12 +498,34 @@ type DevcontainerConfig struct {
 	ForwardPorts []string      `json:"forwardPorts,omitempty" yaml:"forwardPorts,omitempty"`
 	Remote       *RemoteConfig `json:"remote,omitempty" yaml:"remote,omitempty"`
 	Fingerprint  string        `json:"fingerprint,omitempty" yaml:"fingerprint,omitempty"`
+	// Origin names what the project's image is built from — the profile ids
+	// joined with "-", or empty for hand-picked modules — and becomes the
+	// readable part of the image tag. The image never belongs to the workspace:
+	// two projects with the same content share it.
+	Origin string `json:"origin,omitempty" yaml:"origin,omitempty"`
+	// ImageKind is stamped into the image labels; empty means ImageKindProject.
+	// Only the `image` module sets it (to ImageKindNamed), so it is not persisted.
+	ImageKind string `json:"-" yaml:"-"`
+	// Owner identifies the configuration registry building the image; it is
+	// stamped as a label and set fresh by every plan, never persisted.
+	Owner string `json:"-" yaml:"-"`
 	// BuildUID/BuildGID are the host owner ids baked into a local-cached image so
 	// devuser matches the bind-mounted workspace. They are resolved fresh at
 	// generate time (never persisted) and feed both the compose build args and the
 	// image fingerprint. Zero means "unset" — the Dockerfile ARG defaults apply.
 	BuildUID int `json:"-" yaml:"-"`
 	BuildGID int `json:"-" yaml:"-"`
+}
+
+// DefaultImageOrigin names a project image built from hand-picked modules.
+const DefaultImageOrigin = "custom"
+
+// ResolvedOrigin is Origin, or DefaultImageOrigin when none was recorded.
+func (c *DevcontainerConfig) ResolvedOrigin() string {
+	if c.Origin == "" {
+		return DefaultImageOrigin
+	}
+	return c.Origin
 }
 
 const ConfigFile = "devcontainer.config.json"

@@ -3,6 +3,7 @@ package commands
 import (
 	"github.com/charmbracelet/log"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/logger"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 	"github.com/spf13/cobra"
 )
 
@@ -10,6 +11,7 @@ import (
 // default "generate" flow when invoked with no subcommand.
 func NewRootCommand(v string) *cobra.Command {
 	version = v
+	types.CLIVersion = v
 	root := &cobra.Command{
 		Use:   "devcontainer-cli",
 		Short: "Generate and manage reproducible Docker devcontainers",

@@ -15,7 +15,7 @@ Generate and manage reproducible Docker devcontainers
 | `--force` |  | bool | `false` | Overwrite existing files without prompting |
 | `--force-prompt` |  | bool | `false` | Prompt even if config file exists |
 | `--forward-ports` |  | string | - | Ports 'port-forward' tunnels when called with no argument (e.g. 3000,8080:80, reverse:5432 for a host port reachable inside the container); 'none' clears them |
-| `--image` |  | string | - | Image name (default: derived from fingerprint for mode=custom) |
+| `--image` |  | string | - | Image name (ignored for mode=custom, whose image is named by origin and content: devcontainer-cli/<profiles>-<hash>) |
 | `--log-level` |  | string | `warn` | Log level: debug\|info\|warn\|error |
 | `--mode` |  | string | - | Build mode: custom (default, full local build), profiles (pull a prebuilt image), or image (use a reusable image) |
 | `--modules` |  | string | - | Comma-separated dockerfile modules (e.g. nodejs,golang,rust) |
@@ -301,7 +301,7 @@ Generate, build and start a devcontainer for the current directory
 | Bandera | Atajo | Tipo | Por defecto | Descripción |
 |---|---|---|---|---|
 | `--forward-ports` |  | string | - | Ports 'port-forward' tunnels when called with no argument (e.g. 3000,8080:80, reverse:5432 for a host port reachable inside the container); 'none' clears them |
-| `--image` |  | string | - | Image name (default: derived from fingerprint for mode=custom) |
+| `--image` |  | string | - | Image name (ignored for mode=custom, whose image is named by origin and content: devcontainer-cli/<profiles>-<hash>) |
 | `--log-level` |  | string | `warn` | Log level: debug\|info\|warn\|error |
 | `--mode` |  | string | - | Build mode: custom (default, full local build) or profiles (pull a prebuilt image) |
 | `--modules` |  | string | - | Comma-separated dockerfile modules (e.g. nodejs,golang,rust) |
@@ -868,9 +868,11 @@ Create a new reusable image definition
 
 | Bandera | Atajo | Tipo | Por defecto | Descripción |
 |---|---|---|---|---|
-| `--from-profile` |  | string | - | Seed the image modules from an existing profile |
+| `--from` |  | string | - | Derive from another image definition or a devcontainer-cli registry image, installing only the missing modules |
+| `--from-profile` |  | string | - | Seed the image modules and scripts from an existing profile |
 | `--label` |  | string | - | Human-readable description label |
 | `--log-level` |  | string | `warn` | Log level: debug\|info\|warn\|error |
+| `--modules` |  | string | - | Comma-separated dockerfile modules for the image (replaces the profile's or the github-cli default) |
 | `--no-interactive` |  | bool | `false` | Fail if any value is missing instead of prompting |
 | `--remote` |  | string | - | Point image definition directly to a remote registry image reference |
 | `--tag` |  | string | `latest` | Docker tag for the image |
@@ -1243,7 +1245,7 @@ Create a devcontainer for the current project with the interactive wizard
 | `--force` |  | bool | `false` | Overwrite existing files without prompting |
 | `--force-prompt` |  | bool | `false` | Prompt even if config file exists |
 | `--forward-ports` |  | string | - | Ports 'port-forward' tunnels when called with no argument (e.g. 3000,8080:80, reverse:5432 for a host port reachable inside the container); 'none' clears them |
-| `--image` |  | string | - | Image name (default: derived from fingerprint for mode=custom) |
+| `--image` |  | string | - | Image name (ignored for mode=custom, whose image is named by origin and content: devcontainer-cli/<profiles>-<hash>) |
 | `--log-level` |  | string | `warn` | Log level: debug\|info\|warn\|error |
 | `--mode` |  | string | - | Build mode: custom (default, full local build), profiles (pull a prebuilt image), or image (use a reusable image) |
 | `--modules` |  | string | - | Comma-separated dockerfile modules (e.g. nodejs,golang,rust) |

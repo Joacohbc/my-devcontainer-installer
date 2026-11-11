@@ -57,7 +57,7 @@ func addAgentCreateFlags(cmd *cobra.Command) {
 	f.String(flagRegistry, "", "Container registry prefix for remote images (overrides global)")
 	f.String(flagModules, "", "Comma-separated dockerfile modules (e.g. nodejs,golang,rust)")
 	f.String(flagServices, "", "Comma-separated compose services (e.g. mongo,postgres,redis)")
-	f.String(flagImage, "", "Image name (default: derived from fingerprint for mode=custom)")
+	f.String(flagImage, "", "Image name (ignored for mode=custom, whose image is named by origin and content: devcontainer-cli/<profiles>-<hash>)")
 	f.String(flagWorkspace, "", "Workspace name (default: current dir name)")
 	f.String(flagPorts, "", "Ports to publish on the devcontainer (e.g. 8080:80,5432:5432); bound to 127.0.0.1 unless an IP is given; 'none' clears them")
 	f.String(flagVolumes, "", "Extra volume mounts on the devcontainer (e.g. myvol:/data,./cache:/cache); 'none' clears them")

@@ -200,3 +200,79 @@ func PartitionCustomScripts(config *types.DevcontainerConfig) (build, start, ser
 	}
 	return build, start, service, manual, nil
 }
+
+// ApplyProfileTemplate copies a profile's project-level settings into config:
+// companion services (replacing the current set when the profile names any),
+// extra volumes (added), environment variables (set) and, for a profile that
+// starts from an image, mode=image with that image — or, when it also lists
+// modules, a derived custom build FROM that image. Modules, scripts, ports and
+// skills are applied by the caller, which also lets explicit flags win.
+func ApplyProfileTemplate(config *types.DevcontainerConfig, p catalog.Profile) error {
+	for _, svc := range p.Services {
+		if catalog.GetComposeService(svc.ID) == nil {
+			return fmt.Errorf("profile %q: %w", p.ID, unknownServiceError(string(svc.ID)))
+		}
+	}
+	for k := range p.Env {
+		if !envNamePattern.MatchString(k) {
+			return fmt.Errorf("profile %q: invalid env variable name %q", p.ID, k)
+		}
+	}
+
+	if len(p.Services) > 0 {
+		config.Compose.Services = make([]types.SelectedService, 0, len(p.Services))
+		for _, svc := range p.Services {
+			if svc.Options == nil {
+				svc.Options = map[string]any{}
+			}
+			config.Compose.Services = append(config.Compose.Services, svc)
+		}
+	}
+	for _, v := range p.Volumes {
+		if !slices.Contains(config.Compose.Volumes, v) {
+			config.Compose.Volumes = append(config.Compose.Volumes, v)
+		}
+	}
+	if len(p.Env) > 0 && config.Env == nil {
+		config.Env = make(map[string]string, len(p.Env))
+	}
+	for k, v := range p.Env {
+		config.Env[k] = v
+	}
+	if config.Mode == types.BuildModeProfiles {
+		// A pulled profile image is fixed: the template never switches it to a
+		// local build (an explicit --mode still can, after this).
+		return nil
+	}
+	switch {
+	case p.Image != "" && len(p.Modules) > 0:
+		// Image plus modules is a derived build: the project image starts FROM
+		// that image and adds only the modules it lacks.
+		config.Mode = types.BuildModeCustom
+		config.Dockerfile.From = p.Image
+	case p.Image != "":
+		config.Mode = types.BuildModeImage
+		config.Image = ResolveImageRef(p.Image)
+		config.Dockerfile.From = ""
+	default:
+		// A modules-only profile is a full build: it undoes a previous
+		// profile's image or derivation instead of silently keeping it.
+		config.Dockerfile.From = ""
+		if config.Mode == types.BuildModeImage && len(p.Modules) > 0 {
+			config.Mode = types.BuildModeCustom
+		}
+	}
+	return nil
+}
+
+var envNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+
+// ResolveImageRef turns a profile's image into the reference to run: the tag of
+// a named image definition when one exists, or the value itself (a registry
+// reference) otherwise.
+func ResolveImageRef(image string) string {
+	if def, ok, _ := ResolveImageDef(image); ok {
+		return ImageTag(def)
+	}
+	return image
+}

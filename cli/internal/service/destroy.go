@@ -25,7 +25,8 @@ type DestroyTarget struct {
 }
 
 // Run brings the stack down (with volumes) when a compose file exists, deletes
-// the project directory and config file, and drops the catalog entry.
+// the project directory and config file, drops the catalog entry, and collects
+// the project image if no other project uses it.
 func (s DestroyService) Run(t DestroyTarget) error {
 	if fileExists(t.ComposeFile) {
 		s.Report.Warn("Bringing down '%s' (with volumes)...", t.Workspace)
@@ -39,6 +40,9 @@ func (s DestroyService) Run(t DestroyTarget) error {
 	s.removeIfExists(t.ProjectDir)
 	s.removeIfExists(t.ConfigPath)
 	domain.RemoveEntry(t.ProjectKey)
+	// With the project unregistered and its containers gone, its image is
+	// collected unless another project shares it (images are content-addressed).
+	PruneService{Report: s.Report}.CollectProjectImages()
 	s.removeSSHConfigBlock(t.Workspace)
 
 	s.Report.Success("Destroyed.")

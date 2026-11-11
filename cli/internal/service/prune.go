@@ -224,8 +224,10 @@ func (s PruneService) CleanContainers(names []string, opts CleanOptions) (int, e
 // CleanImages removes CLI-managed images.
 func (s PruneService) CleanImages(refs []string, opts CleanOptions) (int, error) {
 	var candidates []LocalImage
+	var named []LocalImage
 	if len(refs) > 0 {
-		managed, _ := s.SelectImages(true)
+		// An explicit ref is an explicit decision, named images included.
+		managed := listCliImages()
 		selected, missing := selectByNames(managed, refs, func(i LocalImage) string { return i.Ref })
 		if len(missing) > 0 {
 			return 0, fmt.Errorf("no managed images found matching: %s", strings.Join(missing, ", "))
@@ -233,6 +235,16 @@ func (s PruneService) CleanImages(refs []string, opts CleanOptions) (int, error)
 		candidates = selected
 	} else {
 		selected, anyExist := s.SelectImages(opts.All)
+		named = s.SelectNamedImages(opts.All)
+		if len(selected) == 0 && len(named) > 0 {
+			extra, err := s.confirmNamedImages(opts, named)
+			if err != nil || len(extra) == 0 {
+				return 0, err
+			}
+			removed, failed := s.Remove(extra)
+			s.reportRemoval("images", removed, failed)
+			return removed, nil
+		}
 		if !s.reportSelection("images", anyExist, len(selected)) {
 			return 0, nil
 		}
@@ -255,8 +267,12 @@ func (s PruneService) CleanImages(refs []string, opts CleanOptions) (int, error)
 	if !proceed {
 		return 0, nil
 	}
+	extra, err := s.confirmNamedImages(opts, named)
+	if err != nil {
+		return 0, err
+	}
 
-	removed, failed := s.Remove(candidates)
+	removed, failed := s.Remove(append(candidates, extra...))
 	s.reportRemoval("images", removed, failed)
 	return removed, nil
 }
@@ -585,6 +601,11 @@ func (s PruneService) CleanAll(opts CleanOptions) error {
 	if !proceed {
 		return nil
 	}
+	extra, err := s.confirmNamedImages(opts, s.SelectNamedImages(opts.All))
+	if err != nil {
+		return err
+	}
+	targets.images = append(targets.images, extra...)
 
 	removedTotal, failedTotal := s.removeCleanTargets(targets)
 	s.reportRemoval("item(s)", removedTotal, failedTotal)
@@ -628,7 +649,7 @@ func (s PruneService) previewCleanTargets(t cleanTargets) {
 	if len(t.images) > 0 {
 		s.Report.Warn("\nImages to remove (%d):", len(t.images))
 		for _, img := range t.images {
-			s.Report.Info("  %s  (%s)", img.Ref, img.ID)
+			s.Report.Info("  %s", imageLabel(img))
 		}
 	}
 	if len(t.ssh) > 0 {
@@ -748,18 +769,30 @@ func (s PruneService) RunClean(opts CleanOptions) error {
 // Images
 // ---------------------------------------------------------------------------
 
-// LocalImage is one managed image present in the local daemon.
+// LocalImage is one managed image present in the local daemon. Named marks a
+// reusable `image` definition (kind=named, or the devcontainer-cli-img/
+// namespace for images built before labels existed): those are shared
+// definitions, never selected unless asked for.
 type LocalImage struct {
-	Ref string
-	ID  string
+	Ref   string
+	ID    string
+	Named bool
 }
 
-func listCliImages() []LocalImage {
+// removeArg is what `docker rmi` gets: the tag, or the ID for an untagged
+// (dangling) image, whose "<none>:<none>" ref docker cannot resolve.
+func (i LocalImage) removeArg() string {
+	if i.Ref == "" || strings.Contains(i.Ref, "<none>") {
+		return i.ID
+	}
+	return i.Ref
+}
+
+const imageListFormat = "{{.Repository}}:{{.Tag}}\t{{.ID}}"
+
+func parseImageLines(lines []string) []LocalImage {
 	var out []LocalImage
-	for _, line := range captureLines([]string{
-		"images", "--filter", managedFilter,
-		"--format", "{{.Repository}}:{{.Tag}}\t{{.ID}}",
-	}) {
+	for _, line := range lines {
 		parts := strings.SplitN(line, "\t", 2)
 		if len(parts) != 2 {
 			continue
@@ -767,6 +800,22 @@ func listCliImages() []LocalImage {
 		out = append(out, LocalImage{Ref: strings.TrimSpace(parts[0]), ID: strings.TrimSpace(parts[1])})
 	}
 	return out
+}
+
+func listCliImages() []LocalImage {
+	images := parseImageLines(captureLines([]string{"images", "--filter", managedFilter, "--format", imageListFormat}))
+	named := map[string]bool{}
+	for _, img := range parseImageLines(captureLines([]string{
+		"images", "--filter", managedFilter,
+		"--filter", "label=" + types.LabelKind + "=" + types.ImageKindNamed,
+		"--format", imageListFormat,
+	})) {
+		named[img.ID] = true
+	}
+	for i := range images {
+		images[i].Named = named[images[i].ID] || domain.IsNamedImage(images[i].Ref)
+	}
+	return images
 }
 
 func imagesInUse() map[string]bool {
@@ -783,6 +832,22 @@ func imagesInUse() map[string]bool {
 	return set
 }
 
+// imagesReferenced is every image something still needs: any container's image
+// and every registered project's image. A project image is shared by content,
+// so it stays as long as any registered project names it, running or not.
+func imagesReferenced() map[string]bool {
+	set := imagesInUse()
+	if set == nil {
+		set = map[string]bool{}
+	}
+	for _, e := range domain.ListEntries() {
+		if e.Image != "" {
+			set[e.Image] = true
+		}
+	}
+	return set
+}
+
 func filterUnusedImages(images []LocalImage, inUse map[string]bool) []LocalImage {
 	var out []LocalImage
 	for _, img := range images {
@@ -794,23 +859,128 @@ func filterUnusedImages(images []LocalImage, inUse map[string]bool) []LocalImage
 	return out
 }
 
+func splitNamedImages(images []LocalImage) (project, named []LocalImage) {
+	for _, img := range images {
+		// A dangling image is a superseded build of either kind: nothing can
+		// refer to it by name, so it is never a reusable definition.
+		if img.Named && img.removeArg() != img.ID {
+			named = append(named, img)
+		} else {
+			project = append(project, img)
+		}
+	}
+	return project, named
+}
+
+// SelectImages returns the managed project images to remove: the unreferenced
+// ones, or every one with all. Named images are never selected here; see
+// SelectNamedImages. anyExist reports whether any managed image exists at all.
 func (s PruneService) SelectImages(all bool) (toRemove []LocalImage, anyExist bool) {
 	images := listCliImages()
 	if len(images) == 0 {
 		return nil, false
 	}
+	project, _ := splitNamedImages(images)
 	if all {
-		return images, true
+		return project, true
 	}
-	return filterUnusedImages(images, imagesInUse()), true
+	return filterUnusedImages(project, imagesReferenced()), true
+}
+
+// SelectNamedImages returns the reusable named images not used by any
+// container (or every one with all).
+func (s PruneService) SelectNamedImages(all bool) []LocalImage {
+	_, named := splitNamedImages(listCliImages())
+	if all {
+		return named
+	}
+	return filterUnusedImages(named, imagesReferenced())
+}
+
+// confirmNamedImages asks, separately from the main confirmation, whether the
+// reusable named images should go too. They are shared definitions, so they
+// are only ever removed on an explicit yes — never by --yes or --all alone.
+func (s PruneService) confirmNamedImages(opts CleanOptions, named []LocalImage) ([]LocalImage, error) {
+	if len(named) == 0 {
+		return nil, nil
+	}
+	if opts.DryRun || !opts.Interactive || s.Prompt == nil {
+		s.Report.Info("Keeping %d named image(s); remove one explicitly with 'devcontainer-cli config clean images <ref>' or 'devcontainer-cli image remove <name>'.", len(named))
+		return nil, nil
+	}
+	s.Report.Warn("\nNamed images (reusable 'image' definitions) not used by any container (%d):", len(named))
+	for _, img := range named {
+		s.Report.Info("  %s", imageLabel(img))
+	}
+	ok, err := s.Prompt.Confirm("Also remove these named images?")
+	if err != nil || !ok {
+		return nil, err
+	}
+	return named, nil
 }
 
 func (s PruneService) Remove(images []LocalImage) (removed, failed int) {
 	return removeResources(images,
-		func(i LocalImage) []string { return []string{"rmi", i.Ref} },
+		func(i LocalImage) []string { return []string{"rmi", i.removeArg()} },
 		func(i LocalImage) {
 			s.Report.Error("  ✗ Failed to remove %s (container may be running)", i.Ref)
 		})
+}
+
+// ownedImageIDs are the managed images this configuration registry built.
+func ownedImageIDs() map[string]bool {
+	owned := map[string]bool{}
+	for _, img := range parseImageLines(captureLines([]string{
+		"images", "--filter", managedFilter,
+		"--filter", "label=" + types.LabelOwner + "=" + domain.RegistryOwnerID(),
+		"--format", imageListFormat,
+	})) {
+		owned[img.ID] = true
+	}
+	return owned
+}
+
+// collectableImage limits automatic collection to images this CLI built for
+// projects (the devcontainer-cli/ namespace) and untagged leftovers, and only
+// those this registry built (see ownedImageIDs). A pulled
+// prebuilt image (ghcr.io/...) also carries the managed label, but it is only
+// ever removed by an explicit 'config clean images'.
+func collectableImage(img LocalImage) bool {
+	return domain.IsLocalImage(img.Ref) || img.removeArg() == img.ID
+}
+
+// CollectProjectImages removes every managed project image nothing references
+// any more: superseded by a rebuild (dangling or a new content tag), or left
+// behind by a destroyed project. Named images are never touched. It is the
+// reference-counting half of content-addressed images and is best-effort: it
+// reports, never fails.
+func (s PruneService) CollectProjectImages() int {
+	images := listCliImages()
+	if len(images) == 0 {
+		return 0
+	}
+	project, _ := splitNamedImages(images)
+	owned := ownedImageIDs()
+	var collectable []LocalImage
+	for _, img := range project {
+		if collectableImage(img) && owned[img.ID] {
+			collectable = append(collectable, img)
+		}
+	}
+	unused := filterUnusedImages(collectable, imagesReferenced())
+	if len(unused) == 0 {
+		return 0
+	}
+	removed := 0
+	for _, img := range unused {
+		if status, _, _, err := docker.DockerCapture([]string{"rmi", img.removeArg()}); err == nil && status == 0 {
+			removed++
+		}
+	}
+	if removed > 0 {
+		s.Report.Info("Removed %d project image(s) no longer used by any project.", removed)
+	}
+	return removed
 }
 
 // ---------------------------------------------------------------------------

@@ -129,6 +129,7 @@ func statusForProject(containerMap map[string]pick.Container) error {
 	console.NewLine()
 	console.Header("Workspace: %s", workspace)
 	console.NewLine()
+	warnIfBuildStale(cwd, workspace)
 
 	t := newStatusTable("SERVICE", "CONTAINER NAME", "STATUS", "PORTS", "IMAGE")
 	for serviceKey, svc := range services {

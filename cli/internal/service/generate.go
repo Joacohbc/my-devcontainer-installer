@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/catalog"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/assets"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
@@ -83,41 +84,65 @@ type GeneratePlan struct {
 	CachedImageHit bool
 }
 
-// Plan renders the Dockerfile, compose and env for the config. For local-cached
-// builds with a Dockerfile it computes the content fingerprint, derives the
-// image tag, and reports whether that image already exists locally. copyContents
-// maps each referenced build-helper file to its on-disk content so the
-// fingerprint reflects the scripts baked into the image.
+// Plan renders the Dockerfile, compose and env for the config. For local
+// builds with a Dockerfile it first computes the content fingerprint and
+// derives the image tag from it (and the origin), so the compose file names
+// exactly the image the fingerprint describes; then it reports whether that
+// image already exists locally. copyContents maps each referenced build-helper
+// file to its on-disk content so the fingerprint reflects the scripts baked
+// into the image. Plan records the fingerprint and image on config.
 func (s GenerateService) Plan(config *types.DevcontainerConfig, copyContents map[string]string) (GeneratePlan, error) {
 	resolveHostBuildIDs(config)
+	config.Owner = domain.RegistryOwnerID()
+	if config.Mode == types.BuildModeCustom && config.Dockerfile.From != "" && config.Dockerfile.BaseRef == "" {
+		dir := domain.UserImageDir()
+		if err := (ImageService{Report: s.Report}).ensureParent(config.Dockerfile.From, dir); err != nil {
+			return GeneratePlan{}, err
+		}
+		if err := resolveBaseImage(config, dir); err != nil {
+			return GeneratePlan{}, err
+		}
+	}
 
 	dockerfile, err := domain.GenerateDockerfile(config)
 	if err != nil {
 		return GeneratePlan{}, err
 	}
 
-	compose, err := domain.GenerateCompose(config)
-	if err != nil {
-		return GeneratePlan{}, err
-	}
-
-	plan := GeneratePlan{
-		Dockerfile: dockerfile,
-		Compose:    compose,
-		Env:        domain.GenerateEnv(config),
-		Image:      config.Image,
-	}
-
+	plan := GeneratePlan{}
 	if config.Mode == types.BuildModeCustom && dockerfile != "" {
 		moduleIDs := make([]string, 0, len(config.Dockerfile.Modules))
 		for _, m := range config.Dockerfile.Modules {
 			moduleIDs = append(moduleIDs, string(m.ID))
 		}
-		plan.Fingerprint = domain.ComputeFingerprint(dockerfile, copyContents, moduleIDs, buildArgs(config))
-		plan.Image = domain.FingerprintTag(plan.Fingerprint)
-		plan.CachedImageHit = domain.LocalImageExists(plan.Image, captureFunc())
+		args := buildArgs(config)
+		if config.Dockerfile.BaseRef != "" {
+			if args == nil {
+				args = map[string]string{}
+			}
+			args["BASE_IMAGE_ID"] = baseImageID(config.Dockerfile.BaseRef)
+		}
+		config.Fingerprint = domain.ComputeFingerprint(dockerfile, copyContents, moduleIDs, args)
+		if config.ImageKind != types.ImageKindNamed {
+			config.Image = domain.ContentImageTag(config.ResolvedOrigin(), config.Fingerprint)
+		}
+		// Labels carry the fingerprint and are stripped before hashing, so this
+		// second render changes only the LABEL instruction.
+		if dockerfile, err = domain.GenerateDockerfile(config); err != nil {
+			return GeneratePlan{}, err
+		}
+		plan.Fingerprint = config.Fingerprint
+		plan.CachedImageHit = domain.LocalImageExists(config.Image, captureFunc())
 	}
 
+	compose, err := domain.GenerateCompose(config)
+	if err != nil {
+		return GeneratePlan{}, err
+	}
+	plan.Dockerfile = dockerfile
+	plan.Compose = compose
+	plan.Env = domain.GenerateEnv(config)
+	plan.Image = config.Image
 	return plan, nil
 }
 
@@ -138,6 +163,12 @@ func (s GenerateService) Build(composeFile string, remote bool) error {
 	}
 	if status != 0 {
 		return fmt.Errorf("docker compose %s failed (exit %d)", action, status)
+	}
+	if !remote {
+		// A rebuild supersedes the previous image (a new content tag, or the same
+		// tag leaving the old one dangling). The caller records the project
+		// before building, so only images nothing references are collected.
+		PruneService{Report: s.Report}.CollectProjectImages()
 	}
 	return nil
 }
@@ -210,24 +241,19 @@ func (s GenerateService) PrepareBuildDir(config *types.DevcontainerConfig, paths
 	}
 
 	if !skipBuildArtifacts {
+		// The shared-config catalogue is rendered from types.SharedConfigEntries
+		// rather than kept as a second copy in shell. Adding an entry changes
+		// what the image's entrypoint links, so it feeds the fingerprint.
 		table := types.RenderSharedConfigTable()
 		if werr := os.WriteFile(filepath.Join(buildDir, types.SharedConfigTableFileName), []byte(table), 0o644); werr != nil {
 			return nil, nil, werr
 		}
 		copyContents[types.SharedConfigTableFileName] = table
-
-		contextDoc, cerr := domain.GenerateContext(config)
-		if cerr != nil {
-			return nil, nil, cerr
-		}
-		if contextDoc != "" {
-			if werr := os.WriteFile(filepath.Join(buildDir, types.ContextFileName), []byte(contextDoc), 0o644); werr != nil {
-				return nil, nil, werr
-			}
-			copyContents[types.ContextFileName] = contextDoc
-		}
 	}
 
+	if err := WriteContextFile(config, buildDir); err != nil {
+		return nil, nil, err
+	}
 	return copyContents, postScriptFiles, nil
 }
 
@@ -249,4 +275,59 @@ func (s GenerateService) WriteFiles(paths project.Paths, plan *GeneratePlan, con
 		}
 	}
 	return nil
+}
+
+// WriteContextFile writes the project's CONTEXT.md into buildDir for every build
+// mode. It is bind-mounted into the container (domain.ContextMount) instead of
+// baked into the image, so it never feeds the fingerprint: it names the
+// workspace path, and baking it made every workspace's image unique. It must
+// always exist, or Docker would create a directory in its place on `up`.
+func WriteContextFile(config *types.DevcontainerConfig, buildDir string) error {
+	contextDoc, err := domain.GenerateContext(contextConfig(config))
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(buildDir, types.ContextFileName), []byte(contextDoc), 0o644)
+}
+
+// contextConfig is the config CONTEXT.md is generated from. The document is
+// mounted, never baked, so it must describe everything the image has, not
+// only the modules this project adds: a prebuilt profile image's modules, a
+// named image's modules (read from its label) or, for a derived build, the
+// parent's modules too. Lookups are best-effort; what cannot be resolved is
+// simply not described.
+func contextConfig(config *types.DevcontainerConfig) *types.DevcontainerConfig {
+	var inherited []types.SelectedModule
+	switch config.Mode {
+	case types.BuildModeProfiles:
+		if config.Remote != nil {
+			if p, ok := catalog.Resolve(config.Remote.Variant); ok {
+				inherited = selectedModules(p.Modules)
+			}
+		}
+	case types.BuildModeImage:
+		if parent, err := domain.ResolveImageParent(config.Image, captureFunc()); err == nil {
+			inherited = parent.Modules
+		}
+	default:
+		if config.Dockerfile.From != "" && config.Dockerfile.BaseRef == "" {
+			_ = resolveBaseImage(config, domain.UserImageDir())
+		}
+		inherited = config.Dockerfile.BaseModules
+	}
+	if len(inherited) == 0 && config.Mode == types.BuildModeCustom {
+		return config
+	}
+	c := *config
+	c.Mode = types.BuildModeCustom
+	c.Dockerfile = types.DockerfileConfig{
+		Modules: append(append([]types.SelectedModule{}, inherited...), config.Dockerfile.Modules...),
+		Scripts: config.Dockerfile.Scripts,
+	}
+	return &c
+}
+
+// ImageExists reports whether image is present in the local daemon now.
+func (s GenerateService) ImageExists(image string) bool {
+	return domain.LocalImageExists(image, captureFunc())
 }

@@ -12,7 +12,7 @@ import (
 )
 
 func TestPruneSelectAllParsesImages(t *testing.T) {
-	runner := &fakeRunner{status: 0, stdout: "devcontainer-cli/abc:latest\tID1\ndevcontainer-cli/def:latest\tID2"}
+	runner := &imageListRunner{images: "devcontainer-cli/abc:latest\tID1\ndevcontainer-cli/def:latest\tID2"}
 	defer useFakeDocker(runner)()
 
 	svc := PruneService{Report: nopReporter{}}
@@ -31,7 +31,7 @@ func TestPruneSelectAllParsesImages(t *testing.T) {
 func TestPruneSelectAllParsesRemoteImages(t *testing.T) {
 	// Remote-mode images (ghcr.io/<owner>/devcontainer-*) carry the managed
 	// label, so the label-based filter must surface them just like local ones.
-	runner := &fakeRunner{status: 0, stdout: "ghcr.io/joacohbc/devcontainer-nodejs:latest\tID1\nghcr.io/joacohbc/devcontainer-go:latest\tID2\nnode-python:local\tID3"}
+	runner := &imageListRunner{images: "ghcr.io/joacohbc/devcontainer-nodejs:latest\tID1\nghcr.io/joacohbc/devcontainer-go:latest\tID2\nnode-python:local\tID3"}
 	defer useFakeDocker(runner)()
 
 	svc := PruneService{Report: nopReporter{}}

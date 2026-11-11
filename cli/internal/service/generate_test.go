@@ -2,6 +2,7 @@ package service
 
 import (
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
@@ -43,8 +44,16 @@ func TestPlanLocalCachedFingerprintsAndDetectsCache(t *testing.T) {
 			if plan.Fingerprint == "" {
 				t.Error("expected a fingerprint for local-cached")
 			}
-			if plan.Image != domain.FingerprintTag(plan.Fingerprint) {
-				t.Errorf("Image %q != FingerprintTag(%q)", plan.Image, plan.Fingerprint)
+			if want := domain.ContentImageTag(types.DefaultImageOrigin, plan.Fingerprint); plan.Image != want {
+				t.Errorf("Image %q, want %q", plan.Image, want)
+			}
+			// The compose file must name exactly the image the fingerprint
+			// describes, not a stale or placeholder tag.
+			if !strings.Contains(plan.Compose, "image: "+plan.Image) {
+				t.Errorf("compose does not reference %q:\n%s", plan.Image, plan.Compose)
+			}
+			if !strings.Contains(plan.Dockerfile, types.LabelFingerprint+"=\""+plan.Fingerprint+"\"") {
+				t.Errorf("Dockerfile labels do not carry the fingerprint")
 			}
 			if plan.CachedImageHit != c.wantCacheHit {
 				t.Errorf("CachedImageHit = %v, want %v", plan.CachedImageHit, c.wantCacheHit)
@@ -111,5 +120,16 @@ func TestBuildRunsComposeAndReportsErrors(t *testing.T) {
 				t.Errorf("compose call = %v, want it to contain %q", call, c.wantArg)
 			}
 		})
+	}
+}
+
+func TestImageExistsAsksTheDaemon(t *testing.T) {
+	defer useFakeDocker(&fakeRunner{status: 0, stdout: "sha256abc"})()
+	if !(GenerateService{Report: nopReporter{}}).ImageExists("devcontainer-cli/go-1:latest") {
+		t.Error("expected the image to exist")
+	}
+	defer useFakeDocker(&fakeRunner{status: 0})()
+	if (GenerateService{Report: nopReporter{}}).ImageExists("devcontainer-cli/go-1:latest") {
+		t.Error("a missing image must be reported missing, so the build is not skipped")
 	}
 }

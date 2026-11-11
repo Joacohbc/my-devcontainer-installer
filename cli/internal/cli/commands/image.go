@@ -139,12 +139,33 @@ func newImageInfoCommand() *cobra.Command {
 
 func newImageCreateCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:          "create <name>",
-		Short:        "Create a new reusable image definition",
+		Use:   "create <name>",
+		Short: "Create a new reusable image definition",
+		Long: `devcontainer-cli image create — write a reusable, shareable image definition
+to ~/.config/devcontainer-cli/images/<name>/image.yml (committed to the
+configuration repository).
+
+An image is a named toolchain artifact (devcontainer-cli-img/<name>:<tag>) that
+profiles and projects can start from. Seed it from a profile (modules and
+scripts are copied in), list its modules, or derive it from another image with
+--from: the build starts FROM that image and installs only the modules it lacks,
+so a chain such as base -> android stays small. A --from parent may be another
+definition (build it first) or a registry image built by devcontainer-cli.`,
+		Example: `  # Image from a profile's modules and scripts
+  devcontainer-cli image create ai-browser --from-profile ai-browser
+
+  # Derive an Android image from a base image
+  devcontainer-cli image create android --from base --modules android-sdk
+
+  # Point at an image published elsewhere
+  devcontainer-cli image create team-base --remote ghcr.io/acme/devcontainer-base:1`,
 		SilenceUsage: true,
 		Args:         cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			fromProfile, _ := cmd.Flags().GetString("from-profile")
+			from, _ := cmd.Flags().GetString("from")
+			modulesCSV, _ := cmd.Flags().GetString(flagModules)
+			modules := splitCSV(modulesCSV)
 			remoteRef, _ := cmd.Flags().GetString("remote")
 			tag, _ := cmd.Flags().GetString("tag")
 			label, _ := cmd.Flags().GetString("label")
@@ -152,13 +173,17 @@ func newImageCreateCommand() *cobra.Command {
 			svc := service.ImageService{Report: ui.Console{}}
 			return svc.Create(args[0], service.CreateImageOpts{
 				FromProfile: fromProfile,
+				From:        from,
+				Modules:     modules,
 				RemoteRef:   remoteRef,
 				Tag:         tag,
 				Label:       label,
 			})
 		},
 	}
-	cmd.Flags().String("from-profile", "", "Seed the image modules from an existing profile")
+	cmd.Flags().String("from-profile", "", "Seed the image modules and scripts from an existing profile")
+	cmd.Flags().String("from", "", "Derive from another image definition or a devcontainer-cli registry image, installing only the missing modules")
+	cmd.Flags().String(flagModules, "", "Comma-separated dockerfile modules for the image (replaces the profile's or the github-cli default)")
 	cmd.Flags().String("remote", "", "Point image definition directly to a remote registry image reference")
 	cmd.Flags().String("tag", "latest", "Docker tag for the image")
 	cmd.Flags().String("label", "", "Human-readable description label")
@@ -206,8 +231,19 @@ func newImageExportCommand() *cobra.Command {
 
 func newImageRemoveCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:          "remove <name>",
-		Short:        "Remove an image definition",
+		Use:   "remove <name>",
+		Short: "Remove an image definition",
+		Long: `devcontainer-cli image remove — delete an image definition (committing the
+removal to the configuration repository) and its Docker image.
+
+It refuses while a registered project or a container still uses the image, so a
+shared image is never pulled from under a project. Use --keep-docker-image to
+remove only the definition. A failed 'docker rmi' is reported as an error.`,
+		Example: `  # Remove the definition and its image
+  devcontainer-cli image remove android
+
+  # Remove only the definition, keep the built image
+  devcontainer-cli image remove android --keep-docker-image`,
 		SilenceUsage: true,
 		Args:         cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {

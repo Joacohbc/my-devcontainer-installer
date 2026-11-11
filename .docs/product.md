@@ -29,7 +29,7 @@
 2. **Materialización del Directorio `.dc_<workspace>/`**:
    - Se crea el directorio de configuración del proyecto con `docker-compose.yml`, `Dockerfile` (en modo `custom`), `.env` y el directorio `build/` con los scripts necesarios.
 3. **Cálculo de Huella Digital y Caché**:
-   - En modo `custom`, la CLI calcula el hash SHA-256 de las capas resultantes. Si ya existe una imagen local con dicha huella, se omite el proceso de compilación (`docker build`) y se reutiliza al instante.
+   - En modo `custom`, la CLI calcula el hash SHA-256 de las capas resultantes y nombra la imagen por origen y contenido (por ejemplo, `devcontainer-cli/ai-browser-3f2a9c1b`). Si ya existe, se omite `docker build` y se reutiliza al instante, incluso desde otro proyecto con el mismo contenido. Las imágenes que dejan de usarse se eliminan automáticamente.
    - En modo `profiles`, se omite la compilación local y se descarga directamente la imagen publicada en GitHub Container Registry.
 
 ### Flujo 2: Conexión y Operación Diaria

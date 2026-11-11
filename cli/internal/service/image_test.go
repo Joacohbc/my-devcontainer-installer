@@ -1,11 +1,14 @@
 package service
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
 )
 
@@ -108,5 +111,83 @@ func TestImageServiceCustomDirIsNotVersioned(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "devcontainer-cli", ".git")); !os.IsNotExist(err) {
 		t.Errorf("expected no configuration repository to be created, got %v", err)
+	}
+}
+
+func createTestImageDef(t *testing.T, dir string) ImageService {
+	t.Helper()
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	svc := ImageService{Report: nopReporter{}, ImagesDir: dir}
+	if err := svc.Create("android", CreateImageOpts{Tag: "v1"}); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	return svc
+}
+
+// H3: removing the Docker image of a named image some project still builds on
+// must refuse before touching anything.
+func TestImageRemoveRefusesWhileAProjectUsesTheImage(t *testing.T) {
+	dir := t.TempDir()
+	svc := createTestImageDef(t, dir)
+	if err := domain.RecordEntry(domain.ImageEntry{ProjectDir: "/p/app", Image: "devcontainer-cli-img/android:v1"}); err != nil {
+		t.Fatal(err)
+	}
+	runner := &imageListRunner{images: "IDN"}
+	defer useFakeDocker(runner)()
+
+	err := svc.Remove("android", true)
+	if err == nil || !strings.Contains(err.Error(), "/p/app") {
+		t.Fatalf("expected a refusal naming the project, got %v", err)
+	}
+	if runner.callContaining("rmi") != nil {
+		t.Error("no image may be removed while in use")
+	}
+	if _, ok, _ := domain.ResolveImageDef("android", dir); !ok {
+		t.Error("the definition must survive a refused removal")
+	}
+}
+
+// H4: a failed rmi is reported, not swallowed.
+func TestImageRemoveReportsAFailedRmi(t *testing.T) {
+	svc := createTestImageDef(t, t.TempDir())
+	defer useFakeDocker(&rmiFailingRunner{imageListRunner{images: "IDN"}})()
+
+	if err := svc.Remove("android", true); err == nil || !strings.Contains(err.Error(), "conflict") {
+		t.Fatalf("expected the rmi failure to surface, got %v", err)
+	}
+}
+
+type rmiFailingRunner struct{ imageListRunner }
+
+func (r *rmiFailingRunner) Run(ctx context.Context, args []string, a, b string, env map[string]string) (int, string, string) {
+	if len(args) >= 2 && args[1] == "rmi" {
+		return 1, "", "conflict: image is being used"
+	}
+	return r.imageListRunner.Run(ctx, args, a, b, env)
+}
+
+func TestImageDefConfigIsLabelledNamed(t *testing.T) {
+	config := domain.ImageDefConfig(domain.ImageDef{Name: "android", Tag: "v1"})
+	config.Fingerprint = "feedfacecafe"
+	if config.ImageKind != types.ImageKindNamed || config.Origin != "android" {
+		t.Errorf("got kind=%q origin=%q", config.ImageKind, config.Origin)
+	}
+	if got := domain.ResolveDevcontainerImageName(config); got != "devcontainer-cli-img/android:v1" {
+		t.Errorf("a named image keeps its own tag, got %q", got)
+	}
+}
+
+// H3 for derivation: an image other definitions derive from is still in use.
+func TestImageRemoveRefusesWhileAnImageDerivesFromIt(t *testing.T) {
+	dir := t.TempDir()
+	svc := createTestImageDef(t, dir)
+	if err := svc.Create("child", CreateImageOpts{From: "android", Modules: []string{"sqlite"}}); err != nil {
+		t.Fatal(err)
+	}
+	defer useFakeDocker(&imageListRunner{images: "IDN"})()
+
+	err := svc.Remove("android", true)
+	if err == nil || !strings.Contains(err.Error(), "image child") {
+		t.Fatalf("expected a refusal naming the derived image, got %v", err)
 	}
 }

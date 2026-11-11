@@ -44,19 +44,26 @@ func Content(file string) ([]byte, error) {
 	return embedded.ReadFile(file)
 }
 
-// Preflight materializes each required script into dir, skipping ones already
-// present. A script that is neither present nor embedded is reported missing.
+// Preflight materializes each required script into dir. An embedded script is
+// (re)written whenever the copy in dir differs, so a CLI upgrade that changes
+// it reaches the next build: the build dir is generated, never hand-edited. A
+// script that is not embedded is kept as found, or reported missing.
 func Preflight(requiredFiles []string, dir string) PreflightResult {
 	out := PreflightResult{}
 	for _, f := range requiredFiles {
 		target := filepath.Join(dir, f)
-		if _, err := os.Stat(target); err == nil {
-			out.AlreadyPresent = append(out.AlreadyPresent, f)
-			continue
-		}
+		current, statErr := os.ReadFile(target)
 		content, err := embedded.ReadFile(f)
 		if err != nil {
-			out.Missing = append(out.Missing, f)
+			if statErr == nil {
+				out.AlreadyPresent = append(out.AlreadyPresent, f)
+			} else {
+				out.Missing = append(out.Missing, f)
+			}
+			continue
+		}
+		if statErr == nil && string(current) == string(content) {
+			out.AlreadyPresent = append(out.AlreadyPresent, f)
 			continue
 		}
 		if writeErr := os.WriteFile(target, content, 0o644); writeErr != nil {

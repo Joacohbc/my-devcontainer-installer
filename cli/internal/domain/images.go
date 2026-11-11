@@ -126,6 +126,15 @@ func sha256Hex(s string) string {
 	return hex.EncodeToString(h[:])
 }
 
+// SameDockerfile reports whether two Dockerfiles build the same image: they
+// differ at most in their LABEL blocks (which carry the CLI version).
+func SameDockerfile(a, b string) bool {
+	normalize := func(df string) string {
+		return strings.TrimSpace(strings.ReplaceAll(stripLabelBlocks(df), "\r\n", "\n"))
+	}
+	return normalize(a) == normalize(b)
+}
+
 // ComputeFingerprint hashes everything that distinguishes one built image from
 // another: the normalized Dockerfile, the copied helper scripts, the selected
 // module ids, and the build args (the Dockerfile's ARG defaults are static, so
@@ -160,11 +169,29 @@ func ComputeFingerprint(dockerfileContent string, copyFileContents map[string]st
 	return sha256Hex(strings.Join(parts, "\n"))
 }
 
-func FingerprintTag(fp string) string {
-	if len(fp) < 12 {
-		return types.ImageNamespace + "/" + fp + ":latest"
+// imageTagHashLen is how many fingerprint hex chars follow the origin in a
+// project image tag. The tag is also the cache key, so it must be long enough
+// that two different contents of one origin never share it.
+const imageTagHashLen = 8
+
+var nonTagChar = regexp.MustCompile(`[^a-z0-9_.-]+`)
+
+// ContentImageTag is the project image tag: readable by origin, unique by
+// content (devcontainer-cli/<origin>-<fp[:8]>:latest). It depends on what the
+// image contains and where it came from, never on the workspace.
+func ContentImageTag(origin, fp string) string {
+	slug := strings.Trim(nonTagChar.ReplaceAllString(strings.ToLower(origin), "-"), "-._")
+	if slug == "" {
+		slug = types.DefaultImageOrigin
 	}
-	return types.ImageNamespace + "/" + fp[:12] + ":latest"
+	if len(slug) > 48 {
+		slug = strings.TrimRight(slug[:48], "-._")
+	}
+	short := fp
+	if len(short) > imageTagHashLen {
+		short = short[:imageTagHashLen]
+	}
+	return types.ImageNamespace + "/" + slug + "-" + short + ":latest"
 }
 
 // IsLocalImage reports whether an image reference is one this CLI built

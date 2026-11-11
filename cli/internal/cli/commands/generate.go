@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/logger"
@@ -46,7 +45,7 @@ func addGenerateFlags(cmd *cobra.Command) {
 	f.String(flagRegistry, "", "Container registry prefix for remote images (overrides global)")
 	f.String(flagModules, "", "Comma-separated dockerfile modules (e.g. nodejs,golang,rust)")
 	f.String(flagServices, "", "Comma-separated compose services (e.g. mongo,postgres,redis)")
-	f.String(flagImage, "", "Image name (default: derived from fingerprint for mode=custom)")
+	f.String(flagImage, "", "Image name (ignored for mode=custom, whose image is named by origin and content: devcontainer-cli/<profiles>-<hash>)")
 	f.String(flagWorkspace, "", "Workspace name (default: current dir name)")
 	f.String(flagPorts, "", "Ports to publish on the devcontainer (e.g. 8080:80,5432:5432); bound to 127.0.0.1 unless an IP is given; 'none' clears them")
 	f.String(flagVolumes, "", "Extra volume mounts on the devcontainer (e.g. myvol:/data,./cache:/cache); 'none' clears them")
@@ -157,6 +156,9 @@ type genFlags struct {
 	// to the explicit flags above.
 	profilePorts        []string
 	profileForwardPorts []string
+	// profileTemplate is the resolved profile, whose project-level settings
+	// (services, volumes, env, image) are applied before the explicit flags.
+	profileTemplate *catalog.Profile
 	// keepWorkspace is set when the workspace name must not be auto-uniquified: the
 	// user pinned it with --workspace, or it was already persisted for this project.
 	// Derived in initAndConfigure, not parsed from a flag.
@@ -239,6 +241,7 @@ func populateProfileFlags(g *genFlags) error {
 		return fmt.Errorf("profile %q: %w", p.ID, verr)
 	}
 	g.profilePorts, g.profileForwardPorts = p.Ports, p.ForwardPorts
+	g.profileTemplate = &p
 	return nil
 }
 
@@ -560,127 +563,9 @@ func validateConfig(cwd string, config *types.DevcontainerConfig, flags *genFlag
 	return nil
 }
 
-// materializeCustomScripts copies each configured custom script from its source
-// (the profile directory it was resolved from) into the build dir under its
-// namespaced name, and returns those names.
-//
-// A script with no Source is one persisted by an earlier run: the copy in the
-// build dir is the source of truth, so it is only reported, never re-fetched.
-// That is what makes a generated project reproducible after the profile it came
-// from has been edited or deleted.
-func materializeCustomScripts(config *types.DevcontainerConfig, buildDir string) ([]string, error) {
-	names, err := domain.CollectCustomScriptFiles(config)
-	if err != nil {
-		return nil, err
-	}
-	for _, s := range config.Dockerfile.Scripts {
-		if s.Source == "" {
-			continue
-		}
-		data, rerr := domain.ReadCustomScript(s)
-		if rerr != nil {
-			return nil, rerr
-		}
-		if werr := os.WriteFile(filepath.Join(buildDir, s.BuildFile()), data, 0o755); werr != nil {
-			return nil, werr
-		}
-	}
-	return names, nil
-}
-
 // prepareBuildDir constructs the build target filesystem structure and validates dependencies.
-func prepareBuildDir(cwd string, config *types.DevcontainerConfig, paths project.Paths) (map[string]string, []string, error) {
-	buildDir := paths.BuildDir
-	skipBuildArtifacts := config.Mode == types.BuildModeProfiles || config.Mode == types.BuildModeImage
-
-	if err := os.MkdirAll(buildDir, 0o755); err != nil {
-		return nil, nil, err
-	}
-
-	var copyFiles, postScriptFiles, customScripts []string
-	if !skipBuildArtifacts {
-		copyFiles, _ = domain.CollectRequiredCopyFiles(config)
-		postScriptFiles, _ = domain.CollectRequiredPostScriptFiles(config)
-
-		// The user's own scripts are copied in before anything is validated: they
-		// come from a profile directory rather than the embedded FS, and once they
-		// are in the build dir the existing plumbing treats them like any other
-		// referenced file — ValidateRequiredFiles looks there first, Preflight
-		// skips what is already present, and their contents feed the fingerprint.
-		var err error
-		customScripts, err = materializeCustomScripts(config, buildDir)
-		if err != nil {
-			return nil, nil, err
-		}
-
-		referenced := slices.Concat(copyFiles, postScriptFiles, customScripts)
-		if missing := assets.ValidateRequiredFiles(referenced, buildDir); len(missing) > 0 {
-			return nil, nil, fmt.Errorf("missing required script(s) (not embedded in binary or %s): %s", buildDir, strings.Join(missing, ", "))
-		}
-	}
-
-	if !skipBuildArtifacts {
-		if len(copyFiles) > 0 {
-			pre := assets.Preflight(copyFiles, buildDir)
-			if len(pre.Copied) > 0 {
-				logger.Std().Debug("copied build helpers", "workspace", config.Workspace, "files", strings.Join(pre.Copied, ", "))
-			}
-			if len(pre.Missing) > 0 {
-				return nil, nil, fmt.Errorf("missing required scripts: %s", strings.Join(pre.Missing, ", "))
-			}
-		}
-		if len(postScriptFiles) > 0 {
-			pre := assets.Preflight(postScriptFiles, buildDir)
-			if len(pre.Copied) > 0 {
-				logger.Std().Debug("copied post-install scripts", "workspace", config.Workspace, "files", strings.Join(pre.Copied, ", "))
-			}
-			if len(pre.Missing) > 0 {
-				return nil, nil, fmt.Errorf("missing required post-install scripts: %s", strings.Join(pre.Missing, ", "))
-			}
-		}
-	}
-
-	copyContents := map[string]string{}
-	for _, f := range slices.Concat(copyFiles, postScriptFiles, customScripts) {
-		if data, rerr := os.ReadFile(filepath.Join(buildDir, f)); rerr == nil {
-			copyContents[f] = string(data)
-		}
-	}
-
-	// The shared-config catalogue is rendered from types.SharedConfigEntries
-	// rather than kept as a second copy in shell. It is written here for the
-	// same reason CONTEXT.md is (generated, so Preflight would not find it) and
-	// folded into copyContents for the same reason too: adding an entry changes
-	// what the image's entrypoint links, and two projects must not share an
-	// image whose baked catalogue disagrees with the CLI that built it.
-	if !skipBuildArtifacts {
-		table := types.RenderSharedConfigTable()
-		if werr := os.WriteFile(filepath.Join(buildDir, types.SharedConfigTableFileName), []byte(table), 0o644); werr != nil {
-			return nil, nil, werr
-		}
-		copyContents[types.SharedConfigTableFileName] = table
-	}
-
-	// CONTEXT.md is generated rather than materialized from the embedded assets,
-	// so it is written here (after the build dir exists, before the fingerprint
-	// is computed) instead of going through Preflight. Folding it into
-	// copyContents is what makes the fingerprint react to a change that touches
-	// only the compose side — adding a database service alters CONTEXT.md but not
-	// the Dockerfile, and two projects must not then share one image.
-	if !skipBuildArtifacts {
-		contextDoc, cerr := domain.GenerateContext(config)
-		if cerr != nil {
-			return nil, nil, cerr
-		}
-		if contextDoc != "" {
-			if werr := os.WriteFile(filepath.Join(buildDir, types.ContextFileName), []byte(contextDoc), 0o644); werr != nil {
-				return nil, nil, werr
-			}
-			copyContents[types.ContextFileName] = contextDoc
-		}
-	}
-
-	return copyContents, postScriptFiles, nil
+func prepareBuildDir(_ string, config *types.DevcontainerConfig, paths project.Paths) (map[string]string, []string, error) {
+	return generateService().PrepareBuildDir(config, paths)
 }
 
 // writeGeneratedFiles outputs generated environment configuration blueprints.
@@ -761,7 +646,9 @@ func saveAndPostProcess(cwd string, config *types.DevcontainerConfig, plan *serv
 
 	isRemote := config.Mode == types.BuildModeProfiles
 	build := flags.build
-	if plan.CachedImageHit && build == nil {
+	// Re-checked here: prompts sit between Plan and this point, and a shared
+	// image can be collected meanwhile when another project is destroyed.
+	if plan.CachedImageHit && build == nil && svc.ImageExists(config.Image) {
 		skip := false
 		build = &skip
 		console.Success("✓ Local-cached image is up to date — skipping build.")
@@ -778,6 +665,10 @@ func saveAndPostProcess(cwd string, config *types.DevcontainerConfig, plan *serv
 		build = &ans
 	}
 
+	// Recorded before building: the build garbage-collects project images no
+	// registered project references, and this project's new image must already
+	// be one of them.
+	domain.RecordProject(cwd, config, "")
 	if build != nil && *build {
 		// A failed build is a failed command. It used to be reported as a
 		// warning with a zero exit, which reads as success to anything that is
@@ -789,7 +680,6 @@ func saveAndPostProcess(cwd string, config *types.DevcontainerConfig, plan *serv
 			return berr
 		}
 	}
-	domain.RecordProject(cwd, config, "")
 	if build == nil || !*build {
 		console.Done()
 	}
@@ -860,15 +750,28 @@ func applyProfileBundle(config *types.DevcontainerConfig, flags *genFlags) error
 	if flags.withModules == nil {
 		flags.withModules = profileModules
 	}
-	if flags.services == nil {
+	// A profile with no services of its own still replaces the project's: the
+	// template defines the stack.
+	if flags.services == nil && (flags.profileTemplate == nil || len(flags.profileTemplate.Services) == 0) {
 		flags.services = []string{}
 	}
+	config.Origin = strings.Join(splitCSV(flags.profile), "-")
 	return nil
 }
 
 func applyGenFlags(config *types.DevcontainerConfig, flags *genFlags) error {
 	if err := applyProfileBundle(config, flags); err != nil {
 		return err
+	}
+	if flags.profileTemplate != nil {
+		// The template sees the explicit mode, so it never switches a mode the
+		// caller pinned (the --mode assignment below would also win).
+		if flags.mode != "" {
+			config.Mode = types.BuildMode(flags.mode)
+		}
+		if err := domain.ApplyProfileTemplate(config, *flags.profileTemplate); err != nil {
+			return err
+		}
 	}
 
 	// Scripts come from the profile and from --script; they are persisted in the
