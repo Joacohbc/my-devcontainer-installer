@@ -200,7 +200,8 @@ func TestConfigureHonorsSharedConfigAnswer(t *testing.T) {
 }
 
 // ProfileChoices backs --profile under mode=profiles, so it must only offer
-// profiles with a published image, never e.g. 'base' (local build only).
+// profiles with a published image. 'base' is published (devcontainer-base) and
+// is the bare, no-language choice, so it is offered first.
 func TestProfileChoicesOnlyListsRemoteProfiles(t *testing.T) {
 	choices := ProfileChoices()
 
@@ -221,10 +222,8 @@ func TestProfileChoicesOnlyListsRemoteProfiles(t *testing.T) {
 			t.Errorf("choice[%d].Value = %q, want %q", i, choices[i].Value, p.ID)
 		}
 	}
-	for _, c := range choices {
-		if c.Value == "base" {
-			t.Error("ProfileChoices must not offer 'base': it has no published remote image")
-		}
+	if choices[0].Value != "base" {
+		t.Errorf("first choice = %q, want the bare 'base' profile", choices[0].Value)
 	}
 }
 

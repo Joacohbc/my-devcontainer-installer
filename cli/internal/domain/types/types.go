@@ -393,6 +393,7 @@ const (
 var BuildModes = []BuildMode{BuildModeCustom, BuildModeProfiles, BuildModeImage}
 
 var RemoteVariants = []string{
+	"base",
 	"nodejs",
 	"bun",
 	"java-temurin",

@@ -620,13 +620,29 @@ func TestRunCommand_HasProfileFlag(t *testing.T) {
 	}
 }
 
+// writeLocalOnlyUserProfile installs a user profile, which never has a
+// published image, so tests have a real local-only profile to reject.
+func writeLocalOnlyUserProfile(t *testing.T, id string) {
+	t.Helper()
+	configDir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", configDir)
+	dir := filepath.Join(configDir, "devcontainer-cli", "profiles", id)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	manifest := "id: " + id + "\nmodules:\n  - sqlite\n"
+	if err := os.WriteFile(filepath.Join(dir, "profile.yml"), []byte(manifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // resolveRunProfile must reject a [local]-only profile (nothing published to
 // pull) but accept "ssh" (the hand-built full image, not a catalog profile).
 func TestResolveRunProfile_RejectsLocalOnlyAcceptsSSH(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	writeLocalOnlyUserProfile(t, "local-only")
 
 	cmd := newRunCommand()
-	if err := cmd.Flags().Set("profile", "base"); err != nil {
+	if err := cmd.Flags().Set("profile", "local-only"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := resolveRunProfile(cmd, true); err == nil {
@@ -2349,17 +2365,17 @@ func TestValidateConfig_KeepsPinnedWorkspaceOnCollision(t *testing.T) {
 	}
 }
 
-// mode=profiles rejects a [local]-only --profile (e.g. 'base'): it has no
+// mode=profiles rejects a [local]-only --profile (e.g. a user profile): it has no
 // published image, so the pull would just fail — caught here instead, once
 // the effective mode is known, not eagerly at flag-parse time (where the same
 // --profile is valid for mode=custom).
 func TestValidateConfig_ModeProfilesRejectsLocalOnlyProfile(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	writeLocalOnlyUserProfile(t, "local-only")
 	cwd := t.TempDir()
 	config := &types.DevcontainerConfig{
 		Workspace: "ws",
 		Mode:      types.BuildModeProfiles,
-		Remote:    &types.RemoteConfig{Variant: "base"},
+		Remote:    &types.RemoteConfig{Variant: "local-only"},
 	}
 	flags := &genFlags{interactive: true, keepWorkspace: true}
 	err := validateConfig(cwd, config, flags, service.GenerateService{})

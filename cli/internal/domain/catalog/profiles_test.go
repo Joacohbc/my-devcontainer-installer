@@ -69,8 +69,8 @@ func TestPlainBuiltinProfilesHaveNoDefaultSkills(t *testing.T) {
 // apart from its mode=custom (module bundle) role: it must be set on exactly
 // the ids CI actually publishes (types.RemoteVariants), so a profile never
 // claims a pullable image that does not exist (or hides one that does).
-// 'base' is deliberately excluded — its published devcontainer-base is the
-// minimal base-cache image (no github-cli), not this profile's content.
+// 'base' is included: CI publishes devcontainer-base from the 'base' profile
+// (build-base-cache job, not the build-variants matrix).
 func TestBuiltinProfileRemoteFlagMatchesPublishedVariants(t *testing.T) {
 	remoteVariants := map[string]bool{}
 	for _, v := range types.RemoteVariants {
@@ -583,5 +583,27 @@ func TestMergeProfilesTemplateConflicts(t *testing.T) {
 	}
 	if _, err := catalog.MergeProfiles(catalog.Profile{ID: "a", Image: "x"}, catalog.Profile{ID: "b", Image: "y"}); err == nil {
 		t.Error("two different images must fail")
+	}
+}
+
+// Every published variant must be built by CI: either a build-variants matrix
+// entry, or 'base', which build-base-cache publishes before the matrix runs.
+func TestRemoteVariantsAreBuiltByCI(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "..", "..", ".github", "workflows", "docker-image.yml"))
+	if err != nil {
+		t.Fatalf("read workflow: %v", err)
+	}
+	workflow := string(data)
+	for _, v := range types.RemoteVariants {
+		if v == "base" {
+			job := workflow[strings.Index(workflow, "build-base-cache:"):]
+			if !strings.Contains(job, "--profile base") || !strings.Contains(job, "devcontainer-base:latest") {
+				t.Error("variant base: build-base-cache must build --profile base and publish devcontainer-base:latest")
+			}
+			continue
+		}
+		if !strings.Contains(workflow, "- name: "+v+"\n") {
+			t.Errorf("variant %q missing from the build-variants matrix", v)
+		}
 	}
 }

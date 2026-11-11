@@ -42,8 +42,8 @@ covering the whole loop (agent cli-info, create, run, ssh, exec, forward, list, 
 Build modes:
   custom    Build the full Dockerfile/compose pipeline locally and tag the
             image by a content fingerprint so identical setups are reused.
-            Works for every profile, including a [local]-only one like
-            'base' or a user-created profile.
+            Works for every profile, including a [local]-only one such as
+            a user-created profile.
   profiles  Skip the Dockerfile and pull a prebuilt ghcr.io image for the
             chosen --profile — a [remote]-tagged profile id (see
             'profile list'), or 'ssh' for the full image; database

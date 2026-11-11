@@ -69,8 +69,9 @@ var BuiltinProfiles = plainBuiltinProfiles
 // the base image by default (always-on), so every profile gets it implicitly.
 var plainBuiltinProfiles = []Profile{
 	{
-		ID:    "base",
-		Label: "Base (GitHub CLI)",
+		ID:     "base",
+		Remote: true,
+		Label:  "Base (GitHub CLI)",
 		Modules: []string{
 			string(types.ModuleGithubCli),
 		},

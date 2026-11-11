@@ -66,8 +66,8 @@ jobs:
   # ubuntu, apt install, useradd devuser, zsh). We build a base image using the
   # "base" profile (always-on base + cleanup + GitHub CLI + Zellij) and publish it
   # with an inline cache so the variant builds below can `cache-from` it and
-  # skip rebuilding those shared layers. This is not a RemoteVariant — it's a
-  # cache/base image only.
+  # skip rebuilding those shared layers. It is also the published `base`
+  # RemoteVariant (see D24), so it is not part of the build-variants matrix.
   build-base-cache:
     runs-on: ubuntu-latest
     steps:

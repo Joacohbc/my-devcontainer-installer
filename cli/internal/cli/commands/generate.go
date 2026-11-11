@@ -89,7 +89,7 @@ const remoteVariantSSH = "ssh"
 // its only caller for that is 'run', which always pulls, plus "ssh" (the
 // hand-built full image, not a catalog profile). Everywhere else every known
 // profile is offered, since --profile also selects a mode=custom module
-// bundle, where a local-build-only profile like 'base' or a user profile is valid too.
+// bundle, where a local-build-only user profile is valid too.
 func profileIDs(remoteOnly bool) []string {
 	ids := make([]string, 0)
 	for _, p := range catalog.All(domain.ProfileDirs()...) {
@@ -107,7 +107,7 @@ func profileIDs(remoteOnly bool) []string {
 // validRemoteVariant reports whether v is usable as --profile's pull target
 // under mode=profiles (or 'run', which is always that target): "ssh", or a
 // profile id with a published image. A profile that exists but was never
-// published (e.g. 'base') is rejected here — it would only fail the pull —
+// published (e.g. a user profile) is rejected here — it would only fail the pull —
 // even though it remains valid for --profile under mode=custom.
 func validRemoteVariant(v string) bool {
 	if v == remoteVariantSSH {
@@ -118,7 +118,7 @@ func validRemoteVariant(v string) bool {
 }
 
 // remoteVariantError builds the mode=profiles / 'run' --profile validation
-// error. A profile that exists but has no published image (e.g. 'base' or a user profile)
+// error. A profile that exists but has no published image (e.g. a user profile)
 // gets a pointer to the local-build path instead of being reported as merely
 // "unknown".
 func remoteVariantError(v string) error {
@@ -322,7 +322,7 @@ func parseGenFlags(cmd *cobra.Command) (*genFlags, error) {
 	}
 	// --profile is validated against the [remote] tag only once the effective
 	// mode is known (validateConfig): it is shared with mode=custom, where any
-	// profile — including a [local]-only one like 'base' — is valid.
+	// profile — including a [local]-only user profile — is valid.
 	return g, nil
 }
 
@@ -508,7 +508,7 @@ func validateConfig(cwd string, config *types.DevcontainerConfig, flags *genFlag
 		return fmt.Errorf("profile %q is a pull target only (the hand-built full image); use --mode %s to pull it, or pick a profile that carries modules", remoteVariantSSH, types.BuildModeProfiles)
 	}
 	// --profile is shared with mode=custom, where any profile (including a
-	// [local]-only one like 'base') is valid — so this can only be checked
+	// [local]-only user profile) is valid — so this can only be checked
 	// once the effective mode is known, here rather than at flag-parse time.
 	if config.Mode == types.BuildModeProfiles && config.Remote != nil && config.Remote.Variant != "" && !validRemoteVariant(config.Remote.Variant) {
 		return remoteVariantError(config.Remote.Variant)
