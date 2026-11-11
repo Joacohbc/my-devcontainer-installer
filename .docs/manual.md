@@ -378,6 +378,12 @@ devcontainer-cli config skill add mi-habilidad --ref owner/repo --label "Mi Habi
    devcontainer-cli config clean containers
    ```
 
+*También puede partir de una de sus definiciones de imagen con `--image` (excluyente con `--profile`). Una definición `build` debe construirse antes; una `remote` se descarga al ejecutarla:*
+```bash
+devcontainer-cli image build android
+devcontainer-cli run --image android --no-interactive   # contenedor dc-android
+```
+
 ---
 
 ### Caso 1.13: Imagen Compartible Derivada y Perfil sobre Ella (`image create --from`)
@@ -406,6 +412,12 @@ devcontainer-cli config skill add mi-habilidad --ref owner/repo --label "Mi Habi
    devcontainer-cli workspace init --profile android-app --no-interactive --build
    ```
 *Si reconstruye `android`, la siguiente generación del proyecto produce una imagen nueva y la anterior se recolecta cuando nadie la usa. Con solo `image` (sin `modules`) el proyecto usa la imagen tal cual en `mode=image`.*
+
+4. Para usar la imagen tal cual en un proyecto, sin perfil ni compilación, elija el modo `image` en el asistente de `workspace init` (aparece cuando existe alguna definición) y luego la definición; o, sin asistente:
+   ```bash
+   devcontainer-cli workspace init --mode image --image android --no-interactive
+   ```
+   *Si la definición es `build` y nunca se construyó, el comando falla indicando `devcontainer-cli image build android`.*
 
 ---
 

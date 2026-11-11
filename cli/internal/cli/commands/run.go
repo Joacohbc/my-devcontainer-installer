@@ -63,7 +63,7 @@ image and is rejected here; build it instead with 'devcontainer-cli --profile
 		SilenceUsage: true,
 		RunE:         runQuickRun,
 	}
-	cmd.Flags().String("profile", "", "Single [remote]-tagged profile id to run as a prebuilt image, e.g. base, nodejs, python (required with --no-interactive); see 'profile list'")
+	cmd.Flags().String("profile", "", "Single [remote]-tagged profile id to run as a prebuilt image, e.g. base, nodejs, python (it or --image is required with --no-interactive); see 'profile list'")
 	cmd.Flags().String(flagImage, "", "Image definition to run instead of a profile (see 'image list'); a build definition must be built first")
 	cmd.Flags().String("name", "", "Container name (default: dc-<profile> or dc-<image>); if it belongs to an existing quick-run container it is reused/restarted, but a name already used by any other container is rejected")
 	cmd.Flags().StringSlice("volumes", nil, "Volume mounts (e.g. myvol:/workspace); repeatable or comma-separated")

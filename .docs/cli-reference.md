@@ -1124,7 +1124,7 @@ Spin up a container from a prebuilt or named image (no project files)
 | `--name` |  | string | - | Container name (default: dc-<profile> or dc-<image>); if it belongs to an existing quick-run container it is reused/restarted, but a name already used by any other container is rejected |
 | `--no-interactive` |  | bool | `false` | Non-interactive mode (fail instead of prompting) |
 | `--ports` |  | stringSlice | `[]` | Port mappings (e.g. 2222:22); bound to 127.0.0.1 unless --expose-all; repeatable or comma-separated |
-| `--profile` |  | string | - | Single [remote]-tagged profile id to run as a prebuilt image, e.g. base, nodejs, python (required with --no-interactive); see 'profile list' |
+| `--profile` |  | string | - | Single [remote]-tagged profile id to run as a prebuilt image, e.g. base, nodejs, python (it or --image is required with --no-interactive); see 'profile list' |
 | `--registry` |  | string | - | Registry prefix override |
 | `--shared-config` |  | bool | `true` | Mount the global shared AI/dev tool config volume (devcontainer-shared-config) so logins/sessions persist across containers; --shared-config=false to opt out |
 | `--verbose` |  | bool | `false` | Enable debug logging (shortcut for --log-level debug) |
