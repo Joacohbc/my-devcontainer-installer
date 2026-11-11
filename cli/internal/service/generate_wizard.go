@@ -276,7 +276,7 @@ func (w wizardContext) steps(s *State) []Step {
 	steps = append(steps, w.categorySteps(s)...)
 	steps = append(steps, w.optionSteps(s)...)
 
-	if !w.remoteImageDerived(s) {
+	if !w.remoteImageDerived(s) && !w.contentNamedImage(s) {
 		steps = append(steps, w.imageStep())
 	}
 	steps = append(steps, w.subnetStep())
@@ -330,7 +330,11 @@ func parseVolumesCSV(raw string) []string {
 
 func (w wizardContext) volumesStep() Step {
 	return Step{Key: stepKeyVolumes, Build: func(s *State) Field {
-		initial := strings.Join(w.base.Compose.Volumes, ",")
+		volumes := w.base.Compose.Volumes
+		if p, ok := w.pickedProfile(s); ok && s.String(stepKeyMode) == modeChoiceCustomFromProfile && len(p.Volumes) > 0 {
+			volumes = p.Volumes
+		}
+		initial := strings.Join(volumes, ",")
 		if s.Has(stepKeyVolumes) {
 			initial = s.String(stepKeyVolumes)
 		}
@@ -461,12 +465,18 @@ func (w wizardContext) pickedProfile(s *State) (catalog.Profile, bool) {
 	return w.profileByID(pid)
 }
 
-// profileCategoryIDs returns the profile's module ids that belong to UI category c.
+// profileCategoryIDs returns the profile's module and service ids that belong
+// to UI category c, so a profile's services are preselected like its modules.
 func profileCategoryIDs(p catalog.Profile, c types.UICategory) []string {
 	var ids []string
 	for _, id := range p.Modules {
 		if spec := catalog.GetDockerfileModule(types.ModuleID(id)); spec != nil && spec.UICategory == c {
 			ids = append(ids, id)
+		}
+	}
+	for _, svc := range p.Services {
+		if spec := catalog.GetComposeService(svc.ID); spec != nil && spec.UICategory == c {
+			ids = append(ids, string(svc.ID))
 		}
 	}
 	return ids
@@ -552,6 +562,13 @@ func (w wizardContext) entryOptionSteps(entryID string, options []types.ModuleOp
 
 func (w wizardContext) remoteImageDerived(s *State) bool {
 	return currentMode(s) == types.BuildModeProfiles && s.String(stepKeyVariant) != ""
+}
+
+// contentNamedImage reports whether the image tag is derived from the build's
+// origin and content (every local custom build), so asking for a name would
+// only offer a value that is then replaced.
+func (w wizardContext) contentNamedImage(s *State) bool {
+	return currentMode(s) == types.BuildModeCustom
 }
 
 func (w wizardContext) imageStep() Step {
@@ -662,6 +679,13 @@ func (w wizardContext) reduce(s *State) *types.DevcontainerConfig {
 		Env:        env,
 	}
 
+	if s.String(stepKeyMode) == modeChoiceCustomFromProfile && s.Has(stepKeyProfile) {
+		draft.Origin = s.String(stepKeyProfile)
+	}
+	if draft.Image == "" {
+		draft.Image = w.base.Image
+	}
+
 	if s.Has(stepKeyPorts) {
 		draft.Compose.Ports = parsePortsCSV(s.String(stepKeyPorts))
 	} else {
@@ -679,6 +703,19 @@ func (w wizardContext) reduce(s *State) *types.DevcontainerConfig {
 		draft.Compose.SharedConfig = &v
 	} else {
 		draft.Compose.SharedConfig = w.base.Compose.SharedConfig
+	}
+
+	if s.String(stepKeyMode) == modeChoiceCustomFromProfile {
+		if p, ok := w.pickedProfile(s); ok {
+			// Services and volumes were seeded into their steps and may have been
+			// changed there; the rest of the template applies as-is.
+			// An invalid template was already reported by Configure.
+			p.Services, p.Volumes = nil, nil
+			_ = domain.ApplyProfileTemplate(draft, p)
+		}
+	} else if mode == types.BuildModeCustom {
+		// Re-running the wizard on a derived project keeps its base image.
+		draft.Dockerfile.From = w.base.Dockerfile.From
 	}
 
 	if mode == types.BuildModeProfiles {
@@ -765,7 +802,23 @@ func (s GenerateService) Configure(base *types.DevcontainerConfig, cwd string, p
 	if err != nil {
 		return nil, err
 	}
+	if err := ctx.profileTemplateError(state); err != nil {
+		return nil, err
+	}
 	return ctx.reduce(state), nil
+}
+
+// profileTemplateError reports a picked profile whose template is invalid,
+// which reduce (being total) would otherwise silently drop.
+func (w wizardContext) profileTemplateError(s *State) error {
+	if s.String(stepKeyMode) != modeChoiceCustomFromProfile {
+		return nil
+	}
+	p, ok := w.pickedProfile(s)
+	if !ok {
+		return nil
+	}
+	return domain.ApplyProfileTemplate(&types.DevcontainerConfig{Mode: types.BuildModeCustom}, p)
 }
 
 // moduleChoices lists the selectable Dockerfile modules in a UI category,

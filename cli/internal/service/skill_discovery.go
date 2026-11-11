@@ -71,7 +71,8 @@ func (s ConfigService) SaveUserSkill(manifest types.UserSkillManifest, force boo
 	}
 
 	targetPath := filepath.Join(domain.SkillDir(), id+".yml")
-	if _, exists := domain.UserSkillPath(id); exists && !force {
+	_, exists := domain.UserSkillPath(id)
+	if exists && !force {
 		return fmt.Errorf("user-defined skill %q already exists; pass --force to overwrite", id)
 	}
 
@@ -84,12 +85,23 @@ func (s ConfigService) SaveUserSkill(manifest types.UserSkillManifest, force boo
 		return fmt.Errorf("failed to marshal skill manifest: %w", err)
 	}
 
+	repo := NewConfigRepo(reporterOrSilent(s.Report))
+	versioned := repo.Prepare()
+
 	if err := os.MkdirAll(domain.SkillDir(), 0o755); err != nil {
 		return fmt.Errorf("failed to create skills directory: %w", err)
 	}
 
 	if err := os.WriteFile(targetPath, data, 0o644); err != nil {
 		return fmt.Errorf("failed to save skill: %w", err)
+	}
+
+	if versioned {
+		verb := "add"
+		if exists {
+			verb = "update"
+		}
+		repo.Commit(fmt.Sprintf("feat(skill): %s %s", verb, id), targetPath)
 	}
 
 	if s.Report != nil {

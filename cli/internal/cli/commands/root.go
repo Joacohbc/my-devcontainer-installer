@@ -3,6 +3,7 @@ package commands
 import (
 	"github.com/charmbracelet/log"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/logger"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 	"github.com/spf13/cobra"
 )
 
@@ -10,6 +11,7 @@ import (
 // default "generate" flow when invoked with no subcommand.
 func NewRootCommand(v string) *cobra.Command {
 	version = v
+	types.CLIVersion = v
 	root := &cobra.Command{
 		Use:   "devcontainer-cli",
 		Short: "Generate and manage reproducible Docker devcontainers",
@@ -24,7 +26,7 @@ Generated files are written under .dc_<workspace>/ next to your project and the
 result is recorded so the other subcommands can find it.
 
 Commands are structured across 6 canonical resource domains:
-  workspace    Manage project workspace lifecycle (init, up, down, start, stop, restart, destroy, compose, export, import)
+  workspace    Manage project workspace lifecycle (init, auto-init, up, down, start, stop, restart, destroy, compose, export, import)
   access       Connect to and interact with running devcontainers (shell, ssh, forward, route, network, copy, password)
   inspect      Inspect container status, logs, files, and context (status, info, logs, context, ls)
   profile      Manage reusable devcontainer profiles (list, info, create, copy, remove)

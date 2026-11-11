@@ -46,11 +46,13 @@ func emitShellInitTo(files []string, initFileName string, lines []string) string
 	sourceLine := `. \$HOME/` + initFileName
 	rcList := strings.Join(files, " ")
 	// Both steps run as devuser, so chain them in a single RUN layer: write the
-	// init file, then source it from each rc file.
+	// init file, then source it from each rc file. The source line is appended
+	// only when missing, so a derived image re-rendering the same init file does
+	// not source it twice.
 	return fmt.Sprintf(
-		`RUN su - devuser -c "printf '%%s\n' %s > %s && for f in %s; do touch %s/\$f && echo '%s' >> %s/\$f; done"`,
+		`RUN su - devuser -c "printf '%%s\n' %s > %s && for f in %s; do touch %s/\$f && grep -qxF '%s' %s/\$f || echo '%s' >> %s/\$f; done"`,
 		argsStr, initFile,
-		rcList, devuserHome, sourceLine, devuserHome,
+		rcList, devuserHome, sourceLine, devuserHome, sourceLine, devuserHome,
 	)
 }
 

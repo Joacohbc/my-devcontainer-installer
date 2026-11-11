@@ -24,6 +24,9 @@ directory and the devcontainer.config.json. After this the project is gone and
 would have to be regenerated from scratch. Use 'down' instead if you only want
 to stop containers but keep your files and data.
 
+The project image is removed too unless another project shares it: images are
+named by content, so identical projects use one image until the last one goes.
+
 It also prunes the SSH state 'ssh' wrote for the target: its managed
 managed Host block and the container host keys pinned for the address that
 block dialed, unless another Host block still dials it. Your own

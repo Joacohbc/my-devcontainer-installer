@@ -43,6 +43,7 @@ func runUp(cmd *cobra.Command, _ []string) error {
 
 	workspace := resolveWorkspace(cwd)
 
+	warnIfBuildStale(cwd, workspace)
 	build, _ := cmd.Flags().GetBool("build")
 	if err := svc.Up(composeFile, workspace, build); err != nil {
 		return err

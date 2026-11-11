@@ -101,6 +101,22 @@ func MergeContainerEnv(envs ...ContainerEnv) ContainerEnv {
 // the only form a process started without a shell inherits. Returns an empty
 // string when there is nothing to declare.
 func RenderDockerfileEnv(env ContainerEnv) string {
+	return renderDockerfileEnv(env, "$PATH")
+}
+
+// SystemPath is Ubuntu's default PATH, what every image starts with before any
+// module prepends to it.
+const SystemPath = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+// RenderDerivedDockerfileEnv is RenderDockerfileEnv for a derived build. Its
+// env covers the whole lineage, so PATH is written in full on top of
+// SystemPath instead of prepending to the parent's PATH, which already holds
+// the inherited entries and would list them twice.
+func RenderDerivedDockerfileEnv(env ContainerEnv) string {
+	return renderDockerfileEnv(env, SystemPath)
+}
+
+func renderDockerfileEnv(env ContainerEnv, tail string) string {
 	if env.IsEmpty() {
 		return ""
 	}
@@ -109,7 +125,7 @@ func RenderDockerfileEnv(env ContainerEnv) string {
 		lines = append(lines, fmt.Sprintf("ENV %s=%s", assignment.Name, doubleQuoted(assignment.Value.Expanded())))
 	}
 	if len(env.PathEntries) > 0 {
-		lines = append(lines, fmt.Sprintf("ENV PATH=%s", doubleQuoted(expandedPathValue(env.PathEntries))))
+		lines = append(lines, fmt.Sprintf("ENV PATH=%s", doubleQuoted(expandedPathValue(env.PathEntries, tail))))
 	}
 	return strings.Join(lines, "\n")
 }
@@ -146,12 +162,12 @@ func prependOrder(entries []PathEntry) []PathEntry {
 	return reversed
 }
 
-func expandedPathValue(entries []PathEntry) string {
+func expandedPathValue(entries []PathEntry, tail string) string {
 	expanded := make([]string, len(entries))
 	for i, entry := range entries {
 		expanded[i] = entry.Expanded()
 	}
-	return strings.Join(expanded, ":") + ":$PATH"
+	return strings.Join(expanded, ":") + ":" + tail
 }
 
 // pathPrependGuard yields a POSIX line that prepends entry to PATH only when it

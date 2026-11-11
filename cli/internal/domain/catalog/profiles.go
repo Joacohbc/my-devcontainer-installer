@@ -10,19 +10,32 @@ import (
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 )
 
-// ProfileFileName is the manifest inside a directory-shaped profile. A profile
-// that carries custom scripts is a directory (the scripts live next to the
-// manifest); one that is only a module bundle may stay a single <id>.yml file.
+// ProfileFileName is the manifest inside a profile directory. Every user
+// profile is a directory <id>/ holding this manifest and, next to it, the
+// scripts it references.
 const ProfileFileName = "profile.yml"
 
-// Profile is a reusable bundle of Dockerfile module ids plus, optionally, the
-// user's own scripts. Older files may still carry `services:`/`mode:` keys;
-// those are ignored on load.
+// Profile is a project template for a use case: the Dockerfile modules (or a
+// named image) to start from, the user's own scripts, and the project-level
+// settings a devcontainer.config.json would carry — companion services, extra
+// volumes, environment variables, ports and agent skills. Older files may
+// still carry a `mode:` key; it is ignored on load.
 type Profile struct {
 	ID      string               `yaml:"id"`
 	Label   string               `yaml:"label,omitempty"`
 	Modules []string             `yaml:"modules,omitempty"`
 	Scripts []types.CustomScript `yaml:"scripts,omitempty"`
+	// Image starts the project from an existing image instead of building
+	// modules: the name of an `image` definition, or a registry reference that
+	// honours the image contract.
+	Image string `yaml:"image,omitempty"`
+	// Services are companion compose services (databases, caches), Volumes extra
+	// mounts on the devcontainer service and Env the project's environment
+	// variables. They behave exactly like the same keys in
+	// devcontainer.config.json.
+	Services []types.SelectedService `yaml:"services,omitempty"`
+	Volumes  []string                `yaml:"volumes,omitempty"`
+	Env      map[string]string       `yaml:"env,omitempty"`
 	// Skills are the agent skills a project starting from this profile installs,
 	// and SkillsMode how they get installed. They are project-scoped, so they are
 	// applied to the project rather than baked into the image.
@@ -42,9 +55,8 @@ type Profile struct {
 	// mode=custom; it is just never a pull target.
 	Remote bool   `yaml:"remote,omitempty"`
 	Source string `yaml:"-"`
-	// Dir is the directory the profile's scripts are resolved against: the
-	// profile's own directory for a directory-shaped profile, and the containing
-	// directory for a flat <id>.yml. Empty for a profile that ships no scripts.
+	// Dir is the profile's own directory, which its scripts are resolved
+	// against. Empty for a built-in.
 	Dir string `yaml:"-"`
 }
 
@@ -175,8 +187,7 @@ var plainBuiltinProfiles = []Profile{
 }
 
 // Resolve looks an id up across the given user directories (earlier ones win)
-// and then the built-ins. Passing several directories is how the legacy
-// `presets/` directory keeps working alongside `profiles/`.
+// and then the built-ins.
 func Resolve(id string, userDirs ...string) (Profile, bool) {
 	for _, p := range LoadUserProfiles(userDirs...) {
 		if p.ID == id {
@@ -214,9 +225,9 @@ func All(userDirs ...string) []Profile {
 }
 
 // LoadUserProfiles reads every profile in the given directories, in order, and
-// drops any whose id an earlier directory already provided. Both on-disk shapes
-// are accepted: a flat <id>.yml, and a <id>/profile.yml directory whose custom
-// scripts sit next to the manifest.
+// drops any whose id an earlier directory already provided. Only the
+// <id>/profile.yml directory shape is accepted; flat files are ignored (see
+// LegacyFlatProfiles).
 func LoadUserProfiles(dirs ...string) []Profile {
 	seen := map[string]bool{}
 	var out []Profile
@@ -242,27 +253,57 @@ func loadProfileDir(dir string) []Profile {
 	}
 	var out []Profile
 	for _, e := range entries {
-		path := filepath.Join(dir, e.Name())
-		scriptDir := dir
-		if e.IsDir() {
-			// A directory-shaped profile: the manifest is inside, and so are the
-			// scripts it references.
-			manifest, ok := profileManifest(path)
-			if !ok {
-				continue
-			}
-			path, scriptDir = manifest, path
-		} else if !hasYAMLSuffix(e.Name()) {
+		if !e.IsDir() {
 			continue
 		}
-		p, ok := readProfile(path)
+		profileDir := filepath.Join(dir, e.Name())
+		manifest, ok := profileManifest(profileDir)
 		if !ok {
 			continue
 		}
-		p.Dir = scriptDir
+		p, ok := readProfile(manifest)
+		if !ok {
+			continue
+		}
+		p.Dir = profileDir
 		out = append(out, p)
 	}
 	return out
+}
+
+// LegacyFlatProfiles returns the paths of flat *.yml / *.yaml files found
+// directly in dirs. They are no longer loaded; callers use the list to tell the
+// user to move them into <id>/profile.yml.
+func LegacyFlatProfiles(dirs ...string) []string {
+	var out []string
+	for _, dir := range dirs {
+		if dir == "" {
+			continue
+		}
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			continue
+		}
+		for _, e := range entries {
+			if !e.IsDir() && hasYAMLSuffix(e.Name()) {
+				out = append(out, filepath.Join(dir, e.Name()))
+			}
+		}
+	}
+	return out
+}
+
+// legacyFlatFile returns the flat file <dir>/<id>.yml|.yaml if one exists.
+func legacyFlatFile(id string, dirs []string) (string, bool) {
+	for _, dir := range dirs {
+		for _, ext := range []string{".yml", ".yaml"} {
+			path := filepath.Join(dir, id+ext)
+			if info, err := os.Stat(path); err == nil && !info.IsDir() {
+				return path, true
+			}
+		}
+	}
+	return "", false
 }
 
 // profileManifest returns the manifest path inside a directory-shaped profile.
@@ -312,7 +353,10 @@ func appendUnique[T comparable](dst []T, seen map[T]bool, items []T) []T {
 //     naming both profiles. If a script's Source is not yet set and the originating
 //     profile has a Dir, Source is resolved against it.
 //   - Skills: union of skill IDs, deduplicated, preserving first-seen order.
-//   - Ports and ForwardPorts: union, deduplicated, preserving first-seen order.
+//   - Ports, ForwardPorts and Volumes: union, deduplicated, preserving first-seen order.
+//   - Services: union by id; the first profile's options win.
+//   - Env: union; two profiles setting one variable to different values is an error.
+//   - Image: at most one distinct image across all profiles, or an error.
 //   - SkillsMode: if multiple profiles declare conflicting explicit skills modes, an
 //     error is returned. Otherwise, the explicit mode (if any) is used.
 func MergeProfiles(profiles ...Profile) (Profile, error) {
@@ -331,6 +375,14 @@ func MergeProfiles(profiles ...Profile) (Profile, error) {
 		skills       []types.SkillID
 		ports        []string
 		forwardPorts []string
+		services     []types.SelectedService
+		volumes      []string
+		env          map[string]string
+		image        string
+		imageProf    string
+		envProf      = make(map[string]string)
+		seenServices = make(map[types.ServiceID]bool)
+		seenVolumes  = make(map[string]bool)
 
 		seenModules      = make(map[string]bool)
 		seenSkills       = make(map[types.SkillID]bool)
@@ -376,6 +428,28 @@ func MergeProfiles(profiles ...Profile) (Profile, error) {
 		skills = appendUnique(skills, seenSkills, p.Skills)
 		ports = appendUnique(ports, seenPorts, p.Ports)
 		forwardPorts = appendUnique(forwardPorts, seenForwardPorts, p.ForwardPorts)
+		volumes = appendUnique(volumes, seenVolumes, p.Volumes)
+		for _, svc := range p.Services {
+			if !seenServices[svc.ID] {
+				seenServices[svc.ID] = true
+				services = append(services, svc)
+			}
+		}
+		for k, v := range p.Env {
+			if prev, ok := env[k]; ok && prev != v {
+				return Profile{}, fmt.Errorf("conflicting env %s: profile %q sets %q, but profile %q sets %q", k, envProf[k], prev, profName, v)
+			}
+			if env == nil {
+				env = make(map[string]string)
+			}
+			env[k], envProf[k] = v, profName
+		}
+		if p.Image != "" {
+			if image != "" && image != p.Image {
+				return Profile{}, fmt.Errorf("conflicting images: profile %q starts from %q, but profile %q starts from %q", imageProf, image, profName, p.Image)
+			}
+			image, imageProf = p.Image, profName
+		}
 
 		if p.SkillsMode != "" {
 			if explicitMode == "" {
@@ -396,6 +470,10 @@ func MergeProfiles(profiles ...Profile) (Profile, error) {
 		SkillsMode:   explicitMode,
 		Ports:        ports,
 		ForwardPorts: forwardPorts,
+		Image:        image,
+		Services:     services,
+		Volumes:      volumes,
+		Env:          env,
 		Remote:       false,
 	}
 	return merged, nil
@@ -411,6 +489,9 @@ func ResolveComposed(ids []string, userDirs ...string) (Profile, error) {
 	for _, id := range ids {
 		p, ok := Resolve(id, userDirs...)
 		if !ok {
+			if path, found := legacyFlatFile(id, userDirs); found {
+				return Profile{}, fmt.Errorf("unknown profile: %s (found legacy flat file %s; move it to %s)", id, path, filepath.Join(filepath.Dir(path), id, ProfileFileName))
+			}
 			return Profile{}, fmt.Errorf("unknown profile: %s", id)
 		}
 		resolved = append(resolved, p)

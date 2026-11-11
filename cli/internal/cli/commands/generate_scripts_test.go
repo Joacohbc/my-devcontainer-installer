@@ -480,10 +480,10 @@ func TestParseGenFlags_ProfileWithInvalidPortsFails(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", tmpHome)
 
 	dir := filepath.Join(tmpHome, "devcontainer-cli", "profiles")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(dir, "broken"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "broken.yml"),
+	if err := os.WriteFile(filepath.Join(dir, "broken", "profile.yml"),
 		[]byte("id: broken\nmodules: [github-cli]\nports: [\"nope\"]\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -496,15 +496,16 @@ func TestParseGenFlags_ProfileWithInvalidPortsFails(t *testing.T) {
 // A copy that silently dropped the source's ports would produce a profile that
 // looks the same and behaves differently.
 func TestProfileCopy_CarriesPortsAndSkills(t *testing.T) {
+	isolateGit(t)
 	tmpHome := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", tmpHome)
 
 	dir := filepath.Join(tmpHome, "devcontainer-cli", "profiles")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(dir, "src"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	manifest := "id: src\nmodules: [github-cli]\nports: [\"3000\"]\nforward_ports: [\"5432:postgres:5432\"]\nskills: [agent-browser]\nskills_mode: auto\n"
-	if err := os.WriteFile(filepath.Join(dir, "src.yml"), []byte(manifest), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "src", "profile.yml"), []byte(manifest), 0o644); err != nil {
 		t.Fatal(err)
 	}
 

@@ -3,6 +3,7 @@ package commands
 import (
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -2571,8 +2572,16 @@ func TestProfileCreate_RejectsPositionalArg(t *testing.T) {
 	}
 }
 
+// isolateGit keeps the profile store's automatic commits away from the
+// developer's own git configuration.
+func isolateGit(t *testing.T) {
+	t.Helper()
+	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+}
+
 func TestProfileCopy(t *testing.T) {
-	// Setup isolated XDG config home
+	isolateGit(t)
 	tmpHome := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", tmpHome)
 
@@ -2585,8 +2594,7 @@ func TestProfileCopy(t *testing.T) {
 		t.Fatalf("unexpected error executing profile copy: %v", err)
 	}
 
-	// A profile with no scripts stays a flat <id>.yml.
-	copiedPath := filepath.Join(tmpHome, "devcontainer-cli", "profiles", "my-copied-nodejs.yml")
+	copiedPath := filepath.Join(tmpHome, "devcontainer-cli", "profiles", "my-copied-nodejs", "profile.yml")
 	if _, err := os.Stat(copiedPath); os.IsNotExist(err) {
 		t.Fatalf("expected copied profile file to exist at %s, but it does not", copiedPath)
 	}
@@ -2611,9 +2619,39 @@ func TestProfileCopy(t *testing.T) {
 	}
 }
 
+// The config dir is one git repository versioning profiles/, and the copy is
+// its last commit.
+func TestProfileCopy_RecordsGitCommit(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not installed")
+	}
+	isolateGit(t)
+	tmpHome := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmpHome)
+
+	root := NewRootCommand("test")
+	root.SetArgs([]string{"profile", "copy", "nodejs", "my-node", "--no-interactive"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("unexpected error executing profile copy: %v", err)
+	}
+
+	configDir := filepath.Join(tmpHome, "devcontainer-cli")
+	if _, err := os.Stat(filepath.Join(configDir, ".git")); err != nil {
+		t.Fatalf("expected the config directory to be a git repository: %v", err)
+	}
+	out, err := exec.Command("git", "-C", configDir, "log", "-1", "--format=%s", "--name-only").Output()
+	if err != nil {
+		t.Fatalf("git log: %v", err)
+	}
+	if got, want := strings.TrimSpace(string(out)), "feat(profile): copy nodejs to my-node\n\nprofiles/my-node/profile.yml"; got != want {
+		t.Errorf("expected last commit %q, got %q", want, got)
+	}
+}
+
 // Copying a profile that carries scripts has to copy the scripts too, or the
 // copy would reference files that only exist in the source profile.
 func TestProfileCopy_CarriesScripts(t *testing.T) {
+	isolateGit(t)
 	tmpHome := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", tmpHome)
 
@@ -2645,14 +2683,18 @@ func TestProfileCopy_CarriesScripts(t *testing.T) {
 }
 
 func TestProfileRemove_UserProfile(t *testing.T) {
+	isolateGit(t)
 	tmpHome := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", tmpHome)
 	profilesDir := filepath.Join(tmpHome, "devcontainer-cli", "profiles")
 	if err := os.MkdirAll(profilesDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	target := filepath.Join(profilesDir, "scratch.yml")
-	if err := os.WriteFile(target, []byte("id: scratch\nmodules: [github-cli]\n"), 0o644); err != nil {
+	target := filepath.Join(profilesDir, "scratch")
+	if err := os.MkdirAll(target, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(target, "profile.yml"), []byte("id: scratch\nmodules: [github-cli]\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -2662,13 +2704,14 @@ func TestProfileRemove_UserProfile(t *testing.T) {
 		t.Fatalf("unexpected error removing profile: %v", err)
 	}
 	if _, err := os.Stat(target); !os.IsNotExist(err) {
-		t.Errorf("expected profile file %s to be deleted", target)
+		t.Errorf("expected profile directory %s to be deleted", target)
 	}
 }
 
 // A directory-shaped profile owns its scripts, so removing it takes the whole
 // directory rather than leaving the scripts orphaned.
 func TestProfileRemove_DirectoryShaped(t *testing.T) {
+	isolateGit(t)
 	tmpHome := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", tmpHome)
 	dir := filepath.Join(tmpHome, "devcontainer-cli", "profiles", "withscripts")
@@ -2689,29 +2732,6 @@ func TestProfileRemove_DirectoryShaped(t *testing.T) {
 	}
 	if _, err := os.Stat(dir); !os.IsNotExist(err) {
 		t.Errorf("expected profile directory %s to be deleted", dir)
-	}
-}
-
-// Profiles saved under the pre-rename presets/ directory must keep resolving.
-func TestProfileRemove_LegacyPresetsDir(t *testing.T) {
-	tmpHome := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", tmpHome)
-	legacy := filepath.Join(tmpHome, "devcontainer-cli", "presets")
-	if err := os.MkdirAll(legacy, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	target := filepath.Join(legacy, "old.yml")
-	if err := os.WriteFile(target, []byte("id: old\nmodules: [github-cli]\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	root := NewRootCommand("test")
-	root.SetArgs([]string{"profile", "remove", "old", "--yes"})
-	if err := root.Execute(); err != nil {
-		t.Fatalf("unexpected error removing legacy profile: %v", err)
-	}
-	if _, err := os.Stat(target); !os.IsNotExist(err) {
-		t.Errorf("expected legacy profile file %s to be deleted", target)
 	}
 }
 

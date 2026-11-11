@@ -83,6 +83,7 @@ func (s UpdateService) UpdateOne(projectDir string, config *types.DevcontainerCo
 	if err := composeBuild(projectDir, composeFile, args); err != nil {
 		return config.Image, false
 	}
+	PruneService{Report: s.Report}.CollectProjectImages()
 	s.Report.Success("Rebuilt %s", config.Image)
 	return config.Image, true
 }

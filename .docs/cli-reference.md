@@ -15,7 +15,7 @@ Generate and manage reproducible Docker devcontainers
 | `--force` |  | bool | `false` | Overwrite existing files without prompting |
 | `--force-prompt` |  | bool | `false` | Prompt even if config file exists |
 | `--forward-ports` |  | string | - | Ports 'port-forward' tunnels when called with no argument (e.g. 3000,8080:80, reverse:5432 for a host port reachable inside the container); 'none' clears them |
-| `--image` |  | string | - | Image name (default: derived from fingerprint for mode=custom) |
+| `--image` |  | string | - | Image name (ignored for mode=custom, whose image is named by origin and content: devcontainer-cli/<profiles>-<hash>) |
 | `--log-level` |  | string | `warn` | Log level: debug\|info\|warn\|error |
 | `--mode` |  | string | - | Build mode: custom (default, full local build), profiles (pull a prebuilt image), or image (use a reusable image) |
 | `--modules` |  | string | - | Comma-separated dockerfile modules (e.g. nodejs,golang,rust) |
@@ -301,7 +301,7 @@ Generate, build and start a devcontainer for the current directory
 | Bandera | Atajo | Tipo | Por defecto | Descripción |
 |---|---|---|---|---|
 | `--forward-ports` |  | string | - | Ports 'port-forward' tunnels when called with no argument (e.g. 3000,8080:80, reverse:5432 for a host port reachable inside the container); 'none' clears them |
-| `--image` |  | string | - | Image name (default: derived from fingerprint for mode=custom) |
+| `--image` |  | string | - | Image name (ignored for mode=custom, whose image is named by origin and content: devcontainer-cli/<profiles>-<hash>) |
 | `--log-level` |  | string | `warn` | Log level: debug\|info\|warn\|error |
 | `--mode` |  | string | - | Build mode: custom (default, full local build) or profiles (pull a prebuilt image) |
 | `--modules` |  | string | - | Comma-separated dockerfile modules (e.g. nodejs,golang,rust) |
@@ -868,9 +868,11 @@ Create a new reusable image definition
 
 | Bandera | Atajo | Tipo | Por defecto | Descripción |
 |---|---|---|---|---|
-| `--from-profile` |  | string | - | Seed the image modules from an existing profile |
+| `--from` |  | string | - | Derive from another image definition or a devcontainer-cli registry image, installing only the missing modules |
+| `--from-profile` |  | string | - | Seed the image modules and scripts from an existing profile |
 | `--label` |  | string | - | Human-readable description label |
 | `--log-level` |  | string | `warn` | Log level: debug\|info\|warn\|error |
+| `--modules` |  | string | - | Comma-separated dockerfile modules for the image (replaces the profile's or the github-cli default) |
 | `--no-interactive` |  | bool | `false` | Fail if any value is missing instead of prompting |
 | `--remote` |  | string | - | Point image definition directly to a remote registry image reference |
 | `--tag` |  | string | `latest` | Docker tag for the image |
@@ -1141,6 +1143,30 @@ Manage project workspace lifecycle and containers
 | `--no-interactive` |  | bool | `false` | Fail if any value is missing instead of prompting |
 | `--verbose` |  | bool | `false` | Enable debug logging (shortcut for --log-level debug) |
 
+## `devcontainer-cli workspace auto-init`
+
+Auto-initialize a devcontainer by detecting project stack or cloning a repository
+
+### Banderas
+
+| Bandera | Atajo | Tipo | Por defecto | Descripción |
+|---|---|---|---|---|
+| `--build` |  | bool | `true` | Build or pull container images after generating |
+| `--forward-ports` |  | string | - | Ports 'port-forward' tunnels by default (a 'reverse:' prefix tunnels a host port into the container) |
+| `--log-level` |  | string | `warn` | Log level: debug\|info\|warn\|error |
+| `--mode` |  | string | - | Build mode: custom (default) or profiles (pull prebuilt image) |
+| `--modules` |  | string | - | Additional dockerfile modules (e.g. nodejs,golang,rust) |
+| `--no-interactive` |  | bool | `false` | Fail if any value is missing instead of prompting |
+| `--no-up` |  | bool | `false` | Generate and build only; leave containers stopped |
+| `--ports` |  | string | - | Ports to publish on the devcontainer (e.g. 8080:80,5432:5432) |
+| `--profile` |  | string | - | Apply profile bundle(s) (comma-separated for custom builds) |
+| `--registry` |  | string | - | Container registry prefix for remote images |
+| `--services` |  | string | - | Additional compose services (e.g. mongo,postgres,redis) |
+| `--shared-config` |  | bool | `true` | Mount global shared tool config volume |
+| `--verbose` |  | bool | `false` | Enable debug logging (shortcut for --log-level debug) |
+| `--volumes` |  | string | - | Extra volume mounts on the devcontainer |
+| `--workspace` |  | string | - | Workspace name (default: directory name or repo name) |
+
 ## `devcontainer-cli workspace compose`
 
 Run any docker compose command against the project's stack
@@ -1209,27 +1235,32 @@ Import a YAML config into devcontainer.config.json
 
 ## `devcontainer-cli workspace init`
 
-Initialize a devcontainer by detecting project stack or cloning a repository
+Create a devcontainer for the current project with the interactive wizard
 
 ### Banderas
 
 | Bandera | Atajo | Tipo | Por defecto | Descripción |
 |---|---|---|---|---|
-| `--build` |  | bool | `true` | Build or pull container images after generating |
-| `--forward-ports` |  | string | - | Ports 'port-forward' tunnels by default (a 'reverse:' prefix tunnels a host port into the container) |
+| `--build` |  | bool | `false` | Run 'docker compose build/pull' after generating |
+| `--force` |  | bool | `false` | Overwrite existing files without prompting |
+| `--force-prompt` |  | bool | `false` | Prompt even if config file exists |
+| `--forward-ports` |  | string | - | Ports 'port-forward' tunnels when called with no argument (e.g. 3000,8080:80, reverse:5432 for a host port reachable inside the container); 'none' clears them |
+| `--image` |  | string | - | Image name (ignored for mode=custom, whose image is named by origin and content: devcontainer-cli/<profiles>-<hash>) |
 | `--log-level` |  | string | `warn` | Log level: debug\|info\|warn\|error |
-| `--mode` |  | string | - | Build mode: custom (default) or profiles (pull prebuilt image) |
-| `--modules` |  | string | - | Additional dockerfile modules (e.g. nodejs,golang,rust) |
-| `--no-interactive` |  | bool | `false` | Fail if any value is missing instead of prompting |
-| `--no-up` |  | bool | `false` | Generate and build only; leave containers stopped |
-| `--ports` |  | string | - | Ports to publish on the devcontainer (e.g. 8080:80,5432:5432) |
-| `--profile` |  | string | - | Apply profile bundle(s) (comma-separated for custom builds) |
-| `--registry` |  | string | - | Container registry prefix for remote images |
-| `--services` |  | string | - | Additional compose services (e.g. mongo,postgres,redis) |
-| `--shared-config` |  | bool | `true` | Mount global shared tool config volume |
+| `--mode` |  | string | - | Build mode: custom (default, full local build), profiles (pull a prebuilt image), or image (use a reusable image) |
+| `--modules` |  | string | - | Comma-separated dockerfile modules (e.g. nodejs,golang,rust) |
+| `--no-interactive` |  | bool | `false` | Non-interactive mode (fail instead of prompting) |
+| `--ports` |  | string | - | Ports to publish on the devcontainer (e.g. 8080:80,5432:5432); bound to 127.0.0.1 unless an IP is given; 'none' clears them |
+| `--profile` |  | string | - | Apply profile(s): comma-separated module bundles for mode=custom (e.g. 'nodejs,my-tools'), or a single pull target for mode=profiles (must be [remote]-tagged). See 'config profile list'. |
+| `--registry` |  | string | - | Container registry prefix for remote images (overrides global) |
+| `--script` |  | stringArray | `[]` | Custom script to add, as <path>[:build\|start\|service\|manual] (default build); repeatable. build bakes it into the image, start runs once per container, service runs as background service on every start, manual only copies it to ~/post-script/ |
+| `--services` |  | string | - | Comma-separated compose services (e.g. mongo,postgres,redis) |
+| `--shared-config` |  | bool | `true` | Mount the global shared AI/dev tool config volume (devcontainer-shared-config) so logins/sessions persist across containers; --shared-config=false to opt out |
+| `--skills` |  | string | - | Comma-separated agent skills installed into the project workspace; implies the nodejs module. See 'config skill list' (built-in + your own) |
+| `--skills-mode` |  | string | - | How the project's agent skills get installed: manual (default — you run 'install-skills') or auto (on every container start, writing into the workspace unprompted) |
 | `--verbose` |  | bool | `false` | Enable debug logging (shortcut for --log-level debug) |
-| `--volumes` |  | string | - | Extra volume mounts on the devcontainer |
-| `--workspace` |  | string | - | Workspace name (default: directory name or repo name) |
+| `--volumes` |  | string | - | Extra volume mounts on the devcontainer (e.g. myvol:/data,./cache:/cache); 'none' clears them |
+| `--workspace` |  | string | - | Workspace name (default: current dir name) |
 
 ## `devcontainer-cli workspace restart`
 

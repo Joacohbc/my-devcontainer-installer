@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
@@ -17,6 +18,10 @@ import (
 type ImageService struct {
 	Report    Reporter
 	ImagesDir string
+	// Repo versions definition changes. Nil means the real configuration
+	// repository when ImagesDir is the default, and no versioning when a custom
+	// ImagesDir points elsewhere.
+	Repo *ConfigRepo
 }
 
 func (s ImageService) getImagesDir() string {
@@ -24,6 +29,23 @@ func (s ImageService) getImagesDir() string {
 		return s.ImagesDir
 	}
 	return domain.UserImageDir()
+}
+
+// prepareRepo returns the repository to commit definition changes to, already
+// prepared, or nil when the change is not versioned.
+func (s ImageService) prepareRepo() *ConfigRepo {
+	repo := s.Repo
+	if repo == nil {
+		if s.ImagesDir != "" {
+			return nil
+		}
+		r := NewConfigRepo(reporterOrSilent(s.Report))
+		repo = &r
+	}
+	if !repo.Prepare() {
+		return nil
+	}
+	return repo
 }
 
 // ImageStatus represents the inspected state of a defined image.
@@ -41,9 +63,12 @@ type ImageStatus struct {
 // CreateImageOpts configures the creation of a new ImageDef manifest.
 type CreateImageOpts struct {
 	FromProfile string
-	RemoteRef   string
-	Tag         string
-	Label       string
+	// From derives the image from another definition or a registry reference.
+	From      string
+	Modules   []string
+	RemoteRef string
+	Tag       string
+	Label     string
 }
 
 // Create creates a new image definition manifest.
@@ -62,29 +87,67 @@ func (s ImageService) Create(name string, opts CreateImageOpts) error {
 		def.Tag = "latest"
 	}
 
-	if opts.RemoteRef != "" {
+	if opts.From == name {
+		return fmt.Errorf("image %q cannot derive from itself", name)
+	}
+	var scripts []types.CustomScript
+	switch {
+	case opts.RemoteRef != "":
 		def.Source = domain.ImageSourceRemote
 		def.Ref = opts.RemoteRef
-	} else if opts.FromProfile != "" {
-		prof, ok := catalog.Resolve(opts.FromProfile)
+	case opts.FromProfile != "":
+		prof, ok := catalog.Resolve(opts.FromProfile, domain.ProfileDirs()...)
 		if !ok {
 			return fmt.Errorf("profile %q not found", opts.FromProfile)
 		}
-		for _, m := range prof.Modules {
-			def.Modules = append(def.Modules, types.SelectedModule{ID: types.ModuleID(m)})
+		if prof.Image != "" {
+			def.From = prof.Image
 		}
-		def.Scripts = prof.Scripts
+		def.Modules = selectedModules(prof.Modules)
+		resolved, err := domain.ProfileScripts(prof)
+		if err != nil {
+			return err
+		}
+		scripts = resolved
 		if def.Label == "" {
 			def.Label = prof.Label
 		}
-	} else {
-		// Default to base
-		def.Modules = []types.SelectedModule{{ID: "github-cli"}}
+	case opts.From == "" && len(opts.Modules) == 0:
+		def.Modules = []types.SelectedModule{{ID: types.ModuleGithubCli}}
+	}
+	if opts.From != "" {
+		def.From = opts.From
+	}
+	if len(opts.Modules) > 0 {
+		def.Modules = selectedModules(opts.Modules)
+	}
+	for _, sc := range scripts {
+		def.Scripts = append(def.Scripts, types.CustomScript{File: sc.File, When: sc.When})
 	}
 
 	dir := s.getImagesDir()
+	_, existed, _ := domain.ResolveImageDef(name, dir)
+	repo := s.prepareRepo()
 	if err := domain.SaveImageDef(def, dir); err != nil {
 		return fmt.Errorf("saving image definition: %w", err)
+	}
+	// The image is self-contained like a profile: its scripts live next to
+	// image.yml, so the definition can be shared through the config repository.
+	for _, sc := range scripts {
+		data, err := domain.ReadCustomScript(sc)
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(filepath.Join(dir, name, sc.File), data, 0o755); err != nil {
+			return fmt.Errorf("copying script %s: %w", sc.File, err)
+		}
+	}
+	if repo != nil {
+		verb := "add"
+		if existed {
+			verb = "update"
+		}
+		repo.Commit(fmt.Sprintf("feat(image): %s %s", verb, name), filepath.Join(dir, name))
 	}
 
 	s.Report.Success("Created image definition '%s' in %s", name, filepath.Join(dir, name))
@@ -177,7 +240,10 @@ func (s ImageService) Build(name string) error {
 	}
 	defer os.RemoveAll(tmpDir)
 
-	config := domain.ImageDefConfig(def)
+	config, err := s.buildConfig(def, true)
+	if err != nil {
+		return err
+	}
 	paths := project.Paths{
 		BuildDir:       tmpDir,
 		DockerfilePath: filepath.Join(tmpDir, "Dockerfile"),
@@ -254,7 +320,10 @@ func (s ImageService) Export(name string, targetDir string) error {
 		return fmt.Errorf("creating export dir: %w", err)
 	}
 
-	config := domain.ImageDefConfig(def)
+	config, err := s.buildConfig(def, false)
+	if err != nil {
+		return err
+	}
 	paths := project.Paths{
 		BuildDir:       targetDir,
 		DockerfilePath: filepath.Join(targetDir, "Dockerfile"),
@@ -315,16 +384,181 @@ func (s ImageService) Remove(name string, deleteDockerImage bool) error {
 		return fmt.Errorf("image definition %q not found", name)
 	}
 
+	tag := domain.ImageTag(def)
+	if deleteDockerImage {
+		if users := imageUsers(name, tag, s.getImagesDir()); len(users) > 0 {
+			return fmt.Errorf("image %s is still used by %s; remove or repoint those first (an image with 'devcontainer-cli image remove <name>', a project with 'devcontainer-cli workspace destroy --yes', a profile by editing its image)", tag, strings.Join(users, ", "))
+		}
+	}
+
+	repo := s.prepareRepo()
 	if err := domain.DeleteImageDef(name, s.getImagesDir()); err != nil {
 		return fmt.Errorf("deleting definition: %w", err)
 	}
-
-	if deleteDockerImage {
-		tag := domain.ImageTag(def)
-		s.Report.Info("Removing Docker image %s...", tag)
-		_, _ = docker.DockerInherit([]string{"rmi", tag})
+	if repo != nil {
+		repo.Commit("chore(image): remove "+name, filepath.Join(s.getImagesDir(), name))
 	}
-
 	s.Report.Success("Removed image definition '%s'", name)
+
+	if !deleteDockerImage || !domain.LocalImageExists(tag, captureFunc()) {
+		return nil
+	}
+	s.Report.Info("Removing Docker image %s...", tag)
+	status, _, stderr, err := docker.DockerCapture([]string{"rmi", tag})
+	if err != nil || status != 0 {
+		return fmt.Errorf("the definition was removed but docker could not remove image %s: %s", tag, strings.TrimSpace(stderr))
+	}
 	return nil
+}
+
+// imageUsers names what still needs an image: registered projects that run or
+// derive from it, other definitions and profiles that start from it, and
+// containers created from it. BuildKit records no parent link, so docker would
+// happily remove a parent its derived images and projects still rebuild from.
+func imageUsers(name, ref, dir string) []string {
+	var users []string
+	for _, e := range domain.ListEntries() {
+		if e.Image == ref {
+			users = append(users, "project "+e.ProjectDir)
+			continue
+		}
+		if cfg, err := domain.LoadConfig(e.ProjectDir); err == nil && cfg != nil && (cfg.Dockerfile.From == name || cfg.Dockerfile.From == ref) {
+			users = append(users, "project "+e.ProjectDir)
+		}
+	}
+	if defs, err := domain.LoadImageDefs(dir); err == nil {
+		for _, def := range defs {
+			if def.Name != name && (def.From == name || def.From == ref) {
+				users = append(users, "image "+def.Name)
+			}
+		}
+	}
+	for _, p := range catalog.LoadUserProfiles(domain.ProfileDirs()...) {
+		if p.Image == name || p.Image == ref {
+			users = append(users, "profile "+p.ID)
+		}
+	}
+	if imagesInUse()[ref] {
+		users = append(users, "a container")
+	}
+	return users
+}
+
+func selectedModules(ids []string) []types.SelectedModule {
+	out := make([]types.SelectedModule, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, types.SelectedModule{ID: types.ModuleID(id), Options: map[string]any{}})
+	}
+	return out
+}
+
+// buildConfig turns a definition into the config its Dockerfile is generated
+// from: scripts resolved against the definition's directory and, for a derived
+// image, the parent reference and the modules it already has. With
+// requireParent the parent must exist locally (a registry parent is pulled).
+func (s ImageService) buildConfig(def domain.ImageDef, requireParent bool) (*types.DevcontainerConfig, error) {
+	config := domain.ImageDefConfig(def)
+	dir := s.getImagesDir()
+	for i := range config.Dockerfile.Scripts {
+		config.Dockerfile.Scripts[i].Source = filepath.Join(dir, def.Name, config.Dockerfile.Scripts[i].File)
+	}
+	if def.From == "" {
+		return config, nil
+	}
+	if requireParent {
+		if err := s.ensureParent(def.From, dir); err != nil {
+			return nil, err
+		}
+	}
+	config.Dockerfile.From = def.From
+	if err := resolveBaseImage(config, dir); err != nil {
+		return nil, err
+	}
+	return config, nil
+}
+
+// ensureParent makes the parent image available: a definition must already be
+// built (or pulled), a registry reference is pulled when missing. Either way
+// it must honour the image contract.
+func (s ImageService) ensureParent(from, dir string) error {
+	ref := from
+	parentDef, isDef, _ := domain.ResolveImageDef(from, dir)
+	if isDef {
+		ref = domain.ImageTag(parentDef)
+	}
+	if !domain.LocalImageExists(ref, captureFunc()) {
+		if isDef {
+			action := "build"
+			if parentDef.Source == domain.ImageSourceRemote {
+				action = "pull"
+			}
+			return fmt.Errorf("base image %s is not available locally; run 'devcontainer-cli image %s %s' first", ref, action, from)
+		}
+		s.Report.Info("Pulling base image %s...", ref)
+		if code, err := docker.DockerInherit([]string{"pull", ref}); err != nil || code != 0 {
+			return fmt.Errorf("pulling base image %s failed (exit %d)", ref, code)
+		}
+	}
+	if err := domain.CheckImageCompat(ref, captureFunc()); err != nil {
+		return fmt.Errorf("base image %s: %w", ref, err)
+	}
+	if isDef && parentDef.Source == domain.ImageSourceBuild {
+		return checkParentBuilt(from, ref, dir)
+	}
+	return nil
+}
+
+// checkParentBuilt fails when the local parent image no longer matches its
+// definition (image.yml edited without rebuilding): a derived build would
+// skip modules the parent does not actually have.
+func checkParentBuilt(from, ref, dir string) error {
+	defined, err := domain.ResolveImageParent(from, captureFunc(), dir)
+	if err != nil {
+		return err
+	}
+	built, err := domain.ImageParentFromLabels(ref, captureFunc())
+	if err != nil {
+		return err
+	}
+	if !sameModuleIDs(defined.Modules, built.Modules) {
+		return fmt.Errorf("base image %s is out of date with its definition; run 'devcontainer-cli image build %s' first", ref, from)
+	}
+	return nil
+}
+
+func sameModuleIDs(a, b []types.SelectedModule) bool {
+	set := func(mods []types.SelectedModule) string {
+		ids := make([]string, 0, len(mods))
+		for _, m := range mods {
+			ids = append(ids, string(m.ID))
+		}
+		slices.Sort(ids)
+		return strings.Join(slices.Compact(ids), ",")
+	}
+	return set(a) == set(b)
+}
+
+// resolveBaseImage fills a derived build's BaseRef and BaseModules from its
+// From, reading image definitions from dir.
+func resolveBaseImage(config *types.DevcontainerConfig, dir string) error {
+	if config.Dockerfile.From == "" {
+		return nil
+	}
+	parent, err := domain.ResolveImageParent(config.Dockerfile.From, captureFunc(), dir)
+	if err != nil {
+		return err
+	}
+	config.Dockerfile.BaseRef = parent.Ref
+	config.Dockerfile.BaseModules = parent.Modules
+	return nil
+}
+
+// baseImageID is the parent's content ID. It feeds a derived project's
+// fingerprint, so rebuilding the parent under the same tag yields a new child.
+func baseImageID(ref string) string {
+	status, stdout, _ := captureFunc()([]string{"image", "inspect", "-f", "{{.Id}}", ref})
+	if status != 0 {
+		return ""
+	}
+	return strings.TrimSpace(stdout)
 }

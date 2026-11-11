@@ -255,7 +255,7 @@ devcontainer-cli access forward reverse:5432
    ```bash
    devcontainer-cli workspace destroy
    ```
-   *Detiene el stack, remueve volúmenes asociados, borra la carpeta `.dc_<workspace>/`, limpia el bloque en `~/.ssh/devcontainer-cli.config` y olvida la clave de host en `known_hosts`.*
+   *Detiene el stack, remueve volúmenes asociados, borra la carpeta `.dc_<workspace>/`, limpia el bloque en `~/.ssh/devcontainer-cli.config`, olvida la clave de host en `known_hosts` y elimina la imagen del proyecto si ningún otro proyecto la comparte.*
 2. **Limpiar bloques SSH obsoletos de proyectos ya eliminados**:
    ```bash
    devcontainer-cli config clean ssh -y
@@ -263,6 +263,11 @@ devcontainer-cli access forward reverse:5432
 3. **Limpieza integral del sistema Docker gestionado**:
    ```bash
    devcontainer-cli config clean all
+   ```
+   *Las imágenes nombradas (`devcontainer-cli-img/*`) se conservan: en modo interactivo se pregunta aparte si también deben eliminarse, y `--yes` por sí solo nunca las borra.*
+4. **Tras actualizar la CLI**: si `workspace up` advierte que esta versión genera una imagen distinta, regenere y recompile sin preguntas:
+   ```bash
+   devcontainer-cli workspace init --no-interactive --build
    ```
 
 ---
@@ -286,8 +291,15 @@ devcontainer-cli access forward reverse:5432
        - agent-browser
      ports:
        - "8080:80"
+     services:
+       - postgres
+     volumes:
+       - ai-cache:/home/devuser/.cache
+     env:
+       APP_ENV: development
      ```
    - Coloque el script `setup-tools.sh` en el mismo directorio.
+   - Un perfil también puede partir de una imagen en lugar de módulos (`image: android`, el nombre de una definición de imagen o una referencia de registro); en ese caso no declare `modules`.
 2. Combine el perfil del lenguaje con su perfil de complementos pasando una lista separada por comas:
    ```bash
    devcontainer-cli agent create --profile python,my-ai-tools
@@ -300,6 +312,14 @@ devcontainer-cli access forward reverse:5432
    - **Módulos**: `github-cli`, `python`, `sqlite` (orden de primera aparición, sin duplicados).
    - **Scripts**: Ejecuta el script `setup-tools.sh` en la fase de construcción.
    - **Habilidades y Puertos**: Registra la habilidad `agent-browser` y publica el puerto `8080:80`.
+   - **Servicios, Volúmenes y Entorno**: Agrega PostgreSQL, monta `ai-cache` y define `APP_ENV`. Las banderas explícitas (`--services`, `--volumes`) prevalecen sobre el perfil.
+
+**Historial y reutilización**: `~/.config/devcontainer-cli/` es un repositorio git que versiona `profiles/`, `images/` y `skills/` (ver D19). Cada `profile create|copy|remove`, `image create|remove` y `config skill add|remove` deja un commit; los cambios hechos a mano se registran con git estándar:
+```bash
+git -C ~/.config/devcontainer-cli log --oneline
+git -C ~/.config/devcontainer-cli add profiles/my-ai-tools && git -C ~/.config/devcontainer-cli commit -m "feat(profile): tune my-ai-tools"
+```
+Para llevar el kit a otra máquina, agregue un remoto y haga `push`/`pull` manualmente; la CLI nunca publica nada por su cuenta. `config.json`, `images.json`, `router_state.json` y `ssh/` quedan siempre fuera del repositorio.
 
 ### Caso 1.11: Descubrimiento e Incorporación de Habilidades de Agente (`config skill add <source>`)
 
@@ -355,6 +375,35 @@ devcontainer-cli config skill add mi-habilidad --ref owner/repo --label "Mi Habi
    ```bash
    devcontainer-cli config clean containers
    ```
+
+---
+
+### Caso 1.13: Imagen Compartible Derivada y Perfil sobre Ella (`image create --from`)
+
+**Escenario**: Desea una imagen reutilizable con la base más el SDK de Android y `adb`, y un perfil para proyectos Android con Node.js que parta de ella.
+
+**Paso a paso**:
+1. Cree y construya la imagen base y la derivada (la derivada solo instala lo que falta):
+   ```bash
+   devcontainer-cli image create base
+   devcontainer-cli image build base
+   devcontainer-cli image create android --from base --modules android-sdk
+   devcontainer-cli image build android
+   ```
+2. Defina el perfil en `~/.config/devcontainer-cli/profiles/android-app/profile.yml`:
+   ```yaml
+   id: android-app
+   image: android
+   modules:
+     - nodejs
+   env:
+     GRADLE_OPTS: -Xmx2g
+   ```
+3. Genere el proyecto; su imagen se construye `FROM devcontainer-cli-img/android:latest` añadiendo solo Node.js:
+   ```bash
+   devcontainer-cli workspace init --profile android-app --no-interactive --build
+   ```
+*Si reconstruye `android`, la siguiente generación del proyecto produce una imagen nueva y la anterior se recolecta cuando nadie la usa. Con solo `image` (sin `modules`) el proyecto usa la imagen tal cual en `mode=image`.*
 
 ---
 

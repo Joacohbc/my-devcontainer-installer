@@ -3,6 +3,7 @@ package commands
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -19,8 +20,9 @@ func contextTestConfig() *types.DevcontainerConfig {
 	}
 }
 
-// prepareBuildDir must materialize the generated CONTEXT.md next to the
-// Dockerfile: the aliases module COPYs it, so a missing file fails the build.
+// prepareBuildDir must materialize the generated CONTEXT.md next to the compose
+// file, which bind-mounts it: a missing file would make Docker create a
+// directory in its place.
 func TestPrepareBuildDirWritesContextFile(t *testing.T) {
 	cwd := t.TempDir()
 	config := contextTestConfig()
@@ -39,23 +41,20 @@ func TestPrepareBuildDirWritesContextFile(t *testing.T) {
 		t.Errorf("the written document must reflect the selected modules:\n%s", onDisk)
 	}
 
-	// It must also be in copyContents, or the fingerprint would ignore it.
-	inFingerprint, ok := copyContents[types.ContextFileName]
-	if !ok {
-		t.Fatalf("CONTEXT.md must be folded into copyContents, got keys %v", keysOf(copyContents))
-	}
-	if inFingerprint != string(onDisk) {
-		t.Error("the fingerprinted content must be exactly what was written to disk")
+	// It is mounted, not baked: it must stay out of the fingerprint, or every
+	// workspace (whose path it names) would get its own image.
+	if _, ok := copyContents[types.ContextFileName]; ok {
+		t.Errorf("CONTEXT.md must not feed the fingerprint, got keys %v", keysOf(copyContents))
 	}
 }
 
-// Adding a database service changes CONTEXT.md but not the Dockerfile. Unless
-// the document feeds the fingerprint, two such projects would share one image
-// and one of them would ship the wrong document.
+// Adding a database service changes CONTEXT.md, which reaches the container
+// through the mount, without forking the image.
 func TestPrepareBuildDirContextVariesWithServices(t *testing.T) {
 	bare := contextTestConfig()
 	bareCwd := t.TempDir()
-	bareContents, _, err := prepareBuildDir(bareCwd, bare, project.ProjectPaths(bareCwd, bare.Workspace))
+	barePaths := project.ProjectPaths(bareCwd, bare.Workspace)
+	bareContents, _, err := prepareBuildDir(bareCwd, bare, barePaths)
 	if err != nil {
 		t.Fatalf("prepareBuildDir (bare): %v", err)
 	}
@@ -63,36 +62,34 @@ func TestPrepareBuildDirContextVariesWithServices(t *testing.T) {
 	withDB := contextTestConfig()
 	withDB.Compose.Services = []types.SelectedService{{ID: types.ServicePostgres}}
 	dbCwd := t.TempDir()
-	dbContents, _, err := prepareBuildDir(dbCwd, withDB, project.ProjectPaths(dbCwd, withDB.Workspace))
+	dbPaths := project.ProjectPaths(dbCwd, withDB.Workspace)
+	dbContents, _, err := prepareBuildDir(dbCwd, withDB, dbPaths)
 	if err != nil {
 		t.Fatalf("prepareBuildDir (with postgres): %v", err)
 	}
 
-	if bareContents[types.ContextFileName] == dbContents[types.ContextFileName] {
-		t.Error("adding a compose service must change the fingerprinted CONTEXT.md")
+	dbDoc, _ := os.ReadFile(dbPaths.ContextPath)
+	if !strings.Contains(string(dbDoc), "PostgreSQL (sibling container)") {
+		t.Errorf("the postgres section is missing:\n%s", dbDoc)
 	}
-	if !strings.Contains(dbContents[types.ContextFileName], "PostgreSQL (sibling container)") {
-		t.Errorf("the postgres section is missing:\n%s", dbContents[types.ContextFileName])
+	if strings.Join(keysOf(bareContents), ",") != strings.Join(keysOf(dbContents), ",") {
+		t.Error("a compose-only change must not alter what feeds the fingerprint")
 	}
 }
 
-// Remote builds skip every build artifact, CONTEXT.md included: the prebuilt
-// image ships the document it was built with.
-func TestPrepareBuildDirSkipsContextForRemote(t *testing.T) {
+// Prebuilt images (profiles/image modes) get an accurate CONTEXT.md too: it is
+// mounted, so it no longer depends on what the image was built with.
+func TestPrepareBuildDirWritesContextForRemote(t *testing.T) {
 	cwd := t.TempDir()
 	config := contextTestConfig()
 	config.Mode = types.BuildModeProfiles
 	paths := project.ProjectPaths(cwd, config.Workspace)
 
-	copyContents, _, err := prepareBuildDir(cwd, config, paths)
-	if err != nil {
+	if _, _, err := prepareBuildDir(cwd, config, paths); err != nil {
 		t.Fatalf("prepareBuildDir: %v", err)
 	}
-	if _, ok := copyContents[types.ContextFileName]; ok {
-		t.Error("remote mode must not fingerprint a CONTEXT.md")
-	}
-	if _, err := os.Stat(filepath.Join(paths.BuildDir, types.ContextFileName)); !os.IsNotExist(err) {
-		t.Errorf("remote mode must not write CONTEXT.md, stat err = %v", err)
+	if _, err := os.Stat(filepath.Join(paths.BuildDir, types.ContextFileName)); err != nil {
+		t.Errorf("remote mode must write CONTEXT.md for the mount: %v", err)
 	}
 }
 
@@ -101,5 +98,6 @@ func keysOf(m map[string]string) []string {
 	for k := range m {
 		out = append(out, k)
 	}
+	slices.Sort(out)
 	return out
 }
