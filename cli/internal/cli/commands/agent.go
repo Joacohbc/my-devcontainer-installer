@@ -183,7 +183,7 @@ func agentExecDefaults(cmd *cobra.Command, _ []string) error {
 
 func addAgentExecFlags(cmd *cobra.Command) {
 	cmd.Flags().String("user", "", "User to run the command as; always honoured, but only an interactive shell defaults it to devuser")
-	cmd.Flags().BoolP("no-tty", "T", false, "Disable pseudo-TTY allocation (use when piping output to a file, e.g. a DB dump)")
+	cmd.Flags().BoolP("no-tty", "T", false, "Disable pseudo-TTY allocation (use when piping output to a file, e.g. a DB dump); implied when stdin is not a terminal")
 	cmd.Flags().BoolP("workdir", "w", false, "Run in the project's workspace mount instead of the container default; only the devcontainer has that directory, so a database container needs it left off")
 	cmd.Flags().String("via", "", "Reach the container through an existing SSH connection to its Docker host (requires --container): USER@HOST or an ssh-config alias")
 	addContainerFlag(cmd)
@@ -348,7 +348,7 @@ every value must come from flags (--profile is required, --name falls back to dc
 		PreRunE:      agentNonInteractive,
 		RunE:         runQuickRun,
 	}
-	cmd.Flags().String("profile", "", "Single [remote]-tagged profile id to run as a prebuilt image, e.g. ssh, nodejs, python; see 'config profile list'")
+	cmd.Flags().String("profile", "", "Single [remote]-tagged profile id to run as a prebuilt image, e.g. base, nodejs, python; see 'profile list'")
 	cmd.Flags().String("name", "", "Container name (default: dc-<profile>); if it belongs to an existing quick-run container it is reused/restarted, but a name already used by any other container is rejected")
 	cmd.Flags().StringSlice("volumes", nil, "Volume mounts (e.g. myvol:/workspace); repeatable or comma-separated")
 	cmd.Flags().StringSlice("ports", nil, "Port mappings (e.g. 2222:22); bound to 127.0.0.1 unless --expose-all; repeatable or comma-separated")

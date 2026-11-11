@@ -637,28 +637,46 @@ func writeLocalOnlyUserProfile(t *testing.T, id string) {
 }
 
 // resolveRunProfile must reject a [local]-only profile (nothing published to
-// pull) but accept "ssh" (the hand-built full image, not a catalog profile).
-func TestResolveRunProfile_RejectsLocalOnlyAcceptsSSH(t *testing.T) {
+// pull) and "ssh" (the retired full image CI no longer publishes), and accept
+// "base", the bare published variant.
+func TestResolveRunProfile_RejectsLocalOnlyAndSSH(t *testing.T) {
 	writeLocalOnlyUserProfile(t, "local-only")
 
-	cmd := newRunCommand()
-	if err := cmd.Flags().Set("profile", "local-only"); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := resolveRunProfile(cmd, true); err == nil {
-		t.Error("expected an error for a [local]-only profile")
+	for _, id := range []string{"local-only", "ssh"} {
+		cmd := newRunCommand()
+		if err := cmd.Flags().Set("profile", id); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := resolveRunProfile(cmd, true); err == nil {
+			t.Errorf("expected an error for --profile %s", id)
+		}
 	}
 
-	cmd = newRunCommand()
-	if err := cmd.Flags().Set("profile", "ssh"); err != nil {
+	cmd := newRunCommand()
+	if err := cmd.Flags().Set("profile", "base"); err != nil {
 		t.Fatal(err)
 	}
 	got, err := resolveRunProfile(cmd, true)
 	if err != nil {
 		t.Fatalf("resolveRunProfile: %v", err)
 	}
-	if got != "ssh" {
-		t.Errorf("got %q, want ssh", got)
+	if got != "base" {
+		t.Errorf("got %q, want base", got)
+	}
+}
+
+// Every --profile value 'run' offers for completion must be a published
+// variant, so completion never suggests an image CI does not build.
+func TestProfileIDsRemoteOnlyAreRemoteVariants(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	ids := profileIDs(true)
+	if len(ids) == 0 {
+		t.Fatal("expected at least one published variant")
+	}
+	for _, id := range ids {
+		if !slices.Contains(types.RemoteVariants, id) {
+			t.Errorf("profileIDs(true) offers %q, which is not in types.RemoteVariants", id)
+		}
 	}
 }
 
@@ -2225,33 +2243,6 @@ func TestApplyGenFlags_ProfileUnderModeProfilesKeepsServicesAndSetsRemote(t *tes
 	}
 }
 
-// "ssh" is a pull target with no catalog entry, so under mode=custom it
-// resolves to nothing. Applying it must leave the project alone rather than
-// clear its DB services for a bundle that contributed no modules either;
-// validateConfig is what rejects the combination outright.
-func TestApplyGenFlags_SSHProfileUnderCustomModeKeepsServices(t *testing.T) {
-	config := &types.DevcontainerConfig{
-		Mode: types.BuildModeCustom,
-		Dockerfile: types.DockerfileConfig{
-			Modules: []types.SelectedModule{{ID: "nodejs"}},
-		},
-		Compose: types.ComposeConfig{
-			Services: []types.SelectedService{{ID: "postgres"}},
-		},
-	}
-
-	if err := applyGenFlags(config, &genFlags{profile: remoteVariantSSH}); err != nil {
-		t.Fatalf("unexpected error applying gen flags: %v", err)
-	}
-
-	if len(config.Compose.Services) != 1 || config.Compose.Services[0].ID != "postgres" {
-		t.Errorf("expected postgres service to survive, got %v", config.Compose.Services)
-	}
-	if len(config.Dockerfile.Modules) != 1 || config.Dockerfile.Modules[0].ID != "nodejs" {
-		t.Errorf("expected the modules to survive, got %v", config.Dockerfile.Modules)
-	}
-}
-
 // The same, but switching an existing custom-mode project to mode=profiles in
 // one invocation (flags.mode set explicitly rather than inherited from
 // config.Mode).
@@ -2384,9 +2375,9 @@ func TestValidateConfig_ModeProfilesRejectsLocalOnlyProfile(t *testing.T) {
 	}
 }
 
-// mode=profiles accepts "ssh", the hand-built full image, even though it is
-// not itself a catalog profile.
-func TestValidateConfig_ModeProfilesAcceptsSSH(t *testing.T) {
+// mode=profiles rejects "ssh": the full image it named is no longer published,
+// so accepting it would only start a pull that fails.
+func TestValidateConfig_ModeProfilesRejectsSSH(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	cwd := t.TempDir()
 	config := &types.DevcontainerConfig{
@@ -2395,29 +2386,8 @@ func TestValidateConfig_ModeProfilesAcceptsSSH(t *testing.T) {
 		Remote:    &types.RemoteConfig{Variant: "ssh"},
 	}
 	flags := &genFlags{interactive: true, keepWorkspace: true}
-	if err := validateConfig(cwd, config, flags, service.GenerateService{}); err != nil {
-		t.Fatalf("validateConfig: %v", err)
-	}
-}
-
-// The mirror of the case above: "ssh" only means anything as a pull target, so
-// under mode=custom it is rejected rather than silently applied as an empty
-// module bundle.
-func TestValidateConfig_ModeCustomRejectsSSHProfile(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	cwd := t.TempDir()
-	config := &types.DevcontainerConfig{
-		Workspace: "ws",
-		Mode:      types.BuildModeCustom,
-		Image:     "devcontainer-cli/abc123:latest",
-	}
-	flags := &genFlags{interactive: true, keepWorkspace: true, profile: remoteVariantSSH}
-	err := validateConfig(cwd, config, flags, service.GenerateService{})
-	if err == nil {
-		t.Fatal("expected an error for --profile ssh under mode=custom")
-	}
-	if !strings.Contains(err.Error(), "pull target") {
-		t.Errorf("the error must say ssh is a pull target only, got: %v", err)
+	if err := validateConfig(cwd, config, flags, service.GenerateService{}); err == nil {
+		t.Fatal("expected an error for --profile ssh under mode=profiles")
 	}
 }
 

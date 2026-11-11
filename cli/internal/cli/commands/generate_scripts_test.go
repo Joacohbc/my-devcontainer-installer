@@ -218,18 +218,13 @@ func TestParseGenFlags_VariantFlagDoesNotExist(t *testing.T) {
 	}
 }
 
-// "ssh" is not a catalog profile — it is the hand-built full image — so it
-// must not trip the generic "unknown profile" check that every other
-// --profile value goes through.
-func TestParseGenFlags_SSHProfileIsNotUnknown(t *testing.T) {
+// "ssh" used to name a hand-built full image that CI no longer publishes; it is
+// now an ordinary unknown profile id, so a pull of a missing image never starts.
+func TestParseGenFlags_SSHProfileIsUnknown(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 
-	flags, err := parseGenFlagsFor(t, "--profile", "ssh")
-	if err != nil {
-		t.Fatalf("parseGenFlags: %v", err)
-	}
-	if flags.profile != "ssh" {
-		t.Errorf("expected profile ssh, got %q", flags.profile)
+	if _, err := parseGenFlagsFor(t, "--profile", "ssh"); err == nil {
+		t.Fatal("expected --profile ssh to fail as an unknown profile")
 	}
 }
 

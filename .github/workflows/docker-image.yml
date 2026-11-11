@@ -67,7 +67,7 @@ jobs:
   # "base" profile (always-on base + cleanup + GitHub CLI + Zellij) and publish it
   # with an inline cache so the variant builds below can `cache-from` it and
   # skip rebuilding those shared layers. It is also the published `base`
-  # RemoteVariant (see D24), so it is not part of the build-variants matrix.
+  # RemoteVariant (see D24), so it is not part of the build-single/build-combo matrices.
   build-base-cache:
     runs-on: ubuntu-latest
     steps:
