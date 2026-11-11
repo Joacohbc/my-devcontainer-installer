@@ -18,7 +18,7 @@ func TestGenerateDockerfile_CustomBuildScript(t *testing.T) {
 	df := mustGenerateDockerfile(t, makeConfig(withScripts(types.CustomScript{File: "install-terraform.sh"})))
 
 	assertContainsStr(t, df, "COPY custom-install-terraform.sh /tmp/devcontainer-custom-scripts/", "custom build script copy")
-	assertContainsStr(t, df, "su - devuser -c '/tmp/devcontainer-custom-scripts/custom-install-terraform.sh'", "custom build script run")
+	assertContainsStr(t, df, "su - devuser -c 'DC_SCRIPT_PHASE=build /tmp/devcontainer-custom-scripts/custom-install-terraform.sh'", "custom build script runs with its phase")
 	assertContainsStr(t, df, "rm -rf /tmp/devcontainer-custom-scripts", "custom build script cleanup")
 }
 

@@ -260,6 +260,16 @@ stage_context_skill() {
     done
 }
 
+# script_env PHASE prints the export lines of the profile-script contract: the
+# project dir, the workspace name and the phase a script runs in. `su -` starts
+# from an empty environment, so the stages below prepend these lines to the
+# command they hand to devuser's shell instead of relying on inheritance. The
+# values are %q-quoted because a project dir is a user-chosen path.
+script_env() {
+    printf 'export DC_WORKSPACE_DIR=%q DC_WORKSPACE=%q DC_SCRIPT_PHASE=%q\n' \
+        "$WORKSPACE_DIR" "$(basename "$WORKSPACE_DIR")" "$1"
+}
+
 # Scripts under post-script/start.d/ are the non-interactive installers
 # (Claude Code, Antigravity, Copilot, OpenCode, then any user start scripts)
 # the generator marked as auto-start. The ENTIRE block runs as
@@ -273,7 +283,7 @@ stage_context_skill() {
 # shell-init files are on PATH. The whole stage no-ops when the dir is absent.
 stage_post_scripts() {
     [ -d "$DEV_HOME/post-script/start.d" ] || return 0
-    su - devuser -s /bin/bash -c '
+    su - devuser -s /bin/bash -c "$(script_env start)"'
         start_dir="$HOME/post-script/start.d"
         state_dir="$HOME/.post-script-state"
         mkdir -p "$state_dir"
@@ -302,7 +312,7 @@ stage_post_scripts() {
 # up immediately without waiting.
 stage_services() {
     [ -d "$DEV_HOME/post-script/services.d" ] || return 0
-    su - devuser -s /bin/bash -c '
+    su - devuser -s /bin/bash -c "$(script_env service)"'
         services_dir="$HOME/post-script/services.d"
         state_dir="$HOME/.post-script-state"
         mkdir -p "$state_dir"

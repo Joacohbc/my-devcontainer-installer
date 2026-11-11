@@ -238,8 +238,10 @@ func customScriptsDockerfileBlock(config *types.DevcontainerConfig) (string, err
 	run := fmt.Sprintf("RUN chown -R devuser:devuser %s && chmod +x %s/*.sh", stageDir, stageDir)
 	for _, f := range build {
 		// The file name is validated to a shell-safe character set, so the
-		// single-quoted word below cannot be broken out of.
-		run += fmt.Sprintf(" \\\n    && su - devuser -c '%s/%s'", stageDir, f)
+		// single-quoted word below cannot be broken out of. A build script gets
+		// only its phase: no project is mounted yet, so DC_WORKSPACE_DIR is
+		// deliberately absent (see the profile-script contract, D25).
+		run += fmt.Sprintf(" \\\n    && su - devuser -c 'DC_SCRIPT_PHASE=build %s/%s'", stageDir, f)
 	}
 	run += fmt.Sprintf(" \\\n    && rm -rf %s", stageDir)
 	lines = append(lines, run)

@@ -568,6 +568,44 @@ func TestEntrypointServicesRunAsDevuser(t *testing.T) {
 	}
 }
 
+// TestEntrypointScriptEnvExportsTheContract runs the real script_env helper and
+// proves the profile-script contract survives `su -`: a start or service script
+// gets the project dir, the workspace name and its phase as plain variables, even
+// when the path holds characters a shell would split on.
+func TestEntrypointScriptEnvExportsTheContract(t *testing.T) {
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("bash not available")
+	}
+	body, err := os.ReadFile(embeddedScript)
+	if err != nil {
+		t.Fatalf("reading %s: %v", embeddedScript, err)
+	}
+	fn := extractShellFunc(t, string(body), "script_env")
+
+	for _, phase := range []string{"start", "service"} {
+		t.Run(phase, func(t *testing.T) {
+			out, err := exec.Command("bash", "-c", fn+`
+WORKSPACE_DIR='/workspaces/my proj'
+eval "$(script_env "$1")"
+bash -c 'printf "%s|%s|%s" "$DC_WORKSPACE_DIR" "$DC_WORKSPACE" "$DC_SCRIPT_PHASE"'`, "bash", phase).CombinedOutput()
+			if err != nil {
+				t.Fatalf("script_env %s: %v\n%s", phase, err, out)
+			}
+			want := "/workspaces/my proj|my proj|" + phase
+			if string(out) != want {
+				t.Errorf("exported %q, want %q (the variables must be exported to child shells)", out, want)
+			}
+		})
+	}
+
+	for stage, phase := range map[string]string{"stage_post_scripts": "start", "stage_services": "service"} {
+		stageFunc := extractShellFunc(t, string(body), stage)
+		if !strings.Contains(stageFunc, `"$(script_env `+phase+`)"`) {
+			t.Errorf("%s must prefix its su block with script_env %s, or `su -` drops the contract", stage, phase)
+		}
+	}
+}
+
 // setup-help.sh must write the quick reference to ~/help and cover both the
 // micro editor and zellij, so every container ships an accurate cheat-sheet.
 func TestSetupHelpWritesQuickReference(t *testing.T) {
