@@ -431,7 +431,7 @@ func initAndConfigure(cwd string, flags *genFlags, svc service.GenerateService) 
 	// The full wizard already asks about skills via skillsStep; outside it,
 	// still ask when nothing already decided them — no --skill, and no
 	// --profile (which is its own quick shortcut and already skips the
-	// wizard's build-mode prompt the same way; a profile's own skills, if any,
+	// build-mode/variant prompts the same way; a profile's own skills, if any,
 	// stand as the answer) — so a bare 'devcontainer-cli --with nodejs' does
 	// not silently skip the question the wizard would have asked. Setting
 	// config.Skills directly (not flags.skills) is what lets an explicit

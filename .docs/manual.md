@@ -58,7 +58,7 @@ Este manual proporciona una guía directa, exhaustiva y orientada a la práctica
    ```
 2. Genere el entorno apuntando al perfil precompilado de GitHub Container Registry:
    ```bash
-   devcontainer-cli workspace init --mode profiles --profile python
+   devcontainer-cli --profile python
    ```
    *(Variantes disponibles: `nodejs`, `bun`, `python`, `go`, `java-temurin`, `node-go`, `node-python`, `node-java-temurin`, `bun-go`, `bun-python`, `bun-java-temurin`)*.
 3. Inicie el contenedor (descargará la imagen precompilada en segundos sin compilar Dockerfile):
