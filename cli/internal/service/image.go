@@ -242,21 +242,11 @@ func (s ImageService) Info(name string) (*ImageStatus, error) {
 // a remote definition's registry reference (pulled on first use), or a build
 // definition's tag once it has been built locally.
 func (s ImageService) Available(name string) (string, error) {
-	def, ok, err := domain.ResolveImageDef(name, s.getImagesDir())
+	def, err := s.runnableDef(name)
 	if err != nil {
 		return "", err
 	}
-	if !ok {
-		return "", fmt.Errorf("image definition %q not found; run 'devcontainer-cli image list' to see the available images", name)
-	}
-	tag := domain.ImageTag(def)
-	if def.EffectiveSource() == domain.ImageSourceRemote {
-		return tag, nil
-	}
-	if !domain.LocalImageExists(tag, captureFunc()) {
-		return "", fmt.Errorf("image %q is not built; run 'devcontainer-cli image build %s' first", name, name)
-	}
-	return tag, nil
+	return s.available(def)
 }
 
 // Ready is Available plus the image contract for a remote definition: it is
@@ -264,35 +254,66 @@ func (s ImageService) Available(name string) (string, error) {
 // image without devuser or the CLI entrypoint is refused instead of starting a
 // container nothing can attach to.
 func (s ImageService) Ready(name string) (string, error) {
-	ref, err := s.Available(name)
+	def, err := s.runnableDef(name)
 	if err != nil {
 		return "", err
 	}
-	def, _, err := domain.ResolveImageDef(name, s.getImagesDir())
+	return s.ready(def)
+}
+
+// RunnableRef resolves the image of a mode=image project: a definition, named
+// directly or by the reference it resolves to, goes through Ready. A bare name
+// that matches no definition is reported, since a registry image carries a tag
+// or a registry; any other value is a registry reference used as-is.
+func (s ImageService) RunnableRef(image string) (string, error) {
+	def, ok, err := s.definitionFor(image)
+	if err != nil {
+		return "", err
+	}
+	if ok {
+		return s.ready(def)
+	}
+	if domain.ValidateImageName(image) == nil {
+		return "", fmt.Errorf("image definition %q not found; run 'devcontainer-cli image list' to see the available images, or pass a tagged reference such as %s:latest for a registry image", image, image)
+	}
+	return image, nil
+}
+
+// runnableDef resolves a definition by name for Available and Ready.
+func (s ImageService) runnableDef(name string) (domain.ImageDef, error) {
+	def, ok, err := domain.ResolveImageDef(name, s.getImagesDir())
+	if err != nil {
+		return domain.ImageDef{}, err
+	}
+	if !ok {
+		return domain.ImageDef{}, fmt.Errorf("image definition %q not found; run 'devcontainer-cli image list' to see the available images", name)
+	}
+	return def, nil
+}
+
+func (s ImageService) available(def domain.ImageDef) (string, error) {
+	tag := domain.ImageTag(def)
+	if def.EffectiveSource() == domain.ImageSourceRemote {
+		return tag, nil
+	}
+	if !domain.LocalImageExists(tag, captureFunc()) {
+		return "", fmt.Errorf("image %q is not built; run 'devcontainer-cli image build %s' first", def.Name, def.Name)
+	}
+	return tag, nil
+}
+
+func (s ImageService) ready(def domain.ImageDef) (string, error) {
+	ref, err := s.available(def)
 	if err != nil {
 		return "", err
 	}
 	if def.EffectiveSource() != domain.ImageSourceRemote {
 		return ref, nil
 	}
-	if err := s.Pull(name); err != nil {
+	if err := s.pullDef(def); err != nil {
 		return "", err
 	}
 	return ref, nil
-}
-
-// RunnableRef resolves the image of a mode=image project: a definition, named
-// directly or by the reference it resolves to, goes through Ready; anything
-// else is a registry reference used as-is.
-func (s ImageService) RunnableRef(image string) (string, error) {
-	def, ok, err := s.definitionFor(image)
-	if err != nil {
-		return "", err
-	}
-	if !ok {
-		return image, nil
-	}
-	return s.Ready(def.Name)
 }
 
 // definitionFor finds the definition image names: by definition name, or by
@@ -388,12 +409,17 @@ func (s ImageService) Pull(name string) error {
 		return fmt.Errorf("image %q has source=build; run 'devcontainer-cli image build %s' instead", name, name)
 	}
 
+	return s.pullDef(def)
+}
+
+// pullDef pulls a remote definition's image and verifies the image contract.
+func (s ImageService) pullDef(def domain.ImageDef) error {
 	targetRef := def.Ref
 	if targetRef == "" {
 		targetRef = domain.ImageTag(def)
 	}
 
-	s.Report.Info("Pulling image '%s' (%s)...", name, targetRef)
+	s.Report.Info("Pulling image '%s' (%s)...", def.Name, targetRef)
 	code, err := docker.DockerInherit([]string{"pull", targetRef})
 	if err != nil || code != 0 {
 		return fmt.Errorf("docker pull failed with exit code %d (if private, run 'docker login' first): %w", code, err)

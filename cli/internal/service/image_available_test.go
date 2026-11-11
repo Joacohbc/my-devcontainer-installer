@@ -162,3 +162,43 @@ func TestImageRunnableRefChecksDefinitionsByNameOrReference(t *testing.T) {
 		t.Fatalf("RunnableRef(broken) error = %v, want the manifest parse error", err)
 	}
 }
+
+// A hand-written image.yml may set a name that differs from its directory;
+// the definition is still found by the reference it resolves to and readied
+// from what was loaded, not looked up again by that name.
+func TestImageRunnableRefReadiesADefinitionNamedApartFromItsDirectory(t *testing.T) {
+	svc := newImageSvc(t)
+	dir := filepath.Join(svc.ImagesDir, "team")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	manifest := "name: team-base\nsource: remote\nref: ghcr.io/acme/base:1\n"
+	if err := os.WriteFile(filepath.Join(dir, domain.ImageManifestFileName), []byte(manifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runner := &daemonRunner{local: map[string]bool{}}
+	defer useFakeDocker(runner)()
+
+	if got, err := svc.RunnableRef("ghcr.io/acme/base:1"); err != nil || got != "ghcr.io/acme/base:1" {
+		t.Fatalf("RunnableRef = %q, %v; want the definition readied", got, err)
+	}
+	if !pulled(runner, "ghcr.io/acme/base:1") {
+		t.Errorf("the remote definition must be verified; calls=%v", runner.calls)
+	}
+}
+
+// Under mode=image a bare name can only be a definition (a registry image
+// carries a tag or a registry), so a typo is reported rather than handed to
+// Docker as a Docker Hub image.
+func TestImageRunnableRefRejectsAnUnknownBareName(t *testing.T) {
+	svc := newImageSvc(t)
+	_ = svc.Create("android", CreateImageOpts{})
+	defer useFakeDocker(&daemonRunner{local: map[string]bool{}})()
+
+	if _, err := svc.RunnableRef("andriod"); err == nil || !strings.Contains(err.Error(), "devcontainer-cli image list") {
+		t.Fatalf("error = %v, want a not-found error with the image list hint", err)
+	}
+	if got, err := svc.RunnableRef("ubuntu:24.04"); err != nil || got != "ubuntu:24.04" {
+		t.Fatalf("tagged reference = %q, %v; want it unchanged", got, err)
+	}
+}
