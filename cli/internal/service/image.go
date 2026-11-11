@@ -17,6 +17,10 @@ import (
 type ImageService struct {
 	Report    Reporter
 	ImagesDir string
+	// Repo versions definition changes. Nil means the real configuration
+	// repository when ImagesDir is the default, and no versioning when a custom
+	// ImagesDir points elsewhere.
+	Repo *ConfigRepo
 }
 
 func (s ImageService) getImagesDir() string {
@@ -24,6 +28,23 @@ func (s ImageService) getImagesDir() string {
 		return s.ImagesDir
 	}
 	return domain.UserImageDir()
+}
+
+// prepareRepo returns the repository to commit definition changes to, already
+// prepared, or nil when the change is not versioned.
+func (s ImageService) prepareRepo() *ConfigRepo {
+	repo := s.Repo
+	if repo == nil {
+		if s.ImagesDir != "" {
+			return nil
+		}
+		r := NewConfigRepo(reporterOrSilent(s.Report))
+		repo = &r
+	}
+	if !repo.Prepare() {
+		return nil
+	}
+	return repo
 }
 
 // ImageStatus represents the inspected state of a defined image.
@@ -83,8 +104,17 @@ func (s ImageService) Create(name string, opts CreateImageOpts) error {
 	}
 
 	dir := s.getImagesDir()
+	_, existed, _ := domain.ResolveImageDef(name, dir)
+	repo := s.prepareRepo()
 	if err := domain.SaveImageDef(def, dir); err != nil {
 		return fmt.Errorf("saving image definition: %w", err)
+	}
+	if repo != nil {
+		verb := "add"
+		if existed {
+			verb = "update"
+		}
+		repo.Commit(fmt.Sprintf("feat(image): %s %s", verb, name), filepath.Join(dir, name))
 	}
 
 	s.Report.Success("Created image definition '%s' in %s", name, filepath.Join(dir, name))
@@ -315,8 +345,12 @@ func (s ImageService) Remove(name string, deleteDockerImage bool) error {
 		return fmt.Errorf("image definition %q not found", name)
 	}
 
+	repo := s.prepareRepo()
 	if err := domain.DeleteImageDef(name, s.getImagesDir()); err != nil {
 		return fmt.Errorf("deleting definition: %w", err)
+	}
+	if repo != nil {
+		repo.Commit("chore(image): remove "+name, filepath.Join(s.getImagesDir(), name))
 	}
 
 	if deleteDockerImage {

@@ -3,6 +3,7 @@ package service
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
@@ -68,5 +69,44 @@ func TestImageService_CreateListInfoRemove(t *testing.T) {
 	statusesAfter, _ := svc.List()
 	if len(statusesAfter) != 0 {
 		t.Errorf("expected 0 images after remove, got %d", len(statusesAfter))
+	}
+}
+
+func TestImageServiceRecordsDefinitionChanges(t *testing.T) {
+	docker.SetRunner(&fakeRunner{})
+	t.Cleanup(docker.ResetRunner)
+
+	vcs := &fakeVCS{root: true}
+	repo, _ := newTestRepo(t, vcs)
+	svc := ImageService{Report: nopReporter{}, ImagesDir: filepath.Join(repo.Dir, "images"), Repo: &repo}
+
+	if err := svc.Create("android", CreateImageOpts{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Create("android", CreateImageOpts{Tag: "v2"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Remove("android", false); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		"feat(image): add android | images/android",
+		"feat(image): update android | images/android",
+		"chore(image): remove android | images/android",
+	}
+	if strings.Join(vcs.commits, "\n") != strings.Join(want, "\n") {
+		t.Errorf("unexpected commits:\n%s", strings.Join(vcs.commits, "\n"))
+	}
+}
+
+// A custom ImagesDir outside the configuration repository is not versioned.
+func TestImageServiceCustomDirIsNotVersioned(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	svc := ImageService{Report: nopReporter{}, ImagesDir: t.TempDir()}
+	if err := svc.Create("plain", CreateImageOpts{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "devcontainer-cli", ".git")); !os.IsNotExist(err) {
+		t.Errorf("expected no configuration repository to be created, got %v", err)
 	}
 }

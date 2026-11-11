@@ -1,6 +1,7 @@
 package domain_test
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -151,5 +152,17 @@ func TestIsLocalImage_ExcludesNamedImages(t *testing.T) {
 	}
 	if !domain.IsNamedImage("devcontainer-cli-img/data-stack:latest") {
 		t.Errorf("expected devcontainer-cli-img/data-stack:latest to be classified as named image")
+	}
+}
+
+// Images must sit in the same configuration repository as profiles and skills,
+// on every OS (os.UserConfigDir is ~/Library/Application Support on macOS).
+func TestUserImageDirFollowsGlobalConfigDir(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	if got, want := domain.UserImageDir(), filepath.Join(domain.GlobalConfigDir(), "images"); got != want {
+		t.Errorf("UserImageDir() = %q, want %q", got, want)
+	}
+	if got, want := domain.UserImageDir("/base"), filepath.Join("/base", "images"); got != want {
+		t.Errorf("UserImageDir(custom) = %q, want %q", got, want)
 	}
 }

@@ -43,16 +43,19 @@ func ValidateImageName(name string) error {
 	return nil
 }
 
-// UserImageDir returns the directory where user-defined image manifests are stored.
+// ImageDirName is where user-defined image definitions live inside the global
+// config dir, next to profiles/ and skills/ in the same configuration repository.
+const ImageDirName = "images"
+
+// UserImageDir returns the directory where user-defined image manifests are
+// stored. It derives from GlobalConfigDir (not os.UserConfigDir, which is
+// ~/Library/Application Support on macOS) so images always sit in the same
+// configuration repository as profiles and skills.
 func UserImageDir(customBaseDir ...string) string {
 	if len(customBaseDir) > 0 && customBaseDir[0] != "" {
-		return filepath.Join(customBaseDir[0], "images")
+		return filepath.Join(customBaseDir[0], ImageDirName)
 	}
-	configDir, err := os.UserConfigDir()
-	if err != nil {
-		configDir = filepath.Join(os.Getenv("HOME"), ".config")
-	}
-	return filepath.Join(configDir, "devcontainer-cli", "images")
+	return filepath.Join(GlobalConfigDir(), ImageDirName)
 }
 
 // ImageTag returns the Docker image tag for this image definition.

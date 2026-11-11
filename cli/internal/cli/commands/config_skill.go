@@ -2,7 +2,6 @@ package commands
 
 import (
 	"fmt"
-	"os"
 	"slices"
 	"strings"
 
@@ -455,17 +454,9 @@ aborts the whole operation. Skill ids tab-complete.`,
 }
 
 func runConfigSkillRemove(cmd *cobra.Command, args []string) error {
-	// Resolve every target up front so we fail before deleting anything.
-	paths := make([]string, 0, len(args))
-	for _, id := range args {
-		path, ok := userSkillPath(id)
-		if !ok {
-			if isBuiltinSkill(types.SkillID(id)) {
-				return fmt.Errorf("skill %q is a built-in skill and cannot be removed", id)
-			}
-			return fmt.Errorf("user-defined skill %q not found", id)
-		}
-		paths = append(paths, path)
+	svc := configSkillServiceFactory()
+	if _, err := svc.LocateUserSkills(args); err != nil {
+		return err
 	}
 
 	if !yesFlag(cmd) {
@@ -482,11 +473,11 @@ func runConfigSkillRemove(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	for i, path := range paths {
-		if err := os.Remove(path); err != nil {
-			return fmt.Errorf("failed to remove skill %q: %w", args[i], err)
-		}
-		console.Success("Removed skill %q", args[i])
+	if err := svc.RemoveUserSkills(args); err != nil {
+		return err
+	}
+	for _, id := range args {
+		console.Success("Removed skill %q", id)
 	}
 	return nil
 }
