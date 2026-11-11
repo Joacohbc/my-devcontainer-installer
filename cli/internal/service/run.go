@@ -57,12 +57,12 @@ func normalizeQuickRunSource(label string) string {
 	return QuickRunSource(QuickRunProfile, label)
 }
 
-// Run reuses the container if it already exists (starting it when stopped),
-// otherwise creates it from the image. If a container with the same name
-// already exists but was not created by 'run' (no quick-run label), it
-// refuses to touch it and returns an error instead of hijacking or renaming
-// an unrelated container. It reports progress and returns once the container
-// is running.
+// Run reuses the container if it already exists and was started by 'run'
+// from the same source (starting it when stopped), otherwise creates it from
+// the image. A container with the same name that was not created by 'run' (no
+// quick-run label), or was started from another source, is left untouched and
+// reported as an error instead of being hijacked or renamed. It reports
+// progress and returns once the container is running.
 func (s RunService) Run(spec QuickRunSpec) error {
 	lookup := s.lookupQuickRunContainer(spec.ContainerName)
 	if lookup.Exists {
@@ -142,11 +142,11 @@ func (s RunService) CopyAIScripts(container string, names []string) error {
 }
 
 // ValidateContainerName reports an error if name is already used by a
-// container that 'run' cannot safely reuse (i.e. one not created by a
-// previous 'run' invocation). A free name, or one belonging to an existing
-// quick-run container, returns nil. Intended for interactive prompt
-// validation, so the user is asked again rather than failing after the image
-// has already been pulled.
+// container that 'run' cannot safely reuse for source: one not created by a
+// previous 'run', or one a previous 'run' started from another source. A free
+// name, or one belonging to a quick-run container from the same source,
+// returns nil. Intended for interactive prompt validation, so the user is
+// asked again instead of Run failing on the same check.
 func (s RunService) ValidateContainerName(name, source string) error {
 	lookup := s.lookupQuickRunContainer(name)
 	if !lookup.Exists {
@@ -178,7 +178,7 @@ func (l quickRunLookup) reusableFor(name, source string) error {
 		return nameConflictErr(name)
 	}
 	if l.Source != source {
-		return fmt.Errorf("container name '%s' already belongs to a quick-run container started from %s, not %s; pick a different name with --name (or remove that container) and try again", name, l.Source, source)
+		return fmt.Errorf("container name '%s' already belongs to a quick-run container started from %s, not %s; pick a different name (or remove that container) and try again", name, l.Source, source)
 	}
 	return nil
 }

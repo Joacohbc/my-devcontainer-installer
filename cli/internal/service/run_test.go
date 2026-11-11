@@ -125,6 +125,11 @@ func TestRunLabelsAndMatchesTheSource(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "profile:nodejs") {
 		t.Fatalf("error = %v, want a conflict naming the profile container", err)
 	}
+	// ValidateContainerName shares this error inside the interactive prompt,
+	// where no --name flag was typed.
+	if strings.Contains(err.Error(), "--name") {
+		t.Errorf("error %q must not name a flag, like the other name conflict", err)
+	}
 	if other.callContaining("start") != nil || other.callContaining("run") != nil {
 		t.Errorf("must not reuse a container started from another source; calls=%v", other.calls)
 	}
