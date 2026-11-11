@@ -5,6 +5,10 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/project"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/service"
 )
 
 // currentDir returns the project working directory. When invoked from inside a
@@ -41,4 +45,19 @@ func projectRoot(dir string) string {
 		}
 	}
 	return dir
+}
+
+// warnIfBuildStale tells the user when this CLI version would generate a
+// different image than the project's build files describe (typically after a
+// CLI upgrade), and how to regenerate without prompting.
+func warnIfBuildStale(cwd, workspace string) {
+	config, err := domain.LoadConfig(cwd)
+	if err != nil || config == nil {
+		return
+	}
+	reasons := service.StaleBuildReasons(config, project.ProjectPaths(cwd, workspace))
+	if len(reasons) == 0 {
+		return
+	}
+	console.Warn("This CLI version generates a different image (%s changed). Regenerate and rebuild with '%s'.", strings.Join(reasons, ", "), service.StaleRegenerateHint)
 }

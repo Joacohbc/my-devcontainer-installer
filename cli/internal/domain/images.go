@@ -131,6 +131,15 @@ func sha256Hex(s string) string {
 // module ids, and the build args (the Dockerfile's ARG defaults are static, so
 // the resolved host UID/GID must be folded in here — otherwise two users with
 // different host ids would collide on a single image baked for one of them).
+// SameDockerfile reports whether two Dockerfiles build the same image: they
+// differ at most in their LABEL blocks (which carry the CLI version).
+func SameDockerfile(a, b string) bool {
+	normalize := func(df string) string {
+		return strings.TrimSpace(strings.ReplaceAll(stripLabelBlocks(df), "\r\n", "\n"))
+	}
+	return normalize(a) == normalize(b)
+}
+
 func ComputeFingerprint(dockerfileContent string, copyFileContents map[string]string, selectedModuleIDs []string, buildArgs map[string]string) string {
 	normalized := strings.TrimSpace(strings.ReplaceAll(stripLabelBlocks(dockerfileContent), "\r\n", "\n"))
 	parts := []string{normalized}
