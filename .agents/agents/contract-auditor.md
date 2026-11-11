@@ -10,7 +10,7 @@ You audit contracts and synchronized constants that span multiple files across G
 
 1. **Remote Variants Synchronization**:
    - `internal/domain/types/types.go` (`RemoteVariants`)
-   - `.github/workflows/docker-image.yml` (`build-variants` matrix)
+   - `.github/workflows/docker-image.yml` (`build-variants` matrix; `base` is built by `build-base-cache` instead)
    - `internal/domain/catalog/profiles.go` (`Remote: true` on matching `plainBuiltinProfiles`)
 2. **Full-Image Module Inclusions**:
    - `.github/workflows/docker-image.yml` job `build-base` `--modules` argument must include every Dockerfile module except auto-applied (`base`, `aliases`, `cleanup`) and mutually exclusive variants (`java-openjdk`).

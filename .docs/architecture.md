@@ -244,3 +244,8 @@ El orden es estricto: `stage_workspace` determina el UID/GID de devuser; `stage_
   3. Los comandos de acceso se ejecutan construyendo `newSshCommand` o `newShellCommand`, analizando sus banderas y llamando a su `RunE` directamente (nunca `Execute`, que recurre a `os.Args` cuando los argumentos son nulos); la capa de comandos no importa `infra/docker` ni `os/exec`. Una sesión que termina con error es solo una advertencia, porque la generación ya tuvo éxito.
   4. Con `--no-interactive` (incluido `agent create`) no se pregunta nada y se imprime solo la pista con `workspace up` y los comandos de acceso.
 - **Consecuencias**: Un solo `workspace init` puede terminar con el contenedor en ejecución y una sesión abierta. Las pistas nombran únicamente comandos que no preguntan.
+
+### D24: `base` es una Variante Publicada
+- **Contexto**: El asistente en modo `profiles` solo listaba perfiles con `Remote: true`, y `base` quedaba fuera aunque CI ya publica `devcontainer-base:latest` desde ese perfil.
+- **Decisión**: `base` lleva `Remote: true` y está en `types.RemoteVariants`, por lo que es la opción sin lenguaje del selector. No se agrega a la matriz `build-variants`: lo construye `build-base-cache`, y duplicarlo compilaría la misma imagen dos veces. `TestRemoteVariantsAreBuiltByCI` verifica el contrato.
+- **Consecuencias**: Si `devcontainer-base` dejara de ser el perfil `base`, el selector ofrecería una imagen distinta de la esperada.

@@ -182,9 +182,9 @@ Databases are compose **services**, not modules: use `--services postgres`, and
 `--modules postgres-client` only if you also want `psql` in the dev container.
 
 Prebuilt images exist for these profile ids, and pulling one with
-`--mode profiles --profile <id>` is much faster than a local build: `nodejs`,
-`bun`, `python`, `go`, `java-temurin`, `node-go`, `node-python`,
-`node-java-temurin`, `bun-go`, `bun-python`, `bun-java-temurin`. A `[local]` profile (e.g. a user-created one) has nothing to
+`--mode profiles --profile <id>` is much faster than a local build: `base`,
+`nodejs`, `bun`, `python`, `go`, `java-temurin`, `node-go`, `node-python`,
+`node-java-temurin`, `bun-go`, `bun-python`, `bun-java-temurin`. A `[local]` profile (only user-created ones) has nothing to
 pull — build it with `agent create --profile <id>` on the default mode.
 
 ### Then read the container, before running anything in it
