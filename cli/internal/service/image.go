@@ -525,7 +525,7 @@ func (s ImageService) ensureParent(from, dir string) error {
 	if err := domain.CheckImageCompat(ref, captureFunc()); err != nil {
 		return fmt.Errorf("base image %s: %w", ref, err)
 	}
-	if isDef && parentDef.Source == domain.ImageSourceBuild {
+	if isDef && parentDef.EffectiveSource() == domain.ImageSourceBuild {
 		return checkParentBuilt(from, ref, dir)
 	}
 	return nil
