@@ -131,3 +131,48 @@ func TestWizardImagePickerRejectsAnUnbuiltDefinition(t *testing.T) {
 		t.Errorf("error = %v, want an image build hint", err)
 	}
 }
+
+// A project already in image mode keeps that mode on offer even when no
+// definition exists (its image is a registry reference), so reopening the
+// wizard never silently turns it into a custom build.
+func TestWizardModeStepKeepsImageForAnImageProject(t *testing.T) {
+	ctx := wizardContext{base: &types.DevcontainerConfig{Mode: types.BuildModeImage, Image: "ghcr.io/acme/other:2"}, workspace: "ws"}
+	field := ctx.modeStep().Build(NewState())
+	if !slices.Contains(choiceValues(field), string(types.BuildModeImage)) {
+		t.Fatalf("mode choices %v lack image for an image project", choiceValues(field))
+	}
+	if field.Initial != string(types.BuildModeImage) {
+		t.Errorf("initial mode = %v, want image", field.Initial)
+	}
+}
+
+// An image project whose reference matches no definition is offered its own
+// image first, preselected, and keeping it leaves the project image unchanged.
+func TestWizardImagePickerKeepsAnUnmatchedProjectImage(t *testing.T) {
+	cases := map[string]wizardContext{
+		"with definitions": imageWizard(&types.DevcontainerConfig{Mode: types.BuildModeImage, Image: "ghcr.io/acme/other:2"}),
+		"without definitions": {
+			base:      &types.DevcontainerConfig{Mode: types.BuildModeImage, Image: "ghcr.io/acme/other:2", Env: map[string]string{}},
+			workspace: "ws",
+		},
+	}
+	for name, ctx := range cases {
+		t.Run(name, func(t *testing.T) {
+			state := imageModeState("")
+			if !slices.Contains(stepKeys(ctx.steps(state)), stepKeyImageDef) {
+				t.Fatal("an image project must reach the image picker")
+			}
+			field := ctx.imageDefStep().Build(state)
+			if len(field.Choices) == 0 || field.Choices[0].Value != field.Initial || !strings.Contains(field.Choices[0].Label, "ghcr.io/acme/other:2") {
+				t.Fatalf("choices=%v initial=%v, want the current image first and preselected", field.Choices, field.Initial)
+			}
+			if err := field.Validate(field.Initial.(string)); err != nil {
+				t.Errorf("keeping the current image must validate, got %v", err)
+			}
+			state.Set(stepKeyImageDef, field.Initial.(string))
+			if cfg := ctx.reduce(state); cfg.Image != "ghcr.io/acme/other:2" || cfg.Mode != types.BuildModeImage {
+				t.Errorf("mode=%s image=%s, want the project image kept", cfg.Mode, cfg.Image)
+			}
+		})
+	}
+}

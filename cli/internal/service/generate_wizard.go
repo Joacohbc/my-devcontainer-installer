@@ -407,7 +407,7 @@ func (w wizardContext) workspaceStep() Step {
 func (w wizardContext) modeStep() Step {
 	return Step{Key: stepKeyMode, Build: func(s *State) Field {
 		modeChoiceOrder := []string{string(types.BuildModeCustom), modeChoiceCustomFromProfile, string(types.BuildModeProfiles)}
-		if len(w.imageDefs) > 0 {
+		if w.offersImageMode() {
 			modeChoiceOrder = append(modeChoiceOrder, string(types.BuildModeImage))
 		}
 		choices := make([]Option, len(modeChoiceOrder))
@@ -415,8 +415,8 @@ func (w wizardContext) modeStep() Step {
 			choices[i] = Option{Value: m, Label: modeChoiceLabels[m]}
 		}
 		// An existing project only ever persisted a real BuildMode, never the
-		// wizard-only "from a profile" choice, so re-entering the wizard always
-		// defaults to plain custom/profiles rather than guessing at intent.
+		// wizard-only "from a profile" choice, so re-entering the wizard starts
+		// on the mode the project already uses.
 		initial := string(w.base.Mode)
 		if initial == "" {
 			initial = string(types.BuildModeCustom)
@@ -593,19 +593,40 @@ func (w wizardContext) contentNamedImage(s *State) bool {
 	return currentMode(s) == types.BuildModeCustom
 }
 
+// offersImageMode reports whether the image mode has something to run: a
+// definition to pick, or the image an image-mode project already uses.
+func (w wizardContext) offersImageMode() bool {
+	return len(w.imageDefs) > 0 || w.base.Mode == types.BuildModeImage
+}
+
+// imageKeepCurrent is the picker value that keeps the project's current image.
+// It cannot collide with a definition name, which never contains ':'.
+const imageKeepCurrent = ":keep"
+
+// currentImageUnmatched reports whether an image-mode project runs a reference
+// that matches no definition (a registry image named directly).
+func (w wizardContext) currentImageUnmatched() bool {
+	if w.base.Mode != types.BuildModeImage || w.base.Image == "" {
+		return false
+	}
+	return !slices.ContainsFunc(w.imageDefs, func(def domain.ImageDef) bool { return domain.ImageTag(def) == w.base.Image })
+}
+
 // imageDefStep picks the image definition an image-mode project runs. A build
 // definition that was never built is refused here, with the command that
-// builds it, rather than failing later when the container starts.
+// builds it, rather than failing later when the container starts. A project
+// whose image matches no definition is offered to keep it, first and
+// preselected, so reopening the wizard never swaps it silently.
 func (w wizardContext) imageDefStep() Step {
 	return Step{Key: stepKeyImageDef, Build: func(s *State) Field {
-		choices := make([]Option, 0, len(w.imageDefs))
+		var choices []Option
 		initial := ""
+		if w.currentImageUnmatched() {
+			choices = append(choices, Option{Value: imageKeepCurrent, Label: "keep " + w.base.Image})
+			initial = imageKeepCurrent
+		}
+		choices = append(choices, ImageDefChoices(w.imageDefs)...)
 		for _, def := range w.imageDefs {
-			label := def.Name
-			if def.Label != "" {
-				label = fmt.Sprintf("%s — %s", def.Name, def.Label)
-			}
-			choices = append(choices, Option{Value: def.Name, Label: label})
 			if domain.ImageTag(def) == w.base.Image {
 				initial = def.Name
 			}
@@ -619,6 +640,9 @@ func (w wizardContext) imageDefStep() Step {
 			Choices: choices,
 			Initial: initial,
 			Validate: func(name string) error {
+				if name == imageKeepCurrent {
+					return nil
+				}
 				_, err := w.images.Available(name)
 				return err
 			},
@@ -626,8 +650,25 @@ func (w wizardContext) imageDefStep() Step {
 	}}
 }
 
-// pickedImageRef is the reference of the definition chosen in image mode.
+// ImageDefChoices lists image definitions as picker options, labelled with
+// their description when they have one.
+func ImageDefChoices(defs []domain.ImageDef) []Option {
+	choices := make([]Option, 0, len(defs))
+	for _, def := range defs {
+		label := def.Name
+		if def.Label != "" {
+			label = fmt.Sprintf("%s — %s", def.Name, def.Label)
+		}
+		choices = append(choices, Option{Value: def.Name, Label: label})
+	}
+	return choices
+}
+
+// pickedImageRef is the reference of the image chosen in image mode.
 func (w wizardContext) pickedImageRef(s *State) string {
+	if s.String(stepKeyImageDef) == imageKeepCurrent {
+		return w.base.Image
+	}
 	for _, def := range w.imageDefs {
 		if def.Name == s.String(stepKeyImageDef) {
 			return domain.ImageTag(def)
