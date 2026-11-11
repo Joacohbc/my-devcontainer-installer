@@ -646,7 +646,9 @@ func saveAndPostProcess(cwd string, config *types.DevcontainerConfig, plan *serv
 
 	isRemote := config.Mode == types.BuildModeProfiles
 	build := flags.build
-	if plan.CachedImageHit && build == nil {
+	// Re-checked here: prompts sit between Plan and this point, and a shared
+	// image can be collected meanwhile when another project is destroyed.
+	if plan.CachedImageHit && build == nil && svc.ImageExists(config.Image) {
 		skip := false
 		build = &skip
 		console.Success("✓ Local-cached image is up to date — skipping build.")

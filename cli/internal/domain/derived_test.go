@@ -174,3 +174,34 @@ func TestGenerateDockerfile_DerivedRejectsConflictingOptions(t *testing.T) {
 		t.Errorf("expected a conflicting-options error, got %v", err)
 	}
 }
+
+// The parent's ENV PATH already holds the inherited entries; a derived image
+// writes PATH in full instead of prepending the lineage to it again.
+func TestGenerateDockerfile_DerivedPathListsEachEntryOnce(t *testing.T) {
+	df, err := domain.GenerateDockerfile(derivedConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, line := range strings.Split(df, "\n") {
+		if !strings.HasPrefix(line, "ENV PATH=") {
+			continue
+		}
+		if strings.Contains(line, "$PATH") {
+			t.Errorf("derived PATH must not extend the parent's: %s", line)
+		}
+		if strings.Count(line, "/home/devuser/.local/bin:") > 1 {
+			t.Errorf("duplicate entry: %s", line)
+		}
+	}
+}
+
+// Re-rendering the env script in a derived image must not source it twice.
+func TestGenerateDockerfile_EnvScriptIsSourcedOnce(t *testing.T) {
+	df, err := domain.GenerateDockerfile(derivedConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(df, "grep -qxF") {
+		t.Error("the rc-file source line must be appended only when missing")
+	}
+}

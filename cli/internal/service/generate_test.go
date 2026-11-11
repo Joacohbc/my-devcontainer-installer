@@ -122,3 +122,14 @@ func TestBuildRunsComposeAndReportsErrors(t *testing.T) {
 		})
 	}
 }
+
+func TestImageExistsAsksTheDaemon(t *testing.T) {
+	defer useFakeDocker(&fakeRunner{status: 0, stdout: "sha256abc"})()
+	if !(GenerateService{Report: nopReporter{}}).ImageExists("devcontainer-cli/go-1:latest") {
+		t.Error("expected the image to exist")
+	}
+	defer useFakeDocker(&fakeRunner{status: 0})()
+	if (GenerateService{Report: nopReporter{}}).ImageExists("devcontainer-cli/go-1:latest") {
+		t.Error("a missing image must be reported missing, so the build is not skipped")
+	}
+}

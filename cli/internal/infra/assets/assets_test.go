@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -1192,5 +1193,46 @@ func TestEntrypointSharedConfigStage(t *testing.T) {
 	absent := strings.Replace(script, "SHARED_CONFIG_DIR="+vol, "SHARED_CONFIG_DIR="+filepath.Join(root, "nope"), 1)
 	if out, err := exec.Command("bash", "-c", absent).CombinedOutput(); err != nil {
 		t.Errorf("stage_shared_config must no-op when the volume is not mounted: %v\n%s", err, out)
+	}
+}
+
+// A runtime remap (mode=image) must hand devuser's image paths outside the home
+// to the new ids, while never touching the home (stage_identity re-owns it), the
+// workspace or the shared-config volume.
+func TestEntrypointReownsImagePathsAfterARemap(t *testing.T) {
+	script, err := assets.Content("entrypoint.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fn := extractShellFunc(t, string(script), "reown_image_paths")
+	root := t.TempDir()
+	for _, dir := range []string{"opt/android-sdk", "home/devuser", "workspaces/app", "mnt/shared-config"} {
+		if err := os.MkdirAll(filepath.Join(root, dir), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	bin := t.TempDir()
+	log := filepath.Join(t.TempDir(), "chown.log")
+	fake := "#!/bin/sh\nshift 2\nprintf '%s\\n' \"$@\" >> " + log + "\n"
+	if err := os.WriteFile(filepath.Join(bin, "chown"), []byte(fake), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	uid := strconv.Itoa(os.Getuid())
+	gid := strconv.Itoa(os.Getgid())
+	body := `DEV_HOME=/home/devuser; SHARED_CONFIG_DIR=/mnt/shared-config` + "\n" + fn + "\n" + `reown_image_paths "$1" "$2" "$3" 4242 "$3"`
+	cmd := exec.Command("bash", "-c", body, "bash", root, uid, gid)
+	cmd.Env = append(os.Environ(), "PATH="+bin+":"+os.Getenv("PATH"))
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("%v: %s", err, out)
+	}
+	data, _ := os.ReadFile(log)
+	got := string(data)
+	if !strings.Contains(got, filepath.Join(root, "opt/android-sdk")) {
+		t.Errorf("image paths were not re-owned: %q", got)
+	}
+	for _, kept := range []string{"home/devuser", "workspaces/app", "mnt/shared-config"} {
+		if strings.Contains(got, filepath.Join(root, kept)) {
+			t.Errorf("%s must not be re-owned: %q", kept, got)
+		}
 	}
 }

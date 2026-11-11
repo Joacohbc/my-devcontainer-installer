@@ -41,7 +41,7 @@ func GenerateDockerfile(config *types.DevcontainerConfig) (string, error) {
 	}
 	// The environment is rendered from every module, inherited ones included:
 	// the derived ENV block and ~/.dc-env.sh replace the parent's.
-	fragments = append(fragments, renderEnvironmentBlocks(resolved)...)
+	fragments = append(fragments, renderEnvironmentBlocks(resolved, config.Dockerfile.From != "")...)
 	postScripts, err := postScriptsDockerfileBlock(config)
 	if err != nil {
 		return "", err
@@ -135,7 +135,7 @@ RUN old_uid="$(id -u devuser)" && old_gid="$(id -g devuser)" && \
 // the Dockerfile must stay byte-identical across image variants for the shared
 // base cache to be reused, and an ENV instruction whose content depends on the
 // selected modules would break that if it came earlier.
-func renderEnvironmentBlocks(resolved []ResolvedModule) []string {
+func renderEnvironmentBlocks(resolved []ResolvedModule, derived bool) []string {
 	envs := make([]dockerfile.ContainerEnv, 0, len(resolved))
 	for _, r := range resolved {
 		if r.Module.ProvidesEnv == nil {
@@ -145,7 +145,11 @@ func renderEnvironmentBlocks(resolved []ResolvedModule) []string {
 	}
 	merged := dockerfile.MergeContainerEnv(envs...)
 	var blocks []string
-	for _, block := range []string{dockerfile.RenderDockerfileEnv(merged), dockerfile.RenderEnvScript(merged)} {
+	envBlock := dockerfile.RenderDockerfileEnv(merged)
+	if derived {
+		envBlock = dockerfile.RenderDerivedDockerfileEnv(merged)
+	}
+	for _, block := range []string{envBlock, dockerfile.RenderEnvScript(merged)} {
 		if block != "" {
 			blocks = append(blocks, block)
 		}

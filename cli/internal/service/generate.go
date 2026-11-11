@@ -326,3 +326,8 @@ func contextConfig(config *types.DevcontainerConfig) *types.DevcontainerConfig {
 	}
 	return &c
 }
+
+// ImageExists reports whether image is present in the local daemon now.
+func (s GenerateService) ImageExists(image string) bool {
+	return domain.LocalImageExists(image, captureFunc())
+}
