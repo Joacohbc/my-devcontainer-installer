@@ -45,6 +45,10 @@ classDiagram
         +string Name
         +[]string Modules
         +[]CustomScript Scripts
+        +string Image
+        +[]SelectedService Services
+        +[]string Volumes
+        +map Env
         +[]string Skills
         +bool Remote
         +string Dir
@@ -140,7 +144,7 @@ Servicios complementarios definidos en `docker-compose.yml`:
 
 ## 4. Perfiles y Temporización de Scripts (`CustomScript.When`)
 
-Un perfil agrupa módulos, configuraciones de puertos y scripts personalizados. La CLI incluye 12 perfiles planos integrados (`base`, `nodejs`, `bun`, `java-temurin`, `python`, `go`, `node-go`, `node-python`, `node-java-temurin`, `bun-go`, `bun-python`, `bun-java-temurin`), y permite a los usuarios definir perfiles propios en `~/.config/devcontainer-cli/profiles/<id>/` (siempre como directorio `<id>/profile.yml` acompañado de sus scripts `.sh`; los archivos planos `<id>.yml` y el directorio heredado `presets/` ya no se leen). Los perfiles, las definiciones de imagen y las habilidades de usuario se versionan juntos en el repositorio de configuración (ver D19).
+Un perfil es una plantilla de proyecto: agrupa módulos (o una imagen de partida con `image`, excluyente con `modules`), scripts personalizados, servicios compose, volúmenes, variables de entorno, puertos y habilidades, con el mismo significado que en `devcontainer.config.json`. Un perfil con `image` deja el proyecto en `mode=image`; el valor es el nombre de una definición de imagen o una referencia de registro. La CLI incluye 12 perfiles planos integrados (`base`, `nodejs`, `bun`, `java-temurin`, `python`, `go`, `node-go`, `node-python`, `node-java-temurin`, `bun-go`, `bun-python`, `bun-java-temurin`), y permite a los usuarios definir perfiles propios en `~/.config/devcontainer-cli/profiles/<id>/` (siempre como directorio `<id>/profile.yml` acompañado de sus scripts `.sh`; los archivos planos `<id>.yml` y el directorio heredado `presets/` ya no se leen). Los perfiles, las definiciones de imagen y las habilidades de usuario se versionan juntos en el repositorio de configuración (ver D19).
 
 Los scripts personalizados definidos por el usuario o provistos en sus perfiles se ejecutan en momentos precisos según su propiedad `When`:
 
@@ -157,7 +161,8 @@ En `mode=custom`, la bandera `--profile` acepta una lista de identificadores sep
 
 - **Unión de Módulos**: Se combinan los módulos de todos los perfiles preservando el orden de primera aparición y eliminando duplicados. Los conflictos entre módulos incompatibles (ej. `java-temurin` y `java-openjdk`) son detectados por el resolver del catálogo.
 - **Concatenación de Scripts**: Los scripts personalizados se concatenan en el orden especificado. Si dos perfiles declaran scripts con el mismo nombre de archivo de destino en el directorio de construcción (`custom-<archivo>.sh`), el comando falla inmediatamente nombrando a ambos perfiles en conflicto.
-- **Unión de Habilidades y Puertos**: Las habilidades de agente (`skills`), puertos publicados (`ports`) y túneles SSH (`forward_ports`) se combinan mediante unión deduplicada en orden de primera aparición.
+- **Unión de Habilidades, Puertos, Volúmenes y Servicios**: Las habilidades de agente (`skills`), puertos publicados (`ports`), túneles SSH (`forward_ports`), volúmenes (`volumes`) y servicios (`services`, por id; prevalecen las opciones del primer perfil) se combinan mediante unión deduplicada en orden de primera aparición.
+- **Fusión de Entorno e Imagen**: Las variables `env` se fusionan; si dos perfiles asignan valores distintos a la misma variable, o declaran imágenes de partida distintas, la generación se rechaza con error explícito.
 - **Validación de Modo de Habilidades**: Si dos o más perfiles especifican modos explícitos de instalación (`skills_mode`) que entren en contradicción (por ejemplo, `manual` y `auto`), la generación se rechaza con error explícito.
 - **Invariante de Perfil Único para Descarga Remota**: `mode=profiles` y `devcontainer-cli run` únicamente admiten un único perfil remoto publicado (`[remote]`). Si se pasa una lista separada por comas a estos comandos, se genera un error descriptivo no interactivo.
 

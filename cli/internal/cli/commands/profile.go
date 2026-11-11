@@ -23,19 +23,28 @@ func newProfileCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "profile",
 		Short: "Manage reusable devcontainer profiles",
-		Long: `devcontainer-cli profile — manage profiles, named bundles of Dockerfile
-modules plus your own scripts, that you can reuse when generating projects.
+		Long: `devcontainer-cli profile — manage profiles: reusable project templates for a
+use case, like a devcontainer.config.json you can apply to any project.
+
+A profile.yml may set:
+  modules        Dockerfile modules to build (or image, not both)
+  image          an 'image' definition name or registry reference to start from
+  scripts        your own .sh files, copied into the profile directory
+  services       companion compose services (postgres, redis, ...)
+  volumes        extra mounts on the devcontainer service
+  env            environment variables for the project
+  ports, forward_ports, skills, skills_mode
 
 Built-in profiles ship with the CLI; your own are saved under ~/.config/devcontainer-cli/profiles/.
 Every user profile is an <id>/ directory holding profile.yml and, next to it,
-the .sh files it carries (flat <id>.yml files are no longer read). The profiles/
-directory is its own git repository: create, copy and remove each record one
-Conventional commit, so the history is yours to inspect, diff or revert; nothing
-is ever pushed. Pass one or
-more profiles to 'devcontainer-cli --profile <id1>,<id2>' (or pick one in the
-interactive wizard) to compose module bundles and combine their scripts. In mode=custom, profiles stack together (modules union, scripts
-concatenated, ports and skills unioned); under mode=profiles or 'run', exactly
-one profile is accepted.
+the .sh files it carries (flat <id>.yml files are no longer read). The
+configuration directory is a git repository: create, copy and remove each record
+one Conventional commit, so the history is yours to inspect, diff or revert;
+nothing is ever pushed. Pass one or more profiles to 'devcontainer-cli workspace
+init --profile <id1>,<id2>' to compose them: modules, ports, volumes, skills and
+services are unioned, scripts concatenated and env merged (a variable set to two
+different values, or two different images, is an error). Explicit flags win over
+the profile. Under mode=profiles or 'run', exactly one profile is accepted.
 
 Every profile builds locally this way, regardless of the [remote]/[local] tag
 'config profile list' shows: [remote] means it also has a published
@@ -156,8 +165,8 @@ func newProfileInfoCommand() *cobra.Command {
 		Short: "Show one profile's full resolved definition",
 		Long: `devcontainer-cli config profile info — print one profile's full definition:
 where it comes from (built-in or user, and its directory for a user
-profile), whether it is [remote]-pullable, and the resolved yaml (modules,
-scripts, skills, ports).`,
+profile), whether it is [remote]-pullable, and the resolved yaml (modules or
+image, scripts, services, volumes, env, skills, ports).`,
 		Example:           "  devcontainer-cli config profile info nodejs",
 		Args:              cobra.ExactArgs(1),
 		SilenceUsage:      true,
@@ -224,7 +233,8 @@ It prompts for a profile id and label, opens the module picker so you can choose
 which Dockerfile modules the profile bundles, then lets you add your own scripts
 (copied into the profile, so it stays self-contained) and pick when each one
 runs. Saved as ~/.config/devcontainer-cli/profiles/<id>/profile.yml and committed
-to the profiles/ git repository. This is an interactive command: it cannot run
+to the configuration repository. Add services, volumes, env or an image by
+editing that profile.yml. This is an interactive command: it cannot run
 with --no-interactive.`,
 		Example:      "  devcontainer-cli config profile create",
 		Args:         cobra.NoArgs,

@@ -291,8 +291,15 @@ devcontainer-cli access forward reverse:5432
        - agent-browser
      ports:
        - "8080:80"
+     services:
+       - postgres
+     volumes:
+       - ai-cache:/home/devuser/.cache
+     env:
+       APP_ENV: development
      ```
    - Coloque el script `setup-tools.sh` en el mismo directorio.
+   - Un perfil también puede partir de una imagen en lugar de módulos (`image: android`, el nombre de una definición de imagen o una referencia de registro); en ese caso no declare `modules`.
 2. Combine el perfil del lenguaje con su perfil de complementos pasando una lista separada por comas:
    ```bash
    devcontainer-cli agent create --profile python,my-ai-tools
@@ -305,6 +312,7 @@ devcontainer-cli access forward reverse:5432
    - **Módulos**: `github-cli`, `python`, `sqlite` (orden de primera aparición, sin duplicados).
    - **Scripts**: Ejecuta el script `setup-tools.sh` en la fase de construcción.
    - **Habilidades y Puertos**: Registra la habilidad `agent-browser` y publica el puerto `8080:80`.
+   - **Servicios, Volúmenes y Entorno**: Agrega PostgreSQL, monta `ai-cache` y define `APP_ENV`. Las banderas explícitas (`--services`, `--volumes`) prevalecen sobre el perfil.
 
 **Historial y reutilización**: `~/.config/devcontainer-cli/` es un repositorio git que versiona `profiles/`, `images/` y `skills/` (ver D19). Cada `profile create|copy|remove`, `image create|remove` y `config skill add|remove` deja un commit; los cambios hechos a mano se registran con git estándar:
 ```bash

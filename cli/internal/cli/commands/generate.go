@@ -156,6 +156,9 @@ type genFlags struct {
 	// to the explicit flags above.
 	profilePorts        []string
 	profileForwardPorts []string
+	// profileTemplate is the resolved profile, whose project-level settings
+	// (services, volumes, env, image) are applied before the explicit flags.
+	profileTemplate *catalog.Profile
 	// keepWorkspace is set when the workspace name must not be auto-uniquified: the
 	// user pinned it with --workspace, or it was already persisted for this project.
 	// Derived in initAndConfigure, not parsed from a flag.
@@ -238,6 +241,7 @@ func populateProfileFlags(g *genFlags) error {
 		return fmt.Errorf("profile %q: %w", p.ID, verr)
 	}
 	g.profilePorts, g.profileForwardPorts = p.Ports, p.ForwardPorts
+	g.profileTemplate = &p
 	return nil
 }
 
@@ -744,7 +748,9 @@ func applyProfileBundle(config *types.DevcontainerConfig, flags *genFlags) error
 	if flags.withModules == nil {
 		flags.withModules = profileModules
 	}
-	if flags.services == nil {
+	// A profile with no services of its own still replaces the project's: the
+	// template defines the stack.
+	if flags.services == nil && (flags.profileTemplate == nil || len(flags.profileTemplate.Services) == 0) {
 		flags.services = []string{}
 	}
 	config.Origin = strings.Join(splitCSV(flags.profile), "-")
@@ -754,6 +760,11 @@ func applyProfileBundle(config *types.DevcontainerConfig, flags *genFlags) error
 func applyGenFlags(config *types.DevcontainerConfig, flags *genFlags) error {
 	if err := applyProfileBundle(config, flags); err != nil {
 		return err
+	}
+	if flags.profileTemplate != nil {
+		if err := domain.ApplyProfileTemplate(config, *flags.profileTemplate); err != nil {
+			return err
+		}
 	}
 
 	// Scripts come from the profile and from --script; they are persisted in the

@@ -56,7 +56,9 @@ func (s InitService) Init(opts InitOptions) (*types.DevcontainerConfig, error) {
 	s.applyWorkspaceName(config, targetDir, opts)
 	s.applyDetectedAndUserModules(config, stack, opts)
 	s.applyDetectedAndUserServices(config, stack, opts)
-	s.applyConfigOptions(config, opts)
+	if err := s.applyConfigOptions(config, opts); err != nil {
+		return nil, err
+	}
 
 	paths := project.ProjectPaths(targetDir, config.Workspace)
 	genSvc := GenerateService{Report: s.Report}
@@ -202,7 +204,7 @@ func (s InitService) applyDetectedAndUserServices(config *types.DevcontainerConf
 	config.Compose.Services = orderedServices
 }
 
-func (s InitService) applyConfigOptions(config *types.DevcontainerConfig, opts InitOptions) {
+func (s InitService) applyConfigOptions(config *types.DevcontainerConfig, opts InitOptions) error {
 	if opts.Mode != "" {
 		config.Mode = types.BuildMode(opts.Mode)
 	}
@@ -213,9 +215,16 @@ func (s InitService) applyConfigOptions(config *types.DevcontainerConfig, opts I
 				pList = append(pList, t)
 			}
 		}
-		if p, err := catalog.ResolveComposed(pList, domain.ProfileDirs()...); err == nil {
+		p, err := catalog.ResolveComposed(pList, domain.ProfileDirs()...)
+		if err != nil && config.Mode != types.BuildModeProfiles {
+			return err
+		}
+		if err == nil {
 			if config.Mode != types.BuildModeProfiles {
 				config.Origin = strings.Join(pList, "-")
+			}
+			if terr := domain.ApplyProfileTemplate(config, p); terr != nil {
+				return terr
 			}
 			config.Dockerfile.Scripts = append(config.Dockerfile.Scripts, p.Scripts...)
 			config.Compose.Ports = append(config.Compose.Ports, p.Ports...)
@@ -243,6 +252,7 @@ func (s InitService) applyConfigOptions(config *types.DevcontainerConfig, opts I
 	if opts.SkillsMode != "" {
 		config.Skills.Mode = types.SkillMode(opts.SkillsMode)
 	}
+	return nil
 }
 
 func (s InitService) InstallSkills(workspace string) {

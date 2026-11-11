@@ -561,3 +561,27 @@ ports:
 		t.Errorf("expected 9000:9000 port, got %v", composed.Ports)
 	}
 }
+
+func TestMergeProfilesTemplateFields(t *testing.T) {
+	a := catalog.Profile{ID: "a", Services: []types.SelectedService{{ID: "postgres", Options: map[string]any{"v": 1}}}, Volumes: []string{"x:/x"}, Env: map[string]string{"A": "1"}}
+	b := catalog.Profile{ID: "b", Services: []types.SelectedService{{ID: "postgres"}, {ID: "redis"}}, Volumes: []string{"x:/x", "y:/y"}, Env: map[string]string{"B": "2"}, Image: "android"}
+	m, err := catalog.MergeProfiles(a, b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(m.Services) != 2 || m.Services[0].Options["v"] != 1 {
+		t.Errorf("services = %+v (first profile's options must win)", m.Services)
+	}
+	if len(m.Volumes) != 2 || m.Env["A"] != "1" || m.Env["B"] != "2" || m.Image != "android" {
+		t.Errorf("merged = %+v", m)
+	}
+}
+
+func TestMergeProfilesTemplateConflicts(t *testing.T) {
+	if _, err := catalog.MergeProfiles(catalog.Profile{ID: "a", Env: map[string]string{"K": "1"}}, catalog.Profile{ID: "b", Env: map[string]string{"K": "2"}}); err == nil {
+		t.Error("conflicting env values must fail")
+	}
+	if _, err := catalog.MergeProfiles(catalog.Profile{ID: "a", Image: "x"}, catalog.Profile{ID: "b", Image: "y"}); err == nil {
+		t.Error("two different images must fail")
+	}
+}

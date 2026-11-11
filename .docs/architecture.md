@@ -212,3 +212,12 @@ El orden es estricto: `stage_workspace` determina el UID/GID de devuser; `stage_
   7. `workspace up` e `inspect status` comparan los archivos generados (Dockerfile sin `LABEL`, scripts embebidos y tabla de configuración compartida) con lo que generaría la versión actual de la CLI y, si difieren, sugieren `devcontainer-cli workspace init --no-interactive --build`.
 - **Consecuencias**: Proyectos con el mismo contenido comparten una sola imagen y el último en irse la elimina. Ninguna recompilación deja imágenes huérfanas. Cambio incompatible: las imágenes se renombran en la siguiente generación y `CONTEXT.md` pasa a montarse; los proyectos existentes deben regenerarse. Los contenedores de modo `profiles` e `image` reciben ahora un `CONTEXT.md` exacto para el proyecto.
 
+### D21: Perfil como Plantilla de Proyecto
+- **Contexto**: Un perfil solo agrupaba módulos, scripts, puertos y habilidades, y los servicios declarados en archivos antiguos se ignoraban. Para describir un caso de uso completo (por ejemplo, Node.js con PostgreSQL, una caché y variables de entorno) había que repetir banderas en cada proyecto.
+- **Decisión**:
+  1. `catalog.Profile` acepta `image`, `services`, `volumes` y `env`, con el mismo significado que en `devcontainer.config.json`. `domain.ApplyProfileTemplate` los aplica al proyecto; las banderas explícitas prevalecen, igual que con los módulos.
+  2. Un perfil con `services` reemplaza los servicios del proyecto; uno sin ellos los vacía en `mode=custom`, como antes.
+  3. `image` es excluyente con `modules` y deja el proyecto en `mode=image` con la imagen resuelta (definición nombrada o referencia de registro).
+  4. Al componer perfiles se unen servicios y volúmenes, y se rechazan valores de `env` contradictorios o imágenes de partida distintas.
+  5. `workspace auto-init --profile` falla ante un perfil inválido en lugar de ignorarlo.
+- **Consecuencias**: Los perfiles describen proyectos completos y reutilizables, mientras las imágenes nombradas siguen siendo el artefacto compartible de herramientas (D16, D20).

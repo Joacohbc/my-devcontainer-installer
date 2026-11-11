@@ -15,14 +15,27 @@ import (
 // scripts it references.
 const ProfileFileName = "profile.yml"
 
-// Profile is a reusable bundle of Dockerfile module ids plus, optionally, the
-// user's own scripts. Older files may still carry `services:`/`mode:` keys;
-// those are ignored on load.
+// Profile is a project template for a use case: the Dockerfile modules (or a
+// named image) to start from, the user's own scripts, and the project-level
+// settings a devcontainer.config.json would carry — companion services, extra
+// volumes, environment variables, ports and agent skills. Older files may
+// still carry a `mode:` key; it is ignored on load.
 type Profile struct {
 	ID      string               `yaml:"id"`
 	Label   string               `yaml:"label,omitempty"`
 	Modules []string             `yaml:"modules,omitempty"`
 	Scripts []types.CustomScript `yaml:"scripts,omitempty"`
+	// Image starts the project from an existing image instead of building
+	// modules: the name of an `image` definition, or a registry reference that
+	// honours the image contract.
+	Image string `yaml:"image,omitempty"`
+	// Services are companion compose services (databases, caches), Volumes extra
+	// mounts on the devcontainer service and Env the project's environment
+	// variables. They behave exactly like the same keys in
+	// devcontainer.config.json.
+	Services []types.SelectedService `yaml:"services,omitempty"`
+	Volumes  []string                `yaml:"volumes,omitempty"`
+	Env      map[string]string       `yaml:"env,omitempty"`
 	// Skills are the agent skills a project starting from this profile installs,
 	// and SkillsMode how they get installed. They are project-scoped, so they are
 	// applied to the project rather than baked into the image.
@@ -340,7 +353,10 @@ func appendUnique[T comparable](dst []T, seen map[T]bool, items []T) []T {
 //     naming both profiles. If a script's Source is not yet set and the originating
 //     profile has a Dir, Source is resolved against it.
 //   - Skills: union of skill IDs, deduplicated, preserving first-seen order.
-//   - Ports and ForwardPorts: union, deduplicated, preserving first-seen order.
+//   - Ports, ForwardPorts and Volumes: union, deduplicated, preserving first-seen order.
+//   - Services: union by id; the first profile's options win.
+//   - Env: union; two profiles setting one variable to different values is an error.
+//   - Image: at most one distinct image across all profiles, or an error.
 //   - SkillsMode: if multiple profiles declare conflicting explicit skills modes, an
 //     error is returned. Otherwise, the explicit mode (if any) is used.
 func MergeProfiles(profiles ...Profile) (Profile, error) {
@@ -359,6 +375,14 @@ func MergeProfiles(profiles ...Profile) (Profile, error) {
 		skills       []types.SkillID
 		ports        []string
 		forwardPorts []string
+		services     []types.SelectedService
+		volumes      []string
+		env          map[string]string
+		image        string
+		imageProf    string
+		envProf      = make(map[string]string)
+		seenServices = make(map[types.ServiceID]bool)
+		seenVolumes  = make(map[string]bool)
 
 		seenModules      = make(map[string]bool)
 		seenSkills       = make(map[types.SkillID]bool)
@@ -404,6 +428,28 @@ func MergeProfiles(profiles ...Profile) (Profile, error) {
 		skills = appendUnique(skills, seenSkills, p.Skills)
 		ports = appendUnique(ports, seenPorts, p.Ports)
 		forwardPorts = appendUnique(forwardPorts, seenForwardPorts, p.ForwardPorts)
+		volumes = appendUnique(volumes, seenVolumes, p.Volumes)
+		for _, svc := range p.Services {
+			if !seenServices[svc.ID] {
+				seenServices[svc.ID] = true
+				services = append(services, svc)
+			}
+		}
+		for k, v := range p.Env {
+			if prev, ok := env[k]; ok && prev != v {
+				return Profile{}, fmt.Errorf("conflicting env %s: profile %q sets %q, but profile %q sets %q", k, envProf[k], prev, profName, v)
+			}
+			if env == nil {
+				env = make(map[string]string)
+			}
+			env[k], envProf[k] = v, profName
+		}
+		if p.Image != "" {
+			if image != "" && image != p.Image {
+				return Profile{}, fmt.Errorf("conflicting images: profile %q starts from %q, but profile %q starts from %q", imageProf, image, profName, p.Image)
+			}
+			image, imageProf = p.Image, profName
+		}
 
 		if p.SkillsMode != "" {
 			if explicitMode == "" {
@@ -424,6 +470,10 @@ func MergeProfiles(profiles ...Profile) (Profile, error) {
 		SkillsMode:   explicitMode,
 		Ports:        ports,
 		ForwardPorts: forwardPorts,
+		Image:        image,
+		Services:     services,
+		Volumes:      volumes,
+		Env:          env,
 		Remote:       false,
 	}
 	return merged, nil
