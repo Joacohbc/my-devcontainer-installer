@@ -104,7 +104,7 @@ func TestImageCreateFlagsComplete(t *testing.T) {
 func TestImageFlagCompletesImageNames(t *testing.T) {
 	seedImageDefs(t)
 
-	for _, cmd := range []*cobra.Command{newInitCommand(), newAgentCreateCommand()} {
+	for _, cmd := range []*cobra.Command{NewRootCommand("test"), newInitCommand(), newAgentCreateCommand()} {
 		fn, ok := cmd.GetFlagCompletionFunc(flagImage)
 		if !ok {
 			t.Fatalf("%s --image has no completion", cmd.Name())

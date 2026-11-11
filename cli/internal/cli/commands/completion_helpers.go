@@ -101,10 +101,9 @@ func completeCSV(toComplete string, allValues []string) []string {
 // imageNames lists the registered image definition names, optionally only those
 // of the given sources (build or remote).
 func imageNames(sources ...domain.ImageSource) []string {
-	return service.ImageService{Report: ui.Console{}}.Names(sources...)
+	return service.ImageService{}.Names(sources...)
 }
 
-// withPrefix keeps the items starting with prefix.
 func withPrefix(items []string, prefix string) []string {
 	var out []string
 	for _, item := range items {
