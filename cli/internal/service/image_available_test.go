@@ -202,3 +202,24 @@ func TestImageRunnableRefRejectsAnUnknownBareName(t *testing.T) {
 		t.Fatalf("tagged reference = %q, %v; want it unchanged", got, err)
 	}
 }
+
+// 'image build' resolves a definition by its directory, so the not-built hint
+// names the directory even when image.yml sets another name.
+func TestImageNotBuiltHintNamesTheDefinitionDirectory(t *testing.T) {
+	svc := newImageSvc(t)
+	dir := filepath.Join(svc.ImagesDir, "team")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, domain.ImageManifestFileName), []byte("name: team-api\nsource: build\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	defer useFakeDocker(&daemonRunner{local: map[string]bool{}})()
+
+	for _, image := range []string{"team", "devcontainer-cli-img/team-api:latest"} {
+		_, err := svc.RunnableRef(image)
+		if err == nil || !strings.Contains(err.Error(), "image build team' first") {
+			t.Errorf("RunnableRef(%q) error = %v, want the hint to name the directory 'team'", image, err)
+		}
+	}
+}

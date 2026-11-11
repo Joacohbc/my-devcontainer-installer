@@ -297,7 +297,7 @@ func (s ImageService) available(def domain.ImageDef) (string, error) {
 		return tag, nil
 	}
 	if !domain.LocalImageExists(tag, captureFunc()) {
-		return "", fmt.Errorf("image %q is not built; run 'devcontainer-cli image build %s' first", def.Name, def.Name)
+		return "", fmt.Errorf("image %q is not built; run 'devcontainer-cli image build %s' first", def.Key, def.Key)
 	}
 	return tag, nil
 }
