@@ -166,3 +166,19 @@ func TestUserImageDirFollowsGlobalConfigDir(t *testing.T) {
 		t.Errorf("UserImageDir(custom) = %q, want %q", got, want)
 	}
 }
+
+func TestImageDefEffectiveSource(t *testing.T) {
+	cases := []struct {
+		source domain.ImageSource
+		want   domain.ImageSource
+	}{
+		{"", domain.ImageSourceBuild},
+		{domain.ImageSourceBuild, domain.ImageSourceBuild},
+		{domain.ImageSourceRemote, domain.ImageSourceRemote},
+	}
+	for _, c := range cases {
+		if got := (domain.ImageDef{Source: c.source}).EffectiveSource(); got != c.want {
+			t.Errorf("EffectiveSource(%q) = %q, want %q", c.source, got, c.want)
+		}
+	}
+}

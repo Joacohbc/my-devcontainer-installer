@@ -198,11 +198,7 @@ func (s ImageService) Names(sources ...domain.ImageSource) []string {
 	}
 	names := make([]string, 0, len(defs))
 	for _, def := range defs {
-		source := def.Source
-		if source == "" {
-			source = domain.ImageSourceBuild
-		}
-		if len(sources) > 0 && !slices.Contains(sources, source) {
+		if len(sources) > 0 && !slices.Contains(sources, def.EffectiveSource()) {
 			continue
 		}
 		names = append(names, def.Name)
@@ -251,7 +247,7 @@ func (s ImageService) Build(name string) error {
 	if !ok {
 		return fmt.Errorf("image definition %q not found", name)
 	}
-	if def.Source == domain.ImageSourceRemote {
+	if def.EffectiveSource() == domain.ImageSourceRemote {
 		return fmt.Errorf("image %q has source=remote; run 'devcontainer-cli image pull %s' instead", name, name)
 	}
 
@@ -309,6 +305,9 @@ func (s ImageService) Pull(name string) error {
 	}
 	if !ok {
 		return fmt.Errorf("image definition %q not found", name)
+	}
+	if def.EffectiveSource() == domain.ImageSourceBuild {
+		return fmt.Errorf("image %q has source=build; run 'devcontainer-cli image build %s' instead", name, name)
 	}
 
 	targetRef := def.Ref
@@ -513,7 +512,7 @@ func (s ImageService) ensureParent(from, dir string) error {
 	if !domain.LocalImageExists(ref, captureFunc()) {
 		if isDef {
 			action := "build"
-			if parentDef.Source == domain.ImageSourceRemote {
+			if parentDef.EffectiveSource() == domain.ImageSourceRemote {
 				action = "pull"
 			}
 			return fmt.Errorf("base image %s is not available locally; run 'devcontainer-cli image %s %s' first", ref, action, from)

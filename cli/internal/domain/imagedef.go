@@ -38,6 +38,15 @@ type ImageDef struct {
 	Scripts []types.CustomScript   `json:"scripts,omitempty" yaml:"scripts,omitempty"`
 }
 
+// EffectiveSource is the definition's source, treating a manifest without one
+// as a build definition.
+func (d ImageDef) EffectiveSource() ImageSource {
+	if d.Source == "" {
+		return ImageSourceBuild
+	}
+	return d.Source
+}
+
 // ValidateImageName checks if the image name matches the allowed character set.
 func ValidateImageName(name string) error {
 	if !validImageNameRe.MatchString(name) {

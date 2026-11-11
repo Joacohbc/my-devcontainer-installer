@@ -193,10 +193,15 @@ func TestImageRemoveRefusesWhileAnImageDerivesFromIt(t *testing.T) {
 }
 
 func TestImageNamesFiltersBySourceWithoutDocker(t *testing.T) {
+	runner := &fakeRunner{}
+	docker.SetRunner(runner)
+	t.Cleanup(docker.ResetRunner)
+
 	dir := t.TempDir()
 	for _, def := range []domain.ImageDef{
 		{Name: "web", Source: domain.ImageSourceBuild},
 		{Name: "android", Source: domain.ImageSourceBuild},
+		{Name: "legacy"},
 		{Name: "team-base", Source: domain.ImageSourceRemote, Ref: "ghcr.io/acme/base:1"},
 	} {
 		if err := domain.SaveImageDef(def, dir); err != nil {
@@ -210,8 +215,8 @@ func TestImageNamesFiltersBySourceWithoutDocker(t *testing.T) {
 		sources []domain.ImageSource
 		want    []string
 	}{
-		{"all", nil, []string{"android", "team-base", "web"}},
-		{"build only", []domain.ImageSource{domain.ImageSourceBuild}, []string{"android", "web"}},
+		{"all", nil, []string{"android", "legacy", "team-base", "web"}},
+		{"build only", []domain.ImageSource{domain.ImageSourceBuild}, []string{"android", "legacy", "web"}},
 		{"remote only", []domain.ImageSource{domain.ImageSourceRemote}, []string{"team-base"}},
 	}
 	for _, c := range cases {
@@ -222,11 +227,46 @@ func TestImageNamesFiltersBySourceWithoutDocker(t *testing.T) {
 			}
 		})
 	}
+	if len(runner.calls) != 0 {
+		t.Errorf("Names must not call docker, got %v", runner.calls)
+	}
 }
 
-func TestImageNamesIsEmptyWithoutAnImagesDir(t *testing.T) {
-	svc := ImageService{Report: nopReporter{}, ImagesDir: filepath.Join(t.TempDir(), "missing")}
-	if got := svc.Names(); len(got) != 0 {
-		t.Errorf("Names() = %v, want none", got)
+func TestImageNamesIsEmptyWithoutAReadableImagesDir(t *testing.T) {
+	notADir := filepath.Join(t.TempDir(), "file")
+	if err := os.WriteFile(notADir, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for name, dir := range map[string]string{
+		"missing":    filepath.Join(t.TempDir(), "missing"),
+		"unreadable": notADir,
+	} {
+		t.Run(name, func(t *testing.T) {
+			if got := (ImageService{Report: nopReporter{}, ImagesDir: dir}).Names(); len(got) != 0 {
+				t.Errorf("Names() = %v, want none", got)
+			}
+		})
+	}
+}
+
+func TestImagePullRefusesBuildDefinitions(t *testing.T) {
+	for _, source := range []domain.ImageSource{domain.ImageSourceBuild, ""} {
+		t.Run(string(source)+"-source", func(t *testing.T) {
+			dir := t.TempDir()
+			if err := domain.SaveImageDef(domain.ImageDef{Name: "web", Source: source}, dir); err != nil {
+				t.Fatal(err)
+			}
+			runner := &fakeRunner{}
+			docker.SetRunner(runner)
+			t.Cleanup(docker.ResetRunner)
+
+			err := ImageService{Report: nopReporter{}, ImagesDir: dir}.Pull("web")
+			if err == nil || !strings.Contains(err.Error(), "devcontainer-cli image build web") {
+				t.Fatalf("expected a refusal naming 'devcontainer-cli image build web', got %v", err)
+			}
+			if call := runner.callContaining("pull"); call != nil {
+				t.Errorf("pull must not reach docker for a build definition, got %v", call)
+			}
+		})
 	}
 }
