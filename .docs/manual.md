@@ -378,7 +378,7 @@ devcontainer-cli config skill add mi-habilidad --ref owner/repo --label "Mi Habi
    devcontainer-cli config clean containers
    ```
 
-*También puede partir de una de sus definiciones de imagen con `--image` (excluyente con `--profile`). Una definición `build` debe construirse antes; una `remote` se descarga al ejecutarla:*
+*También puede partir de una de sus definiciones de imagen con `--image` (excluyente con `--profile`). Una definición `build` debe construirse antes; una `remote` se descarga y se verifica contra el contrato de imagen al ejecutarla. `--registry` solo aplica a `--profile`. Un contenedor `dc-<name>` existente solo se reutiliza si lo inició el mismo origen, de modo que `--profile nodejs` e `--image nodejs` no comparten contenedor:*
 ```bash
 devcontainer-cli image build android
 devcontainer-cli run --image android --no-interactive   # contenedor dc-android
@@ -539,10 +539,12 @@ devcontainer-cli agent forward reverse:5432
 **Comando**:
 ```bash
 devcontainer-cli agent run --profile python --name scratch
+# o, desde una definición de imagen propia:
+devcontainer-cli agent run --image android --name scratch
 ```
 
 **Comportamiento**:
-- Se descarga o utiliza la imagen del perfil indicado.
+- Se descarga o utiliza la imagen del perfil indicado. Con `--image`, una definición `build` debe estar construida (`devcontainer-cli image build <name>`) y una `remote` se descarga y se verifica contra el contrato de imagen. `--profile` e `--image` son excluyentes.
 - Se levanta un contenedor temporal aislado con un tiempo de vida efímero.
 - Al concluir la prueba, se invoca:
    ```bash
