@@ -191,3 +191,42 @@ func TestImageRemoveRefusesWhileAnImageDerivesFromIt(t *testing.T) {
 		t.Fatalf("expected a refusal naming the derived image, got %v", err)
 	}
 }
+
+func TestImageNamesFiltersBySourceWithoutDocker(t *testing.T) {
+	dir := t.TempDir()
+	for _, def := range []domain.ImageDef{
+		{Name: "web", Source: domain.ImageSourceBuild},
+		{Name: "android", Source: domain.ImageSourceBuild},
+		{Name: "team-base", Source: domain.ImageSourceRemote, Ref: "ghcr.io/acme/base:1"},
+	} {
+		if err := domain.SaveImageDef(def, dir); err != nil {
+			t.Fatalf("SaveImageDef(%s): %v", def.Name, err)
+		}
+	}
+	svc := ImageService{Report: nopReporter{}, ImagesDir: dir}
+
+	cases := []struct {
+		name    string
+		sources []domain.ImageSource
+		want    []string
+	}{
+		{"all", nil, []string{"android", "team-base", "web"}},
+		{"build only", []domain.ImageSource{domain.ImageSourceBuild}, []string{"android", "web"}},
+		{"remote only", []domain.ImageSource{domain.ImageSourceRemote}, []string{"team-base"}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := svc.Names(c.sources...)
+			if strings.Join(got, ",") != strings.Join(c.want, ",") {
+				t.Errorf("Names(%v) = %v, want %v", c.sources, got, c.want)
+			}
+		})
+	}
+}
+
+func TestImageNamesIsEmptyWithoutAnImagesDir(t *testing.T) {
+	svc := ImageService{Report: nopReporter{}, ImagesDir: filepath.Join(t.TempDir(), "missing")}
+	if got := svc.Names(); len(got) != 0 {
+		t.Errorf("Names() = %v, want none", got)
+	}
+}

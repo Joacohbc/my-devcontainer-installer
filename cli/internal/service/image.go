@@ -187,6 +187,30 @@ func (s ImageService) List() ([]ImageStatus, error) {
 	return statuses, nil
 }
 
+// Names lists the registered image definition names, sorted, reading only the
+// manifests on disk so shell completion never waits on the Docker daemon. With
+// sources it keeps only definitions of those sources (a manifest without one is
+// a build definition); an unreadable images directory yields no names.
+func (s ImageService) Names(sources ...domain.ImageSource) []string {
+	defs, err := domain.LoadImageDefs(s.getImagesDir())
+	if err != nil {
+		return nil
+	}
+	names := make([]string, 0, len(defs))
+	for _, def := range defs {
+		source := def.Source
+		if source == "" {
+			source = domain.ImageSourceBuild
+		}
+		if len(sources) > 0 && !slices.Contains(sources, source) {
+			continue
+		}
+		names = append(names, def.Name)
+	}
+	slices.Sort(names)
+	return names
+}
+
 // Info returns detailed status for a single named image.
 func (s ImageService) Info(name string) (*ImageStatus, error) {
 	def, ok, err := domain.ResolveImageDef(name, s.getImagesDir())
