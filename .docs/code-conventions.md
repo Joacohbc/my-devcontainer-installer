@@ -52,10 +52,11 @@ func runDown(cmd *cobra.Command, _ []string) error {
 
 ### Reglas Estrictas para Comandos
 1. **Delegación Total al Servicio**: `RunE` solo procesa argumentos, resuelve banderas de Cobra, instancia el servicio con `ui.Console{}` e invoca el método correspondiente.
-2. **Prohibición de Docker y Procesos**: Ningún comando bajo `internal/cli/commands` puede importar `internal/infra/docker` ni `os/exec`.
+2. **Prohibición de Docker y Procesos**: Ningún comando bajo `internal/cli/commands` puede importar `internal/infra/docker`, `internal/infra/git` ni `os/exec`. `TestCommandsDoNotImportProcessOrInfraAdapters` lo verifica.
 3. **Reutilización de Ayudantes de Banderas**: Utilizar siempre los ayudantes definidos en `flags.go` (`addYesFlag`, `addInteractiveFlag`, `addWorkspaceFlags`) para mantener descripciones y nombres de banderas unificados.
 4. **Soporte No Interactivo**: Nuevos subcomandos heredan o reciben `--no-interactive` como bandera persistente desde la raíz (no se duplica ni se admite `--non-interactive`). Ante `--no-interactive`, cualquier parámetro obligatorio no provisto debe retornar un error inmediato sin detenerse a consultar. En comandos que efectúan descubrimiento múltiple (como `config skill add <source>`), se exige el uso explícito de `--all` o `--pick <elementos>`.
 5. **Composición de Perfiles en `--profile`**: En modo `custom`, la bandera `--profile` acepta listas separadas por comas (`--profile a,b`) con autocompletado mediante `completeCSV`. En `mode=profiles` y en el comando `run`, debe aceptarse estrictamente un único perfil remoto, rechazando cualquier valor CSV con un error explícito y no interactivo.
+6. **Escritura de Definiciones Versionadas**: Los comandos nunca escriben ni borran perfiles, definiciones de imagen o habilidades de usuario por su cuenta; delegan en `service.ProfileStore`, `service.ImageService` o `service.ConfigService`, que preparan el repositorio de configuración antes de escribir y registran un commit Conventional por operación (D19).
 
 ### Tabla de Banderas y Atajos Canónicos
 

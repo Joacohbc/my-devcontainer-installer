@@ -186,3 +186,17 @@ El orden es estricto: `stage_workspace` determina el UID/GID de devuser; `stage_
   4. Estandarizar banderas plurales separadas por comas (`--services`, `--skills`, `--modules`, `--ports`, `--volumes`, `--forward-ports`), prohibiendo formas singulares redundantes.
   5. Eliminar banderas tri-state, unificando la negación booleana bajo `--x` / `--x=false` (reservando `--no-interactive`, `--no-tty` y `--no-up` como excepciones canónicas).
 - **Consecuencias**: Reducción drástica de superficie de comandos, contratos predecibles y consistentes para scripts y agentes, y eliminación total de ambigüedad en el autocompletado y documentación técnica.
+
+### D19: Repositorio de Configuración Único y Perfiles como Directorios
+- **Contexto**: Los perfiles de usuario podían guardarse como archivo plano `<id>.yml` o como directorio, y existía un directorio heredado `presets/`. No había historial de cambios ni una forma simple de reutilizar perfiles, imágenes y habilidades en otra máquina.
+- **Decisión**:
+  1. Todo perfil de usuario es un directorio `~/.config/devcontainer-cli/profiles/<id>/` con `profile.yml` y sus dependencias (scripts) al lado. Los archivos planos y `presets/` dejan de leerse; `profile list` advierte su presencia y el error de perfil desconocido indica cómo moverlos.
+  2. El directorio de configuración global (`domain.GlobalConfigDir()`) es un único repositorio git (`service.ConfigRepo`) que versiona juntos `profiles/`, `images/` y `skills/`.
+  3. El `.gitignore` gestionado es una lista de permitidos: solo `.gitignore`, `profiles/`, `images/` y `skills/` se versionan. `config.json`, `images.json`, `router_state.json` y `ssh/` (claves privadas) nunca entran al repositorio.
+  4. Cada operación de la CLI que modifica una definición (`profile create|copy|remove`, `image create|remove`, `config skill add|remove`) registra un único commit Conventional limitado a sus rutas (`git add -A -- <ruta>` y `git commit -- <ruta>`), de modo que los cambios manuales ajenos no se mezclan. Nunca se hace `push`.
+  5. Si el usuario no tiene identidad git configurada se usa una identidad de respaldo solo para ese commit; si la tiene, se respeta.
+  6. Si el directorio de configuración está dentro de otro repositorio (por ejemplo, `~/.config` versionado), se crea un repositorio propio anidado y el externo no recibe commits.
+  7. Un fallo de git es siempre una advertencia: la definición ya se escribió y la operación se considera exitosa.
+  8. `UserImageDir()` deriva de `GlobalConfigDir()` (y no de `os.UserConfigDir()`, que en macOS apunta a `~/Library/Application Support`), para que las imágenes vivan en el mismo repositorio.
+- **Consecuencias**: Cambio incompatible para quien tenga perfiles planos o `presets/` (deben moverse a `<id>/profile.yml`). A cambio, el kit completo de definiciones se puede clonar, comparar y revertir con git estándar.
+

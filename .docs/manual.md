@@ -301,6 +301,13 @@ devcontainer-cli access forward reverse:5432
    - **Scripts**: Ejecuta el script `setup-tools.sh` en la fase de construcción.
    - **Habilidades y Puertos**: Registra la habilidad `agent-browser` y publica el puerto `8080:80`.
 
+**Historial y reutilización**: `~/.config/devcontainer-cli/` es un repositorio git que versiona `profiles/`, `images/` y `skills/` (ver D19). Cada `profile create|copy|remove`, `image create|remove` y `config skill add|remove` deja un commit; los cambios hechos a mano se registran con git estándar:
+```bash
+git -C ~/.config/devcontainer-cli log --oneline
+git -C ~/.config/devcontainer-cli add profiles/my-ai-tools && git -C ~/.config/devcontainer-cli commit -m "feat(profile): tune my-ai-tools"
+```
+Para llevar el kit a otra máquina, agregue un remoto y haga `push`/`pull` manualmente; la CLI nunca publica nada por su cuenta. `config.json`, `images.json`, `router_state.json` y `ssh/` quedan siempre fuera del repositorio.
+
 ### Caso 1.11: Descubrimiento e Incorporación de Habilidades de Agente (`config skill add <source>`)
 
 **Escenario**: Desea inspeccionar un repositorio de habilidades de agente (por ejemplo `anthropics/skills` o una URL Git) e incorporar habilidades seleccionadas en su catálogo de usuario (`~/.config/devcontainer-cli/skills/`) sin declarar manifiestos manualmente.
