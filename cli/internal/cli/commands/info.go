@@ -14,18 +14,18 @@ func newInfoCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "info",
 		Short: "Show detailed info for the project's containers",
-		Long: `devcontainer-cli info — print a detailed report for each container in the active
+		Long: `devcontainer-cli inspect info — print a detailed report for each container in the active
 workspace: name, image, status, created/started timestamps, published ports,
 mounted volumes and network IPs (with aliases).
 
-It's the deep-dive companion to 'status' (which shows a compact table). With no
+It's the deep-dive companion to 'inspect status' (which shows a compact table). With no
 flags it reports every container of the current project; --container narrows it
 to a single container.`,
 		Example: `  # Detailed info for the whole project
-  devcontainer-cli info
+  devcontainer-cli inspect info
 
   # Just one container
-  devcontainer-cli info --container myproject-postgres`,
+  devcontainer-cli inspect info --container myproject-postgres`,
 		SilenceUsage: true,
 		RunE:         runInfo,
 	}

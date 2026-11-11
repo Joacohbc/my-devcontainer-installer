@@ -1,0 +1,9 @@
+name: py-tools
+label: "Python toolbox shared by several projects"
+source: build
+modules:
+  - id: python
+  - id: sqlite
+scripts:
+  - file: install-tools.sh
+    when: build

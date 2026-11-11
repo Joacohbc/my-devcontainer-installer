@@ -568,6 +568,70 @@ func TestEntrypointServicesRunAsDevuser(t *testing.T) {
 	}
 }
 
+// TestEntrypointScriptEnvExportsTheContract runs the real script_env helper and
+// proves the profile-script contract survives `su -`: a start or service script
+// gets the project dir, the workspace name and its phase as plain variables, even
+// when the path holds characters a shell would split on.
+func TestEntrypointScriptEnvExportsTheContract(t *testing.T) {
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("bash not available")
+	}
+	body, err := os.ReadFile(embeddedScript)
+	if err != nil {
+		t.Fatalf("reading %s: %v", embeddedScript, err)
+	}
+	fn := extractShellFunc(t, string(body), "script_env")
+
+	projectDir := filepath.Join(t.TempDir(), "my proj")
+	if err := os.Mkdir(projectDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, phase := range []string{"start", "service"} {
+		t.Run(phase, func(t *testing.T) {
+			out, err := exec.Command("bash", "-c", fn+`
+WORKSPACE_DIR="$2"
+eval "$(script_env "$1")"
+bash -c 'printf "%s|%s|%s" "$DC_WORKSPACE_DIR" "$DC_WORKSPACE" "$DC_SCRIPT_PHASE"'`, "bash", phase, projectDir).CombinedOutput()
+			if err != nil {
+				t.Fatalf("script_env %s: %v\n%s", phase, err, out)
+			}
+			want := projectDir + "|my proj|" + phase
+			if string(out) != want {
+				t.Errorf("exported %q, want %q (the variables must be exported to child shells)", out, want)
+			}
+		})
+	}
+
+	// The stages glue the helper's output straight onto their su block, so it
+	// must end its own statement: a block reformatted to start on the same line
+	// would otherwise fuse into DC_SCRIPT_PHASE=startstart_dir=... and silently
+	// run nothing.
+	out, err := exec.Command("bash", "-c", fn+`
+WORKSPACE_DIR=/workspaces/app
+bash -c "$(script_env start)"'echo "$DC_SCRIPT_PHASE"'`).CombinedOutput()
+	if err != nil || string(out) != "start\n" {
+		t.Errorf("script_env output glued to a command ran %q (err %v), want \"start\"", out, err)
+	}
+
+	// No project under /workspaces leaves WORKSPACE_DIR on the legacy path,
+	// which may not exist. The contract then hands out empty values, so a
+	// script's own fallback (documented in the skill) kicks in.
+	out, err = exec.Command("bash", "-c", fn+`
+WORKSPACE_DIR=/nonexistent-legacy-mount
+eval "$(script_env start)"
+printf "%s|%s|%s" "$DC_WORKSPACE_DIR" "$DC_WORKSPACE" "$DC_SCRIPT_PHASE"`).CombinedOutput()
+	if err != nil || string(out) != "||start" {
+		t.Errorf("with no mounted project script_env exported %q (err %v), want empty dir and name", out, err)
+	}
+
+	for stage, phase := range map[string]string{"stage_post_scripts": "start", "stage_services": "service"} {
+		stageFunc := extractShellFunc(t, string(body), stage)
+		if !strings.Contains(stageFunc, `"$(script_env `+phase+`)"`) {
+			t.Errorf("%s must prefix its su block with script_env %s, or `su -` drops the contract", stage, phase)
+		}
+	}
+}
+
 // setup-help.sh must write the quick reference to ~/help and cover both the
 // micro editor and zellij, so every container ships an accurate cheat-sheet.
 func TestSetupHelpWritesQuickReference(t *testing.T) {
@@ -969,6 +1033,10 @@ func TestEntrypointStageOrder(t *testing.T) {
 			"~/.claude must already be the volume symlink, or mkdir -p makes it a real directory"},
 		{"stage_post_scripts", "stage_services",
 			"installer scripts run before background services so dependencies are installed first"},
+		{"stage_workspace", "stage_post_scripts",
+			"script_env reads WORKSPACE_DIR to hand start scripts DC_WORKSPACE_DIR"},
+		{"stage_workspace", "stage_services",
+			"script_env reads WORKSPACE_DIR to hand service scripts DC_WORKSPACE_DIR"},
 	} {
 		i, iOK := at[edge.before]
 		j, jOK := at[edge.after]

@@ -12,17 +12,17 @@ func newConfigExportCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "export",
 		Short: "Export the current project's config as YAML",
-		Long: `devcontainer-cli config export — render the current project's
+		Long: `devcontainer-cli workspace export — render the current project's
 devcontainer.config.json as human-friendly YAML.
 
 Useful for reviewing the config, checking it into version control, or sharing a
-reproducible setup that someone else can recreate with 'config import'. Writes to
+reproducible setup that someone else can recreate with 'workspace import'. Writes to
 stdout by default, or to a file with -o.`,
 		Example: `  # Print the config as YAML
-  devcontainer-cli config export
+  devcontainer-cli workspace export
 
   # Save it to a file
-  devcontainer-cli config export -o devcontainer.yml`,
+  devcontainer-cli workspace export -o devcontainer.yml`,
 		SilenceUsage: true,
 		RunE:         runConfigExport,
 	}

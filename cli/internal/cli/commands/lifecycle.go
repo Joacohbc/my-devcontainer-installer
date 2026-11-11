@@ -10,19 +10,19 @@ func newRestartCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "restart",
 		Short: "Restart the project's already-created containers",
-		Long: `devcontainer-cli restart — restart the existing containers of the current
+		Long: `devcontainer-cli workspace restart — restart the existing containers of the current
 project without recreating them.
 
 Wraps 'docker compose -f .dc_<workspace>/build/docker-compose.yml restart'. The
-containers must already exist (run 'up' first); this only stops and starts them
+containers must already exist (run 'workspace up' first); this only stops and starts them
 again, keeping the same containers, volumes and network. Configuration changes
-in the compose file are NOT applied — use 'up' for that. Pass --container to
+in the compose file are NOT applied — use 'workspace up' for that. Pass --container to
 restart a single container instead of the whole project.`,
 		Example: `  # Restart the whole project
-  devcontainer-cli restart
+  devcontainer-cli workspace restart
 
   # Restart just one container
-  devcontainer-cli restart --container myproject-postgres`,
+  devcontainer-cli workspace restart --container myproject-postgres`,
 		SilenceUsage: true,
 		RunE:         runRestart,
 	}
@@ -53,18 +53,18 @@ func newStartCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "start",
 		Short: "Start the project's stopped containers",
-		Long: `devcontainer-cli start — start the existing, stopped containers of the current
-project (they must already have been created with 'up').
+		Long: `devcontainer-cli workspace start — start the existing, stopped containers of the current
+project (they must already have been created with 'workspace up').
 
 Wraps 'docker compose -f .dc_<workspace>/build/docker-compose.yml start'. Unlike
-'up' it never creates or recreates containers — it only resumes ones that are
+'workspace up' it never creates or recreates containers — it only resumes ones that are
 stopped. Pass --container to start a single container instead of the whole
 project.`,
 		Example: `  # Start the whole project
-  devcontainer-cli start
+  devcontainer-cli workspace start
 
   # Start just one container
-  devcontainer-cli start --container myproject-postgres`,
+  devcontainer-cli workspace start --container myproject-postgres`,
 		SilenceUsage: true,
 		RunE:         runStart,
 	}
@@ -95,18 +95,18 @@ func newStopCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "stop",
 		Short: "Stop the project's running containers (without removing them)",
-		Long: `devcontainer-cli stop — stop the running containers of the current project,
+		Long: `devcontainer-cli workspace stop — stop the running containers of the current project,
 leaving the containers, volumes and network in place so they can be resumed with
-'start'.
+'workspace start'.
 
 Wraps 'docker compose -f .dc_<workspace>/build/docker-compose.yml stop'. Use
-'down' instead when you want to remove the containers, not just stop them. Pass
+'workspace down' instead when you want to remove the containers, not just stop them. Pass
 --container to stop a single container instead of the whole project.`,
 		Example: `  # Stop the whole project
-  devcontainer-cli stop
+  devcontainer-cli workspace stop
 
   # Stop just one container
-  devcontainer-cli stop --container myproject-postgres`,
+  devcontainer-cli workspace stop --container myproject-postgres`,
 		SilenceUsage: true,
 		RunE:         runStop,
 	}

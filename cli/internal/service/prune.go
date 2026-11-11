@@ -625,7 +625,7 @@ func (s PruneService) collectCleanTargets(opts CleanOptions) cleanTargets {
 	targets.images, targets.anyImages = s.SelectImages(opts.All)
 	if existsWs, existsCnt, existsRemoteCnt, err := sshSvc.LiveTargetPredicates(); err == nil {
 		// No per-item picker here, so unverified --via blocks are left out —
-		// run 'clean ssh' directly to review/remove those.
+		// run 'config clean ssh' directly to review/remove those.
 		targets.ssh, _, _, _ = sshSvc.PruneManagedBlocks(existsWs, existsCnt, existsRemoteCnt, true)
 	}
 	targets.networks, targets.anyNetworks = s.SelectNetworks(opts.All)
@@ -711,7 +711,7 @@ func (s PruneService) removeCleanTargets(t cleanTargets) (removedTotal, failedTo
 	return removedTotal, failedTotal
 }
 
-// RunClean drives bare devcontainer-cli clean.
+// RunClean drives bare devcontainer-cli config clean.
 func (s PruneService) RunClean(opts CleanOptions) error {
 	if opts.All || opts.Yes || !opts.Interactive || s.Prompt == nil {
 		return s.CleanAll(opts)

@@ -15,7 +15,7 @@ func newShellCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "shell [flags] [-- command args...]",
 		Short: "Open a shell (or run a command) in the devcontainer",
-		Long: `devcontainer-cli shell — open an interactive shell in the running devcontainer,
+		Long: `devcontainer-cli access shell — open an interactive shell in the running devcontainer,
 or run a one-off command in it. A convenience wrapper over 'docker exec -it'.
 
 With no command after '--' it opens a login shell. Anything after '--' is run
@@ -30,13 +30,13 @@ Pass -T when piping a command's output to a file so the stream isn't mangled.
 An explicit command is exec'd directly, NOT through a shell. That is enough for
 most of them: the image declares its toolchain PATH as environment (uv, node,
 pnpm, cargo, bun, go, ~/.local/bin), which a bare 'docker exec' inherits. Wrap a
-command in a login bash — 'shell -- bash -lc "cd /srv && ./build.sh | tee log"' —
+command in a login bash — 'access shell -- bash -lc "cd /srv && ./build.sh | tee log"' —
 when it needs pipes, '&&', globs or 'cd', or the container's pip/npm shell
 indirections. Use bash, not zsh: a non-interactive 'zsh -lc' skips ~/.zshrc.
 
 The exception is an image built before that declaration existed, which carries
 the PATH only in devuser's rc files; there a login bash is also how a toolchain
-is found, and 'update --rebuild' fixes it for good.
+is found, and 'image update --rebuild' fixes it for good.
 
 Nothing in these images declares a WORKDIR, so a command lands in '/' and an
 interactive shell in devuser's home — never in the project. Pass -w to run in
@@ -44,29 +44,29 @@ the project's workspace mount instead, which is what a build or a test command
 almost always wants and what saves wrapping one in a login bash just to 'cd'.
 
 Pass --via USER@HOST (with --container) to reach a container on a different
-Docker host through an existing SSH connection to it — unlike 'ssh --via' this
+Docker host through an existing SSH connection to it — unlike 'access ssh --via' this
 needs nothing installed or configured in the container itself, since it rides
 entirely on the 'docker exec' channel (no ssh-into-container step).`,
 		Example: `  # Interactive shell as devuser
-  devcontainer-cli shell
+  devcontainer-cli access shell
 
   # Run a one-off command (in '/', the container default)
-  devcontainer-cli shell -- go version
+  devcontainer-cli access shell -- go version
 
   # Run it in the project instead
-  devcontainer-cli shell -w --user devuser -- go test ./...
+  devcontainer-cli access shell -w --user devuser -- go test ./...
 
   # The image PATH is inherited, so a plain command needs no login shell
-  devcontainer-cli shell --user devuser -- uv pip install requests
+  devcontainer-cli access shell --user devuser -- uv pip install requests
 
   # Shell syntax still needs one — but -w already did the cd
-  devcontainer-cli shell -w --user devuser -- bash -lc 'pnpm install && pnpm build'
+  devcontainer-cli access shell -w --user devuser -- bash -lc 'pnpm install && pnpm build'
 
   # Pipe a DB dump out without a TTY
-  devcontainer-cli shell -c <ws>-postgres -T -- pg_dump -U devuser devdb > dump.sql
+  devcontainer-cli access shell -c <ws>-postgres -T -- pg_dump -U devuser devdb > dump.sql
 
   # Shell into a container on a different Docker host
-  devcontainer-cli shell --via me@docker-host -c dc-ssh`,
+  devcontainer-cli access shell --via me@docker-host -c dc-base`,
 		RunE: runShell,
 	}
 	addShellFlags(cmd)

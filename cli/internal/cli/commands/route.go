@@ -17,7 +17,7 @@ func newRouteCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "route",
 		Short: "Manage local domain routing for devcontainers via global Caddy proxy",
-		Long: `devcontainer-cli route — dynamically map local subdomains (<name>.devcli.localhost)
+		Long: `devcontainer-cli access route — dynamically map local subdomains (<name>.devcli.localhost)
 directly to devcontainer services over Docker's internal network using a global Caddy router.
 
 Subcommands:
@@ -27,16 +27,16 @@ Subcommands:
   route status           Show status of the global Caddy router container
   route stop             Stop and remove the global Caddy router container`,
 		Example: `  # Route http://myproject-3000.devcli.localhost -> container:3000
-  devcontainer-cli route add 3000
+  devcontainer-cli access route add 3000
 
   # Route custom subdomain http://api.devcli.localhost -> container:8000
-  devcontainer-cli route add 8000 --domain api
+  devcontainer-cli access route add 8000 --domain api
 
   # List active routes
-  devcontainer-cli route ls
+  devcontainer-cli access route ls
 
   # Check router status
-  devcontainer-cli route status`,
+  devcontainer-cli access route status`,
 		SilenceUsage: true,
 	}
 
@@ -52,15 +52,15 @@ func newRouteAddCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "add <port>",
 		Short: "Route a domain to a container port in foreground",
-		Long: `devcontainer-cli route add — start routing a local domain to a port inside the
+		Long: `devcontainer-cli access route add — start routing a local domain to a port inside the
 running devcontainer. The route stays active in the foreground and is cleanly
 unregistered upon pressing Ctrl+C.
 
 If --domain is omitted, it defaults to <workspace>-<port>.devcli.localhost.
 If a short name is passed (e.g. --domain api), it becomes api.devcli.localhost.`,
-		Example: `  devcontainer-cli route add 3000
-  devcontainer-cli route add 8000 --domain api
-  devcontainer-cli route add 5173 --domain frontend.devcli.localhost`,
+		Example: `  devcontainer-cli access route add 3000
+  devcontainer-cli access route add 8000 --domain api
+  devcontainer-cli access route add 5173 --domain frontend.devcli.localhost`,
 		Args:         cobra.ExactArgs(1),
 		SilenceUsage: true,
 		RunE:         runRouteAdd,
@@ -111,8 +111,8 @@ func newRouteListCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:          "ls",
 		Short:        "List active domain routes",
-		Long:         "devcontainer-cli route ls — query the global Caddy router for all active domain routes.",
-		Example:      "  devcontainer-cli route ls",
+		Long:         "devcontainer-cli access route ls — query the global Caddy router for all active domain routes.",
+		Example:      "  devcontainer-cli access route ls",
 		Args:         cobra.NoArgs,
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -143,8 +143,8 @@ func newRouteRemoveCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:               "rm <id-or-domain>",
 		Short:             "Remove a domain route from the router",
-		Long:              "devcontainer-cli route rm — delete an active route by its Route ID or domain name.",
-		Example:           "  devcontainer-cli route rm devcli_myws_1a2b3c4d\n  devcontainer-cli route rm api.devcli.localhost",
+		Long:              "devcontainer-cli access route rm — delete an active route by its Route ID or domain name.",
+		Example:           "  devcontainer-cli access route rm devcli_myws_1a2b3c4d\n  devcontainer-cli access route rm api.devcli.localhost",
 		Args:              cobra.ExactArgs(1),
 		SilenceUsage:      true,
 		ValidArgsFunction: completeActiveRouteArgs,
@@ -186,8 +186,8 @@ func newRouteStatusCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:          "status",
 		Short:        "Show status of the global Caddy router",
-		Long:         "devcontainer-cli route status — inspect the health, ports, and connected networks of the router.",
-		Example:      "  devcontainer-cli route status",
+		Long:         "devcontainer-cli access route status — inspect the health, ports, and connected networks of the router.",
+		Example:      "  devcontainer-cli access route status",
 		Args:         cobra.NoArgs,
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -219,8 +219,8 @@ func newRouteStopCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:          "stop",
 		Short:        "Stop and remove the global Caddy router container",
-		Long:         "devcontainer-cli route stop — stop and remove the devcli-router container.",
-		Example:      "  devcontainer-cli route stop",
+		Long:         "devcontainer-cli access route stop — stop and remove the devcli-router container.",
+		Example:      "  devcontainer-cli access route stop",
 		Args:         cobra.NoArgs,
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {

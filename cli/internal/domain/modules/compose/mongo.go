@@ -47,7 +47,7 @@ var MongoService = &ServiceSpec{
 				"    mongosh \"mongodb://"+user+":"+password+"@mongo:27017/?authSource=admin\"   # needs the mongo-client module",
 				"",
 				"Its data lives in the `mongo_data` volume, so it survives a restart but is",
-				"deleted by `devcontainer-cli down -v` and `destroy`.",
+				"deleted by `devcontainer-cli workspace down -v` and `workspace destroy`.",
 			),
 		}
 	},

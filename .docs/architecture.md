@@ -61,7 +61,7 @@ La implementación única de terminal es `ui.Console{}` (`internal/cli/ui`). En 
 `PATH` y las variables de entorno pertenecen al entorno del proceso, no a las configuraciones de la shell. Un módulo declara su entorno mediante `dockerfile.ModuleSpec.ProvidesEnv func(opts) ContainerEnv`.
 
 El generador compila este modelo de datos a múltiples destinos:
-1. Directiva `ENV` en el `Dockerfile`: alcanza a todos los procesos sin necesidad de invocar una shell (ej. `devcontainer-cli shell -- uv pip install x`).
+1. Directiva `ENV` en el `Dockerfile`: alcanza a todos los procesos sin necesidad de invocar una shell (ej. `devcontainer-cli access shell -- uv pip install x`).
 2. Script `~/.dc-env.sh`: exporta variables para shells interactivas y sesiones SSH no interactivas (`.zshenv`).
 
 ### Aislamiento de Workspace por Repositorio
@@ -249,3 +249,8 @@ El orden es estricto: `stage_workspace` determina el UID/GID de devuser; `stage_
 - **Contexto**: El asistente en modo `profiles` solo listaba perfiles con `Remote: true`, y `base` quedaba fuera aunque CI ya publica `devcontainer-base:latest` desde ese perfil.
 - **Decisión**: `base` lleva `Remote: true` y está en `types.RemoteVariants`, por lo que es la opción sin lenguaje del selector. No se agrega a las matrices `build-single`/`build-combo`: lo construye `build-base-cache`, y duplicarlo compilaría la misma imagen dos veces. `TestRemoteVariantsAreBuiltByCI` verifica el contrato.
 - **Consecuencias**: Si `devcontainer-base` dejara de ser el perfil `base`, el selector ofrecería una imagen distinta de la esperada.
+
+### D25: Contrato de Entorno para Scripts de Perfil
+- **Contexto**: Los scripts `start` y `service` se ejecutan con `su - devuser`, que vacía el entorno, por lo que no tenían forma de conocer la ruta del proyecto. Los autores de perfiles la adivinaban (`${WORKSPACE:-/workspaces}`) y escribían en `/workspaces`, que pertenece a root; si además declaraban el script como `build`, la construcción fallaba en su propia capa con `Permission denied`, sin indicar la causa.
+- **Decisión**: El entrypoint exporta `DC_WORKSPACE_DIR`, `DC_WORKSPACE` y `DC_SCRIPT_PHASE` a los scripts `start` y `service` mediante `script_env`; los scripts `build` reciben solo `DC_SCRIPT_PHASE=build`. El prefijo `DC_` es el mismo de `~/.dc-env.sh`. `domain.LintCustomScript` advierte, sin bloquear, cuando un script `build` referencia el proyecto. Los ejemplos de la habilidad `devcontainer-cli` (`skills/devcontainer-cli/examples/`) se cargan y validan en `TestSkillExampleProfilesAreValid` y `TestSkillExampleImagesAreValid`.
+- **Consecuencias**: Las variables `DC_*` son API pública de los perfiles de usuario y no deben renombrarse. Las imágenes construidas antes de este cambio no las exportan, por lo que los scripts deben buscar el proyecto por su cuenta cuando `DC_WORKSPACE_DIR` está vacío (patrón documentado en la habilidad). La advertencia puede dar falsos positivos (una ruta dentro de una cadena), por eso no es un error. Como cambian el `entrypoint.sh` y la línea `RUN` de los scripts `build`, los proyectos `custom` existentes aparecen como construcción desactualizada hasta reconstruirlos (`workspace up --build` o `image update --rebuild`).

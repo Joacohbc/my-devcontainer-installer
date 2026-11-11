@@ -1,0 +1,7 @@
+id: build-tool
+label: "Python + ruff baked into the image"
+modules:
+  - python
+scripts:
+  - file: install-ruff.sh
+    when: build

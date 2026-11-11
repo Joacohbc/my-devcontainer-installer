@@ -1,0 +1,7 @@
+name: py-tools-web
+label: "py-tools plus Node for the frontend"
+source: build
+from: py-tools
+modules:
+  - id: nodejs
+  - id: pnpm

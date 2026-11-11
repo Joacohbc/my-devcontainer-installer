@@ -17,7 +17,7 @@ func newStatusCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "status",
 		Short: "Show a status table for the project's containers",
-		Long: `devcontainer-cli status — print a compact table of the current project's
+		Long: `devcontainer-cli inspect status — print a compact table of the current project's
 containers with their service, name, state, published ports and image (similar
 to 'docker compose ps'). Services that exist in the compose file but have no
 container yet are shown as "not created".
@@ -25,10 +25,10 @@ container yet are shown as "not created".
 For an exhaustive per-container report use 'info' instead. --container narrows to
 one container; --all lists every managed container across all workspaces.`,
 		Example: `  # Status of the current project
-  devcontainer-cli status
+  devcontainer-cli inspect status
 
   # Every managed container on the machine
-  devcontainer-cli status --all`,
+  devcontainer-cli inspect status --all`,
 		SilenceUsage: true,
 		RunE:         runStatus,
 	}

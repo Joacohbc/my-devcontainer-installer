@@ -14,7 +14,7 @@ func newCopyCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "copy [src] [dest]",
 		Short: "Copy files or directories between the host and the container",
-		Long: `devcontainer-cli copy — copy a file or directory between the host and the
+		Long: `devcontainer-cli access copy — copy a file or directory between the host and the
 running devcontainer (a friendlier 'docker cp' that resolves the container for
 you).
 
@@ -28,16 +28,16 @@ With --asset, instead of a local source it copies a built-in script asset (e.g.
 an AI CLI installer) into the container's devuser home, left owned by devuser and
 executable; the single optional positional arg then overrides the destination.`,
 		Example: `  # Host -> container
-  devcontainer-cli copy ./app.go :/home/devuser/app.go
+  devcontainer-cli access copy ./app.go :/home/devuser/app.go
 
   # Container -> host
-  devcontainer-cli copy :/home/devuser/out.log ./out.log
+  devcontainer-cli access copy :/home/devuser/out.log ./out.log
 
   # ':' is optional when the destination is the container
-  devcontainer-cli copy ./app.go /home/devuser/app.go
+  devcontainer-cli access copy ./app.go /home/devuser/app.go
 
   # Drop a built-in installer script into the container
-  devcontainer-cli copy --asset claude`,
+  devcontainer-cli access copy --asset claude`,
 		Args:              copyArgs,
 		SilenceUsage:      true,
 		ValidArgsFunction: runCopyCompletion,

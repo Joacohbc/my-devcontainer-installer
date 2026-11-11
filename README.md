@@ -40,31 +40,17 @@ npx skills add Joacohbc/my-devcontainer-installer@devcontainer-cli -g
 
 **Sin `npx` (descarga directa vía `curl`):**
 
-- **Global (en `~/` para todos sus proyectos):**
-  ```bash
-  # Antigravity / OpenCode / agentes compatibles (~/.agents/skills)
-  mkdir -p ~/.agents/skills/devcontainer-cli && \
-  curl -fsSL https://raw.githubusercontent.com/Joacohbc/my-devcontainer-installer/main/skills/devcontainer-cli/SKILL.md \
-    -o ~/.agents/skills/devcontainer-cli/SKILL.md
+La habilidad es una carpeta (`SKILL.md` más `references/` y `examples/`), así que se descarga completa desde el tarball del repositorio. Defina `DEST` con la ruta de su agente y ejecute:
 
-  # Claude Code (~/.claude/skills)
-  mkdir -p ~/.claude/skills/devcontainer-cli && \
-  curl -fsSL https://raw.githubusercontent.com/Joacohbc/my-devcontainer-installer/main/skills/devcontainer-cli/SKILL.md \
-    -o ~/.claude/skills/devcontainer-cli/SKILL.md
-  ```
-
-- **Local en el proyecto actual (en `./`):**
-  ```bash
-  # En el repositorio actual (.agents/skills)
-  mkdir -p .agents/skills/devcontainer-cli && \
-  curl -fsSL https://raw.githubusercontent.com/Joacohbc/my-devcontainer-installer/main/skills/devcontainer-cli/SKILL.md \
-    -o .agents/skills/devcontainer-cli/SKILL.md
-
-  # En el repositorio actual (.claude/skills)
-  mkdir -p .claude/skills/devcontainer-cli && \
-  curl -fsSL https://raw.githubusercontent.com/Joacohbc/my-devcontainer-installer/main/skills/devcontainer-cli/SKILL.md \
-    -o .claude/skills/devcontainer-cli/SKILL.md
-  ```
+```bash
+# Global: ~/.agents/skills/devcontainer-cli (Antigravity, OpenCode y compatibles)
+#         ~/.claude/skills/devcontainer-cli (Claude Code)
+# Local:  .agents/skills/devcontainer-cli o .claude/skills/devcontainer-cli
+DEST=~/.claude/skills/devcontainer-cli
+mkdir -p "$DEST" && \
+curl -fsSL https://codeload.github.com/Joacohbc/my-devcontainer-installer/tar.gz/main | \
+  tar -xz -C "$DEST" --strip-components=3 my-devcontainer-installer-main/skills/devcontainer-cli
+```
 *(También puede copiar directamente la carpeta local `skills/devcontainer-cli` a cualquiera de estas rutas).*
 
 ### 3. Actualización y Desinstalación
@@ -75,6 +61,8 @@ devcontainer-cli config upgrade-cli
 # Desinstalar la CLI por completo
 curl -fsSL https://raw.githubusercontent.com/Joacohbc/my-devcontainer-installer/main/cli/uninstall.sh | sh
 ```
+
+Para actualizar la habilidad `devcontainer-cli` instalada con `curl`, borre su carpeta (`rm -rf "$DEST"`) y repita la descarga: extraer sobre la carpeta existente conserva archivos que ya no existen en el repositorio. Para desinstalarla, basta con borrar la carpeta. Con `npx skills`, use los comandos de actualización y eliminación de esa herramienta.
 
 ---
 
@@ -300,7 +288,7 @@ Puede definir sus propios alias globales que se propagan a **todos** los contene
 devcontainer-cli config alias                    # Listar alias configurados
 devcontainer-cli config alias set ll "ls -la"    # Crear o actualizar un alias
 devcontainer-cli config alias unset ll           # Eliminar un alias
-devcontainer-cli config alias sync               # Sincronizar hacia el volumen compartido
+devcontainer-cli config shared sync alias.sh    # Sincronizar hacia el volumen compartido
 ```
 
 ### 3. Conectar Otros Contenedores a la Red (`access network`)

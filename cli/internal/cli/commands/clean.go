@@ -9,7 +9,7 @@ func newCleanCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "clean",
 		Short: "Clean up CLI-managed resources and stale configuration entries",
-		Long: `devcontainer-cli clean — unified cleanup command for Docker resources and configuration entries.
+		Long: `devcontainer-cli config clean — unified cleanup command for Docker resources and configuration entries.
 
 Run with no subcommand to interactively select cleanup actions or pass --include-active / --yes
 to sweep across all categories at once.
@@ -23,15 +23,15 @@ Subcommands:
   clean volumes      Remove CLI-managed Docker volumes (--shared includes shared tool config).
   clean all          Sweep every category (catalog, containers, images, ssh, networks, volumes).`,
 		Example: `  # Interactive clean picker
-  devcontainer-cli clean
+  devcontainer-cli config clean
 
   # Sweep all categories without prompting
-  devcontainer-cli clean --include-active --yes
+  devcontainer-cli config clean --include-active --yes
 
   # Clean specific resource categories
-  devcontainer-cli clean containers
-  devcontainer-cli clean images
-  devcontainer-cli clean ssh`,
+  devcontainer-cli config clean containers
+  devcontainer-cli config clean images
+  devcontainer-cli config clean ssh`,
 		SilenceUsage: true,
 		RunE:         runCleanRoot,
 	}
@@ -65,7 +65,7 @@ func newCleanCatalogCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "catalog",
 		Short: "Prune entries in images.json whose project directory no longer exists",
-		Long: `devcontainer-cli clean catalog — prune stale registry entries in ~/.config/devcontainer-cli/images.json
+		Long: `devcontainer-cli config clean catalog — prune stale registry entries in ~/.config/devcontainer-cli/images.json
 where the referenced project directory no longer exists on disk.`,
 		SilenceUsage: true,
 		RunE:         runCleanCatalog,
@@ -91,18 +91,18 @@ func newCleanContainersCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "containers [name...]",
 		Short: "Remove CLI-managed containers (by name, non-running, or --include-active)",
-		Long: `devcontainer-cli clean containers — remove containers created by this CLI, identified by the managed label.
+		Long: `devcontainer-cli config clean containers — remove containers created by this CLI, identified by the managed label.
 
 Give one or more container names to remove exactly those (names tab-complete managed containers).
 With no names it removes managed containers that are NOT running, or — with --include-active — every managed container regardless of state.`,
 		Example: `  # Remove stopped managed containers
-  devcontainer-cli clean containers
+  devcontainer-cli config clean containers
 
   # Remove specific containers by name
-  devcontainer-cli clean containers myproject-postgres myproject-redis
+  devcontainer-cli config clean containers myproject-postgres myproject-redis
 
   # Remove every managed container, no prompt
-  devcontainer-cli clean containers --include-active --yes`,
+  devcontainer-cli config clean containers --include-active --yes`,
 		SilenceUsage:      true,
 		RunE:              runCleanContainers,
 		ValidArgsFunction: completeManagedContainerArgs,
@@ -127,7 +127,7 @@ func newCleanImagesCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "images [ref...]",
 		Short: "Remove CLI-managed images (by reference, unused, or --include-active)",
-		Long: `devcontainer-cli clean images — remove images created by this CLI, identified by the managed label.
+		Long: `devcontainer-cli config clean images — remove images created by this CLI, identified by the managed label.
 
 Give one or more image references to remove exactly those (refs tab-complete managed images).
 With no refs it removes managed project images that no container and no
@@ -139,13 +139,13 @@ an interactive run asks separately before removing the unused ones, and --yes
 alone never removes them. Name one explicitly to remove it. Untagged images left
 by a rebuild are removed by ID.`,
 		Example: `  # Remove unused managed images
-  devcontainer-cli clean images
+  devcontainer-cli config clean images
 
   # Remove a specific image
-  devcontainer-cli clean images devcontainer-cli/nodejs-ab12cd34:latest
+  devcontainer-cli config clean images devcontainer-cli/nodejs-ab12cd34:latest
 
   # Remove every managed image, no prompt
-  devcontainer-cli clean images --include-active --yes`,
+  devcontainer-cli config clean images --include-active --yes`,
 		SilenceUsage:      true,
 		RunE:              runCleanImages,
 		ValidArgsFunction: completeManagedImageArgs,
@@ -170,9 +170,9 @@ func newCleanSshCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "ssh",
 		Short: "Prune stale SSH config blocks and their pinned host keys",
-		Long: `devcontainer-cli clean ssh — prune stale SSH entries this CLI wrote.
+		Long: `devcontainer-cli config clean ssh — prune stale SSH entries this CLI wrote.
 
-'ssh' tags every Host block it adds to the CLI's managed SSH config with a marker recording what it targets
+'access ssh' tags every Host block it adds to the CLI's managed SSH config with a marker recording what it targets
 (a workspace or a specific container). This command scans those markers and removes blocks whose target is gone,
 plus any duplicated or orphaned marker left behind by an interrupted write — those are always removed regardless
 of whether the target they name happens to still be alive, since no command can resolve a block like that anyway.
@@ -188,16 +188,16 @@ alive and working — useful to review or manually remove a healthy entry. It on
 selectable in interactive mode: --yes never auto-removes an alive block just because --include-active was passed.
 
 It then sweeps the CLI-managed known_hosts, dropping the host keys no remaining Host block dials — the ones
-left behind by the blocks just removed, by an earlier 'destroy', or by a container that came back on a
+left behind by the blocks just removed, by an earlier 'workspace destroy', or by a container that came back on a
 different address. Your own ~/.ssh/known_hosts is never touched.`,
 		Example: `  # Preview stale SSH blocks and orphaned host keys
-  devcontainer-cli clean ssh --dry-run
+  devcontainer-cli config clean ssh --dry-run
 
   # Remove stale SSH blocks and their pinned host keys
-  devcontainer-cli clean ssh
+  devcontainer-cli config clean ssh
 
   # Review every managed SSH block, including healthy ones
-  devcontainer-cli clean ssh --include-active --dry-run`,
+  devcontainer-cli config clean ssh --include-active --dry-run`,
 		SilenceUsage: true,
 		RunE:         runCleanSsh,
 	}
@@ -225,7 +225,7 @@ func newCleanNetworksCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "networks",
 		Short: "Remove CLI-managed Docker networks",
-		Long: `devcontainer-cli clean networks — remove CLI-managed bridge networks that no container is attached to.
+		Long: `devcontainer-cli config clean networks — remove CLI-managed bridge networks that no container is attached to.
 --include-active removes every managed network, even ones in use.`,
 		SilenceUsage: true,
 		RunE:         runCleanNetworks,
@@ -250,7 +250,7 @@ func newCleanVolumesCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "volumes",
 		Short: "Remove CLI-managed Docker volumes (--shared includes shared tool config)",
-		Long: `devcontainer-cli clean volumes — remove CLI-managed volumes that no container is using.
+		Long: `devcontainer-cli config clean volumes — remove CLI-managed volumes that no container is using.
 --include-active removes every managed volume, and --shared also drops the global shared tool-config volume.`,
 		SilenceUsage: true,
 		RunE:         runCleanVolumes,
@@ -277,12 +277,12 @@ func newCleanAllCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "all",
 		Short: "Sweep every category (catalog, containers, images, ssh, networks, volumes)",
-		Long:  `devcontainer-cli clean all — sweep every cleanup category in one execution.`,
+		Long:  `devcontainer-cli config clean all — sweep every cleanup category in one execution.`,
 		Example: `  # Sweep all categories with confirmation
-  devcontainer-cli clean all
+  devcontainer-cli config clean all
 
   # Sweep all categories without prompting
-  devcontainer-cli clean all --yes --include-active`,
+  devcontainer-cli config clean all --yes --include-active`,
 		SilenceUsage: true,
 		RunE:         runCleanAll,
 	}

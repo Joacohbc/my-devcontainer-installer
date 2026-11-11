@@ -18,10 +18,10 @@ func newSshCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "ssh [flags] [-- command args...]",
 		Short: "Open a real SSH session into the devcontainer, configuring access first if needed",
-		Long: `devcontainer-cli ssh — connect to the project's devcontainer over SSH, and
+		Long: `devcontainer-cli access ssh — connect to the project's devcontainer over SSH, and
 own the whole SSH lifecycle (this is where 'setup-ssh' used to live).
 
-Unlike 'shell' (a 'docker exec' wrapper), this opens a genuine SSH session, so
+Unlike 'access shell' (a 'docker exec' wrapper), this opens a genuine SSH session, so
 it exercises the same path a human or tool connecting via 'ssh <alias>' would.
 The first time, it configures access automatically (generate/install the shared
 key, append a Host block to the CLI's own SSH config) before connecting — no
@@ -29,7 +29,7 @@ separate command needed. Pass --setup to force that configuration to run again
 (rotate the key, repair the Host block) before connecting.
 
 By default it targets the project's own devcontainer service, the same one
-'shell' resolves. Pass --container to connect to any other managed container
+'access shell' resolves. Pass --container to connect to any other managed container
 instead (loose mode); the managed alias is then keyed by that container's name
 rather than the workspace.
 
@@ -52,25 +52,25 @@ With --forward (or by answering yes to the interactive prompt) it also opens
 SSH tunnels for the given ports alongside the session, torn down automatically
 when the session ends.`,
 		Example: `  # Connect (configures access automatically the first time)
-  devcontainer-cli ssh
+  devcontainer-cli access ssh
 
   # Re-run the access setup, then connect
-  devcontainer-cli ssh --setup
+  devcontainer-cli access ssh --setup
 
   # Connect to a specific container instead of the project's own devcontainer
-  devcontainer-cli ssh --container dc-ssh
+  devcontainer-cli access ssh --container dc-base
 
   # Connect through an existing SSH connection to a remote Docker host
-  devcontainer-cli ssh --via me@docker-host --container dc-ssh
+  devcontainer-cli access ssh --via me@docker-host --container dc-base
 
   # Connect directly without modifying ~/.ssh/config (ephemeral mode)
-  devcontainer-cli ssh --ephemeral --via me@docker-host -c dc-ssh
+  devcontainer-cli access ssh --ephemeral --via me@docker-host -c dc-base
 
   # Also forward ports 3000 and 8080 for the session
-  devcontainer-cli ssh --forward --ports 3000,8080:80
+  devcontainer-cli access ssh --forward --ports 3000,8080:80
 
   # Run a one-off command over SSH instead of an interactive shell
-  devcontainer-cli ssh -- go version`,
+  devcontainer-cli access ssh -- go version`,
 		RunE: runSsh,
 	}
 	addSshFlags(cmd)

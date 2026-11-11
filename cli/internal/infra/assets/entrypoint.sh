@@ -16,9 +16,11 @@
 # test seam — a test extracts one and runs it against a temp tree — without
 # inventing an extension point that would have exactly one adapter.
 #
-# ORDER IS LOAD-BEARING. Four edges, three of them pinned by tests:
+# ORDER IS LOAD-BEARING. Five edges, four of them pinned by tests:
 #
 #   stage_workspace     -> stage_identity        WORKSPACE_DIR decides the remap
+#   stage_workspace     -> stage_post_scripts,   script_env hands WORKSPACE_DIR to
+#                          stage_services        scripts as DC_WORKSPACE_DIR
 #   stage_identity      -> everything after it   DEV_UID/DEV_GID, SC_OWNER
 #   stage_shared_config -> stage_user_aliases    ~/.alias.sh must not win the
 #                                                race against the volume symlink
@@ -260,6 +262,24 @@ stage_context_skill() {
     done
 }
 
+# script_env PHASE prints the export lines of the profile-script contract: the
+# project dir, the workspace name and the phase a script runs in. `su -` starts
+# from an empty environment, so the stages below prepend these lines to the
+# command they hand to devuser's shell instead of relying on inheritance. The
+# values are %q-quoted because a project dir is a user-chosen path, and the line
+# ends its own statement (`;`) because the stages glue the su block right onto
+# it. With no project mounted, WORKSPACE_DIR still names the legacy mount, which
+# may not exist: the dir and name are then left empty so a script's own fallback
+# applies instead of writing to a path that is not there.
+script_env() {
+    local dir="" name=""
+    if [ -d "$WORKSPACE_DIR" ]; then
+        dir="$WORKSPACE_DIR"
+        name="$(basename "$WORKSPACE_DIR")"
+    fi
+    printf 'export DC_WORKSPACE_DIR=%q DC_WORKSPACE=%q DC_SCRIPT_PHASE=%q;\n' "$dir" "$name" "$1"
+}
+
 # Scripts under post-script/start.d/ are the non-interactive installers
 # (Claude Code, Antigravity, Copilot, OpenCode, then any user start scripts)
 # the generator marked as auto-start. The ENTIRE block runs as
@@ -273,7 +293,7 @@ stage_context_skill() {
 # shell-init files are on PATH. The whole stage no-ops when the dir is absent.
 stage_post_scripts() {
     [ -d "$DEV_HOME/post-script/start.d" ] || return 0
-    su - devuser -s /bin/bash -c '
+    su - devuser -s /bin/bash -c "$(script_env start)"'
         start_dir="$HOME/post-script/start.d"
         state_dir="$HOME/.post-script-state"
         mkdir -p "$state_dir"
@@ -302,7 +322,7 @@ stage_post_scripts() {
 # up immediately without waiting.
 stage_services() {
     [ -d "$DEV_HOME/post-script/services.d" ] || return 0
-    su - devuser -s /bin/bash -c '
+    su - devuser -s /bin/bash -c "$(script_env service)"'
         services_dir="$HOME/post-script/services.d"
         state_dir="$HOME/.post-script-state"
         mkdir -p "$state_dir"

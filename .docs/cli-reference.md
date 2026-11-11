@@ -14,14 +14,14 @@ Generate and manage reproducible Docker devcontainers
 | `--build` |  | bool | `false` | Run 'docker compose build/pull' after generating |
 | `--force` |  | bool | `false` | Overwrite existing files without prompting |
 | `--force-prompt` |  | bool | `false` | Prompt even if config file exists |
-| `--forward-ports` |  | string | - | Ports 'port-forward' tunnels when called with no argument (e.g. 3000,8080:80, reverse:5432 for a host port reachable inside the container); 'none' clears them |
+| `--forward-ports` |  | string | - | Ports 'access forward' tunnels when called with no argument (e.g. 3000,8080:80, reverse:5432 for a host port reachable inside the container); 'none' clears them |
 | `--image` |  | string | - | Image name (ignored for mode=custom, whose image is named by origin and content: devcontainer-cli/<profiles>-<hash>) |
 | `--log-level` |  | string | `warn` | Log level: debug\|info\|warn\|error |
 | `--mode` |  | string | - | Build mode: custom (default, full local build), profiles (pull a prebuilt image), or image (use a reusable image) |
 | `--modules` |  | string | - | Comma-separated dockerfile modules (e.g. nodejs,golang,rust) |
 | `--no-interactive` |  | bool | `false` | Fail if any value is missing instead of prompting |
 | `--ports` |  | string | - | Ports to publish on the devcontainer (e.g. 8080:80,5432:5432); bound to 127.0.0.1 unless an IP is given; 'none' clears them |
-| `--profile` |  | string | - | Apply profile(s): comma-separated module bundles for mode=custom (e.g. 'nodejs,my-tools'), or a single pull target for mode=profiles (must be [remote]-tagged). See 'config profile list'. |
+| `--profile` |  | string | - | Apply profile(s): comma-separated module bundles for mode=custom (e.g. 'nodejs,my-tools'), or a single pull target for mode=profiles (must be [remote]-tagged). See 'profile list'. |
 | `--registry` |  | string | - | Container registry prefix for remote images (overrides global) |
 | `--script` |  | stringArray | `[]` | Custom script to add, as <path>[:build\|start\|service\|manual] (default build); repeatable. build bakes it into the image, start runs once per container, service runs as background service on every start, manual only copies it to ~/post-script/ |
 | `--services` |  | string | - | Comma-separated compose services (e.g. mongo,postgres,redis) |
@@ -300,15 +300,15 @@ Generate, build and start a devcontainer for the current directory
 
 | Bandera | Atajo | Tipo | Por defecto | Descripción |
 |---|---|---|---|---|
-| `--forward-ports` |  | string | - | Ports 'port-forward' tunnels when called with no argument (e.g. 3000,8080:80, reverse:5432 for a host port reachable inside the container); 'none' clears them |
+| `--forward-ports` |  | string | - | Ports 'access forward' tunnels when called with no argument (e.g. 3000,8080:80, reverse:5432 for a host port reachable inside the container); 'none' clears them |
 | `--image` |  | string | - | Image name (ignored for mode=custom, whose image is named by origin and content: devcontainer-cli/<profiles>-<hash>) |
 | `--log-level` |  | string | `warn` | Log level: debug\|info\|warn\|error |
-| `--mode` |  | string | - | Build mode: custom (default, full local build) or profiles (pull a prebuilt image) |
+| `--mode` |  | string | - | Build mode: custom (default, full local build), profiles (pull a prebuilt image), or image (use a reusable image) |
 | `--modules` |  | string | - | Comma-separated dockerfile modules (e.g. nodejs,golang,rust) |
 | `--no-interactive` |  | bool | `false` | Fail if any value is missing instead of prompting |
 | `--no-up` |  | bool | `false` | Generate and build only; leave the containers stopped |
 | `--ports` |  | string | - | Ports to publish on the devcontainer (e.g. 8080:80,5432:5432); bound to 127.0.0.1 unless an IP is given; 'none' clears them |
-| `--profile` |  | string | - | Apply profile(s): comma-separated module bundles for mode=custom (e.g. 'nodejs,my-tools'), or a single pull target for mode=profiles (must be [remote]-tagged). See 'config profile list'. |
+| `--profile` |  | string | - | Apply profile(s): comma-separated module bundles for mode=custom (e.g. 'nodejs,my-tools'), or a single pull target for mode=profiles (must be [remote]-tagged). See 'profile list'. |
 | `--registry` |  | string | - | Container registry prefix for remote images (overrides global) |
 | `--script` |  | stringArray | `[]` | Custom script to add, as <path>[:build\|start\|service\|manual] (default build); repeatable. build bakes it into the image, start runs once per container, service runs as background service on every start, manual only copies it to ~/post-script/ |
 | `--services` |  | string | - | Comma-separated compose services (e.g. mongo,postgres,redis) |
@@ -381,7 +381,7 @@ List files inside the devcontainer
 |---|---|---|---|---|
 | `--all` | -a | bool | `false` | Show hidden files (ls -a) |
 | `--container` | -c | string | - | Explicit target container name (managed by devcontainer-cli) |
-| `--json` |  | bool | `false` | Emit one JSON object per entry instead of raw 'ls' output |
+| `--json` |  | bool | `false` | Emit one JSON object per entry instead of the raw ls listing |
 | `--log-level` |  | string | `warn` | Log level: debug\|info\|warn\|error |
 | `--no-interactive` |  | bool | `false` | Non-interactive mode (fail instead of prompting) |
 | `--verbose` |  | bool | `false` | Enable debug logging (shortcut for --log-level debug) |
@@ -1150,7 +1150,7 @@ Auto-initialize a devcontainer by detecting project stack or cloning a repositor
 | Bandera | Atajo | Tipo | Por defecto | Descripción |
 |---|---|---|---|---|
 | `--build` |  | bool | `true` | Build or pull container images after generating |
-| `--forward-ports` |  | string | - | Ports 'port-forward' tunnels by default (a 'reverse:' prefix tunnels a host port into the container) |
+| `--forward-ports` |  | string | - | Ports 'access forward' tunnels by default (a 'reverse:' prefix tunnels a host port into the container) |
 | `--log-level` |  | string | `warn` | Log level: debug\|info\|warn\|error |
 | `--mode` |  | string | - | Build mode: custom (default) or profiles (pull prebuilt image) |
 | `--modules` |  | string | - | Additional dockerfile modules (e.g. nodejs,golang,rust) |
@@ -1242,14 +1242,14 @@ Create a devcontainer for the current project with the interactive wizard
 | `--build` |  | bool | `false` | Run 'docker compose build/pull' after generating |
 | `--force` |  | bool | `false` | Overwrite existing files without prompting |
 | `--force-prompt` |  | bool | `false` | Prompt even if config file exists |
-| `--forward-ports` |  | string | - | Ports 'port-forward' tunnels when called with no argument (e.g. 3000,8080:80, reverse:5432 for a host port reachable inside the container); 'none' clears them |
+| `--forward-ports` |  | string | - | Ports 'access forward' tunnels when called with no argument (e.g. 3000,8080:80, reverse:5432 for a host port reachable inside the container); 'none' clears them |
 | `--image` |  | string | - | Image name (ignored for mode=custom, whose image is named by origin and content: devcontainer-cli/<profiles>-<hash>) |
 | `--log-level` |  | string | `warn` | Log level: debug\|info\|warn\|error |
 | `--mode` |  | string | - | Build mode: custom (default, full local build), profiles (pull a prebuilt image), or image (use a reusable image) |
 | `--modules` |  | string | - | Comma-separated dockerfile modules (e.g. nodejs,golang,rust) |
 | `--no-interactive` |  | bool | `false` | Non-interactive mode (fail instead of prompting) |
 | `--ports` |  | string | - | Ports to publish on the devcontainer (e.g. 8080:80,5432:5432); bound to 127.0.0.1 unless an IP is given; 'none' clears them |
-| `--profile` |  | string | - | Apply profile(s): comma-separated module bundles for mode=custom (e.g. 'nodejs,my-tools'), or a single pull target for mode=profiles (must be [remote]-tagged). See 'config profile list'. |
+| `--profile` |  | string | - | Apply profile(s): comma-separated module bundles for mode=custom (e.g. 'nodejs,my-tools'), or a single pull target for mode=profiles (must be [remote]-tagged). See 'profile list'. |
 | `--registry` |  | string | - | Container registry prefix for remote images (overrides global) |
 | `--script` |  | stringArray | `[]` | Custom script to add, as <path>[:build\|start\|service\|manual] (default build); repeatable. build bakes it into the image, start runs once per container, service runs as background service on every start, manual only copies it to ~/post-script/ |
 | `--services` |  | string | - | Comma-separated compose services (e.g. mongo,postgres,redis) |

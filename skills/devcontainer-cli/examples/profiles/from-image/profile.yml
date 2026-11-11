@@ -1,0 +1,7 @@
+id: from-image
+label: "Project template on top of the py-tools-web image"
+image: py-tools-web
+services:
+  - id: postgres
+env:
+  DATABASE_URL: "postgres://postgres:postgres@postgres:5432/postgres"

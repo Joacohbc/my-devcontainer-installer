@@ -26,7 +26,7 @@ so the ids it lists are the ids this binary accepts. --json emits the same
 content structured.
 
 This describes the CLI. For what a specific running container has inside it,
-use 'context' instead.`,
+use 'inspect context' instead.`,
 		Example: `  # Human-readable catalogue
   devcontainer-cli agent cli-info
 
