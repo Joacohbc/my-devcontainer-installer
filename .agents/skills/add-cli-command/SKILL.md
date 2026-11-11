@@ -45,7 +45,7 @@ Goal: Implement or update a Cobra CLI command adhering to the 6 canonical resour
 2. **Paradigm Invariants Test**: Run `go test -v ./internal/cli/commands -run TestCLIParadigmInvariants`.
 3. **Command Flags & Parsing**: Add tests in `internal/cli/commands/commands_test.go`.
 4. **Recovery Hints Gate**: Run `go test -v ./internal/cli/commands -run TestErrorMessagesDoNotPointAtTheWizard`.
-5. **CLI Reference Synchronization**: Verify and update `.docs/cli-reference.md` via `UPDATE_CLI_REF=1 go test ./internal/cli/commands -run TestCLIReference_UpToDate`.
+5. **CLI Reference Synchronization**: Verify and update `.docs/cli-reference.md` via `UPDATE_CLI_REF=1 go test ./internal/cli/commands -run TestCLIReference_UpToDate`. The file is generated from each command's `Short` and its flags only: never edit it by hand, and regenerate it only when a `Short` or a flag changes (`Long`/`Example` edits do not affect it).
 6. **Service Method Coverage**: Add matching test case in `internal/service/<group>_test.go` using `nopReporter`, `fakeRunner`, and `scriptedPrompter`.
 
 ## 4. Documentation Impact

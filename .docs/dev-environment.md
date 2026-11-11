@@ -21,6 +21,8 @@ Todos los comandos de desarrollo deben ejecutarse desde la carpeta `cli/`:
 | **Verificación de Release** | `goreleaser check` | Valida la configuración del manifiesto de GoReleaser. |
 | **Simulación de Release** | `goreleaser release --snapshot --clean` | Genera los binarios de snapshot locales sin publicar artefactos. |
 
+Si Go no está instalado en el anfitrión, estos comandos se ejecutan dentro del devcontainer del proyecto con `devcontainer-cli agent exec -w -- sh -c 'cd cli && …'`. Si ese contenedor está detenido, `agent exec` falla: primero se inicia con `devcontainer-cli workspace up`.
+
 ---
 
 ## 2. Flujos de Trabajo en GitHub Actions (`.github/workflows/`)

@@ -9,6 +9,8 @@ Este documento detalla la filosofía de pruebas, las técnicas de simulación de
 - **Herramienta Estándar**: Se utiliza exclusivamente el paquete `testing` de la biblioteca estándar de Go. Quedan prohibidos los frameworks de aserción de terceros.
 - **Pruebas Basadas en Tablas (*Table-Driven Tests*)**: Estructura recomendada para validar combinaciones de entradas, opciones y casos de error.
 - **Obligatoriedad de Cobertura**: Ningún cambio o adición a módulos Dockerfile (`internal/domain/modules/dockerfile`), servicios Compose (`internal/domain/modules/compose`), funciones de generador/resolución (`internal/domain`) o métodos de servicio (`internal/service`) puede fusionarse sin pruebas unitarias que cubran la funcionalidad y sus casos límite.
+- **Banderas de Generación**: Un cambio en cómo una bandera de generación modifica la configuración (`applyGenFlags`, `validateConfig`) requiere una prueba que verifique la configuración final tras esas etapas, no solo el valor intermedio; por ejemplo, `TestModeImageResolvesTheImageDefinition` detectó que `--image` sobrescribía la definición ya resuelta.
+- **Formularios `huh` en Modo Accesible**: Para probar un campo de `cli/ui` sin terminal se ejecuta el formulario con `WithAccessible(true)`. La entrada debe entregarse una línea por cada lectura (ver `lineReader` en `cli/ui/stepper_test.go`); con un `strings.Reader` la primera pregunta consume toda la entrada y la segunda se bloquea.
 
 ---
 
