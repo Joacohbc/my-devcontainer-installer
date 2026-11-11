@@ -139,7 +139,7 @@ El orden es estricto: `stage_workspace` determina el UID/GID de devuser; `stage_
 
 ### D10: Generación Dinámica de `~/CONTEXT.md`
 - **Contexto**: Los agentes necesitan orientación sobre el contenido real del contenedor, pero documentos estáticos caen en obsolescencia respecto a los módulos seleccionados.
-- **Decisión**: Ensamblar `~/CONTEXT.md` en tiempo de construcción a partir de las secciones declaradas por cada módulo y servicio activo.
+- **Decisión**: Ensamblar `~/CONTEXT.md` a partir de las secciones declaradas por cada módulo y servicio activo. Desde D20 se escribe en el directorio de construcción para todo modo y se monta como archivo de solo lectura; ya no se hornea en la imagen.
 - **Consecuencias**: Documentación exacta, verificable y libre de discrepancias para cada contenedor generado.
 
 ### D11: Habilidades de Agente con Alcance de Proyecto
@@ -157,7 +157,7 @@ El orden es estricto: `stage_workspace` determina el UID/GID de devuser; `stage_
 - **Decisión**: Escribir todos los bloques gestionados en `~/.ssh/devcontainer-cli.config` y vincularlo mediante una única directiva `Include` al inicio de `~/.ssh/config`.
 - **Consecuencias**: Aislamiento seguro, limpieza trivial de alias obsoletos y cero interferencia con la configuración personal del anfitrión.
 
-### D14: Capa de Proyecto al Final del Dockerfile
+### D14: Capa de Proyecto al Final del Dockerfile (reemplazada por D20)
 - **Contexto**: `CONTEXT.md` se copiaba tempranamente en el módulo `aliases`, invalidando la caché de capas de Docker para todos los módulos de lenguaje y herramientas cuando cambiaba el workspace o la configuración de red.
 - **Decisión**: Mover la copia de `CONTEXT.md` y cualquier archivo dependiente del contexto a la última capa del Dockerfile, bajo una sección explícita `## PROJECT`.
 - **Consecuencias**: Las capas de herramientas son 100% reutilizables entre proyectos que compartan la misma receta. Los builds secundarios locales toman segundos.
@@ -199,4 +199,16 @@ El orden es estricto: `stage_workspace` determina el UID/GID de devuser; `stage_
   7. Un fallo de git es siempre una advertencia: la definición ya se escribió y la operación se considera exitosa.
   8. `UserImageDir()` deriva de `GlobalConfigDir()` (y no de `os.UserConfigDir()`, que en macOS apunta a `~/Library/Application Support`), para que las imágenes vivan en el mismo repositorio.
 - **Consecuencias**: Cambio incompatible para quien tenga perfiles planos o `presets/` (deben moverse a `<id>/profile.yml`). A cambio, el kit completo de definiciones se puede clonar, comparar y revertir con git estándar.
+
+### D20: Imágenes de Proyecto Identificadas por Origen y Contenido, con Recolección por Referencias
+- **Contexto**: Aunque la huella digital buscaba que configuraciones idénticas compartieran imagen, `CONTEXT.md` (que nombra la ruta `/workspaces/<workspace>`) se horneaba en la última capa y alimentaba la huella, así que cada workspace obtenía su propia imagen. Además, el archivo compose se generaba antes de calcular la huella: compose construía `<workspace>:local` mientras `devcontainer.config.json` registraba una etiqueta que nunca existía, de modo que la caché jamás acertaba. Cada recompilación dejaba la imagen anterior huérfana, `workspace destroy` no eliminaba la imagen, y `config clean images` borraba también las imágenes nombradas reutilizables. Tras actualizar la CLI, los proyectos seguían compilando archivos generados por la versión anterior sin aviso.
+- **Decisión**:
+  1. `CONTEXT.md` se genera en el directorio de construcción para todos los modos y el compose lo monta en `/home/devuser/CONTEXT.md:ro` (`domain.ContextMount`). El Dockerfile no contiene nada específico del workspace.
+  2. La etiqueta de una imagen de proyecto es legible y depende solo del origen y del contenido: `devcontainer-cli/<origen>-<huella[:8]>:latest` (`domain.ContentImageTag`). El origen es el perfil (o perfiles compuestos unidos con `-`) o `custom`. El nombre del workspace nunca aparece.
+  3. `Plan` calcula la huella antes de generar el compose, así que compose, configuración y caché nombran la misma imagen.
+  4. Toda imagen lleva etiquetas Docker `kind` (`project` o `named`), `origin`, `modules`, `fingerprint` y `cli-version`. Los bloques `LABEL` se excluyen de la huella, por lo que un cambio solo de versión de la CLI no cambia la identidad de la imagen.
+  5. Recolección por referencias (`PruneService.CollectProjectImages`): tras cada compilación, `workspace up --build`, `update` y `destroy` se eliminan las imágenes construidas por la CLI (`devcontainer-cli/*` o sin etiqueta) que ningún proyecto registrado en `images.json` ni ningún contenedor utiliza. El proyecto se registra antes de compilar. Las imágenes descargadas (`ghcr.io/...`) y las nombradas nunca se recolectan automáticamente. Las imágenes sin etiqueta se eliminan por ID.
+  6. `config clean images` y `config clean all` conservan las imágenes nombradas salvo confirmación explícita en una pregunta aparte; `--yes` por sí solo nunca las elimina. Nombrar una referencia explícita sí la elimina. `image remove` se niega mientras un proyecto o contenedor use la imagen y reporta un fallo de `docker rmi`.
+  7. `workspace up` e `inspect status` comparan los archivos generados (Dockerfile sin `LABEL`, scripts embebidos y tabla de configuración compartida) con lo que generaría la versión actual de la CLI y, si difieren, sugieren `devcontainer-cli workspace init --no-interactive --build`.
+- **Consecuencias**: Proyectos con el mismo contenido comparten una sola imagen y el último en irse la elimina. Ninguna recompilación deja imágenes huérfanas. Cambio incompatible: las imágenes se renombran en la siguiente generación y `CONTEXT.md` pasa a montarse; los proyectos existentes deben regenerarse. Los contenedores de modo `profiles` e `image` reciben ahora un `CONTEXT.md` exacto para el proyecto.
 

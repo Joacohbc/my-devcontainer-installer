@@ -255,7 +255,7 @@ devcontainer-cli access forward reverse:5432
    ```bash
    devcontainer-cli workspace destroy
    ```
-   *Detiene el stack, remueve volúmenes asociados, borra la carpeta `.dc_<workspace>/`, limpia el bloque en `~/.ssh/devcontainer-cli.config` y olvida la clave de host en `known_hosts`.*
+   *Detiene el stack, remueve volúmenes asociados, borra la carpeta `.dc_<workspace>/`, limpia el bloque en `~/.ssh/devcontainer-cli.config`, olvida la clave de host en `known_hosts` y elimina la imagen del proyecto si ningún otro proyecto la comparte.*
 2. **Limpiar bloques SSH obsoletos de proyectos ya eliminados**:
    ```bash
    devcontainer-cli config clean ssh -y
@@ -263,6 +263,11 @@ devcontainer-cli access forward reverse:5432
 3. **Limpieza integral del sistema Docker gestionado**:
    ```bash
    devcontainer-cli config clean all
+   ```
+   *Las imágenes nombradas (`devcontainer-cli-img/*`) se conservan: en modo interactivo se pregunta aparte si también deben eliminarse, y `--yes` por sí solo nunca las borra.*
+4. **Tras actualizar la CLI**: si `workspace up` advierte que esta versión genera una imagen distinta, regenere y recompile sin preguntas:
+   ```bash
+   devcontainer-cli workspace init --no-interactive --build
    ```
 
 ---

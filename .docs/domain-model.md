@@ -71,7 +71,7 @@ classDiagram
 ### `DevcontainerConfig`
 Entidad raíz que representa la configuración completa persistida en `devcontainer.config.json` para un proyecto:
 - `Mode`: estrategia de compilación (`custom`, `profiles` o `image`).
-- `Image`: nombre o etiqueta de la imagen Docker final (`devcontainer-cli/<fp12>:latest`, imagen remota de GHCR, o imagen nombrada `devcontainer-cli-img/<name>:<tag>`).
+- `Image`: nombre o etiqueta de la imagen Docker final (`devcontainer-cli/<origen>-<fp8>:latest`, imagen remota de GHCR, o imagen nombrada `devcontainer-cli-img/<name>:<tag>`).
 - `Workspace`: identificador limpio del espacio de trabajo derivado del nombre del directorio del proyecto.
 - `Dockerfile.Modules`: lista ordenada de identificadores de módulos Dockerfile activados.
 - `Compose.Services`: lista de identificadores de servicios Compose complementarios (bases de datos, motores).
@@ -182,7 +182,7 @@ stateDiagram-v2
 
 1. **Unconfigured**: No existe `.dc_<workspace>/`.
 2. **Configured**: `devcontainer.config.json`, `docker-compose.yml` y `Dockerfile` han sido generados.
-3. **Building / Pulling**: Resolución de imagen según modo (`custom` calcula huella digital SHA-256; `profiles` verifica variante remota).
+3. **Building / Pulling**: Resolución de imagen según modo (`custom` calcula huella digital SHA-256 y nombra la imagen por origen y contenido; `profiles` verifica variante remota). Tras compilar se recolectan las imágenes de proyecto que ya nadie referencia.
 4. **Running**: El contenedor `devcontainer-ssh` se encuentra activo, el entrypoint completó sus etapas y el daemon OpenSSH escucha en el puerto 2222.
 5. **Stopped**: Contenedores detenidos conservando volúmenes y configuración.
-6. **Destroyed**: Eliminación total de contenedores, redes, volúmenes de datos, archivos en `.dc_<workspace>/` y desasociación de claves SSH y entradas en `known_hosts`.
+6. **Destroyed**: Eliminación total de contenedores, redes, volúmenes de datos, archivos en `.dc_<workspace>/` y desasociación de claves SSH y entradas en `known_hosts`. La imagen del proyecto se elimina si ningún otro proyecto la comparte.

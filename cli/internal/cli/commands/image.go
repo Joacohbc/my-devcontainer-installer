@@ -206,8 +206,19 @@ func newImageExportCommand() *cobra.Command {
 
 func newImageRemoveCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:          "remove <name>",
-		Short:        "Remove an image definition",
+		Use:   "remove <name>",
+		Short: "Remove an image definition",
+		Long: `devcontainer-cli image remove — delete an image definition (committing the
+removal to the configuration repository) and its Docker image.
+
+It refuses while a registered project or a container still uses the image, so a
+shared image is never pulled from under a project. Use --keep-docker-image to
+remove only the definition. A failed 'docker rmi' is reported as an error.`,
+		Example: `  # Remove the definition and its image
+  devcontainer-cli image remove android
+
+  # Remove only the definition, keep the built image
+  devcontainer-cli image remove android --keep-docker-image`,
 		SilenceUsage: true,
 		Args:         cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {

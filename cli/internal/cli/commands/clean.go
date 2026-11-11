@@ -130,12 +130,19 @@ func newCleanImagesCommand() *cobra.Command {
 		Long: `devcontainer-cli clean images — remove images created by this CLI, identified by the managed label.
 
 Give one or more image references to remove exactly those (refs tab-complete managed images).
-With no refs it removes managed images that are NOT in use by any container, or — with --include-active — every managed image regardless.`,
+With no refs it removes managed project images that no container and no
+registered project uses, or — with --include-active — every managed project
+image regardless.
+
+Named images (reusable 'image' definitions, devcontainer-cli-img/*) are kept:
+an interactive run asks separately before removing the unused ones, and --yes
+alone never removes them. Name one explicitly to remove it. Untagged images left
+by a rebuild are removed by ID.`,
 		Example: `  # Remove unused managed images
   devcontainer-cli clean images
 
   # Remove a specific image
-  devcontainer-cli clean images devcontainer-cli/ab12cd34ef56:latest
+  devcontainer-cli clean images devcontainer-cli/nodejs-ab12cd34:latest
 
   # Remove every managed image, no prompt
   devcontainer-cli clean images --include-active --yes`,
