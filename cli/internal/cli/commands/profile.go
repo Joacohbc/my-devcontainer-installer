@@ -55,7 +55,11 @@ has no such image, so only mode=custom applies to it — passing it under
 mode=profiles fails.
 
 Each script declares when it runs: 'build' bakes it into the image, 'start' runs
-it once per container, 'manual' only copies it to ~/post-script/.
+it once per container, 'service' runs it in the background on every container
+start, 'manual' only copies it to ~/post-script/. Start and service scripts get
+DC_WORKSPACE_DIR (the project dir), DC_WORKSPACE and DC_SCRIPT_PHASE; a build
+script gets only DC_SCRIPT_PHASE=build, because no project is mounted while the
+image builds — the build warns when a build script references the project.
 
 A profile can also carry ports: 'ports:' are published by the generated stack,
 'forward_ports:' are the tunnels 'port-forward' opens when called with no
