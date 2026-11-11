@@ -6,10 +6,10 @@ Esta guía explica cómo configurar una **Red Privada** utilizando Cloudflare Tu
 
 ## 0. Instalar cloudflared en el Contenedor
 
-`cloudflared` es un **módulo del Dockerfile** (`cloudflared`): se instala **dentro** del devcontainer, no como contenedor hermano. Selecciónelo en el asistente interactivo (categoría *Dev Tools*) o mediante:
+`cloudflared` es un **módulo del Dockerfile** (`cloudflared`): se instala **dentro** del devcontainer, no como contenedor hermano. Selecciónelo en el asistente interactivo (categoría *Dev Tools*) o regenere el proyecto con sus módulos actuales más `cloudflared` (`--modules` reemplaza la lista y vuelve a generar y construir el entorno):
 
 ```bash
-devcontainer-cli agent create --modules nodejs,cloudflared   # agregue cloudflared a sus módulos actuales
+devcontainer-cli agent create --modules <sus-módulos>,cloudflared
 ```
 
 Existen tres formas de iniciar un túnel, de menor a mayor grado de configuración:

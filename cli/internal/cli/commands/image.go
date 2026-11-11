@@ -21,7 +21,7 @@ func newImageCommand() *cobra.Command {
 
 Images defined here are decoupled from any single project workspace and tagged under
 the isolated 'devcontainer-cli-img/<name>:<tag>' namespace. Projects can consume them directly
-via 'devcontainer-cli workspace init --mode image --image <name>' or 'devcontainer-cli agent create --mode image --image <name>',
+via 'devcontainer-cli agent create --mode image --image <name>',
 avoiding per-project rebuilds.
 
 Subcommands:

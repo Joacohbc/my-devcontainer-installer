@@ -16,7 +16,7 @@ current project, leaving the generated files and named volumes intact.
 Wraps 'docker compose -f .dc_<workspace>/build/docker-compose.yml down'. Named
 volumes hold your data (databases, the shared config) and are kept by default;
 pass -v to delete them too. To also remove the generated .dc_<workspace>/
-directory and config, use 'destroy' instead.`,
+directory and config, use 'workspace destroy' instead.`,
 		Example: `  # Stop and remove containers, keep data volumes
   devcontainer-cli workspace down
 

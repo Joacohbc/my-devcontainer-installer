@@ -21,7 +21,7 @@ nuclear option and cannot be undone.
 It runs 'docker compose down -v' (removing containers, the network AND the named
 volumes, so all data is deleted), then deletes the generated .dc_<workspace>/
 directory and the devcontainer.config.json. After this the project is gone and
-would have to be regenerated from scratch. Use 'down' instead if you only want
+would have to be regenerated from scratch. Use 'workspace down' instead if you only want
 to stop containers but keep your files and data.
 
 The project image is removed too unless another project shares it: images are

@@ -34,7 +34,7 @@ running on this machine — a database, an API, another project's published port
 A reverse tunnel is bound by the container's SSH session, which runs as devuser,
 so its container-side port must be 1024 or above.
 
-It tunnels through a devcontainer's SSH alias (set up with 'ssh'), so that
+It tunnels through a devcontainer's SSH alias (set up with 'access ssh'), so that
 alias must already be configured. Non-devcontainer containers are reached via a
 devcontainer used as an SSH jump host.
 
@@ -390,7 +390,7 @@ func resolveTarget(container pick.Container, aliases []string, containers []pick
 			*jumpHost = sel.Value
 		default:
 			if !interactive {
-				return "", "", fmt.Errorf("no devcontainer SSH alias found to tunnel through '%s'. Run 'ssh --setup' first or specify --alias", container.Name)
+				return "", "", fmt.Errorf("no devcontainer SSH alias found to tunnel through '%s'. Run 'access ssh --setup' first or specify --alias", container.Name)
 			}
 			in, ierr := console.AskDefault(fmt.Sprintf("No devcontainer SSH alias found to reach '%s'. Enter SSH alias to tunnel through:", container.Name), "", func(v string) error {
 				if strings.TrimSpace(v) == "" {
@@ -711,7 +711,7 @@ func resolveTunnelTarget(alias, fallbackContainer string, interactive bool) (str
 		return candidate, containerName, nil
 	case len(aliases) == 0:
 		if !interactive {
-			return "", "", fmt.Errorf("no SSH aliases found in config. Run 'ssh --setup' first or specify --alias")
+			return "", "", fmt.Errorf("no SSH aliases found in config. Run 'access ssh --setup' first or specify --alias")
 		}
 		entered, aerr := console.AskDefault(fmt.Sprintf("No SSH alias found for '%s'. Enter alias manually:", container.Name), candidate, func(v string) error {
 			if strings.TrimSpace(v) == "" {

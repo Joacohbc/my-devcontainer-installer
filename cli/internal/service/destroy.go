@@ -60,7 +60,7 @@ func (s DestroyService) removeSSHConfigBlock(workspace string) {
 // removeManagedSSH prunes the managed SSH state of one target: its Host block
 // and the host keys pinned for the address that block dialed. Doing both here is
 // what stops a destroyed target from leaving an orphaned key behind until the
-// next 'clean ssh'. The address must be read before the block goes.
+// next 'config clean ssh'. The address must be read before the block goes.
 func (s DestroyService) removeManagedSSH(kind sshdefaults.Kind, ref string) {
 	if ref == "" {
 		return
@@ -109,7 +109,7 @@ func (s DestroyService) forgetPinnedHostKey(ssh SshService, host string) {
 
 // RunContainer tears down a single loose container by name (the --container
 // counterpart to Run, for containers set up outside a workspace project via
-// 'setup-ssh --container' / 'ssh --container'): stop it, remove it, and prune its
+// 'access ssh --setup --container' / 'access ssh --container'): stop it, remove it, and prune its
 // managed SSH host block. Unlike Run there is no compose stack, project
 // directory, or config file to remove.
 func (s DestroyService) RunContainer(container string) error {

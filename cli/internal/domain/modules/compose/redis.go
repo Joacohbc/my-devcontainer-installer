@@ -44,7 +44,7 @@ var RedisService = &ServiceSpec{
 				"    redis-cli -h redis   # needs the redis-client module",
 				"",
 				"Its data lives in the `redis_data` volume, so it survives a restart but is",
-				"deleted by `devcontainer-cli workspace down -v` and `destroy`.",
+				"deleted by `devcontainer-cli workspace down -v` and `workspace destroy`.",
 			),
 		}
 	},

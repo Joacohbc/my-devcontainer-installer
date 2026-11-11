@@ -303,7 +303,7 @@ Generate, build and start a devcontainer for the current directory
 | `--forward-ports` |  | string | - | Ports 'access forward' tunnels when called with no argument (e.g. 3000,8080:80, reverse:5432 for a host port reachable inside the container); 'none' clears them |
 | `--image` |  | string | - | Image name (ignored for mode=custom, whose image is named by origin and content: devcontainer-cli/<profiles>-<hash>) |
 | `--log-level` |  | string | `warn` | Log level: debug\|info\|warn\|error |
-| `--mode` |  | string | - | Build mode: custom (default, full local build) or profiles (pull a prebuilt image) |
+| `--mode` |  | string | - | Build mode: custom (default, full local build), profiles (pull a prebuilt image), or image (use a reusable image) |
 | `--modules` |  | string | - | Comma-separated dockerfile modules (e.g. nodejs,golang,rust) |
 | `--no-interactive` |  | bool | `false` | Fail if any value is missing instead of prompting |
 | `--no-up` |  | bool | `false` | Generate and build only; leave the containers stopped |
@@ -381,7 +381,7 @@ List files inside the devcontainer
 |---|---|---|---|---|
 | `--all` | -a | bool | `false` | Show hidden files (ls -a) |
 | `--container` | -c | string | - | Explicit target container name (managed by devcontainer-cli) |
-| `--json` |  | bool | `false` | Emit one JSON object per entry instead of raw 'ls' output |
+| `--json` |  | bool | `false` | Emit one JSON object per entry instead of the raw ls listing |
 | `--log-level` |  | string | `warn` | Log level: debug\|info\|warn\|error |
 | `--no-interactive` |  | bool | `false` | Non-interactive mode (fail instead of prompting) |
 | `--verbose` |  | bool | `false` | Enable debug logging (shortcut for --log-level debug) |

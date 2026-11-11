@@ -478,7 +478,7 @@ func updateSshConfig(ssh service.SshService, f *setupSshFlags, mode sshdefaults.
 // silently.
 func verifyTarget(ssh service.SshService, f *setupSshFlags) {
 	if !ssh.ContainerRunning(f.container) {
-		console.Warn("Container '%s' is not running; 'access ssh %s' will fail until it is started.", f.container, f.alias)
+		console.Warn("Container '%s' is not running; 'ssh %s' will fail until it is started.", f.container, f.alias)
 		return
 	}
 	if !confirmLiveProbe(f, f.alias) {

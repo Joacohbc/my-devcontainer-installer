@@ -271,13 +271,13 @@ func newAgentListCommand() *cobra.Command {
 		Long: `devcontainer-cli agent list — list a directory inside the running
 devcontainer.
 
-Same as 'ls'. The path is interpreted inside the container and defaults to the
+Same as 'inspect ls'. The path is interpreted inside the container and defaults to the
 working directory there. With --json each entry comes back as an object with a
 name and whether it is a directory, which is easier to consume than parsing
 'ls' output. -a/--all includes hidden entries.
 
 This lists files, not environments. For what a container has installed use
-'context'; for which containers exist use 'status --all'.`,
+'inspect context'; for which containers exist use 'inspect status --all'.`,
 		Example: `  # The container's working directory
   devcontainer-cli agent list
 
@@ -299,7 +299,7 @@ This lists files, not environments. For what a container has installed use
 func addAgentListFlags(cmd *cobra.Command) {
 	cmd.Flags().BoolP("all", "a", false, "Show hidden files (ls -a)")
 	addContainerFlag(cmd)
-	cmd.Flags().Bool("json", false, "Emit one JSON object per entry instead of raw 'ls' output")
+	cmd.Flags().Bool("json", false, "Emit one JSON object per entry instead of the raw ls listing")
 	addInteractiveFlag(cmd)
 }
 

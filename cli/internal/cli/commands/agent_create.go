@@ -53,7 +53,7 @@ the build.`,
 
 func addAgentCreateFlags(cmd *cobra.Command) {
 	f := cmd.Flags()
-	f.String(flagMode, "", "Build mode: custom (default, full local build) or profiles (pull a prebuilt image)")
+	f.String(flagMode, "", "Build mode: custom (default, full local build), profiles (pull a prebuilt image), or image (use a reusable image)")
 	f.String(flagRegistry, "", "Container registry prefix for remote images (overrides global)")
 	f.String(flagModules, "", "Comma-separated dockerfile modules (e.g. nodejs,golang,rust)")
 	f.String(flagServices, "", "Comma-separated compose services (e.g. mongo,postgres,redis)")

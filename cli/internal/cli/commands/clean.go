@@ -172,7 +172,7 @@ func newCleanSshCommand() *cobra.Command {
 		Short: "Prune stale SSH config blocks and their pinned host keys",
 		Long: `devcontainer-cli config clean ssh — prune stale SSH entries this CLI wrote.
 
-'ssh' tags every Host block it adds to the CLI's managed SSH config with a marker recording what it targets
+'access ssh' tags every Host block it adds to the CLI's managed SSH config with a marker recording what it targets
 (a workspace or a specific container). This command scans those markers and removes blocks whose target is gone,
 plus any duplicated or orphaned marker left behind by an interrupted write — those are always removed regardless
 of whether the target they name happens to still be alive, since no command can resolve a block like that anyway.
@@ -188,7 +188,7 @@ alive and working — useful to review or manually remove a healthy entry. It on
 selectable in interactive mode: --yes never auto-removes an alive block just because --include-active was passed.
 
 It then sweeps the CLI-managed known_hosts, dropping the host keys no remaining Host block dials — the ones
-left behind by the blocks just removed, by an earlier 'destroy', or by a container that came back on a
+left behind by the blocks just removed, by an earlier 'workspace destroy', or by a container that came back on a
 different address. Your own ~/.ssh/known_hosts is never touched.`,
 		Example: `  # Preview stale SSH blocks and orphaned host keys
   devcontainer-cli config clean ssh --dry-run

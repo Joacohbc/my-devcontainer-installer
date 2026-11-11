@@ -30,7 +30,7 @@ Pass -T when piping a command's output to a file so the stream isn't mangled.
 An explicit command is exec'd directly, NOT through a shell. That is enough for
 most of them: the image declares its toolchain PATH as environment (uv, node,
 pnpm, cargo, bun, go, ~/.local/bin), which a bare 'docker exec' inherits. Wrap a
-command in a login bash — 'shell -- bash -lc "cd /srv && ./build.sh | tee log"' —
+command in a login bash — 'access shell -- bash -lc "cd /srv && ./build.sh | tee log"' —
 when it needs pipes, '&&', globs or 'cd', or the container's pip/npm shell
 indirections. Use bash, not zsh: a non-interactive 'zsh -lc' skips ~/.zshrc.
 
@@ -44,7 +44,7 @@ the project's workspace mount instead, which is what a build or a test command
 almost always wants and what saves wrapping one in a login bash just to 'cd'.
 
 Pass --via USER@HOST (with --container) to reach a container on a different
-Docker host through an existing SSH connection to it — unlike 'ssh --via' this
+Docker host through an existing SSH connection to it — unlike 'access ssh --via' this
 needs nothing installed or configured in the container itself, since it rides
 entirely on the 'docker exec' channel (no ssh-into-container step).`,
 		Example: `  # Interactive shell as devuser

@@ -14,9 +14,9 @@ func newRestartCommand() *cobra.Command {
 project without recreating them.
 
 Wraps 'docker compose -f .dc_<workspace>/build/docker-compose.yml restart'. The
-containers must already exist (run 'up' first); this only stops and starts them
+containers must already exist (run 'workspace up' first); this only stops and starts them
 again, keeping the same containers, volumes and network. Configuration changes
-in the compose file are NOT applied — use 'up' for that. Pass --container to
+in the compose file are NOT applied — use 'workspace up' for that. Pass --container to
 restart a single container instead of the whole project.`,
 		Example: `  # Restart the whole project
   devcontainer-cli workspace restart
@@ -54,10 +54,10 @@ func newStartCommand() *cobra.Command {
 		Use:   "start",
 		Short: "Start the project's stopped containers",
 		Long: `devcontainer-cli workspace start — start the existing, stopped containers of the current
-project (they must already have been created with 'up').
+project (they must already have been created with 'workspace up').
 
 Wraps 'docker compose -f .dc_<workspace>/build/docker-compose.yml start'. Unlike
-'up' it never creates or recreates containers — it only resumes ones that are
+'workspace up' it never creates or recreates containers — it only resumes ones that are
 stopped. Pass --container to start a single container instead of the whole
 project.`,
 		Example: `  # Start the whole project
@@ -97,10 +97,10 @@ func newStopCommand() *cobra.Command {
 		Short: "Stop the project's running containers (without removing them)",
 		Long: `devcontainer-cli workspace stop — stop the running containers of the current project,
 leaving the containers, volumes and network in place so they can be resumed with
-'start'.
+'workspace start'.
 
 Wraps 'docker compose -f .dc_<workspace>/build/docker-compose.yml stop'. Use
-'down' instead when you want to remove the containers, not just stop them. Pass
+'workspace down' instead when you want to remove the containers, not just stop them. Pass
 --container to stop a single container instead of the whole project.`,
 		Example: `  # Stop the whole project
   devcontainer-cli workspace stop

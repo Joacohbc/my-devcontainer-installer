@@ -16,7 +16,7 @@ func newConfigImportCommand() *cobra.Command {
 		Use:   "import <file.yml>",
 		Short: "Import a YAML config into devcontainer.config.json",
 		Long: `devcontainer-cli workspace import — read a YAML config file (such as one produced
-by 'config export') and write it to the project's devcontainer.config.json.
+by 'workspace export') and write it to the project's devcontainer.config.json.
 
 This recreates a project's configuration from a shared/checked-in file. Run
 'devcontainer-cli agent create' afterwards to (re)generate the Dockerfile and

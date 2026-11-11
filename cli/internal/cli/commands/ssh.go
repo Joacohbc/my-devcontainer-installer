@@ -21,7 +21,7 @@ func newSshCommand() *cobra.Command {
 		Long: `devcontainer-cli access ssh — connect to the project's devcontainer over SSH, and
 own the whole SSH lifecycle (this is where 'setup-ssh' used to live).
 
-Unlike 'shell' (a 'docker exec' wrapper), this opens a genuine SSH session, so
+Unlike 'access shell' (a 'docker exec' wrapper), this opens a genuine SSH session, so
 it exercises the same path a human or tool connecting via 'ssh <alias>' would.
 The first time, it configures access automatically (generate/install the shared
 key, append a Host block to the CLI's own SSH config) before connecting — no
@@ -29,7 +29,7 @@ separate command needed. Pass --setup to force that configuration to run again
 (rotate the key, repair the Host block) before connecting.
 
 By default it targets the project's own devcontainer service, the same one
-'shell' resolves. Pass --container to connect to any other managed container
+'access shell' resolves. Pass --container to connect to any other managed container
 instead (loose mode); the managed alias is then keyed by that container's name
 rather than the workspace.
 
