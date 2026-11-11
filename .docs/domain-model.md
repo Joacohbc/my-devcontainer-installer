@@ -166,6 +166,8 @@ Los scripts personalizados definidos por el usuario o provistos en sus perfiles 
 | `service` | `~/post-script/services.d/<script>.sh` | Ejecutado en segundo plano por `entrypoint.sh` en cada arranque del contenedor (sin centinela `.done`). |
 | `manual` | `~/post-script/<script>.sh` | No se ejecuta automáticamente; queda disponible para ejecución manual por parte del usuario. |
 
+**Contrato de entorno de scripts (D25)**: como `su -` arranca con un entorno vacío, el entrypoint antepone a los bloques de `start` y `service` las variables `DC_WORKSPACE_DIR` (directorio del proyecto, `/workspaces/<workspace>`), `DC_WORKSPACE` (su nombre) y `DC_SCRIPT_PHASE` (`start` o `service`). Un script `build` recibe solo `DC_SCRIPT_PHASE=build`, porque durante `docker build` no hay proyecto montado. Un script `manual` se ejecuta en la shell del usuario y no recibe ninguna. `domain.LintCustomScript` emite una advertencia (nunca un error) cuando un script `build` menciona `/workspaces`, `/workspace/`, `$WORKSPACE` o `$DC_WORKSPACE_DIR` fuera de un comentario; `MaterializeCustomScripts` la muestra antes de cada construcción de proyecto o de imagen.
+
 ### Composición de Múltiples Perfiles (`--profile a,b`)
 
 En `mode=custom`, la bandera `--profile` acepta una lista de identificadores separados por comas que se fusionan en un único perfil efectivo antes de compilar la imagen local:

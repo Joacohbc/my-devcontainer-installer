@@ -300,6 +300,7 @@ devcontainer-cli access forward reverse:5432
        APP_ENV: development
      ```
    - Coloque el script `setup-tools.sh` en el mismo directorio.
+   - Elija la fase según lo que el script necesita: `build` para instalar herramientas en la imagen (no hay proyecto montado), `start` para escribir configuración dentro del proyecto (use `$DC_WORKSPACE_DIR`), `service` para procesos que deben quedar en ejecución y `manual` para tareas interactivas. Hay un ejemplo validado de cada fase en `skills/devcontainer-cli/examples/`, y el contrato completo en `skills/devcontainer-cli/references/script-contract.md`.
    - Un perfil también puede partir de una imagen en lugar de módulos (`image: android`, el nombre de una definición de imagen o una referencia de registro); en ese caso no declare `modules`.
 2. Combine el perfil del lenguaje con su perfil de complementos pasando una lista separada por comas:
    ```bash
