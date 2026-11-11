@@ -1,0 +1,10 @@
+id: service-dev-server
+label: "Node + pnpm with the dev server started on every boot"
+modules:
+  - nodejs
+  - pnpm
+ports:
+  - "5173"
+scripts:
+  - file: dev-server.sh
+    when: service

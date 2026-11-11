@@ -187,6 +187,21 @@ Prebuilt images exist for these profile ids, and pulling one with
 `node-java-temurin`, `bun-go`, `bun-python`, `bun-java-temurin`. A `[local]` profile (only user-created ones) has nothing to
 pull — build it with `agent create --profile <id>` on the default mode.
 
+### Writing a profile, an image or a script
+
+Read the matching file **before** writing one; they are not loaded otherwise.
+
+| You are about to… | Read |
+|---|---|
+| write a script for `--script` or a profile/image (`when: build\|start\|service\|manual`) | `references/script-contract.md` |
+| create or edit a profile (`profile.yml`) or an image (`image.yml`, `image create`, `from:`) | `references/profiles-and-images.md` |
+| reason about what a stop, recreate, rebuild, `down` or `destroy` keeps | `references/lifecycle.md` |
+| copy a working starting point | `examples/` (one profile per `when`, a base and a derived image) |
+
+The one mistake to never make: a `build` script cannot touch the project —
+`/workspaces` does not exist during `docker build`. Anything that writes into
+the project is `when: start` and reads the path from `$DC_WORKSPACE_DIR`.
+
 ### Then read the container, before running anything in it
 
 `agent create` tells you the image was built. It does not tell you what ended up
@@ -268,41 +283,13 @@ which has no such directory.
 
 ### Package managers are not the ones you expect
 
-The image replaces the usual tools, and the replacements live in shell
-functions and aliases — so the tool you reach for from `agent exec` is often the
-wrong one. Run `devcontainer-cli context` to see which of these the image has.
+- **Python: `uv`, never `pip`.** `uv add X` for a project dependency, `uv tool
+  install X` for a CLI, `uv pip install X` for a library importable anywhere —
+  no venv, no `--break-system-packages`.
+- **Node: call `pnpm` directly.** `npm`/`npx` are aliases a non-interactive
+  shell does not expand.
 
-- **Python: `uv`, never `pip`.** uv has one command per case, and they are not
-  interchangeable:
-
-  | What you want | Command |
-  |---|---|
-  | A dependency of **one project** | `uv add X`, then `uv run …` |
-  | A **command-line tool** | `uv tool install X` |
-  | A library importable **anywhere in the container** | `uv pip install X` |
-
-  `uv add` is the one for project work; the `.venv/` it creates in the project
-  directory is expected and you never activate it by hand. `uv pip install X`
-  writes to the system interpreter and needs no venv and no sudo — the image
-  sets `UV_SYSTEM_PYTHON=1` and `UV_BREAK_SYSTEM_PACKAGES=1` and gives devuser
-  write access to the install directories, so **do not pass
-  `--break-system-packages` yourself and do not build a venv to work around an
-  install error**.
-
-  Never `pip install` or `python3 -m pip install`: the base is Ubuntu 24.04,
-  whose system Python is PEP 668 "externally managed", so plain pip refuses
-  with `error: externally-managed-environment`. `pip`/`pip3` are shell
-  *functions* forwarding to `uv pip`, so they work in a shell but not from a
-  bare `agent exec` — call `uv pip` directly. If the image was built without uv
-  (`--modules python` sets the `uv` option, which can be turned off), you are on
-  plain pip and a venv is then the honest answer.
-- **Node: call `pnpm` directly.** `npm`/`npx` are *aliases*, and a
-  non-interactive shell does not expand aliases — so `bash -lc 'npm install'`
-  really runs npm, not pnpm.
-
-      devcontainer-cli agent exec -- uv pip install requests
-      devcontainer-cli agent exec -- pnpm add -D vitest
-      devcontainer-cli agent exec -w -- uv add rich
+Why, and the exceptions: `references/package-managers.md`.
 
 ## Lifecycle
 
@@ -321,97 +308,26 @@ wrong one. Run `devcontainer-cli context` to see which of these the image has.
 
 `start`/`stop`/`restart` accept `-c <container>` to act on one container.
 
+What each step runs, and what survives a stop, a recreate, a `down` or a
+`destroy` (your files, volumes, `$HOME`, `start` script sentinels):
+`references/lifecycle.md`.
+
 ## Reach services across the boundary
 
-A tunnel works in both directions: from here into the container (the common
-case) and from the container back to something running on this machine.
+**Prefer a tunnel or a route over publishing ports with `--ports`**: a tunnel is
+on demand and cannot collide with another project; a published port changes the
+project for good.
 
-### From here into the container
-
-**Prefer `agent forward` or `access route add` over publishing ports with `--ports`.**
-A published port is a permanent, host-wide change to the project (it changes
-the compose file and stays open on every future `workspace up`), while a tunnel or a
-route is created on demand and torn down when you are done — it needs no
-regenerate/rebuild and cannot collide with another project's port on the same
-host. Reach for `--ports` only when the user explicitly wants the port
-published (e.g. so something outside your control can dial it directly).
-
-    devcontainer-cli agent forward 3000              # 127.0.0.1:3000 -> container:3000
-    devcontainer-cli agent forward 8080:80           # 127.0.0.1:8080 -> container:80
-    devcontainer-cli agent forward 5432:postgres:5432  # reach a sibling service
-    devcontainer-cli agent forward 0.0.0.0:8000:8000   # listen on every interface here
-
-A leading IP of this machine (`0.0.0.0`, a LAN or Tailscale address) is the
-**bind address**, like `ssh -L`: the tunnel listens there instead of on
-`127.0.0.1`, so other machines can reach it. Only do that when the user asks
-for it — anything that can reach the address reaches the container port. A
-`reverse:` tunnel takes no bind address (its SSH server keeps it on the
-container's loopback), and the CLI rejects the combination.
-
-`agent forward` tunnels over SSH and stays in the **foreground** until
-interrupted, so run it in the background (or in a separate terminal) if you need
-to keep working.
-
-For a stable local domain instead of a raw port (e.g. to hand a URL to
-something else, or keep it running across sessions) use `access route add` — see
-below — rather than publishing.
-
-Only publish a port permanently (via `--ports`) when a tunnel/route genuinely
-does not fit the case:
-
-    devcontainer-cli agent create --ports 3000:3000
-
-### From the container back to this machine
-
-The host's `localhost` is **not** the container's. A database, an API or a dev
-server running on this machine is unreachable from inside until you open a
-reverse tunnel for it — the same command with a `reverse:` prefix (or
-`--reverse`). The container then finds it on its own `127.0.0.1`.
-
-    devcontainer-cli agent forward reverse:5432       # container:5432 -> host:5432
-    devcontainer-cli agent forward reverse:5432:15432 # container:15432 -> host:5432
-    devcontainer-cli agent forward reverse:5432:192.168.1.20:5432  # a LAN host
-
-The port fields keep their meaning in both directions: the first is always this
-machine's port, the last always the container's — only the arrow flips.
-
-Three things to know before reaching for it:
-
-- **The container port must be 1024 or above.** The listener is bound by the
-  SSH session, which runs as `devuser`, so `reverse:80:80` is refused;
-  `reverse:80:8080` reaches the host's port 80 on the container's 8080.
-- **The host service must answer on an address this machine can dial.** A
-  server bound to `127.0.0.1` here is fine (the tunnel dials from here); one
-  that is not running yet is not.
-- **A sibling compose service is not this.** `postgres`, `redis` and `mongo`
-  from the project's own stack are reached inside the container by service
-  name — no tunnel at all. Use a reverse tunnel only for something running
-  outside the stack.
-
-It is still a foreground process, and still torn down when you stop it. To make
-one permanent for a project, put it in its `forward_ports` instead — a
-`reverse:` spec is accepted there too:
-
-    devcontainer-cli agent create --forward-ports reverse:5432,3000
-
-For a real SSH session rather than a `docker exec`:
-
+    devcontainer-cli agent forward 3000                 # 127.0.0.1:3000 -> container:3000 (foreground)
+    devcontainer-cli agent forward 5432:postgres:5432   # a sibling compose service
+    devcontainer-cli agent forward reverse:5432         # container:5432 -> a service on THIS machine
+    devcontainer-cli access route add 3000              # http://<workspace>-3000.devcli.localhost
     devcontainer-cli agent ssh -- go version
-    devcontainer-cli access ssh --via me@docker-host -c mycontainer -- uname -a
 
-Sibling services are reached **inside** the container by compose service name
-(`postgres`, `redis`, `mongo`), never `localhost`.
-
-To let an unrelated container talk to the project:
-
-    devcontainer-cli access network connect other-app
-
-To route a local domain to a container service via the global Caddy reverse proxy:
-
-    devcontainer-cli access route add 3000                  # http://<workspace>-3000.devcli.localhost
-    devcontainer-cli access route add 8000 --domain api     # http://api.devcli.localhost
-    devcontainer-cli access route ls                        # list active routes
-    devcontainer-cli access route status                    # check global Caddy router status
+Inside the container, sibling services are reached by compose service name
+(`postgres`, `redis`, `mongo`), never `localhost`. Bind addresses, reverse-tunnel
+limits, permanent `forward_ports`, routes and connecting other containers:
+`references/networking.md`.
 
 ## Inspect
 

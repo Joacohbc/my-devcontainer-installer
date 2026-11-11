@@ -1,0 +1,7 @@
+id: manual-db-reset
+label: "SQLite with a reset helper in ~/post-script"
+modules:
+  - sqlite
+scripts:
+  - file: reset-db.sh
+    when: manual

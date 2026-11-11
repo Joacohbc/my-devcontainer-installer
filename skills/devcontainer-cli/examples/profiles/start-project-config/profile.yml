@@ -1,0 +1,11 @@
+id: start-project-config
+label: "Python + Chromium + browser-harness MCP wired into the project"
+modules:
+  - python
+  - nodejs
+  - chrome
+scripts:
+  - file: install-browser-harness.sh
+    when: build
+  - file: setup-browser-harness-mcp.sh
+    when: start
