@@ -65,6 +65,7 @@ Este manual proporciona una guía directa, exhaustiva y orientada a la práctica
    ```bash
    devcontainer-cli workspace up
    ```
+   *(En modo interactivo, `workspace init` ofrece este paso y el siguiente al terminar la descarga: pregunta si ejecutar `up` y luego ofrece SSH efímero, SSH con creación de clave, shell o ninguno.)*
 4. Acceda por SSH o shell:
    ```bash
    devcontainer-cli access ssh

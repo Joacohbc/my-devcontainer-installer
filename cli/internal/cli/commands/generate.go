@@ -646,11 +646,13 @@ func saveAndPostProcess(cwd string, config *types.DevcontainerConfig, plan *serv
 
 	isRemote := config.Mode == types.BuildModeProfiles
 	build := flags.build
+	imageReady := false
 	// Re-checked here: prompts sit between Plan and this point, and a shared
 	// image can be collected meanwhile when another project is destroyed.
 	if plan.CachedImageHit && build == nil && svc.ImageExists(config.Image) {
 		skip := false
 		build = &skip
+		imageReady = true
 		console.Success("✓ Local-cached image is up to date — skipping build.")
 	}
 	if build == nil && flags.interactive {
@@ -679,12 +681,16 @@ func saveAndPostProcess(cwd string, config *types.DevcontainerConfig, plan *serv
 		if berr := svc.Build(paths.ComposeFile, isRemote); berr != nil {
 			return berr
 		}
+		imageReady = true
 	}
 	if build == nil || !*build {
 		console.Done()
 	}
 	console.NewLine()
-	console.Info("SSH access: run 'devcontainer-cli access ssh --setup' to generate a key and register the host automatically.")
+	if flags.interactive && imageReady {
+		return offerUpAndAccess(interactiveNextSteps(paths.ComposeFile, config.Workspace))
+	}
+	console.Info(upHint)
 	return nil
 }
 

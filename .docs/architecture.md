@@ -235,3 +235,12 @@ El orden es estricto: `stage_workspace` determina el UID/GID de devuser; `stage_
   5. Un perfil con `image` y `modules` produce un proyecto derivado; `image create --from` y `--modules` crean definiciones derivadas; `--from-profile` lee perfiles de usuario y copia sus scripts junto a `image.yml`. Se eliminan `ImageDef.Dockerfile` y `ImageDef.Files`.
   6. Se agrega el módulo `android-sdk` (requiere `java-temurin`) como primer caso de imagen compartible.
 - **Consecuencias**: Las imágenes compartibles se componen por capas sin recompilar lo heredado, y los perfiles describen casos de uso sobre ellas. Eliminar una imagen padre con hijas falla en Docker y se reporta (D20). Un proyecto en `mode=image` (sin derivación) sigue usando el UID/GID con que se construyó la imagen.
+
+### D23: Cierre del Asistente: `up` y Menú de Acceso
+- **Contexto**: Tras construir o descargar la imagen, el asistente terminaba con un texto que sugería `access ssh --setup`, y el usuario debía ejecutar por separado `workspace up` y elegir cómo entrar.
+- **Decisión**:
+  1. En modo interactivo, tras el paso de compilación/descarga el asistente pregunta si ejecutar `docker compose up -d` (por defecto sí) mediante `LifecycleService.Up`, solo si hay imagen: la compilación o descarga acaba de ejecutarse, o se reutilizó la imagen local en caché. Si se rechaza o se omite la compilación no se pregunta por `up` ni por el menú, para que `up -d` no compile de forma implícita; solo se imprime la pista. Un fallo de `up` es un error del comando.
+  2. Si `up` se ejecutó, un único menú ofrece SSH efímero (`access ssh --ephemeral`), SSH creando clave y registrando el host (`access ssh --setup`), shell (`access shell`) o ninguno. La sesión es el último paso porque bloquea.
+  3. Los comandos de acceso se ejecutan construyendo `newSshCommand` o `newShellCommand`, analizando sus banderas y llamando a su `RunE` directamente (nunca `Execute`, que recurre a `os.Args` cuando los argumentos son nulos); la capa de comandos no importa `infra/docker` ni `os/exec`. Una sesión que termina con error es solo una advertencia, porque la generación ya tuvo éxito.
+  4. Con `--no-interactive` (incluido `agent create`) no se pregunta nada y se imprime solo la pista con `workspace up` y los comandos de acceso.
+- **Consecuencias**: Un solo `workspace init` puede terminar con el contenedor en ejecución y una sesión abierta. Las pistas nombran únicamente comandos que no preguntan.
