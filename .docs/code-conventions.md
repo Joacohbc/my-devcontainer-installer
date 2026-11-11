@@ -80,7 +80,7 @@ Las siguientes banderas y reglas de nomenclatura son obligatorias en todos los c
 
 La CLI estructura todas sus operaciones en 6 dominios canónicos orientados a recursos, junto con una fachada `agent` especializada:
 
-1. **`workspace`**: Ciclo de vida completo del devcontainer asociado al proyecto (`init`, `up`, `down`, `start`, `stop`, `restart`, `destroy`, `compose`, `export`, `import`).
+1. **`workspace`**: Ciclo de vida completo del devcontainer asociado al proyecto (`init` con wizard, `auto-init` con detección de stack sin prompts, `up`, `down`, `start`, `stop`, `restart`, `destroy`, `compose`, `export`, `import`).
 2. **`access`**: Sesiones interactivas y conectividad de red con el contenedor (`shell`, `ssh`, `forward`, `route`, `network`, `copy`, `password`).
 3. **`inspect`**: Observabilidad, inspección y telemetría de recursos (`status`, `info`, `logs`, `context`, `ls`).
 4. **`profile`**: Gestión, catálogo y autoría de perfiles y plantillas modulares (`list`, `info`, `create`, `copy`, `remove`).

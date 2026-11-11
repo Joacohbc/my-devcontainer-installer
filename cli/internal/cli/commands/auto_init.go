@@ -1,0 +1,138 @@
+package commands
+
+import (
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/catalog"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/service"
+	"github.com/spf13/cobra"
+)
+
+func newAutoInitCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "auto-init [repo-url|dir] [target-dir] [flags]",
+		Short: "Auto-initialize a devcontainer by detecting project stack or cloning a repository",
+		Long: `devcontainer-cli workspace auto-init — inspects project files to automatically detect language
+stacks, runtimes, package managers, and tools (JS/TS, Go, Python, Java/Maven/Gradle,
+PHP, Rust, C/C++, SQLite, GitHub Actions, Docker-in-Docker, and Agent Skills),
+generates the devcontainer configuration, builds the image, starts the container stack,
+and installs agent skills if a skill lockfile is detected.
+
+Optionally accepts a Git repository URL to clone first.`,
+		Example: `  # Initialize devcontainer in current directory with automatic stack detection
+  devcontainer-cli workspace auto-init
+
+  # Clone a remote git repository and initialize its devcontainer environment
+  devcontainer-cli workspace auto-init https://github.com/user/my-repo.git
+
+  # Clone into a specific target folder
+  devcontainer-cli workspace auto-init git@github.com:user/project.git ./my-project
+
+  # Initialize a specific directory without starting containers immediately
+  devcontainer-cli workspace auto-init ./backend --no-up
+
+  # Initialize with extra modules and compose services
+  devcontainer-cli workspace auto-init --modules redis-client --services redis`,
+		Args:         cobra.MaximumNArgs(2),
+		SilenceUsage: true,
+		RunE:         runAutoInit,
+	}
+
+	addAutoInitFlags(cmd)
+	return cmd
+}
+
+func addAutoInitFlags(cmd *cobra.Command) {
+	f := cmd.Flags()
+	f.String(flagMode, "", "Build mode: custom (default) or profiles (pull prebuilt image)")
+	f.String(flagRegistry, "", "Container registry prefix for remote images")
+	f.String(flagModules, "", "Additional dockerfile modules (e.g. nodejs,golang,rust)")
+	f.String(flagServices, "", "Additional compose services (e.g. mongo,postgres,redis)")
+	f.String(flagWorkspace, "", "Workspace name (default: directory name or repo name)")
+	f.String(flagPorts, "", "Ports to publish on the devcontainer (e.g. 8080:80,5432:5432)")
+	f.String(flagVolumes, "", "Extra volume mounts on the devcontainer")
+	f.String(flagForwardPorts, "", "Ports 'port-forward' tunnels by default (a 'reverse:' prefix tunnels a host port into the container)")
+	f.Bool(flagSharedConfig, true, "Mount global shared tool config volume")
+	f.String(flagProfile, "", "Apply profile bundle(s) (comma-separated for custom builds)")
+	f.Bool(flagNoUp, false, "Generate and build only; leave containers stopped")
+	addBuildFlag(cmd, true, "Build or pull container images after generating")
+
+	completeProfileFunc := func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		return completeCSV(toComplete, profileIDs(false)), cobra.ShellCompDirectiveNoFileComp
+	}
+	_ = cmd.RegisterFlagCompletionFunc(flagProfile, completeProfileFunc)
+	_ = cmd.RegisterFlagCompletionFunc(flagMode, staticCompletion(string(types.BuildModeCustom), string(types.BuildModeProfiles)))
+	_ = cmd.RegisterFlagCompletionFunc(flagModules, func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		return completeCSV(toComplete, catalog.ModuleIDs()), cobra.ShellCompDirectiveNoFileComp
+	})
+	completeServiceFunc := func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		return completeCSV(toComplete, catalog.ServiceIDs()), cobra.ShellCompDirectiveNoFileComp
+	}
+	_ = cmd.RegisterFlagCompletionFunc(flagServices, completeServiceFunc)
+}
+
+func runAutoInit(cmd *cobra.Command, args []string) error {
+	f := cmd.Flags()
+	noUp, _ := f.GetBool(flagNoUp)
+	build, _ := f.GetBool(flagBuild)
+
+	opts := service.InitOptions{
+		NoUp:    noUp,
+		NoBuild: !build,
+	}
+
+	if len(args) > 0 {
+		firstArg := args[0]
+		if domain.IsGitRepoURL(firstArg) {
+			opts.RepoURL = firstArg
+			if len(args) > 1 {
+				opts.TargetDir = args[1]
+			}
+		} else {
+			opts.TargetDir = firstArg
+		}
+	}
+
+	opts.Workspace, _ = f.GetString(flagWorkspace)
+	opts.Mode, _ = f.GetString(flagMode)
+	opts.Registry, _ = f.GetString(flagRegistry)
+	opts.Profile, _ = f.GetString(flagProfile)
+
+	if f.Changed(flagModules) {
+		w, _ := f.GetString(flagModules)
+		opts.WithModules = splitCSV(w)
+	}
+	if f.Changed(flagServices) {
+		s, _ := f.GetString(flagServices)
+		opts.Services = splitCSV(s)
+	}
+	if f.Changed(flagPorts) {
+		opts.Ports = parsePortsFlag(f.GetString)
+	}
+	if f.Changed(flagVolumes) {
+		opts.Volumes = parseClearableCSV(f.GetString, flagVolumes)
+	}
+	if f.Changed(flagForwardPorts) {
+		opts.ForwardPorts = parseClearableCSV(f.GetString, flagForwardPorts)
+	}
+	if f.Changed(flagSharedConfig) {
+		v, _ := f.GetBool(flagSharedConfig)
+		opts.SharedConfig = &v
+	}
+
+	initSvc := service.InitService{
+		Report: console,
+		Prompt: console,
+	}
+
+	console.Header("\nDevContainer Stack Initializer")
+	console.NewLine()
+
+	_, err := initSvc.Init(opts)
+	if err != nil {
+		return err
+	}
+
+	console.Done()
+	return nil
+}

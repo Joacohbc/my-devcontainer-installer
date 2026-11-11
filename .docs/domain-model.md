@@ -168,7 +168,7 @@ En `mode=custom`, la bandera `--profile` acepta una lista de identificadores sep
 ```mermaid
 stateDiagram-v2
     [*] --> Unconfigured: Directorio sin .dc_<workspace>
-    Unconfigured --> Configured: generate / init
+    Unconfigured --> Configured: generate / workspace init / workspace auto-init / agent create
     Configured --> Building: up / run (modo custom sin imagen)
     Configured --> Pulling: up / run (modo profiles)
     Building --> Running: docker compose up exitoso

@@ -14,10 +14,13 @@ func newWorkspaceCommand() *cobra.Command {
 		Short: "Manage project workspace lifecycle and containers",
 		Long: `devcontainer-cli workspace — manage the complete lifecycle of project devcontainers.
 
-Provides subcommands to initialize, start, stop, restart, destroy, inspect compose
+Provides subcommands to initialize (init, auto-init), start, stop, restart, destroy, inspect compose
 passthrough, and import or export configurations for the current project workspace.`,
-		Example: `  # Initialize a workspace configuration
+		Example: `  # Create a workspace configuration with the interactive wizard
   devcontainer-cli workspace init
+
+  # Detect the stack and initialize without prompts
+  devcontainer-cli workspace auto-init
 
   # Bring up containers
   devcontainer-cli workspace up
@@ -32,6 +35,7 @@ passthrough, and import or export configurations for the current project workspa
 
 	cmd.AddCommand(
 		newInitCommand(),
+		newAutoInitCommand(),
 		newUpCommand(),
 		newDownCommand(),
 		newStartCommand(),

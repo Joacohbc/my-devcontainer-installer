@@ -308,6 +308,8 @@ wrong one. Run `devcontainer-cli context` to see which of these the image has.
 
 `agent create` already starts the stack. To drive it afterwards:
 
+    devcontainer-cli workspace init              # interactive wizard (prompts: never from an agent)
+    devcontainer-cli workspace auto-init         # detect the stack, build and start without prompts
     devcontainer-cli workspace up                # create/recreate and start (detached)
     devcontainer-cli workspace up --build        # rebuild the image first
     devcontainer-cli workspace start | stop | restart
@@ -497,7 +499,7 @@ managed label). Use `--dry-run` first and show the user what would go.
 ## Rules
 
 - **Prefer `agent <verb>`.** Those never prompt. If you drop to a plain command
-  that can prompt (generation, `run`, `workspace down`, `workspace destroy`, `config clean`,
+  that can prompt (generation, `workspace init`, `run`, `workspace down`, `workspace destroy`, `config clean`,
   `access forward`), pass `--no-interactive` or it opens a wizard and hangs. Add
   `-y/--yes` for destructive commands — and get the user's agreement first for
   `agent destroy`, `workspace destroy`, `workspace down -v` and `config clean all`.

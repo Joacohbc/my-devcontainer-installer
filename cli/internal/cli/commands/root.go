@@ -24,7 +24,7 @@ Generated files are written under .dc_<workspace>/ next to your project and the
 result is recorded so the other subcommands can find it.
 
 Commands are structured across 6 canonical resource domains:
-  workspace    Manage project workspace lifecycle (init, up, down, start, stop, restart, destroy, compose, export, import)
+  workspace    Manage project workspace lifecycle (init, auto-init, up, down, start, stop, restart, destroy, compose, export, import)
   access       Connect to and interact with running devcontainers (shell, ssh, forward, route, network, copy, password)
   inspect      Inspect container status, logs, files, and context (status, info, logs, context, ls)
   profile      Manage reusable devcontainer profiles (list, info, create, copy, remove)
