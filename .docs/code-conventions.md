@@ -91,7 +91,7 @@ La CLI estructura todas sus operaciones en 6 dominios canónicos orientados a re
 6. **`config`**: Parámetros globales y mantenimiento (`registry`, `git-init`, `db-user`, `db-password`, `ssh-key`, `ssh-config-file`, `alias`, `shared`, `skill`, `clean`, `upgrade-cli`).
 
 **Utilidad independiente en la raíz**:
-- **`run`**: `devcontainer-cli run` inicia un contenedor desechable directamente a partir de una imagen remota preconstruida, sin asociarse a ningún workspace de proyecto ni generar archivos en disco.
+- **`run`**: `devcontainer-cli run` inicia un contenedor desechable directamente a partir de la imagen publicada de un perfil (`--profile`) o de una definición de imagen (`--image`, D27), sin asociarse a ningún workspace de proyecto ni generar archivos en disco.
 
 **Fachada `agent`**:
 - Contiene exclusivamente comandos que presentan valores predeterminados y semántica inherentemente desatendida para agentes de IA: `exec`, `ssh`, `forward`, `create`, `run`, `destroy`, `list`, `cli-info`.

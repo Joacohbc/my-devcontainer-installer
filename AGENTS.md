@@ -10,7 +10,7 @@ This file holds the constitutional rules an agent must follow. Detailed document
 |---|---|
 | Product purpose, personas, and end-to-end flows | `.docs/product.md` |
 | Practical use cases handbook (human and agentic) | `.docs/manual.md` |
-| 4-layer architecture, boundaries, and decisions D1–D26 | `.docs/architecture.md` |
+| 4-layer architecture, boundaries, and decisions D1–D27 | `.docs/architecture.md` |
 | Entities, Dockerfile modules, compose services, profiles | `.docs/domain-model.md` |
 | Domain vocabulary (ubiquitous language) | `.docs/context.md` |
 | Code conventions, `hbc-code-design`, command authoring | `.docs/code-conventions.md` |
@@ -38,7 +38,7 @@ When operating on devcontainer workspaces, agents must strictly use the provided
 - Inside container: `devcontainer-cli agent exec -w -- <cmd>`
 - Port forwarding: `devcontainer-cli agent forward <ports>`
 - SSH session: `devcontainer-cli agent ssh -- <cmd>`
-- Temporal environments: `devcontainer-cli agent run --profile <id>`
+- Temporal environments: `devcontainer-cli agent run --profile <id>` (or `--image <name>` for an image definition)
 - Tear down workspace: `devcontainer-cli agent destroy --yes`
 
 ## Architecture in five lines

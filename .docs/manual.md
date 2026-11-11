@@ -362,7 +362,7 @@ devcontainer-cli config skill add mi-habilidad --ref owner/repo --label "Mi Habi
 
 ### Caso 1.12: Contenedor Desechable sin Proyecto (`devcontainer-cli run`)
 
-**Escenario**: Desea iniciar un entorno de pruebas o experimentación rápido a partir de una imagen remota preconstruida, sin inicializar un repositorio, sin generar archivos `.dc_<workspace>/` ni depender de un workspace en disco.
+**Escenario**: Desea iniciar un entorno de pruebas o experimentación rápido a partir de una imagen preconstruida o de una de sus definiciones de imagen, sin inicializar un repositorio, sin generar archivos `.dc_<workspace>/` ni depender de un workspace en disco.
 
 **Paso a paso**:
 1. Inicie un contenedor desechable interactivo o no interactivo:

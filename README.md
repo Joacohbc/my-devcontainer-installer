@@ -365,7 +365,7 @@ Para profundizar en la arquitectura interna, decisiones técnicas y guías de de
 |---|---|
 | [**`.docs/manual.md`**](.docs/manual.md) | **Manual Práctico de Casos de Uso** detallado para humanos y agentes de IA con comandos exactos. |
 | [**`.docs/product.md`**](.docs/product.md) | Visión de producto, personas y flujos funcionales de extremo a extremo. |
-| [**`.docs/architecture.md`**](.docs/architecture.md) | Arquitectura en 4 capas, contratos de aislamiento e inventario de decisiones D1–D13. |
+| [**`.docs/architecture.md`**](.docs/architecture.md) | Arquitectura en 4 capas, contratos de aislamiento e inventario de decisiones D1–D27. |
 | [**`.docs/domain-model.md`**](.docs/domain-model.md) | Entidades, catálogo de módulos Dockerfile, servicios Compose y perfiles. |
 | [**`.docs/code-conventions.md`**](.docs/code-conventions.md) | Directivas `hbc-code-design`, convenciones Go y autoría de comandos Cobra. |
 | [**`.docs/dev-environment.md`**](.docs/dev-environment.md) | Entorno local, GitHub Actions, GoReleaser y auto-actualización. |
