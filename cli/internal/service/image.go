@@ -259,6 +259,15 @@ func (s ImageService) Available(name string) (string, error) {
 	return tag, nil
 }
 
+// RunnableRef resolves --image under mode=image: a definition name goes
+// through Available, anything else is a registry reference used as-is.
+func (s ImageService) RunnableRef(image string) (string, error) {
+	if _, ok, _ := domain.ResolveImageDef(image, s.getImagesDir()); !ok {
+		return image, nil
+	}
+	return s.Available(image)
+}
+
 // Build compiles a local Dockerfile for the image definition and tags it.
 func (s ImageService) Build(name string) error {
 	def, ok, err := domain.ResolveImageDef(name, s.getImagesDir())

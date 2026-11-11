@@ -773,11 +773,6 @@ func applyGenFlags(config *types.DevcontainerConfig, flags *genFlags) error {
 
 	if flags.mode != "" {
 		config.Mode = types.BuildMode(flags.mode)
-		if config.Mode == types.BuildModeImage && flags.image != "" {
-			if def, ok, _ := domain.ResolveImageDef(flags.image); ok {
-				config.Image = domain.ImageTag(def)
-			}
-		}
 	}
 	if flags.workspace != "" {
 		config.Workspace = flags.workspace
@@ -842,7 +837,11 @@ func applyGenFlags(config *types.DevcontainerConfig, flags *genFlags) error {
 		config.Remote = &types.RemoteConfig{Variant: variant, Registry: perProject}
 	}
 	if flags.image != "" {
-		config.Image = flags.image
+		image, err := imageFlagRef(config.Mode, flags.image)
+		if err != nil {
+			return err
+		}
+		config.Image = image
 	} else if config.Mode == types.BuildModeProfiles && config.Remote != nil {
 		config.Image = domain.ResolveRemoteImage(config.Remote.Variant, domain.ResolveRegistry(flags.registry, config.Remote.Registry))
 	}
@@ -851,6 +850,16 @@ func applyGenFlags(config *types.DevcontainerConfig, flags *genFlags) error {
 	// has to survive that: it is derived from the selected skills, not chosen.
 	domain.ApplySelectedSkills(config)
 	return nil
+}
+
+// imageFlagRef is the image --image names: under mode=image a definition is
+// resolved to its runnable reference (failing early when it was never built);
+// otherwise the value is taken as given.
+func imageFlagRef(mode types.BuildMode, image string) (string, error) {
+	if mode != types.BuildModeImage {
+		return image, nil
+	}
+	return service.ImageService{}.RunnableRef(image)
 }
 
 func writeOutput(filePath, content string, force bool) bool {

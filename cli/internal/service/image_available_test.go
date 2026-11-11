@@ -76,3 +76,18 @@ func TestImageAvailable(t *testing.T) {
 		})
 	}
 }
+
+// --mode image --image takes a definition name or a registry reference; only a
+// definition is checked, a reference is handed to Docker as-is.
+func TestImageRunnableRef(t *testing.T) {
+	svc := newImageSvc(t)
+	_ = svc.Create("unbuilt", CreateImageOpts{})
+	defer useFakeDocker(&daemonRunner{local: map[string]bool{}})()
+
+	if got, err := svc.RunnableRef("ghcr.io/acme/devcontainer:1"); err != nil || got != "ghcr.io/acme/devcontainer:1" {
+		t.Fatalf("registry reference = %q, %v; want it unchanged", got, err)
+	}
+	if _, err := svc.RunnableRef("unbuilt"); err == nil || !strings.Contains(err.Error(), "image build unbuilt") {
+		t.Fatalf("unbuilt definition error = %v, want a build hint", err)
+	}
+}
