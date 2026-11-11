@@ -149,9 +149,11 @@ func buildStepForm(f sv.Field) (func() any, *huh.Form) {
 		for i, c := range f.Choices {
 			opts[i] = huh.NewOption(c.Label, c.Value)
 		}
-		form := huh.NewForm(huh.NewGroup(
-			huh.NewSelect[string]().Title(f.Title).Options(opts...).Value(&res),
-		))
+		field := huh.NewSelect[string]().Title(f.Title).Options(opts...).Value(&res)
+		if f.Validate != nil {
+			field = field.Validate(f.Validate)
+		}
+		form := huh.NewForm(huh.NewGroup(field))
 		return func() any { return res }, form
 	}
 }

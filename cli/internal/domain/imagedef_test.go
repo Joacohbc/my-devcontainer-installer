@@ -1,6 +1,7 @@
 package domain_test
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -164,5 +165,41 @@ func TestUserImageDirFollowsGlobalConfigDir(t *testing.T) {
 	}
 	if got, want := domain.UserImageDir("/base"), filepath.Join("/base", "images"); got != want {
 		t.Errorf("UserImageDir(custom) = %q, want %q", got, want)
+	}
+}
+
+func TestImageDefEffectiveSource(t *testing.T) {
+	cases := []struct {
+		source domain.ImageSource
+		want   domain.ImageSource
+	}{
+		{"", domain.ImageSourceBuild},
+		{domain.ImageSourceBuild, domain.ImageSourceBuild},
+		{domain.ImageSourceRemote, domain.ImageSourceRemote},
+	}
+	for _, c := range cases {
+		if got := (domain.ImageDef{Source: c.source}).EffectiveSource(); got != c.want {
+			t.Errorf("EffectiveSource(%q) = %q, want %q", c.source, got, c.want)
+		}
+	}
+}
+
+// Key is the directory a definition lives in, the name 'image build' and the
+// other image commands resolve, even when image.yml sets another name.
+func TestImageDefKeyIsTheDirectory(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "team"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "team", domain.ImageManifestFileName), []byte("name: team-api\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	defs, err := domain.LoadImageDefs(dir)
+	if err != nil || len(defs) != 1 || defs[0].Key != "team" || defs[0].Name != "team-api" {
+		t.Fatalf("LoadImageDefs = %+v, %v; want key team, name team-api", defs, err)
+	}
+	def, ok, err := domain.ResolveImageDef("team", dir)
+	if err != nil || !ok || def.Key != "team" {
+		t.Fatalf("ResolveImageDef = %+v, %v, %v; want key team", def, ok, err)
 	}
 }

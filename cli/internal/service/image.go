@@ -187,6 +187,26 @@ func (s ImageService) List() ([]ImageStatus, error) {
 	return statuses, nil
 }
 
+// Names lists the registered image definition names, sorted, reading only the
+// manifests on disk so shell completion never waits on the Docker daemon. With
+// sources it keeps only definitions of those sources (a manifest without one is
+// a build definition); an unreadable images directory yields no names.
+func (s ImageService) Names(sources ...domain.ImageSource) []string {
+	defs, err := domain.LoadImageDefs(s.getImagesDir())
+	if err != nil {
+		return nil
+	}
+	names := make([]string, 0, len(defs))
+	for _, def := range defs {
+		if len(sources) > 0 && !slices.Contains(sources, def.EffectiveSource()) {
+			continue
+		}
+		names = append(names, def.Name)
+	}
+	slices.Sort(names)
+	return names
+}
+
 // Info returns detailed status for a single named image.
 func (s ImageService) Info(name string) (*ImageStatus, error) {
 	def, ok, err := domain.ResolveImageDef(name, s.getImagesDir())
@@ -218,6 +238,105 @@ func (s ImageService) Info(name string) (*ImageStatus, error) {
 	}, nil
 }
 
+// Available resolves a definition to the image reference a container can run:
+// a remote definition's registry reference (pulled on first use), or a build
+// definition's tag once it has been built locally.
+func (s ImageService) Available(name string) (string, error) {
+	def, err := s.runnableDef(name)
+	if err != nil {
+		return "", err
+	}
+	return s.available(def)
+}
+
+// Ready is Available plus the image contract for a remote definition: it is
+// pulled and verified (as 'image pull' does) before a container runs it, so an
+// image without devuser or the CLI entrypoint is refused instead of starting a
+// container nothing can attach to.
+func (s ImageService) Ready(name string) (string, error) {
+	def, err := s.runnableDef(name)
+	if err != nil {
+		return "", err
+	}
+	return s.ready(def)
+}
+
+// RunnableRef resolves the image of a mode=image project: a definition, named
+// directly or by the reference it resolves to, goes through Ready. A bare name
+// that matches no definition is reported, since a registry image carries a tag
+// or a registry; any other value is a registry reference used as-is.
+func (s ImageService) RunnableRef(image string) (string, error) {
+	def, ok, err := s.definitionFor(image)
+	if err != nil {
+		return "", err
+	}
+	if ok {
+		return s.ready(def)
+	}
+	if domain.ValidateImageName(image) == nil {
+		return "", fmt.Errorf("image definition %q not found; run 'devcontainer-cli image list' to see the available images, or pass a tagged reference such as %s:latest for a registry image", image, image)
+	}
+	return image, nil
+}
+
+// runnableDef resolves a definition by name for Available and Ready.
+func (s ImageService) runnableDef(name string) (domain.ImageDef, error) {
+	def, ok, err := domain.ResolveImageDef(name, s.getImagesDir())
+	if err != nil {
+		return domain.ImageDef{}, err
+	}
+	if !ok {
+		return domain.ImageDef{}, fmt.Errorf("image definition %q not found; run 'devcontainer-cli image list' to see the available images", name)
+	}
+	return def, nil
+}
+
+func (s ImageService) available(def domain.ImageDef) (string, error) {
+	tag := domain.ImageTag(def)
+	if def.EffectiveSource() == domain.ImageSourceRemote {
+		return tag, nil
+	}
+	if !domain.LocalImageExists(tag, captureFunc()) {
+		return "", fmt.Errorf("image %q is not built; run 'devcontainer-cli image build %s' first", def.Key, def.Key)
+	}
+	return tag, nil
+}
+
+func (s ImageService) ready(def domain.ImageDef) (string, error) {
+	ref, err := s.available(def)
+	if err != nil {
+		return "", err
+	}
+	if def.EffectiveSource() != domain.ImageSourceRemote {
+		return ref, nil
+	}
+	if err := s.pullDef(def); err != nil {
+		return "", err
+	}
+	return ref, nil
+}
+
+// definitionFor finds the definition image names: by definition name, or by
+// the reference a definition resolves to.
+func (s ImageService) definitionFor(image string) (domain.ImageDef, bool, error) {
+	if domain.ValidateImageName(image) == nil {
+		def, ok, err := domain.ResolveImageDef(image, s.getImagesDir())
+		if err != nil || ok {
+			return def, ok, err
+		}
+	}
+	defs, err := domain.LoadImageDefs(s.getImagesDir())
+	if err != nil {
+		return domain.ImageDef{}, false, err
+	}
+	for _, def := range defs {
+		if domain.ImageTag(def) == image {
+			return def, true, nil
+		}
+	}
+	return domain.ImageDef{}, false, nil
+}
+
 // Build compiles a local Dockerfile for the image definition and tags it.
 func (s ImageService) Build(name string) error {
 	def, ok, err := domain.ResolveImageDef(name, s.getImagesDir())
@@ -227,7 +346,7 @@ func (s ImageService) Build(name string) error {
 	if !ok {
 		return fmt.Errorf("image definition %q not found", name)
 	}
-	if def.Source == domain.ImageSourceRemote {
+	if def.EffectiveSource() == domain.ImageSourceRemote {
 		return fmt.Errorf("image %q has source=remote; run 'devcontainer-cli image pull %s' instead", name, name)
 	}
 
@@ -286,13 +405,21 @@ func (s ImageService) Pull(name string) error {
 	if !ok {
 		return fmt.Errorf("image definition %q not found", name)
 	}
+	if def.EffectiveSource() == domain.ImageSourceBuild {
+		return fmt.Errorf("image %q has source=build; run 'devcontainer-cli image build %s' instead", name, name)
+	}
 
+	return s.pullDef(def)
+}
+
+// pullDef pulls a remote definition's image and verifies the image contract.
+func (s ImageService) pullDef(def domain.ImageDef) error {
 	targetRef := def.Ref
 	if targetRef == "" {
 		targetRef = domain.ImageTag(def)
 	}
 
-	s.Report.Info("Pulling image '%s' (%s)...", name, targetRef)
+	s.Report.Info("Pulling image '%s' (%s)...", def.Name, targetRef)
 	code, err := docker.DockerInherit([]string{"pull", targetRef})
 	if err != nil || code != 0 {
 		return fmt.Errorf("docker pull failed with exit code %d (if private, run 'docker login' first): %w", code, err)
@@ -489,7 +616,7 @@ func (s ImageService) ensureParent(from, dir string) error {
 	if !domain.LocalImageExists(ref, captureFunc()) {
 		if isDef {
 			action := "build"
-			if parentDef.Source == domain.ImageSourceRemote {
+			if parentDef.EffectiveSource() == domain.ImageSourceRemote {
 				action = "pull"
 			}
 			return fmt.Errorf("base image %s is not available locally; run 'devcontainer-cli image %s %s' first", ref, action, from)
@@ -502,7 +629,7 @@ func (s ImageService) ensureParent(from, dir string) error {
 	if err := domain.CheckImageCompat(ref, captureFunc()); err != nil {
 		return fmt.Errorf("base image %s: %w", ref, err)
 	}
-	if isDef && parentDef.Source == domain.ImageSourceBuild {
+	if isDef && parentDef.EffectiveSource() == domain.ImageSourceBuild {
 		return checkParentBuilt(from, ref, dir)
 	}
 	return nil

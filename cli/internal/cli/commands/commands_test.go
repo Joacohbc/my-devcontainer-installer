@@ -647,7 +647,7 @@ func TestResolveRunProfile_RejectsLocalOnlyAndSSH(t *testing.T) {
 		if err := cmd.Flags().Set("profile", id); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := resolveRunProfile(cmd, true); err == nil {
+		if _, err := resolveRunProfile(cmd, console); err == nil {
 			t.Errorf("expected an error for --profile %s", id)
 		}
 	}
@@ -656,7 +656,7 @@ func TestResolveRunProfile_RejectsLocalOnlyAndSSH(t *testing.T) {
 	if err := cmd.Flags().Set("profile", "base"); err != nil {
 		t.Fatal(err)
 	}
-	got, err := resolveRunProfile(cmd, true)
+	got, err := resolveRunProfile(cmd, console)
 	if err != nil {
 		t.Fatalf("resolveRunProfile: %v", err)
 	}
@@ -685,7 +685,7 @@ func TestResolveRunProfile_RejectsMultipleProfiles(t *testing.T) {
 	if err := cmd.Flags().Set("profile", "nodejs,python"); err != nil {
 		t.Fatal(err)
 	}
-	_, err := resolveRunProfile(cmd, false)
+	_, err := resolveRunProfile(cmd, console)
 	if err == nil {
 		t.Fatal("expected error when passing multiple profiles to run")
 	}

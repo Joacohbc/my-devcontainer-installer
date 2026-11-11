@@ -25,6 +25,10 @@ const ImageManifestFileName = "image.yml"
 
 // ImageDef represents a reusable devcontainer image definition.
 type ImageDef struct {
+	// Key is the directory the definition lives in: the name 'image build'
+	// and the other image commands resolve. It is not stored in image.yml,
+	// whose name may differ.
+	Key    string      `json:"-" yaml:"-"`
 	Name   string      `json:"name" yaml:"name"`
 	Label  string      `json:"label,omitempty" yaml:"label,omitempty"`
 	Tag    string      `json:"tag,omitempty" yaml:"tag,omitempty"`
@@ -36,6 +40,15 @@ type ImageDef struct {
 	From    string                 `json:"from,omitempty" yaml:"from,omitempty"`
 	Modules []types.SelectedModule `json:"modules,omitempty" yaml:"modules,omitempty"`
 	Scripts []types.CustomScript   `json:"scripts,omitempty" yaml:"scripts,omitempty"`
+}
+
+// EffectiveSource is the definition's source, treating a manifest without one
+// as a build definition.
+func (d ImageDef) EffectiveSource() ImageSource {
+	if d.Source == "" {
+		return ImageSourceBuild
+	}
+	return d.Source
 }
 
 // ValidateImageName checks if the image name matches the allowed character set.
@@ -111,6 +124,7 @@ func LoadImageDefs(dir string) ([]ImageDef, error) {
 				if def.Name == "" {
 					def.Name = entry.Name()
 				}
+				def.Key = entry.Name()
 				defs = append(defs, def)
 			}
 		}
@@ -138,6 +152,7 @@ func ResolveImageDef(name string, dirs ...string) (ImageDef, bool, error) {
 			if def.Name == "" {
 				def.Name = name
 			}
+			def.Key = name
 			return def, true, nil
 		}
 	}

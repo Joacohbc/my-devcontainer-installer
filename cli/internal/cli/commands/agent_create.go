@@ -57,7 +57,7 @@ func addAgentCreateFlags(cmd *cobra.Command) {
 	f.String(flagRegistry, "", "Container registry prefix for remote images (overrides global)")
 	f.String(flagModules, "", "Comma-separated dockerfile modules (e.g. nodejs,golang,rust)")
 	f.String(flagServices, "", "Comma-separated compose services (e.g. mongo,postgres,redis)")
-	f.String(flagImage, "", "Image name (ignored for mode=custom, whose image is named by origin and content: devcontainer-cli/<profiles>-<hash>)")
+	f.String(flagImage, "", "Image to run under mode=image: an image definition name (see 'image list'; a build definition must be built first, a remote one is pulled and verified) or a registry reference. Ignored for mode=custom, whose image is named by origin and content: devcontainer-cli/<profiles>-<hash>")
 	f.String(flagWorkspace, "", "Workspace name (default: current dir name)")
 	f.String(flagPorts, "", "Ports to publish on the devcontainer (e.g. 8080:80,5432:5432); bound to 127.0.0.1 unless an IP is given; 'none' clears them")
 	f.String(flagVolumes, "", "Extra volume mounts on the devcontainer (e.g. myvol:/data,./cache:/cache); 'none' clears them")
@@ -84,6 +84,7 @@ func addAgentCreateFlags(cmd *cobra.Command) {
 		return completeCSV(toComplete, catalog.ServiceIDs()), cobra.ShellCompDirectiveNoFileComp
 	}
 	_ = cmd.RegisterFlagCompletionFunc(flagServices, completeServiceFunc)
+	_ = cmd.RegisterFlagCompletionFunc(flagImage, completeImageNames)
 }
 
 // agentCreateDefaults applies what makes this "create" rather than "generate":

@@ -45,7 +45,7 @@ func addGenerateFlags(cmd *cobra.Command) {
 	f.String(flagRegistry, "", "Container registry prefix for remote images (overrides global)")
 	f.String(flagModules, "", "Comma-separated dockerfile modules (e.g. nodejs,golang,rust)")
 	f.String(flagServices, "", "Comma-separated compose services (e.g. mongo,postgres,redis)")
-	f.String(flagImage, "", "Image name (ignored for mode=custom, whose image is named by origin and content: devcontainer-cli/<profiles>-<hash>)")
+	f.String(flagImage, "", "Image to run under mode=image: an image definition name (see 'image list'; a build definition must be built first, a remote one is pulled and verified) or a registry reference. Ignored for mode=custom, whose image is named by origin and content: devcontainer-cli/<profiles>-<hash>")
 	f.String(flagWorkspace, "", "Workspace name (default: current dir name)")
 	f.String(flagPorts, "", "Ports to publish on the devcontainer (e.g. 8080:80,5432:5432); bound to 127.0.0.1 unless an IP is given; 'none' clears them")
 	f.String(flagVolumes, "", "Extra volume mounts on the devcontainer (e.g. myvol:/data,./cache:/cache); 'none' clears them")
@@ -77,6 +77,7 @@ func addGenerateFlags(cmd *cobra.Command) {
 		return completeCSV(toComplete, catalog.ServiceIDs()), cobra.ShellCompDirectiveNoFileComp
 	}
 	_ = cmd.RegisterFlagCompletionFunc(flagServices, completeServiceFunc)
+	_ = cmd.RegisterFlagCompletionFunc(flagImage, completeImageNames)
 }
 
 // profileIDs lists profile ids for completion on the shared --profile flag.
@@ -469,8 +470,19 @@ func validateConfig(cwd string, config *types.DevcontainerConfig, flags *genFlag
 			strings.Join(ids, ", "))
 	}
 
-	if config.Mode == types.BuildModeImage && config.Image == "" {
-		return fmt.Errorf("mode=image requires --image <name> (run 'devcontainer-cli image list' to see available images)")
+	if config.Mode == types.BuildModeImage {
+		if config.Image == "" {
+			return fmt.Errorf("mode=image requires --image <name> (run 'devcontainer-cli image list' to see available images)")
+		}
+		// Every source of a mode=image project's image (--image, the wizard, a
+		// profile's image:) meets here, so a definition is resolved and checked
+		// once: a build definition must be built, a remote one is pulled and
+		// verified against the image contract.
+		ref, err := service.ImageService{Report: console}.RunnableRef(config.Image)
+		if err != nil {
+			return err
+		}
+		config.Image = ref
 	}
 
 	if config.Mode == types.BuildModeProfiles {
@@ -772,11 +784,6 @@ func applyGenFlags(config *types.DevcontainerConfig, flags *genFlags) error {
 
 	if flags.mode != "" {
 		config.Mode = types.BuildMode(flags.mode)
-		if config.Mode == types.BuildModeImage && flags.image != "" {
-			if def, ok, _ := domain.ResolveImageDef(flags.image); ok {
-				config.Image = domain.ImageTag(def)
-			}
-		}
 	}
 	if flags.workspace != "" {
 		config.Workspace = flags.workspace

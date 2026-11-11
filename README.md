@@ -92,7 +92,7 @@ devcontainer-cli access shell       # Shell directa e interactiva vía docker ex
 - **Arranque instantáneo con perfiles**: Omita la compilación local usando imágenes precompiladas de GHCR con `devcontainer-cli --profile nodejs` (o `python`, `go`, `bun`, `node-go`).
 - **Integración con VS Code**: `devcontainer-cli access ssh` configura automáticamente sus claves en `~/.ssh/devcontainer-cli.config`. Abra VS Code, pulse `F1` -> *Remote-SSH: Connect to Host...* y elija el nombre de su proyecto.
 - **Bases de datos listas**: Añada `--services postgres,redis` y conéctese con DBeaver o TablePlus desde el host en `127.0.0.1:5432`.
-- **Entorno rápido sin proyecto**: Inicie un contenedor desechable en segundos sin generar archivos con `devcontainer-cli run --profile nodejs`.
+- **Entorno rápido sin proyecto**: Inicie un contenedor desechable en segundos sin generar archivos con `devcontainer-cli run --profile nodejs`, o a partir de una de sus definiciones de imagen con `devcontainer-cli run --image <name>`.
 
 ### 🤖 Para Agentes Autónomos de IA (Antigravity, Claude Code, Codex, Copilot)
 - **Fachada desatendida y predecible**: El grupo `devcontainer-cli agent` nunca abre menús interactivos ni espera respuestas; si falta un parámetro, falla de forma inmediata y explícita.
@@ -365,7 +365,7 @@ Para profundizar en la arquitectura interna, decisiones técnicas y guías de de
 |---|---|
 | [**`.docs/manual.md`**](.docs/manual.md) | **Manual Práctico de Casos de Uso** detallado para humanos y agentes de IA con comandos exactos. |
 | [**`.docs/product.md`**](.docs/product.md) | Visión de producto, personas y flujos funcionales de extremo a extremo. |
-| [**`.docs/architecture.md`**](.docs/architecture.md) | Arquitectura en 4 capas, contratos de aislamiento e inventario de decisiones D1–D13. |
+| [**`.docs/architecture.md`**](.docs/architecture.md) | Arquitectura en 4 capas, contratos de aislamiento e inventario de decisiones D1–D27. |
 | [**`.docs/domain-model.md`**](.docs/domain-model.md) | Entidades, catálogo de módulos Dockerfile, servicios Compose y perfiles. |
 | [**`.docs/code-conventions.md`**](.docs/code-conventions.md) | Directivas `hbc-code-design`, convenciones Go y autoría de comandos Cobra. |
 | [**`.docs/dev-environment.md`**](.docs/dev-environment.md) | Entorno local, GitHub Actions, GoReleaser y auto-actualización. |

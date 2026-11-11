@@ -22,6 +22,7 @@ var modeChoiceLabels = map[string]string{
 	string(types.BuildModeCustom):   "custom — pick modules yourself, build locally",
 	modeChoiceCustomFromProfile:     "custom, from a profile — start from a saved module bundle, build locally",
 	string(types.BuildModeProfiles): "profiles — skip the build, pull a pre-built image for a catalog profile",
+	string(types.BuildModeImage):    "image — use a named image as-is, no build",
 }
 
 const (
@@ -30,6 +31,7 @@ const (
 	stepKeyProfile       = "profile"
 	stepKeyVariant       = "variant"
 	stepKeyImage         = "image"
+	stepKeyImageDef      = "imageDef"
 	stepKeySubnet        = "subnet"
 	stepKeyPorts         = "ports"
 	stepKeyVolumes       = "volumes"
@@ -132,8 +134,11 @@ func optionAnswer(s *State, key string, o types.ModuleOption) any {
 // "profiles" choice means profiles mode; every other raw value (including the
 // unanswered "") is some flavor of custom.
 func currentMode(s *State) types.BuildMode {
-	if s.String(stepKeyMode) == string(types.BuildModeProfiles) {
+	switch s.String(stepKeyMode) {
+	case string(types.BuildModeProfiles):
 		return types.BuildModeProfiles
+	case string(types.BuildModeImage):
+		return types.BuildModeImage
 	}
 	return types.BuildModeCustom
 }
@@ -256,6 +261,18 @@ type wizardContext struct {
 	// category steps, which only ever offer catalog module ids, this one lists
 	// whole profiles, so it needs the full catalog rather than just modules.
 	allProfiles []catalog.Profile
+	// imageDefs are the image definitions the image mode can run; with none,
+	// that mode is not offered.
+	imageDefs []domain.ImageDef
+	// images checks that the picked definition can run (built or remote).
+	images ImageService
+}
+
+// loadImageDefs reads the user's image definitions; an unreadable directory
+// just leaves the image mode out.
+func loadImageDefs() []domain.ImageDef {
+	defs, _ := domain.LoadImageDefs(domain.UserImageDir())
+	return defs
 }
 
 func (w wizardContext) steps(s *State) []Step {
@@ -264,6 +281,8 @@ func (w wizardContext) steps(s *State) []Step {
 	switch s.String(stepKeyMode) {
 	case string(types.BuildModeProfiles):
 		steps = append(steps, w.variantStep())
+	case string(types.BuildModeImage):
+		steps = append(steps, w.imageDefStep())
 	case modeChoiceCustomFromProfile:
 		// Only appears when the user explicitly chose to start from a profile
 		// (built-in or their own); it pre-selects that profile's modules before
@@ -276,7 +295,7 @@ func (w wizardContext) steps(s *State) []Step {
 	steps = append(steps, w.categorySteps(s)...)
 	steps = append(steps, w.optionSteps(s)...)
 
-	if !w.remoteImageDerived(s) && !w.contentNamedImage(s) {
+	if !w.remoteImageDerived(s) && !w.contentNamedImage(s) && currentMode(s) != types.BuildModeImage {
 		steps = append(steps, w.imageStep())
 	}
 	steps = append(steps, w.subnetStep())
@@ -388,13 +407,16 @@ func (w wizardContext) workspaceStep() Step {
 func (w wizardContext) modeStep() Step {
 	return Step{Key: stepKeyMode, Build: func(s *State) Field {
 		modeChoiceOrder := []string{string(types.BuildModeCustom), modeChoiceCustomFromProfile, string(types.BuildModeProfiles)}
+		if w.offersImageMode() {
+			modeChoiceOrder = append(modeChoiceOrder, string(types.BuildModeImage))
+		}
 		choices := make([]Option, len(modeChoiceOrder))
 		for i, m := range modeChoiceOrder {
 			choices[i] = Option{Value: m, Label: modeChoiceLabels[m]}
 		}
 		// An existing project only ever persisted a real BuildMode, never the
-		// wizard-only "from a profile" choice, so re-entering the wizard always
-		// defaults to plain custom/profiles rather than guessing at intent.
+		// wizard-only "from a profile" choice, so re-entering the wizard starts
+		// on the mode the project already uses.
 		initial := string(w.base.Mode)
 		if initial == "" {
 			initial = string(types.BuildModeCustom)
@@ -571,6 +593,90 @@ func (w wizardContext) contentNamedImage(s *State) bool {
 	return currentMode(s) == types.BuildModeCustom
 }
 
+// offersImageMode reports whether the image mode has something to run: a
+// definition to pick, or the image an image-mode project already uses.
+func (w wizardContext) offersImageMode() bool {
+	return len(w.imageDefs) > 0 || w.base.Mode == types.BuildModeImage
+}
+
+// imageKeepCurrent is the picker value that keeps the project's current image.
+// It cannot collide with a definition name, which never contains ':'.
+const imageKeepCurrent = ":keep"
+
+// currentImageUnmatched reports whether an image-mode project runs a reference
+// that matches no definition (a registry image named directly).
+func (w wizardContext) currentImageUnmatched() bool {
+	if w.base.Mode != types.BuildModeImage || w.base.Image == "" {
+		return false
+	}
+	return !slices.ContainsFunc(w.imageDefs, func(def domain.ImageDef) bool { return domain.ImageTag(def) == w.base.Image })
+}
+
+// imageDefStep picks the image definition an image-mode project runs. A build
+// definition that was never built is refused here, with the command that
+// builds it, rather than failing later when the container starts. A project
+// whose image matches no definition is offered to keep it, first and
+// preselected, so reopening the wizard never swaps it silently.
+func (w wizardContext) imageDefStep() Step {
+	return Step{Key: stepKeyImageDef, Build: func(s *State) Field {
+		var choices []Option
+		initial := ""
+		if w.currentImageUnmatched() {
+			choices = append(choices, Option{Value: imageKeepCurrent, Label: "keep " + w.base.Image})
+			initial = imageKeepCurrent
+		}
+		choices = append(choices, ImageDefChoices(w.imageDefs)...)
+		for _, def := range w.imageDefs {
+			if domain.ImageTag(def) == w.base.Image {
+				initial = def.Name
+			}
+		}
+		if s.Has(stepKeyImageDef) {
+			initial = s.String(stepKeyImageDef)
+		}
+		return Field{
+			Kind:    FieldSelect,
+			Title:   "Image:",
+			Choices: choices,
+			Initial: initial,
+			Validate: func(name string) error {
+				if name == imageKeepCurrent {
+					return nil
+				}
+				_, err := w.images.Available(name)
+				return err
+			},
+		}
+	}}
+}
+
+// ImageDefChoices lists image definitions as picker options, labelled with
+// their description when they have one.
+func ImageDefChoices(defs []domain.ImageDef) []Option {
+	choices := make([]Option, 0, len(defs))
+	for _, def := range defs {
+		label := def.Name
+		if def.Label != "" {
+			label = fmt.Sprintf("%s — %s", def.Name, def.Label)
+		}
+		choices = append(choices, Option{Value: def.Name, Label: label})
+	}
+	return choices
+}
+
+// pickedImageRef is the reference of the image chosen in image mode.
+func (w wizardContext) pickedImageRef(s *State) string {
+	if s.String(stepKeyImageDef) == imageKeepCurrent {
+		return w.base.Image
+	}
+	for _, def := range w.imageDefs {
+		if def.Name == s.String(stepKeyImageDef) {
+			return domain.ImageTag(def)
+		}
+	}
+	return ""
+}
+
 func (w wizardContext) imageStep() Step {
 	return Step{Key: stepKeyImage, Build: func(s *State) Field {
 		initial := w.base.Image
@@ -718,6 +824,12 @@ func (w wizardContext) reduce(s *State) *types.DevcontainerConfig {
 		draft.Dockerfile.From = w.base.Dockerfile.From
 	}
 
+	if mode == types.BuildModeImage {
+		if ref := w.pickedImageRef(s); ref != "" {
+			draft.Image = ref
+		}
+	}
+
 	if mode == types.BuildModeProfiles {
 		variant := s.String(stepKeyVariant)
 		registry := ""
@@ -796,6 +908,7 @@ func (s GenerateService) Configure(base *types.DevcontainerConfig, cwd string, p
 		usedSubnets:     usedSubnets,
 		suggestedSubnet: domain.FindFreeSubnet(preferredSubnet, usedSubnets),
 		allProfiles:     catalog.All(domain.ProfileDirs()...),
+		imageDefs:       loadImageDefs(),
 	}
 
 	state, err := prompt.Wizard(ctx.steps)

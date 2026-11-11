@@ -58,6 +58,7 @@ func runDown(cmd *cobra.Command, _ []string) error {
 5. **Composición de Perfiles en `--profile`**: En modo `custom`, la bandera `--profile` acepta listas separadas por comas (`--profile a,b`) con autocompletado mediante `completeCSV`. En `mode=profiles` y en el comando `run`, debe aceptarse estrictamente un único perfil remoto, rechazando cualquier valor CSV con un error explícito y no interactivo.
 6. **Escritura de Definiciones Versionadas**: Los comandos nunca escriben ni borran perfiles, definiciones de imagen o habilidades de usuario por su cuenta; delegan en `service.ProfileStore`, `service.ImageService` o `service.ConfigService`, que preparan el repositorio de configuración antes de escribir y registran un commit Conventional por operación (D19).
 7. **Invocar un Comando desde Otro**: Cuando un flujo interactivo debe abrir una sesión de otro comando (el menú de acceso de `workspace init`, D23), se construye el comando, se analizan sus banderas con `ParseFlags` y se llama a su `RunE`. Nunca se usa `Execute()`: con argumentos nulos cobra recurre a `os.Args` y la sesión recibiría los argumentos de `init`.
+8. **Autocompletado de Nombres**: Toda bandera o argumento que recibe un nombre de imagen o de perfil registra autocompletado (`completeImageArg`, `completeImageNames`, `profileIDs`). Los nombres de imagen se leen de disco con `ImageService.Names`, nunca mediante Docker, y se filtran por origen cuando el comando solo acepta uno (D26).
 
 ### Tabla de Banderas y Atajos Canónicos
 
@@ -90,7 +91,7 @@ La CLI estructura todas sus operaciones en 6 dominios canónicos orientados a re
 6. **`config`**: Parámetros globales y mantenimiento (`registry`, `git-init`, `db-user`, `db-password`, `ssh-key`, `ssh-config-file`, `alias`, `shared`, `skill`, `clean`, `upgrade-cli`).
 
 **Utilidad independiente en la raíz**:
-- **`run`**: `devcontainer-cli run` inicia un contenedor desechable directamente a partir de una imagen remota preconstruida, sin asociarse a ningún workspace de proyecto ni generar archivos en disco.
+- **`run`**: `devcontainer-cli run` inicia un contenedor desechable directamente a partir de la imagen publicada de un perfil (`--profile`) o de una definición de imagen (`--image`, D27), sin asociarse a ningún workspace de proyecto ni generar archivos en disco.
 
 **Fachada `agent`**:
 - Contiene exclusivamente comandos que presentan valores predeterminados y semántica inherentemente desatendida para agentes de IA: `exec`, `ssh`, `forward`, `create`, `run`, `destroy`, `list`, `cli-info`.

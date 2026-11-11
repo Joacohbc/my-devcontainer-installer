@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/ui"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/service"
 	"github.com/spf13/cobra"
 )
@@ -95,4 +96,51 @@ func completeCSV(toComplete string, allValues []string) []string {
 		}
 	}
 	return suggestions
+}
+
+// imageNames lists the registered image definition names, optionally only those
+// of the given sources (build or remote).
+func imageNames(sources ...domain.ImageSource) []string {
+	return service.ImageService{}.Names(sources...)
+}
+
+func withPrefix(items []string, prefix string) []string {
+	var out []string
+	for _, item := range items {
+		if strings.HasPrefix(item, prefix) {
+			out = append(out, item)
+		}
+	}
+	return out
+}
+
+// completeImageNames completes a flag value with image definition names.
+func completeImageNames(_ *cobra.Command, _ []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	return withPrefix(imageNames(), toComplete), cobra.ShellCompDirectiveNoFileComp
+}
+
+// completeImageArg completes the single <name> argument of an image subcommand
+// with the definitions of the given sources (all when none are given): 'build'
+// offers only build definitions and 'pull' only remote ones, so TAB never
+// suggests a name the command would reject.
+func completeImageArg(sources ...domain.ImageSource) func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
+	return func(_ *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		if len(args) > 0 {
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		}
+		return withPrefix(imageNames(sources...), toComplete), cobra.ShellCompDirectiveNoFileComp
+	}
+}
+
+// completeImageExportArgs completes 'image export <name> <dir>': an image name,
+// then a host directory.
+func completeImageExportArgs(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	switch len(args) {
+	case 0:
+		return completeImageArg()(cmd, args, toComplete)
+	case 1:
+		return nil, cobra.ShellCompDirectiveFilterDirs
+	default:
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
 }
