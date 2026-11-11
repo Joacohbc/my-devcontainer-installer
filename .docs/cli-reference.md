@@ -1112,15 +1112,16 @@ Delete user profiles (built-ins cannot be removed)
 
 ## `devcontainer-cli run`
 
-Spin up a container from a prebuilt remote image (no project files)
+Spin up a container from a prebuilt or named image (no project files)
 
 ### Banderas
 
 | Bandera | Atajo | Tipo | Por defecto | Descripción |
 |---|---|---|---|---|
 | `--expose-all` |  | bool | `false` | Publish ports on all interfaces (0.0.0.0) instead of binding to 127.0.0.1 |
+| `--image` |  | string | - | Image definition to run instead of a profile (see 'image list'); a build definition must be built first |
 | `--log-level` |  | string | `warn` | Log level: debug\|info\|warn\|error |
-| `--name` |  | string | - | Container name (default: dc-<profile>); if it belongs to an existing quick-run container it is reused/restarted, but a name already used by any other container is rejected |
+| `--name` |  | string | - | Container name (default: dc-<profile> or dc-<image>); if it belongs to an existing quick-run container it is reused/restarted, but a name already used by any other container is rejected |
 | `--no-interactive` |  | bool | `false` | Non-interactive mode (fail instead of prompting) |
 | `--ports` |  | stringSlice | `[]` | Port mappings (e.g. 2222:22); bound to 127.0.0.1 unless --expose-all; repeatable or comma-separated |
 | `--profile` |  | string | - | Single [remote]-tagged profile id to run as a prebuilt image, e.g. base, nodejs, python (required with --no-interactive); see 'profile list' |
