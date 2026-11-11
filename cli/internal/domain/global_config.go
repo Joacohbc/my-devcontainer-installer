@@ -1,6 +1,8 @@
 package domain
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -210,4 +212,17 @@ func ResolveSSHKeyPath(flagOverride string) string {
 		return cfg.Defaults.SSHKeyPath
 	}
 	return DefaultManagedSSHKeyPath()
+}
+
+// RegistryOwnerID identifies this configuration registry (the user's config
+// directory) on a Docker daemon that other users or config directories may
+// share. Images carry it as a label so automatic collection only removes what
+// this registry built.
+func RegistryOwnerID() string {
+	dir := GlobalConfigDir()
+	if abs, err := filepath.Abs(dir); err == nil {
+		dir = abs
+	}
+	sum := sha256.Sum256([]byte(dir))
+	return hex.EncodeToString(sum[:6])
 }

@@ -77,3 +77,18 @@ func TestStaleBuildReasonsSkipsPrebuiltModes(t *testing.T) {
 		t.Errorf("prebuilt modes have no local build files to compare: %v", got)
 	}
 }
+
+// The fix the warning names must actually clear it: regenerating rewrites an
+// outdated embedded helper instead of keeping the old copy forever.
+func TestStaleBuildReasonsClearAfterRegenerating(t *testing.T) {
+	config, paths := generatedProject(t)
+	if err := os.WriteFile(filepath.Join(paths.BuildDir, "entrypoint.sh"), []byte("#!/bin/sh\n# old\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := (GenerateService{Report: nopReporter{}}).PrepareBuildDir(config, paths); err != nil {
+		t.Fatal(err)
+	}
+	if got := StaleBuildReasons(config, paths); len(got) != 0 {
+		t.Errorf("still stale after regenerating: %v", got)
+	}
+}

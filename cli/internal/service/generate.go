@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/catalog"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/assets"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
@@ -92,6 +93,7 @@ type GeneratePlan struct {
 // into the image. Plan records the fingerprint and image on config.
 func (s GenerateService) Plan(config *types.DevcontainerConfig, copyContents map[string]string) (GeneratePlan, error) {
 	resolveHostBuildIDs(config)
+	config.Owner = domain.RegistryOwnerID()
 	if config.Mode == types.BuildModeCustom && config.Dockerfile.From != "" && config.Dockerfile.BaseRef == "" {
 		dir := domain.UserImageDir()
 		if err := (ImageService{Report: s.Report}).ensureParent(config.Dockerfile.From, dir); err != nil {
@@ -281,9 +283,46 @@ func (s GenerateService) WriteFiles(paths project.Paths, plan *GeneratePlan, con
 // workspace path, and baking it made every workspace's image unique. It must
 // always exist, or Docker would create a directory in its place on `up`.
 func WriteContextFile(config *types.DevcontainerConfig, buildDir string) error {
-	contextDoc, err := domain.GenerateContext(config)
+	contextDoc, err := domain.GenerateContext(contextConfig(config))
 	if err != nil {
 		return err
 	}
 	return os.WriteFile(filepath.Join(buildDir, types.ContextFileName), []byte(contextDoc), 0o644)
+}
+
+// contextConfig is the config CONTEXT.md is generated from. The document is
+// mounted, never baked, so it must describe everything the image has, not
+// only the modules this project adds: a prebuilt profile image's modules, a
+// named image's modules (read from its label) or, for a derived build, the
+// parent's modules too. Lookups are best-effort; what cannot be resolved is
+// simply not described.
+func contextConfig(config *types.DevcontainerConfig) *types.DevcontainerConfig {
+	var inherited []types.SelectedModule
+	switch config.Mode {
+	case types.BuildModeProfiles:
+		if config.Remote != nil {
+			if p, ok := catalog.Resolve(config.Remote.Variant); ok {
+				inherited = selectedModules(p.Modules)
+			}
+		}
+	case types.BuildModeImage:
+		if parent, err := domain.ResolveImageParent(config.Image, captureFunc()); err == nil {
+			inherited = parent.Modules
+		}
+	default:
+		if config.Dockerfile.From != "" && config.Dockerfile.BaseRef == "" {
+			_ = resolveBaseImage(config, domain.UserImageDir())
+		}
+		inherited = config.Dockerfile.BaseModules
+	}
+	if len(inherited) == 0 && config.Mode == types.BuildModeCustom {
+		return config
+	}
+	c := *config
+	c.Mode = types.BuildModeCustom
+	c.Dockerfile = types.DockerfileConfig{
+		Modules: append(append([]types.SelectedModule{}, inherited...), config.Dockerfile.Modules...),
+		Scripts: config.Dockerfile.Scripts,
+	}
+	return &c
 }

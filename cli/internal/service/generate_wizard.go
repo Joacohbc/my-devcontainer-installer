@@ -709,11 +709,13 @@ func (w wizardContext) reduce(s *State) *types.DevcontainerConfig {
 		if p, ok := w.pickedProfile(s); ok {
 			// Services and volumes were seeded into their steps and may have been
 			// changed there; the rest of the template applies as-is.
-			// ApplyProfileTemplate validates before changing anything, so an
-			// invalid profile leaves the draft as the user built it.
+			// An invalid template was already reported by Configure.
 			p.Services, p.Volumes = nil, nil
 			_ = domain.ApplyProfileTemplate(draft, p)
 		}
+	} else if mode == types.BuildModeCustom {
+		// Re-running the wizard on a derived project keeps its base image.
+		draft.Dockerfile.From = w.base.Dockerfile.From
 	}
 
 	if mode == types.BuildModeProfiles {
@@ -800,7 +802,23 @@ func (s GenerateService) Configure(base *types.DevcontainerConfig, cwd string, p
 	if err != nil {
 		return nil, err
 	}
+	if err := ctx.profileTemplateError(state); err != nil {
+		return nil, err
+	}
 	return ctx.reduce(state), nil
+}
+
+// profileTemplateError reports a picked profile whose template is invalid,
+// which reduce (being total) would otherwise silently drop.
+func (w wizardContext) profileTemplateError(s *State) error {
+	if s.String(stepKeyMode) != modeChoiceCustomFromProfile {
+		return nil
+	}
+	p, ok := w.pickedProfile(s)
+	if !ok {
+		return nil
+	}
+	return domain.ApplyProfileTemplate(&types.DevcontainerConfig{Mode: types.BuildModeCustom}, p)
 }
 
 // moduleChoices lists the selectable Dockerfile modules in a UI category,

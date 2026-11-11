@@ -126,11 +126,6 @@ func sha256Hex(s string) string {
 	return hex.EncodeToString(h[:])
 }
 
-// ComputeFingerprint hashes everything that distinguishes one built image from
-// another: the normalized Dockerfile, the copied helper scripts, the selected
-// module ids, and the build args (the Dockerfile's ARG defaults are static, so
-// the resolved host UID/GID must be folded in here — otherwise two users with
-// different host ids would collide on a single image baked for one of them).
 // SameDockerfile reports whether two Dockerfiles build the same image: they
 // differ at most in their LABEL blocks (which carry the CLI version).
 func SameDockerfile(a, b string) bool {
@@ -140,6 +135,11 @@ func SameDockerfile(a, b string) bool {
 	return normalize(a) == normalize(b)
 }
 
+// ComputeFingerprint hashes everything that distinguishes one built image from
+// another: the normalized Dockerfile, the copied helper scripts, the selected
+// module ids, and the build args (the Dockerfile's ARG defaults are static, so
+// the resolved host UID/GID must be folded in here — otherwise two users with
+// different host ids would collide on a single image baked for one of them).
 func ComputeFingerprint(dockerfileContent string, copyFileContents map[string]string, selectedModuleIDs []string, buildArgs map[string]string) string {
 	normalized := strings.TrimSpace(strings.ReplaceAll(stripLabelBlocks(dockerfileContent), "\r\n", "\n"))
 	parts := []string{normalized}

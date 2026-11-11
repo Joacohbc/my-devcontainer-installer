@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/catalog"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 )
 
@@ -134,4 +135,33 @@ modules: [nodejs]
 	if !slices.ContainsFunc(config.Dockerfile.Modules, func(m types.SelectedModule) bool { return m.ID == types.ModuleNodejs }) {
 		t.Errorf("modules = %+v", config.Dockerfile.Modules)
 	}
+}
+
+// Applying a modules-only profile undoes a previous profile's derivation or
+// image mode instead of silently keeping it.
+func TestProfileTemplateModulesOnlyClearsPreviousImage(t *testing.T) {
+	config := &types.DevcontainerConfig{Mode: types.BuildModeImage, Image: "x", Dockerfile: types.DockerfileConfig{From: "android"}}
+	if err := domain.ApplyProfileTemplate(config, catalogProfile("py", []string{"python"})); err != nil {
+		t.Fatal(err)
+	}
+	if config.Mode != types.BuildModeCustom || config.Dockerfile.From != "" {
+		t.Errorf("mode=%s from=%q", config.Mode, config.Dockerfile.From)
+	}
+}
+
+// Under mode=profiles the pulled image is fixed: a template never switches it.
+func TestProfileTemplateKeepsModeProfiles(t *testing.T) {
+	config := &types.DevcontainerConfig{Mode: types.BuildModeProfiles}
+	p := catalogProfile("img", nil)
+	p.Image = "android"
+	if err := domain.ApplyProfileTemplate(config, p); err != nil {
+		t.Fatal(err)
+	}
+	if config.Mode != types.BuildModeProfiles {
+		t.Errorf("mode = %s", config.Mode)
+	}
+}
+
+func catalogProfile(id string, modules []string) catalog.Profile {
+	return catalog.Profile{ID: id, Modules: modules}
 }

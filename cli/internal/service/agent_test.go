@@ -152,6 +152,8 @@ type imageListRunner struct {
 	images     string
 	named      string
 	containers string
+	// owned answers the owner-label query; empty means every image is owned.
+	owned string
 }
 
 func (r *imageListRunner) Run(_ context.Context, args []string, _ string, _ string, _ map[string]string) (int, string, string) {
@@ -164,6 +166,9 @@ func (r *imageListRunner) Run(_ context.Context, args []string, _ string, _ stri
 	if len(args) >= 2 && args[1] == "images" {
 		if slices.Contains(args, "label="+types.LabelKind+"="+types.ImageKindNamed) {
 			return 0, r.named, ""
+		}
+		if r.owned != "" && slices.ContainsFunc(args, func(a string) bool { return strings.HasPrefix(a, "label="+types.LabelOwner+"=") }) {
+			return 0, r.owned, ""
 		}
 		return 0, r.images, ""
 	}

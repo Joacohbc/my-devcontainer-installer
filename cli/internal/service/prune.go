@@ -861,7 +861,9 @@ func filterUnusedImages(images []LocalImage, inUse map[string]bool) []LocalImage
 
 func splitNamedImages(images []LocalImage) (project, named []LocalImage) {
 	for _, img := range images {
-		if img.Named {
+		// A dangling image is a superseded build of either kind: nothing can
+		// refer to it by name, so it is never a reusable definition.
+		if img.Named && img.removeArg() != img.ID {
 			named = append(named, img)
 		} else {
 			project = append(project, img)
@@ -925,8 +927,22 @@ func (s PruneService) Remove(images []LocalImage) (removed, failed int) {
 		})
 }
 
+// ownedImageIDs are the managed images this configuration registry built.
+func ownedImageIDs() map[string]bool {
+	owned := map[string]bool{}
+	for _, img := range parseImageLines(captureLines([]string{
+		"images", "--filter", managedFilter,
+		"--filter", "label=" + types.LabelOwner + "=" + domain.RegistryOwnerID(),
+		"--format", imageListFormat,
+	})) {
+		owned[img.ID] = true
+	}
+	return owned
+}
+
 // collectableImage limits automatic collection to images this CLI built for
-// projects (the devcontainer-cli/ namespace) and untagged leftovers. A pulled
+// projects (the devcontainer-cli/ namespace) and untagged leftovers, and only
+// those this registry built (see ownedImageIDs). A pulled
 // prebuilt image (ghcr.io/...) also carries the managed label, but it is only
 // ever removed by an explicit 'config clean images'.
 func collectableImage(img LocalImage) bool {
@@ -944,9 +960,10 @@ func (s PruneService) CollectProjectImages() int {
 		return 0
 	}
 	project, _ := splitNamedImages(images)
+	owned := ownedImageIDs()
 	var collectable []LocalImage
 	for _, img := range project {
-		if collectableImage(img) {
+		if collectableImage(img) && owned[img.ID] {
 			collectable = append(collectable, img)
 		}
 	}

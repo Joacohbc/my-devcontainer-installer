@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -233,6 +234,12 @@ func resolveImageParent(from string, capture CaptureFunc, visiting map[string]bo
 	return parent, nil
 }
 
+// ImageParentFromLabels reads what a local image was built with from its
+// labels: its module ids and their options.
+func ImageParentFromLabels(ref string, capture CaptureFunc) (ImageParent, error) {
+	return imageParentFromLabels(ref, capture)
+}
+
 func imageParentFromLabels(ref string, capture CaptureFunc) (ImageParent, error) {
 	status, stdout, _ := capture([]string{"image", "inspect", "-f", `{{index .Config.Labels "` + types.LabelModules + `"}}`, ref})
 	if status != 0 {
@@ -242,10 +249,20 @@ func imageParentFromLabels(ref string, capture CaptureFunc) (ImageParent, error)
 	if value == "" || value == "<no value>" {
 		return ImageParent{}, fmt.Errorf("base image %s has no %s label: only images built by devcontainer-cli can be derived from", ref, types.LabelModules)
 	}
+	options := map[string]map[string]any{}
+	if status, stdout, _ := capture([]string{"image", "inspect", "-f", `{{index .Config.Labels "` + types.LabelModuleOptions + `"}}`, ref}); status == 0 {
+		if raw := strings.TrimSpace(stdout); raw != "" && raw != "<no value>" {
+			_ = json.Unmarshal([]byte(raw), &options)
+		}
+	}
 	parent := ImageParent{Ref: ref}
 	for _, id := range strings.Split(value, ",") {
 		if id = strings.TrimSpace(id); id != "" {
-			parent.Modules = append(parent.Modules, types.SelectedModule{ID: types.ModuleID(id), Options: map[string]any{}})
+			opts := options[id]
+			if opts == nil {
+				opts = map[string]any{}
+			}
+			parent.Modules = append(parent.Modules, types.SelectedModule{ID: types.ModuleID(id), Options: opts})
 		}
 	}
 	return parent, nil

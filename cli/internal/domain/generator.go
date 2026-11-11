@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strconv"
@@ -80,12 +81,34 @@ func baseImageModules(config *types.DevcontainerConfig) (map[types.ModuleID]bool
 			installed[r.Module.ID] = true
 		}
 	}
+	// A module the base already has is not reinstalled, so asking for it with
+	// other options would build one thing and describe another.
+	baseOptions := map[types.ModuleID]map[string]any{}
+	for _, m := range config.Dockerfile.BaseModules {
+		baseOptions[m.ID] = m.Options
+	}
+	for _, m := range config.Dockerfile.Modules {
+		if !installed[m.ID] || len(m.Options) == 0 {
+			continue
+		}
+		if !sameOptions(m.Options, baseOptions[m.ID]) {
+			return nil, fmt.Errorf("module %s is already installed in base image %s with other options; drop it from the modules or change the base image", m.ID, config.Dockerfile.From)
+		}
+	}
 	return installed, nil
 }
 
 // derivedFromBlock starts a derived build. The parent was built with its own
 // USER_UID/USER_GID (1000 for a named image); when the host ids differ,
-// devuser is remapped so it still owns the bind-mounted workspace.
+// devuser is remapped so it still owns the bind-mounted workspace. usermod
+// re-owns the home directory itself; every other path the parent gave devuser
+// (the Python sysconfig dirs, /opt/android-sdk, ...) is found by its old ids.
+func sameOptions(a, b map[string]any) bool {
+	ja, _ := json.Marshal(a)
+	jb, _ := json.Marshal(b)
+	return string(ja) == string(jb)
+}
+
 func derivedFromBlock(ref string) string {
 	return fmt.Sprintf(`##
 ## BASE IMAGE (derived build)
@@ -94,10 +117,12 @@ FROM %s
 USER root
 ARG USER_UID=1000
 ARG USER_GID=1000
-RUN if [ "$(id -u devuser)" != "${USER_UID}" ] || [ "$(id -g devuser)" != "${USER_GID}" ]; then \
+RUN old_uid="$(id -u devuser)" && old_gid="$(id -g devuser)" && \
+    if [ "${old_uid}" != "${USER_UID}" ] || [ "${old_gid}" != "${USER_GID}" ]; then \
         groupmod -o -g "${USER_GID}" devuser && \
         usermod -o -u "${USER_UID}" -g "${USER_GID}" devuser && \
-        chown -R devuser:devuser /home/devuser; \
+        find / -xdev -path /proc -prune -o -user "${old_uid}" -exec chown -h "${USER_UID}" {} + && \
+        find / -xdev -path /proc -prune -o -group "${old_gid}" -exec chgrp -h "${USER_GID}" {} +; \
     fi`, ref)
 }
 
@@ -809,14 +834,33 @@ func dedupeEnvVars(vars []types.RequiredEnvVar) []types.RequiredEnvVar {
 // the selected modules' env vars into the container. The "${NAME:-}" default is
 // what makes an unanswered var a supported state instead of a compose warning:
 // the value is simply absent from the .env and arrives empty.
+//
+// The project's own env (devcontainer.config.json `env`, which a profile's
+// `env` fills) is forwarded the same way, so a variable defined there reaches
+// the container and not only compose interpolation.
 func devcontainerModuleEnv(config *types.DevcontainerConfig) []string {
 	vars := dedupeEnvVars(moduleEnvVars(config))
-	env := make([]string, len(vars))
-	for i, v := range vars {
-		env[i] = fmt.Sprintf("%s=${%s:-}", v.Name, v.Name)
+	seen := make(map[string]bool, len(vars)+len(config.Env))
+	env := make([]string, 0, len(vars)+len(config.Env))
+	for _, v := range vars {
+		seen[v.Name] = true
+		env = append(env, fmt.Sprintf("%s=${%s:-}", v.Name, v.Name))
+	}
+	names := make([]string, 0, len(config.Env))
+	for name := range config.Env {
+		if !seen[name] && !composeOnlyEnv[name] {
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		env = append(env, fmt.Sprintf("%s=${%s:-}", name, name))
 	}
 	return env
 }
+
+// composeOnlyEnv are .env entries that only steer compose itself.
+var composeOnlyEnv = map[string]bool{"COMPOSE_PROJECT_NAME": true, "DEVCONTAINER_IP": true, "DOCKER_SUBNET": true}
 
 func PlannedComposeNames(config *types.DevcontainerConfig) (containers []string, network string, volumes []string, err error) {
 	result := resolveEnabledServices(config)

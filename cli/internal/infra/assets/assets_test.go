@@ -53,21 +53,35 @@ func TestPreflight_CopiesEmbeddedScript(t *testing.T) {
 	}
 }
 
-func TestPreflight_AlreadyPresentIsSkipped(t *testing.T) {
+// An outdated copy of an embedded script is refreshed (a CLI upgrade must reach
+// the next build); an identical one is left alone.
+func TestPreflight_RefreshesOutdatedEmbeddedScript(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, embeddedScript), []byte("custom"), 0o644); err != nil {
+	target := filepath.Join(dir, embeddedScript)
+	if err := os.WriteFile(target, []byte("old"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	res := assets.Preflight([]string{embeddedScript}, dir)
-	if len(res.AlreadyPresent) != 1 {
-		t.Fatalf("expected file reported already present, got %+v", res)
+	if len(res.Copied) != 1 {
+		t.Fatalf("expected the outdated copy refreshed, got %+v", res)
 	}
-	if len(res.Copied) != 0 {
-		t.Errorf("should not overwrite an existing file, got copied %v", res.Copied)
+	if got, _ := os.ReadFile(target); string(got) == "old" {
+		t.Error("outdated copy was kept")
 	}
-	got, _ := os.ReadFile(filepath.Join(dir, embeddedScript))
-	if string(got) != "custom" {
-		t.Errorf("existing file was overwritten: %q", got)
+	if res = assets.Preflight([]string{embeddedScript}, dir); len(res.AlreadyPresent) != 1 {
+		t.Errorf("an up-to-date copy must be reported already present, got %+v", res)
+	}
+}
+
+// A script that is not embedded (a user's own) is kept as found.
+func TestPreflight_KeepsNonEmbeddedScript(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "custom-mine.sh"), []byte("mine"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	res := assets.Preflight([]string{"custom-mine.sh"}, dir)
+	if len(res.AlreadyPresent) != 1 || len(res.Missing) != 0 {
+		t.Errorf("got %+v", res)
 	}
 }
 

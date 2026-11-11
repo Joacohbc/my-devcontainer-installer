@@ -428,6 +428,26 @@ type DockerfileConfig struct {
 	BaseModules []SelectedModule `json:"-" yaml:"-"`
 }
 
+// ModuleOptionsJSON encodes the options of every module the image ends up
+// with (the base image's first, the project's overriding), leaving out modules
+// without options. Empty when none has any.
+func (d DockerfileConfig) ModuleOptionsJSON() string {
+	opts := map[string]map[string]any{}
+	for _, m := range append(append([]SelectedModule{}, d.BaseModules...), d.Modules...) {
+		if len(m.Options) > 0 {
+			opts[string(m.ID)] = m.Options
+		}
+	}
+	if len(opts) == 0 {
+		return ""
+	}
+	data, err := json.Marshal(opts)
+	if err != nil {
+		return ""
+	}
+	return string(data)
+}
+
 // AllModuleIDs is every selected module id, the base image's first, without
 // duplicates: what the image ends up with.
 func (d DockerfileConfig) AllModuleIDs() []string {
@@ -486,6 +506,9 @@ type DevcontainerConfig struct {
 	// ImageKind is stamped into the image labels; empty means ImageKindProject.
 	// Only the `image` module sets it (to ImageKindNamed), so it is not persisted.
 	ImageKind string `json:"-" yaml:"-"`
+	// Owner identifies the configuration registry building the image; it is
+	// stamped as a label and set fresh by every plan, never persisted.
+	Owner string `json:"-" yaml:"-"`
 	// BuildUID/BuildGID are the host owner ids baked into a local-cached image so
 	// devuser matches the bind-mounted workspace. They are resolved fresh at
 	// generate time (never persisted) and feed both the compose build args and the

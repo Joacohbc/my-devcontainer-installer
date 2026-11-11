@@ -175,3 +175,34 @@ func TestDestroyCollectsTheProjectImageUnlessShared(t *testing.T) {
 		})
 	}
 }
+
+// The daemon may be shared (another user, sudo, another config dir): an image
+// another registry built is never collected, even when this registry's
+// images.json does not reference it.
+func TestCollectProjectImagesOnlyTouchesItsOwnImages(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	runner := gcRunner(projectImgA, projectImgB)
+	runner.owned = projectImgB
+	defer useFakeDocker(runner)()
+
+	(PruneService{Report: nopReporter{}}).CollectProjectImages()
+
+	if got := rmiTargets(runner); !slices.Equal(got, []string{"devcontainer-cli/custom-22222222:latest"}) {
+		t.Errorf("rmi targets = %v, want only the image this registry built", got)
+	}
+}
+
+// Rebuilding a named image leaves its predecessor dangling; with no tag it is
+// no longer a reusable definition and is collected like any leftover.
+func TestDanglingNamedImagesAreCollected(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	runner := gcRunner(danglingImg)
+	runner.named = danglingImg
+	defer useFakeDocker(runner)()
+
+	(PruneService{Report: nopReporter{}}).CollectProjectImages()
+
+	if got := rmiTargets(runner); !slices.Equal(got, []string{"IDD"}) {
+		t.Errorf("got %v", got)
+	}
+}

@@ -138,4 +138,39 @@ func TestGenerateDockerfile_DerivedBuildRemapsDevuser(t *testing.T) {
 	if !strings.Contains(df, "ARG USER_UID=1000") || !strings.Contains(df, `usermod -o -u "${USER_UID}"`) {
 		t.Error("a derived build must remap devuser to the host ids")
 	}
+	// Paths outside the home (Python sysconfig dirs, /opt/android-sdk) were
+	// chowned to the old uid by the parent and must follow the remap.
+	if !strings.Contains(df, `-user "${old_uid}" -exec chown`) || !strings.Contains(df, `-group "${old_gid}" -exec chgrp`) {
+		t.Error("the remap must re-own every path the parent gave devuser, not only the home")
+	}
+}
+
+// The project's env (devcontainer.config.json `env`, filled by a profile's
+// `env`) must reach the container, not only compose interpolation.
+func TestGenerateCompose_ForwardsProjectEnvToTheDevcontainer(t *testing.T) {
+	config := &types.DevcontainerConfig{
+		Mode:      types.BuildModeCustom,
+		Workspace: "ws",
+		Image:     "img:1",
+		Env:       map[string]string{"APP_ENV": "dev", "DOCKER_SUBNET": "10.0.0.0/28"},
+	}
+	yml, err := domain.GenerateCompose(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(yml, "APP_ENV=${APP_ENV:-}") {
+		t.Errorf("APP_ENV not forwarded:\n%s", yml)
+	}
+	if strings.Contains(yml, "DOCKER_SUBNET=${") {
+		t.Error("compose-only variables must not be forwarded")
+	}
+}
+
+func TestGenerateDockerfile_DerivedRejectsConflictingOptions(t *testing.T) {
+	config := derivedConfig()
+	config.Dockerfile.BaseModules = []types.SelectedModule{{ID: types.ModuleJavaTemurin, Options: map[string]any{"versions": []string{"17"}}}}
+	config.Dockerfile.Modules = []types.SelectedModule{{ID: types.ModuleJavaTemurin, Options: map[string]any{"versions": []string{"21"}}}}
+	if _, err := domain.GenerateDockerfile(config); err == nil || !strings.Contains(err.Error(), "other options") {
+		t.Errorf("expected a conflicting-options error, got %v", err)
+	}
 }

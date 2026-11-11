@@ -176,3 +176,18 @@ func TestImageDefConfigIsLabelledNamed(t *testing.T) {
 		t.Errorf("a named image keeps its own tag, got %q", got)
 	}
 }
+
+// H3 for derivation: an image other definitions derive from is still in use.
+func TestImageRemoveRefusesWhileAnImageDerivesFromIt(t *testing.T) {
+	dir := t.TempDir()
+	svc := createTestImageDef(t, dir)
+	if err := svc.Create("child", CreateImageOpts{From: "android", Modules: []string{"sqlite"}}); err != nil {
+		t.Fatal(err)
+	}
+	defer useFakeDocker(&imageListRunner{images: "IDN"})()
+
+	err := svc.Remove("android", true)
+	if err == nil || !strings.Contains(err.Error(), "image child") {
+		t.Fatalf("expected a refusal naming the derived image, got %v", err)
+	}
+}

@@ -20,6 +20,9 @@ type daemonRunner struct {
 	local      map[string]bool
 	calls      [][]string
 	dockerfile string
+	// modules answers the modules label of every image; empty means
+	// "github-cli", what a definition created with no modules has.
+	modules string
 }
 
 func (r *daemonRunner) Run(_ context.Context, args []string, _ string, _ string, _ map[string]string) (int, string, string) {
@@ -44,6 +47,13 @@ func (r *daemonRunner) Run(_ context.Context, args []string, _ string, _ string,
 			return 0, `["/entrypoint.sh"]`, ""
 		case strings.Contains(format, types.LabelManaged):
 			return 0, "true", ""
+		}
+	case "image":
+		if len(args) > 4 && strings.Contains(args[4], types.LabelModules) {
+			if r.modules == "" {
+				return 0, "github-cli", ""
+			}
+			return 0, r.modules, ""
 		}
 	case "build":
 		if data, err := os.ReadFile(filepath.Join(args[len(args)-1], "Dockerfile")); err == nil {
@@ -173,4 +183,61 @@ func (r *parentIDRunner) Run(ctx context.Context, args []string, a, b string, en
 		return 0, r.id, ""
 	}
 	return r.daemonRunner.Run(ctx, args, a, b, env)
+}
+
+// CONTEXT.md is mounted, so it must describe what the image inherited too.
+func TestContextConfigIncludesInheritedModules(t *testing.T) {
+	derived := &types.DevcontainerConfig{
+		Mode: types.BuildModeCustom,
+		Dockerfile: types.DockerfileConfig{
+			From: "x", BaseRef: "devcontainer-cli-img/x:latest",
+			BaseModules: []types.SelectedModule{{ID: types.ModuleAndroidSdk}},
+			Modules:     []types.SelectedModule{{ID: types.ModuleSqlite}},
+		},
+	}
+	doc, err := domain.GenerateContext(contextConfig(derived))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(doc, "Android SDK") {
+		t.Error("a derived project's CONTEXT.md must describe the parent's modules")
+	}
+
+	profiles := &types.DevcontainerConfig{Mode: types.BuildModeProfiles, Workspace: "ws", Remote: &types.RemoteConfig{Variant: "python"}}
+	doc, err = domain.GenerateContext(contextConfig(profiles))
+	if err != nil || doc == "" || !strings.Contains(strings.ToLower(doc), "python") {
+		t.Errorf("a prebuilt profile container needs a real CONTEXT.md (err=%v):\n%.300s", err, doc)
+	}
+}
+
+// An image.yml edited without rebuilding no longer matches the local parent: a
+// derived build would skip modules the parent lacks, so it must stop.
+func TestImageBuildDerivedRejectsAnOutdatedParent(t *testing.T) {
+	svc := newImageSvc(t)
+	_ = svc.Create("base", CreateImageOpts{Modules: []string{"github-cli", "python"}})
+	_ = svc.Create("child", CreateImageOpts{From: "base", Modules: []string{"sqlite"}})
+	defer useFakeDocker(&daemonRunner{local: map[string]bool{"devcontainer-cli-img/base:latest": true}, modules: "github-cli"})()
+
+	err := svc.Build("child")
+	if err == nil || !strings.Contains(err.Error(), "image build base") {
+		t.Fatalf("expected an out-of-date parent error, got %v", err)
+	}
+}
+
+// Options travel with the image: a registry parent built with non-default
+// options hands them to the child's environment and context.
+func TestResolveImageParentKeepsModuleOptions(t *testing.T) {
+	capture := func(args []string) (int, string, string) {
+		if strings.Contains(args[3], types.LabelModuleOptions) {
+			return 0, `{"nodejs":{"manager":"nvm"}}`, ""
+		}
+		return 0, "github-cli,nodejs", ""
+	}
+	parent, err := domain.ResolveImageParent("ghcr.io/acme/devcontainer-node:1", capture, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parent.Modules[1].Options["manager"] != "nvm" {
+		t.Errorf("options lost: %+v", parent.Modules)
+	}
 }

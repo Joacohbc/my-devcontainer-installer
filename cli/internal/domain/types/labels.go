@@ -20,12 +20,20 @@ const LabelQuickRun = LabelNamespace + ".quick-run"
 //   - modules: the selected Dockerfile module ids, comma-separated.
 //   - fingerprint: the content hash the tag's short suffix comes from.
 //   - cli-version: the CLI release whose templates rendered the Dockerfile.
+//   - owner: the configuration registry that built it (domain.RegistryOwnerID).
+//     Automatic collection only ever removes images its own registry built,
+//     because images.json describes one user's projects while the daemon may
+//     be shared with other users, sudo runs or other config directories.
 const (
-	LabelKind        = LabelNamespace + ".kind"
-	LabelOrigin      = LabelNamespace + ".origin"
-	LabelModules     = LabelNamespace + ".modules"
-	LabelFingerprint = LabelNamespace + ".fingerprint"
-	LabelCLIVersion  = LabelNamespace + ".cli-version"
+	LabelOwner = LabelNamespace + ".owner"
+	// LabelModuleOptions holds the non-default module options as JSON
+	// ({"<id>": {...}}), so an image derived from this one inherits them.
+	LabelModuleOptions = LabelNamespace + ".module-options"
+	LabelKind          = LabelNamespace + ".kind"
+	LabelOrigin        = LabelNamespace + ".origin"
+	LabelModules       = LabelNamespace + ".modules"
+	LabelFingerprint   = LabelNamespace + ".fingerprint"
+	LabelCLIVersion    = LabelNamespace + ".cli-version"
 )
 
 const (
@@ -77,6 +85,12 @@ func DockerfileLabelBlock(config *DevcontainerConfig) string {
 		{LabelModules, strings.Join(modules, ",")},
 		{LabelFingerprint, config.Fingerprint},
 		{LabelCLIVersion, CLIVersion},
+	}
+	if config.Owner != "" {
+		pairs = append(pairs, [2]string{LabelOwner, config.Owner})
+	}
+	if opts := config.Dockerfile.ModuleOptionsJSON(); opts != "" {
+		pairs = append(pairs, [2]string{LabelModuleOptions, opts})
 	}
 	lines := make([]string, 0, len(pairs))
 	for _, p := range pairs {

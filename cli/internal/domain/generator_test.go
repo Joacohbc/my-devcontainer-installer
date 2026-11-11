@@ -145,7 +145,8 @@ func TestGenerateDockerfile_AliasesIgnoresOptions(t *testing.T) {
 	plain := mustGenerateDockerfile(t, makeConfig(func(c *types.DevcontainerConfig) {
 		c.Dockerfile.Modules = []types.SelectedModule{{ID: "aliases"}}
 	}))
-	if withOpt != plain {
+	// Labels record the selected options; the build instructions must not differ.
+	if !domain.SameDockerfile(withOpt, plain) {
 		t.Error("the aliases module must render identically regardless of options")
 	}
 	assertContainsStr(t, plain, "COPY alias.sh /home/devuser/.devcontainer_aliases.sh", "aliases")

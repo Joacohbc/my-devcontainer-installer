@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
@@ -385,7 +386,7 @@ func (s ImageService) Remove(name string, deleteDockerImage bool) error {
 
 	tag := domain.ImageTag(def)
 	if deleteDockerImage {
-		if users := imageUsers(tag); len(users) > 0 {
+		if users := imageUsers(name, tag, s.getImagesDir()); len(users) > 0 {
 			return fmt.Errorf("image %s is still used by %s; destroy those first with 'devcontainer-cli workspace destroy --yes', or keep the image with 'devcontainer-cli image remove %s --keep-docker-image'", tag, strings.Join(users, ", "), name)
 		}
 	}
@@ -410,13 +411,31 @@ func (s ImageService) Remove(name string, deleteDockerImage bool) error {
 	return nil
 }
 
-// imageUsers names what still needs an image: registered projects that build
-// on it and containers created from it.
-func imageUsers(ref string) []string {
+// imageUsers names what still needs an image: registered projects that run or
+// derive from it, other definitions and profiles that start from it, and
+// containers created from it. BuildKit records no parent link, so docker would
+// happily remove a parent its derived images and projects still rebuild from.
+func imageUsers(name, ref, dir string) []string {
 	var users []string
 	for _, e := range domain.ListEntries() {
 		if e.Image == ref {
 			users = append(users, "project "+e.ProjectDir)
+			continue
+		}
+		if cfg, err := domain.LoadConfig(e.ProjectDir); err == nil && cfg != nil && (cfg.Dockerfile.From == name || cfg.Dockerfile.From == ref) {
+			users = append(users, "project "+e.ProjectDir)
+		}
+	}
+	if defs, err := domain.LoadImageDefs(dir); err == nil {
+		for _, def := range defs {
+			if def.Name != name && (def.From == name || def.From == ref) {
+				users = append(users, "image "+def.Name)
+			}
+		}
+	}
+	for _, p := range catalog.LoadUserProfiles(domain.ProfileDirs()...) {
+		if p.Image == name || p.Image == ref {
+			users = append(users, "profile "+p.ID)
 		}
 	}
 	if imagesInUse()[ref] {
@@ -483,7 +502,40 @@ func (s ImageService) ensureParent(from, dir string) error {
 	if err := domain.CheckImageCompat(ref, captureFunc()); err != nil {
 		return fmt.Errorf("base image %s: %w", ref, err)
 	}
+	if isDef && parentDef.Source == domain.ImageSourceBuild {
+		return checkParentBuilt(from, ref, dir)
+	}
 	return nil
+}
+
+// checkParentBuilt fails when the local parent image no longer matches its
+// definition (image.yml edited without rebuilding): a derived build would
+// skip modules the parent does not actually have.
+func checkParentBuilt(from, ref, dir string) error {
+	defined, err := domain.ResolveImageParent(from, captureFunc(), dir)
+	if err != nil {
+		return err
+	}
+	built, err := domain.ImageParentFromLabels(ref, captureFunc())
+	if err != nil {
+		return err
+	}
+	if !sameModuleIDs(defined.Modules, built.Modules) {
+		return fmt.Errorf("base image %s is out of date with its definition; run 'devcontainer-cli image build %s' first", ref, from)
+	}
+	return nil
+}
+
+func sameModuleIDs(a, b []types.SelectedModule) bool {
+	set := func(mods []types.SelectedModule) string {
+		ids := make([]string, 0, len(mods))
+		for _, m := range mods {
+			ids = append(ids, string(m.ID))
+		}
+		slices.Sort(ids)
+		return strings.Join(slices.Compact(ids), ",")
+	}
+	return set(a) == set(b)
 }
 
 // resolveBaseImage fills a derived build's BaseRef and BaseModules from its

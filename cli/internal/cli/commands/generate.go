@@ -762,6 +762,11 @@ func applyGenFlags(config *types.DevcontainerConfig, flags *genFlags) error {
 		return err
 	}
 	if flags.profileTemplate != nil {
+		// The template sees the explicit mode, so it never switches a mode the
+		// caller pinned (the --mode assignment below would also win).
+		if flags.mode != "" {
+			config.Mode = types.BuildMode(flags.mode)
+		}
 		if err := domain.ApplyProfileTemplate(config, *flags.profileTemplate); err != nil {
 			return err
 		}

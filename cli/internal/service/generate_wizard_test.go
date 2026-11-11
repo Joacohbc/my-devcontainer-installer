@@ -854,3 +854,19 @@ func TestConfigureProfileTemplateSeedsServicesEnvAndVolumes(t *testing.T) {
 		t.Errorf("env=%v volumes=%v", cfg.Env, cfg.Compose.Volumes)
 	}
 }
+
+func TestConfigureRejectsAnInvalidProfileTemplate(t *testing.T) {
+	defer useFakeDocker(&fakeRunner{status: 0})()
+	tmp := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmp)
+	dir := filepath.Join(tmp, "devcontainer-cli", "profiles", "bad")
+	_ = os.MkdirAll(dir, 0o755)
+	_ = os.WriteFile(filepath.Join(dir, "profile.yml"), []byte("id: bad\nmodules: [nodejs]\nenv:\n  BAD-NAME: x\n"), 0o644)
+
+	_, err := (GenerateService{Report: nopReporter{}}).Configure(&types.DevcontainerConfig{Env: map[string]string{}}, tmp, scriptedPrompter{answers: map[string]any{
+		stepKeyWorkspace: "ws", stepKeyMode: modeChoiceCustomFromProfile, stepKeyProfile: "bad", stepKeySubnet: "172.20.0.0/24",
+	}})
+	if err == nil {
+		t.Fatal("an invalid profile template must be reported, not silently dropped")
+	}
+}

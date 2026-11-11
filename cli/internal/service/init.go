@@ -205,9 +205,7 @@ func (s InitService) applyDetectedAndUserServices(config *types.DevcontainerConf
 }
 
 func (s InitService) applyConfigOptions(config *types.DevcontainerConfig, opts InitOptions) error {
-	if opts.Mode != "" {
-		config.Mode = types.BuildMode(opts.Mode)
-	}
+	explicitMode := types.BuildMode(opts.Mode)
 	if opts.Profile != "" {
 		var pList []string
 		for _, part := range strings.Split(opts.Profile, ",") {
@@ -216,20 +214,19 @@ func (s InitService) applyConfigOptions(config *types.DevcontainerConfig, opts I
 			}
 		}
 		p, err := catalog.ResolveComposed(pList, domain.ProfileDirs()...)
-		if err != nil && config.Mode != types.BuildModeProfiles {
+		if err != nil && explicitMode != types.BuildModeProfiles {
 			return err
 		}
-		if err == nil {
-			if config.Mode != types.BuildModeProfiles {
-				config.Origin = strings.Join(pList, "-")
+		if err == nil && explicitMode != types.BuildModeProfiles {
+			if err := s.applyProfile(config, p); err != nil {
+				return err
 			}
-			if terr := domain.ApplyProfileTemplate(config, p); terr != nil {
-				return terr
-			}
-			config.Dockerfile.Scripts = append(config.Dockerfile.Scripts, p.Scripts...)
-			config.Compose.Ports = append(config.Compose.Ports, p.Ports...)
-			config.ForwardPorts = append(config.ForwardPorts, p.ForwardPorts...)
+			config.Origin = strings.Join(pList, "-")
 		}
+	}
+	// An explicit mode wins over the one a profile's image implies.
+	if explicitMode != "" {
+		config.Mode = explicitMode
 	}
 	if len(opts.Ports) > 0 {
 		config.Compose.Ports = append(config.Compose.Ports, opts.Ports...)
@@ -253,6 +250,60 @@ func (s InitService) applyConfigOptions(config *types.DevcontainerConfig, opts I
 		config.Skills.Mode = types.SkillMode(opts.SkillsMode)
 	}
 	return nil
+}
+
+// applyProfile layers a profile onto what auto-init detected and the caller
+// asked for. auto-init is additive, so the profile's modules and services join
+// the detected and explicit ones instead of replacing them.
+func (s InitService) applyProfile(config *types.DevcontainerConfig, p catalog.Profile) error {
+	requested := config.Compose.Services
+	if err := domain.ApplyProfileTemplate(config, p); err != nil {
+		return err
+	}
+	config.Compose.Services = orderServices(append(append([]types.SelectedService{}, config.Compose.Services...), requested...))
+	modules := append([]types.SelectedModule{}, config.Dockerfile.Modules...)
+	for _, id := range p.Modules {
+		modules = append(modules, types.SelectedModule{ID: domain.NormalizeModuleID(id)})
+	}
+	config.Dockerfile.Modules = orderModules(modules)
+	config.Dockerfile.Scripts = append(config.Dockerfile.Scripts, p.Scripts...)
+	config.Compose.Ports = append(config.Compose.Ports, p.Ports...)
+	config.ForwardPorts = append(config.ForwardPorts, p.ForwardPorts...)
+	return nil
+}
+
+// orderServices dedupes by id, keeping the first occurrence's options, in
+// catalog order.
+func orderServices(in []types.SelectedService) []types.SelectedService {
+	byID := map[types.ServiceID]types.SelectedService{}
+	for _, svc := range in {
+		if _, ok := byID[svc.ID]; !ok {
+			byID[svc.ID] = svc
+		}
+	}
+	var out []types.SelectedService
+	for _, spec := range catalog.ComposeServices {
+		if svc, ok := byID[spec.ID]; ok {
+			out = append(out, svc)
+		}
+	}
+	return out
+}
+
+func orderModules(in []types.SelectedModule) []types.SelectedModule {
+	byID := map[types.ModuleID]types.SelectedModule{}
+	for _, m := range in {
+		if _, ok := byID[m.ID]; !ok {
+			byID[m.ID] = m
+		}
+	}
+	var out []types.SelectedModule
+	for _, spec := range catalog.DockerfileModules {
+		if m, ok := byID[spec.ID]; ok {
+			out = append(out, m)
+		}
+	}
+	return out
 }
 
 func (s InitService) InstallSkills(workspace string) {

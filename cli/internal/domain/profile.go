@@ -239,6 +239,11 @@ func ApplyProfileTemplate(config *types.DevcontainerConfig, p catalog.Profile) e
 	for k, v := range p.Env {
 		config.Env[k] = v
 	}
+	if config.Mode == types.BuildModeProfiles {
+		// A pulled profile image is fixed: the template never switches it to a
+		// local build (an explicit --mode still can, after this).
+		return nil
+	}
 	switch {
 	case p.Image != "" && len(p.Modules) > 0:
 		// Image plus modules is a derived build: the project image starts FROM
@@ -249,6 +254,13 @@ func ApplyProfileTemplate(config *types.DevcontainerConfig, p catalog.Profile) e
 		config.Mode = types.BuildModeImage
 		config.Image = ResolveImageRef(p.Image)
 		config.Dockerfile.From = ""
+	default:
+		// A modules-only profile is a full build: it undoes a previous
+		// profile's image or derivation instead of silently keeping it.
+		config.Dockerfile.From = ""
+		if config.Mode == types.BuildModeImage && len(p.Modules) > 0 {
+			config.Mode = types.BuildModeCustom
+		}
 	}
 	return nil
 }
