@@ -276,7 +276,7 @@ func (w wizardContext) steps(s *State) []Step {
 	steps = append(steps, w.categorySteps(s)...)
 	steps = append(steps, w.optionSteps(s)...)
 
-	if !w.remoteImageDerived(s) {
+	if !w.remoteImageDerived(s) && !w.contentNamedImage(s) {
 		steps = append(steps, w.imageStep())
 	}
 	steps = append(steps, w.subnetStep())
@@ -554,6 +554,13 @@ func (w wizardContext) remoteImageDerived(s *State) bool {
 	return currentMode(s) == types.BuildModeProfiles && s.String(stepKeyVariant) != ""
 }
 
+// contentNamedImage reports whether the image tag is derived from the build's
+// origin and content (every local custom build), so asking for a name would
+// only offer a value that is then replaced.
+func (w wizardContext) contentNamedImage(s *State) bool {
+	return currentMode(s) == types.BuildModeCustom
+}
+
 func (w wizardContext) imageStep() Step {
 	return Step{Key: stepKeyImage, Build: func(s *State) Field {
 		initial := w.base.Image
@@ -660,6 +667,13 @@ func (w wizardContext) reduce(s *State) *types.DevcontainerConfig {
 		Skills:     w.selectedSkills(s),
 		Compose:    types.ComposeConfig{Services: services, Subnet: s.String(stepKeySubnet)},
 		Env:        env,
+	}
+
+	if s.String(stepKeyMode) == modeChoiceCustomFromProfile && s.Has(stepKeyProfile) {
+		draft.Origin = s.String(stepKeyProfile)
+	}
+	if draft.Image == "" {
+		draft.Image = w.base.Image
 	}
 
 	if s.Has(stepKeyPorts) {

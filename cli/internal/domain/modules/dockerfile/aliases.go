@@ -52,8 +52,8 @@ var AliasesModule = &ModuleSpec{
 	Always:   true,
 	// CONTEXT.md is deliberately NOT listed here: CopyFiles names embedded
 	// assets to materialize, and CONTEXT.md is generated per project by
-	// domain.GenerateContext. The generate flow writes it into the build dir and
-	// folds it into the fingerprint itself.
+	// domain.GenerateContext. It is never baked: the generated compose file
+	// bind-mounts it (domain.ContextMount), so it stays out of the fingerprint.
 	CopyFiles: []string{"alias.sh", ContextScriptName + ".sh", ContextSkillAsset},
 	Context: func(opts map[string]any) *types.ContextSection {
 		return &types.ContextSection{
@@ -95,8 +95,8 @@ var AliasesModule = &ModuleSpec{
 # The skill is baked under %[1]s/%[5]s/, i.e. OUTSIDE the shared-config
 # volume: the entrypoint symlinks it into each agent's own skills directory, so a
 # container always sees the skill of the image it is actually running.
-# Note: CONTEXT.md is copied at the very end of the Dockerfile (in the PROJECT layer)
-# so workspace-specific paths do not bust Docker layer caching for toolchains.
+# Note: ~/CONTEXT.md is not baked; the generated compose file bind-mounts it, so
+# the image carries nothing workspace-specific and identical content is shared.
 COPY alias.sh %[1]s/%[2]s
 COPY %[3]s.sh %[1]s/.local/bin/%[3]s
 COPY %[7]s %[1]s/%[5]s/%[6]s/SKILL.md

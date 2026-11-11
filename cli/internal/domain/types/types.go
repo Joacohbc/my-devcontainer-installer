@@ -454,12 +454,31 @@ type DevcontainerConfig struct {
 	ForwardPorts []string      `json:"forwardPorts,omitempty" yaml:"forwardPorts,omitempty"`
 	Remote       *RemoteConfig `json:"remote,omitempty" yaml:"remote,omitempty"`
 	Fingerprint  string        `json:"fingerprint,omitempty" yaml:"fingerprint,omitempty"`
+	// Origin names what the project's image is built from — the profile ids
+	// joined with "-", or empty for hand-picked modules — and becomes the
+	// readable part of the image tag. The image never belongs to the workspace:
+	// two projects with the same content share it.
+	Origin string `json:"origin,omitempty" yaml:"origin,omitempty"`
+	// ImageKind is stamped into the image labels; empty means ImageKindProject.
+	// Only the `image` module sets it (to ImageKindNamed), so it is not persisted.
+	ImageKind string `json:"-" yaml:"-"`
 	// BuildUID/BuildGID are the host owner ids baked into a local-cached image so
 	// devuser matches the bind-mounted workspace. They are resolved fresh at
 	// generate time (never persisted) and feed both the compose build args and the
 	// image fingerprint. Zero means "unset" — the Dockerfile ARG defaults apply.
 	BuildUID int `json:"-" yaml:"-"`
 	BuildGID int `json:"-" yaml:"-"`
+}
+
+// DefaultImageOrigin names a project image built from hand-picked modules.
+const DefaultImageOrigin = "custom"
+
+// ResolvedOrigin is Origin, or DefaultImageOrigin when none was recorded.
+func (c *DevcontainerConfig) ResolvedOrigin() string {
+	if c.Origin == "" {
+		return DefaultImageOrigin
+	}
+	return c.Origin
 }
 
 const ConfigFile = "devcontainer.config.json"

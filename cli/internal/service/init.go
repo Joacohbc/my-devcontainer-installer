@@ -214,6 +214,9 @@ func (s InitService) applyConfigOptions(config *types.DevcontainerConfig, opts I
 			}
 		}
 		if p, err := catalog.ResolveComposed(pList, domain.ProfileDirs()...); err == nil {
+			if config.Mode != types.BuildModeProfiles {
+				config.Origin = strings.Join(pList, "-")
+			}
 			config.Dockerfile.Scripts = append(config.Dockerfile.Scripts, p.Scripts...)
 			config.Compose.Ports = append(config.Compose.Ports, p.Ports...)
 			config.ForwardPorts = append(config.ForwardPorts, p.ForwardPorts...)

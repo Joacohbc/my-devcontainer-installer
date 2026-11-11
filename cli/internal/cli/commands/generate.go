@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/logger"
@@ -560,127 +559,9 @@ func validateConfig(cwd string, config *types.DevcontainerConfig, flags *genFlag
 	return nil
 }
 
-// materializeCustomScripts copies each configured custom script from its source
-// (the profile directory it was resolved from) into the build dir under its
-// namespaced name, and returns those names.
-//
-// A script with no Source is one persisted by an earlier run: the copy in the
-// build dir is the source of truth, so it is only reported, never re-fetched.
-// That is what makes a generated project reproducible after the profile it came
-// from has been edited or deleted.
-func materializeCustomScripts(config *types.DevcontainerConfig, buildDir string) ([]string, error) {
-	names, err := domain.CollectCustomScriptFiles(config)
-	if err != nil {
-		return nil, err
-	}
-	for _, s := range config.Dockerfile.Scripts {
-		if s.Source == "" {
-			continue
-		}
-		data, rerr := domain.ReadCustomScript(s)
-		if rerr != nil {
-			return nil, rerr
-		}
-		if werr := os.WriteFile(filepath.Join(buildDir, s.BuildFile()), data, 0o755); werr != nil {
-			return nil, werr
-		}
-	}
-	return names, nil
-}
-
 // prepareBuildDir constructs the build target filesystem structure and validates dependencies.
-func prepareBuildDir(cwd string, config *types.DevcontainerConfig, paths project.Paths) (map[string]string, []string, error) {
-	buildDir := paths.BuildDir
-	skipBuildArtifacts := config.Mode == types.BuildModeProfiles || config.Mode == types.BuildModeImage
-
-	if err := os.MkdirAll(buildDir, 0o755); err != nil {
-		return nil, nil, err
-	}
-
-	var copyFiles, postScriptFiles, customScripts []string
-	if !skipBuildArtifacts {
-		copyFiles, _ = domain.CollectRequiredCopyFiles(config)
-		postScriptFiles, _ = domain.CollectRequiredPostScriptFiles(config)
-
-		// The user's own scripts are copied in before anything is validated: they
-		// come from a profile directory rather than the embedded FS, and once they
-		// are in the build dir the existing plumbing treats them like any other
-		// referenced file — ValidateRequiredFiles looks there first, Preflight
-		// skips what is already present, and their contents feed the fingerprint.
-		var err error
-		customScripts, err = materializeCustomScripts(config, buildDir)
-		if err != nil {
-			return nil, nil, err
-		}
-
-		referenced := slices.Concat(copyFiles, postScriptFiles, customScripts)
-		if missing := assets.ValidateRequiredFiles(referenced, buildDir); len(missing) > 0 {
-			return nil, nil, fmt.Errorf("missing required script(s) (not embedded in binary or %s): %s", buildDir, strings.Join(missing, ", "))
-		}
-	}
-
-	if !skipBuildArtifacts {
-		if len(copyFiles) > 0 {
-			pre := assets.Preflight(copyFiles, buildDir)
-			if len(pre.Copied) > 0 {
-				logger.Std().Debug("copied build helpers", "workspace", config.Workspace, "files", strings.Join(pre.Copied, ", "))
-			}
-			if len(pre.Missing) > 0 {
-				return nil, nil, fmt.Errorf("missing required scripts: %s", strings.Join(pre.Missing, ", "))
-			}
-		}
-		if len(postScriptFiles) > 0 {
-			pre := assets.Preflight(postScriptFiles, buildDir)
-			if len(pre.Copied) > 0 {
-				logger.Std().Debug("copied post-install scripts", "workspace", config.Workspace, "files", strings.Join(pre.Copied, ", "))
-			}
-			if len(pre.Missing) > 0 {
-				return nil, nil, fmt.Errorf("missing required post-install scripts: %s", strings.Join(pre.Missing, ", "))
-			}
-		}
-	}
-
-	copyContents := map[string]string{}
-	for _, f := range slices.Concat(copyFiles, postScriptFiles, customScripts) {
-		if data, rerr := os.ReadFile(filepath.Join(buildDir, f)); rerr == nil {
-			copyContents[f] = string(data)
-		}
-	}
-
-	// The shared-config catalogue is rendered from types.SharedConfigEntries
-	// rather than kept as a second copy in shell. It is written here for the
-	// same reason CONTEXT.md is (generated, so Preflight would not find it) and
-	// folded into copyContents for the same reason too: adding an entry changes
-	// what the image's entrypoint links, and two projects must not share an
-	// image whose baked catalogue disagrees with the CLI that built it.
-	if !skipBuildArtifacts {
-		table := types.RenderSharedConfigTable()
-		if werr := os.WriteFile(filepath.Join(buildDir, types.SharedConfigTableFileName), []byte(table), 0o644); werr != nil {
-			return nil, nil, werr
-		}
-		copyContents[types.SharedConfigTableFileName] = table
-	}
-
-	// CONTEXT.md is generated rather than materialized from the embedded assets,
-	// so it is written here (after the build dir exists, before the fingerprint
-	// is computed) instead of going through Preflight. Folding it into
-	// copyContents is what makes the fingerprint react to a change that touches
-	// only the compose side — adding a database service alters CONTEXT.md but not
-	// the Dockerfile, and two projects must not then share one image.
-	if !skipBuildArtifacts {
-		contextDoc, cerr := domain.GenerateContext(config)
-		if cerr != nil {
-			return nil, nil, cerr
-		}
-		if contextDoc != "" {
-			if werr := os.WriteFile(filepath.Join(buildDir, types.ContextFileName), []byte(contextDoc), 0o644); werr != nil {
-				return nil, nil, werr
-			}
-			copyContents[types.ContextFileName] = contextDoc
-		}
-	}
-
-	return copyContents, postScriptFiles, nil
+func prepareBuildDir(_ string, config *types.DevcontainerConfig, paths project.Paths) (map[string]string, []string, error) {
+	return generateService().PrepareBuildDir(config, paths)
 }
 
 // writeGeneratedFiles outputs generated environment configuration blueprints.
@@ -863,6 +744,7 @@ func applyProfileBundle(config *types.DevcontainerConfig, flags *genFlags) error
 	if flags.services == nil {
 		flags.services = []string{}
 	}
+	config.Origin = strings.Join(splitCSV(flags.profile), "-")
 	return nil
 }
 

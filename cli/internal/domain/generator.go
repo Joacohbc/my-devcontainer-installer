@@ -42,21 +42,8 @@ func GenerateDockerfile(config *types.DevcontainerConfig) (string, error) {
 	if customScripts != "" {
 		fragments = append(fragments, customScripts)
 	}
-	fragments = append(fragments, projectLayerBlock(config))
 	fragments = append(fragments, types.DockerfileLabelBlock(config))
 	return types.GeneratedHeader + "\n\n" + strings.Join(fragments, "\n\n") + "\n", nil
-}
-
-// projectLayerBlock bakes workspace-specific files (specifically CONTEXT.md) as
-// the very last layer before labels. Emitting it after all modules, environments,
-// and custom scripts ensures leading Dockerfile layers remain byte-identical across
-// workspaces, maximizing layer cache reuse.
-func projectLayerBlock(config *types.DevcontainerConfig) string {
-	return fmt.Sprintf(`##
-## PROJECT (workspace-specific orientation context)
-##
-COPY %[1]s /home/devuser/%[1]s
-RUN chmod 0644 /home/devuser/%[1]s && chown devuser:devuser /home/devuser/%[1]s`, types.ContextFileName)
 }
 
 // renderEnvironmentBlocks turns every resolved module's declared environment
@@ -268,11 +255,7 @@ func ResolveDevcontainerImageName(config *types.DevcontainerConfig) string {
 		return config.Image
 	}
 	if config.Mode == types.BuildModeCustom && config.Fingerprint != "" {
-		fp := config.Fingerprint
-		if len(fp) > 12 {
-			fp = fp[:12]
-		}
-		return types.ImageNamespace + "/" + fp + ":latest"
+		return ContentImageTag(config.ResolvedOrigin(), config.Fingerprint)
 	}
 	return config.Image
 }
@@ -545,6 +528,7 @@ func (c composeContext) configureDevcontainer(rendered *compose.ServiceDef) {
 	// User-defined extra mounts are appended verbatim; named-volume sources are
 	// declared in the top-level volumes section (see volumes()).
 	rendered.Volumes = append(rendered.Volumes, c.config.Compose.Volumes...)
+	rendered.Volumes = append(rendered.Volumes, ContextMount())
 
 	if c.config.Mode == types.BuildModeProfiles || c.config.Mode == types.BuildModeImage {
 		rendered.Build = nil
@@ -835,4 +819,13 @@ func copyLabels(src map[string]string) map[string]string {
 		dst[k] = v
 	}
 	return dst
+}
+
+// ContextMount bind-mounts the project's generated CONTEXT.md read-only into
+// the devcontainer. It is mounted rather than baked because it names the
+// workspace path: baking it made every workspace's image unique, so identical
+// content could never be shared. Mounting also gives prebuilt (profiles/image)
+// containers an accurate context, which a baked file never could.
+func ContextMount() string {
+	return "./" + types.ContextFileName + ":/home/devuser/" + types.ContextFileName + ":ro"
 }
