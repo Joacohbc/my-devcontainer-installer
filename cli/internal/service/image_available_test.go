@@ -43,3 +43,36 @@ func TestImageBuildDerivedRejectsAnOutdatedParentWithoutSource(t *testing.T) {
 		t.Fatalf("expected an out-of-date parent error, got %v", err)
 	}
 }
+
+func TestImageAvailable(t *testing.T) {
+	svc := newImageSvc(t)
+	_ = svc.Create("built", CreateImageOpts{})
+	_ = svc.Create("unbuilt", CreateImageOpts{})
+	_ = svc.Create("team", CreateImageOpts{RemoteRef: "ghcr.io/acme/devcontainer:1"})
+	defer useFakeDocker(&daemonRunner{local: map[string]bool{"devcontainer-cli-img/built:latest": true}})()
+
+	cases := []struct {
+		name    string
+		want    string
+		wantErr string
+	}{
+		{name: "built", want: "devcontainer-cli-img/built:latest"},
+		{name: "team", want: "ghcr.io/acme/devcontainer:1"},
+		{name: "unbuilt", wantErr: "run 'devcontainer-cli image build unbuilt' first"},
+		{name: "missing", wantErr: "devcontainer-cli image list"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got, err := svc.Available(c.name)
+			if c.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), c.wantErr) {
+					t.Fatalf("Available(%q) error = %v, want it to mention %q", c.name, err, c.wantErr)
+				}
+				return
+			}
+			if err != nil || got != c.want {
+				t.Fatalf("Available(%q) = %q, %v; want %q", c.name, got, err, c.want)
+			}
+		})
+	}
+}

@@ -238,6 +238,27 @@ func (s ImageService) Info(name string) (*ImageStatus, error) {
 	}, nil
 }
 
+// Available resolves a definition to the image reference a container can run:
+// a remote definition's registry reference (pulled on first use), or a build
+// definition's tag once it has been built locally.
+func (s ImageService) Available(name string) (string, error) {
+	def, ok, err := domain.ResolveImageDef(name, s.getImagesDir())
+	if err != nil {
+		return "", err
+	}
+	if !ok {
+		return "", fmt.Errorf("image definition %q not found; run 'devcontainer-cli image list' to see the available images", name)
+	}
+	tag := domain.ImageTag(def)
+	if def.EffectiveSource() == domain.ImageSourceRemote {
+		return tag, nil
+	}
+	if !domain.LocalImageExists(tag, captureFunc()) {
+		return "", fmt.Errorf("image %q is not built; run 'devcontainer-cli image build %s' first", name, name)
+	}
+	return tag, nil
+}
+
 // Build compiles a local Dockerfile for the image definition and tags it.
 func (s ImageService) Build(name string) error {
 	def, ok, err := domain.ResolveImageDef(name, s.getImagesDir())
