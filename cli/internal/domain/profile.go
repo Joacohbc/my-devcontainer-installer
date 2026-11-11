@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/catalog"
@@ -156,30 +157,45 @@ func ReadCustomScript(s types.CustomScript) ([]byte, error) {
 }
 
 // projectPathRe matches the references that only resolve once a project is
-// mounted: the mount root, the per-project alias, the contract variable and the
-// ad-hoc $WORKSPACE scripts tend to invent for the same thing.
-var projectPathRe = regexp.MustCompile(`/workspaces\b|/workspace/|\$\{?DC_WORKSPACE|\$\{?WORKSPACE\b`)
+// mounted: the mount root or the legacy /workspace mount (but not a workspaces
+// dir under $HOME, hence the guard on the preceding character), and the
+// contract variables or the ad-hoc $WORKSPACE scripts tend to invent.
+var projectPathRe = regexp.MustCompile(`(?:^|[^\w}./~-])(/workspaces?)\b|(\$\{?(?:DC_WORKSPACE\w*|WORKSPACE)\b)`)
 
 // LintCustomScript returns advisory warnings for a script whose content cannot
 // work in the phase it declares. Today that is one mistake: a build script that
 // touches the project, which does not exist inside `docker build`. Comment lines
-// are skipped so a script may explain itself without tripping the lint.
+// are skipped so a script may explain itself, and every offending line is folded
+// into one warning so a long script does not flood each build.
 func LintCustomScript(s types.CustomScript, content []byte) []string {
 	if s.ResolvedWhen() != types.ScriptWhenBuild {
 		return nil
 	}
-	var warnings []string
+	var first string
+	var lines []string
 	for i, line := range strings.Split(string(content), "\n") {
 		if strings.HasPrefix(strings.TrimSpace(line), "#") {
 			continue
 		}
-		if match := projectPathRe.FindString(line); match != "" {
-			warnings = append(warnings, fmt.Sprintf(
-				"script %s:%d references %q but runs at build time, when no project is mounted; declare it 'when: start' and use $DC_WORKSPACE_DIR",
-				s.File, i+1, match))
+		m := projectPathRe.FindStringSubmatch(line)
+		if m == nil {
+			continue
 		}
+		if first == "" {
+			first = m[1] + m[2]
+		}
+		lines = append(lines, strconv.Itoa(i+1))
 	}
-	return warnings
+	if len(lines) == 0 {
+		return nil
+	}
+	where := "line " + lines[0]
+	if len(lines) > 1 {
+		where = "lines " + strings.Join(lines, ", ")
+	}
+	return []string{fmt.Sprintf(
+		"script %s references %q (%s) but runs at build time, when no project is mounted; declare it 'when: start' and use $DC_WORKSPACE_DIR",
+		s.File, first, where)}
 }
 
 // CollectCustomScriptFiles returns every configured custom script's build-dir

@@ -105,7 +105,9 @@ func assertScriptClean(t *testing.T, sc types.CustomScript) {
 	if !strings.HasPrefix(string(data), "#!/usr/bin/env bash\n") || !strings.Contains(string(data), "set -euo pipefail") {
 		t.Errorf("%s must start with a bash shebang and set -euo pipefail, the pattern agents copy", sc.File)
 	}
-	if _, err := exec.LookPath("bash"); err == nil {
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Logf("bash not available: syntax of %s not checked", sc.File)
+	} else {
 		if out, err := exec.Command("bash", "-n", sc.Source).CombinedOutput(); err != nil {
 			t.Errorf("bash -n %s: %v\n%s", sc.File, err, out)
 		}

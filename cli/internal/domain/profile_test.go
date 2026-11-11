@@ -326,6 +326,9 @@ func TestLintCustomScript(t *testing.T) {
 		{"build reads the contract var", types.ScriptWhenBuild, `cd "$DC_WORKSPACE_DIR"` + "\n", true},
 		{"build uses the alias root", types.ScriptWhenBuild, "touch /workspace/app/x\n", true},
 		{"build references $WORKSPACE", types.ScriptWhenBuild, "echo $WORKSPACE\n", true},
+		{"build uses the bare legacy mount", types.ScriptWhenBuild, "cd /workspace\n", true},
+		{"build reads DC_WORKSPACE", types.ScriptWhenBuild, `echo "${DC_WORKSPACE}"` + "\n", true},
+		{"build writes under its own home workspaces dir", types.ScriptWhenBuild, `mkdir -p "$HOME/workspaces" ~/workspaces ${HOME}/workspaces` + "\n", false},
 		{"build installs a tool", types.ScriptWhenBuild, "uv tool install ruff\n", false},
 		{"build mentions the path in a comment", types.ScriptWhenBuild, "# writes to /workspaces at start, not here\nuv tool install ruff\n", false},
 		{"start may use the project", types.ScriptWhenStart, `mkdir -p "$DC_WORKSPACE_DIR/.cursor"` + "\n", false},
@@ -344,5 +347,18 @@ func TestLintCustomScript(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// A build script with several project references gets one warning naming every
+// line, not one near-identical warning per line before every build.
+func TestLintCustomScriptReportsOnceWithEveryLine(t *testing.T) {
+	body := "#!/usr/bin/env bash\nmkdir -p /workspaces/.claude\necho ok\ncat > /workspaces/.mcp.json\n"
+	warnings := domain.LintCustomScript(types.CustomScript{File: "s.sh"}, []byte(body))
+	if len(warnings) != 1 {
+		t.Fatalf("got %d warnings %q, want exactly one", len(warnings), warnings)
+	}
+	if !strings.Contains(warnings[0], "lines 2, 4") {
+		t.Errorf("warning %q must list lines 2, 4", warnings[0])
 	}
 }
