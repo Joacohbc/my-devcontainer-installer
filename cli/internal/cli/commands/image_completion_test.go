@@ -13,7 +13,7 @@ func seedImageDefs(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	for _, def := range []domain.ImageDef{
 		{Name: "android", Source: domain.ImageSourceBuild},
-		{Name: "api", Source: domain.ImageSourceBuild},
+		{Name: "api", Source: domain.ImageSourceBuild, Label: "API toolchain"},
 		{Name: "team-base", Source: domain.ImageSourceRemote, Ref: "ghcr.io/acme/base:1"},
 	} {
 		if err := domain.SaveImageDef(def, domain.UserImageDir()); err != nil {

@@ -15,7 +15,7 @@ Generate and manage reproducible Docker devcontainers
 | `--force` |  | bool | `false` | Overwrite existing files without prompting |
 | `--force-prompt` |  | bool | `false` | Prompt even if config file exists |
 | `--forward-ports` |  | string | - | Ports 'access forward' tunnels when called with no argument (e.g. 3000,8080:80, reverse:5432 for a host port reachable inside the container); 'none' clears them |
-| `--image` |  | string | - | Image name (ignored for mode=custom, whose image is named by origin and content: devcontainer-cli/<profiles>-<hash>) |
+| `--image` |  | string | - | Image to run under mode=image: an image definition name (see 'image list'; a build definition must be built first, a remote one is pulled and verified) or a registry reference. Ignored for mode=custom, whose image is named by origin and content: devcontainer-cli/<profiles>-<hash> |
 | `--log-level` |  | string | `warn` | Log level: debug\|info\|warn\|error |
 | `--mode` |  | string | - | Build mode: custom (default, full local build), profiles (pull a prebuilt image), or image (use a reusable image) |
 | `--modules` |  | string | - | Comma-separated dockerfile modules (e.g. nodejs,golang,rust) |
@@ -301,7 +301,7 @@ Generate, build and start a devcontainer for the current directory
 | Bandera | Atajo | Tipo | Por defecto | Descripción |
 |---|---|---|---|---|
 | `--forward-ports` |  | string | - | Ports 'access forward' tunnels when called with no argument (e.g. 3000,8080:80, reverse:5432 for a host port reachable inside the container); 'none' clears them |
-| `--image` |  | string | - | Image name (ignored for mode=custom, whose image is named by origin and content: devcontainer-cli/<profiles>-<hash>) |
+| `--image` |  | string | - | Image to run under mode=image: an image definition name (see 'image list'; a build definition must be built first, a remote one is pulled and verified) or a registry reference. Ignored for mode=custom, whose image is named by origin and content: devcontainer-cli/<profiles>-<hash> |
 | `--log-level` |  | string | `warn` | Log level: debug\|info\|warn\|error |
 | `--mode` |  | string | - | Build mode: custom (default, full local build), profiles (pull a prebuilt image), or image (use a reusable image) |
 | `--modules` |  | string | - | Comma-separated dockerfile modules (e.g. nodejs,golang,rust) |
@@ -388,19 +388,20 @@ List files inside the devcontainer
 
 ## `devcontainer-cli agent run`
 
-Spin up an ephemeral container from a prebuilt remote image (no project files)
+Spin up an ephemeral container from a prebuilt or named image (no project files)
 
 ### Banderas
 
 | Bandera | Atajo | Tipo | Por defecto | Descripción |
 |---|---|---|---|---|
 | `--expose-all` |  | bool | `false` | Publish ports on all interfaces (0.0.0.0) instead of binding to 127.0.0.1 |
+| `--image` |  | string | - | Image definition to run instead of a profile (see 'image list'); a build definition must be built first, a remote one is pulled and verified |
 | `--log-level` |  | string | `warn` | Log level: debug\|info\|warn\|error |
-| `--name` |  | string | - | Container name (default: dc-<profile>); if it belongs to an existing quick-run container it is reused/restarted, but a name already used by any other container is rejected |
+| `--name` |  | string | - | Container name (default: dc-<profile> or dc-<image>); if it belongs to a quick-run container started from the same source it is reused/restarted, but a name already used by any other container is rejected |
 | `--no-interactive` |  | bool | `false` | Non-interactive mode (fail instead of prompting) |
 | `--ports` |  | stringSlice | `[]` | Port mappings (e.g. 2222:22); bound to 127.0.0.1 unless --expose-all; repeatable or comma-separated |
-| `--profile` |  | string | - | Single [remote]-tagged profile id to run as a prebuilt image, e.g. base, nodejs, python; see 'profile list' |
-| `--registry` |  | string | - | Registry prefix override |
+| `--profile` |  | string | - | Single [remote]-tagged profile id to run as a prebuilt image, e.g. base, nodejs, python (it or --image is required); see 'profile list' |
+| `--registry` |  | string | - | Registry prefix override for --profile |
 | `--shared-config` |  | bool | `true` | Mount the global shared AI/dev tool config volume (devcontainer-shared-config) so logins/sessions persist across containers; --shared-config=false to opt out |
 | `--verbose` |  | bool | `false` | Enable debug logging (shortcut for --log-level debug) |
 | `--volumes` |  | stringSlice | `[]` | Volume mounts (e.g. myvol:/workspace); repeatable or comma-separated |
@@ -1119,13 +1120,13 @@ Spin up a container from a prebuilt or named image (no project files)
 | Bandera | Atajo | Tipo | Por defecto | Descripción |
 |---|---|---|---|---|
 | `--expose-all` |  | bool | `false` | Publish ports on all interfaces (0.0.0.0) instead of binding to 127.0.0.1 |
-| `--image` |  | string | - | Image definition to run instead of a profile (see 'image list'); a build definition must be built first |
+| `--image` |  | string | - | Image definition to run instead of a profile (see 'image list'); a build definition must be built first, a remote one is pulled and verified |
 | `--log-level` |  | string | `warn` | Log level: debug\|info\|warn\|error |
-| `--name` |  | string | - | Container name (default: dc-<profile> or dc-<image>); if it belongs to an existing quick-run container it is reused/restarted, but a name already used by any other container is rejected |
+| `--name` |  | string | - | Container name (default: dc-<profile> or dc-<image>); if it belongs to a quick-run container started from the same source it is reused/restarted, but a name already used by any other container is rejected |
 | `--no-interactive` |  | bool | `false` | Non-interactive mode (fail instead of prompting) |
 | `--ports` |  | stringSlice | `[]` | Port mappings (e.g. 2222:22); bound to 127.0.0.1 unless --expose-all; repeatable or comma-separated |
 | `--profile` |  | string | - | Single [remote]-tagged profile id to run as a prebuilt image, e.g. base, nodejs, python (it or --image is required with --no-interactive); see 'profile list' |
-| `--registry` |  | string | - | Registry prefix override |
+| `--registry` |  | string | - | Registry prefix override for --profile |
 | `--shared-config` |  | bool | `true` | Mount the global shared AI/dev tool config volume (devcontainer-shared-config) so logins/sessions persist across containers; --shared-config=false to opt out |
 | `--verbose` |  | bool | `false` | Enable debug logging (shortcut for --log-level debug) |
 | `--volumes` |  | stringSlice | `[]` | Volume mounts (e.g. myvol:/workspace); repeatable or comma-separated |
@@ -1244,7 +1245,7 @@ Create a devcontainer for the current project with the interactive wizard
 | `--force` |  | bool | `false` | Overwrite existing files without prompting |
 | `--force-prompt` |  | bool | `false` | Prompt even if config file exists |
 | `--forward-ports` |  | string | - | Ports 'access forward' tunnels when called with no argument (e.g. 3000,8080:80, reverse:5432 for a host port reachable inside the container); 'none' clears them |
-| `--image` |  | string | - | Image name (ignored for mode=custom, whose image is named by origin and content: devcontainer-cli/<profiles>-<hash>) |
+| `--image` |  | string | - | Image to run under mode=image: an image definition name (see 'image list'; a build definition must be built first, a remote one is pulled and verified) or a registry reference. Ignored for mode=custom, whose image is named by origin and content: devcontainer-cli/<profiles>-<hash> |
 | `--log-level` |  | string | `warn` | Log level: debug\|info\|warn\|error |
 | `--mode` |  | string | - | Build mode: custom (default, full local build), profiles (pull a prebuilt image), or image (use a reusable image) |
 | `--modules` |  | string | - | Comma-separated dockerfile modules (e.g. nodejs,golang,rust) |

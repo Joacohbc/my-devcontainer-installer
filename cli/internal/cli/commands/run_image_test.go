@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -48,6 +49,9 @@ func TestRunImageRunsTheDefinitionReference(t *testing.T) {
 	if opts.variant != "api" || opts.containerName != "dc-api" {
 		t.Errorf("source=%q name=%q, want api and dc-api", opts.variant, opts.containerName)
 	}
+	if opts.source() != service.QuickRunSource(service.QuickRunImage, "api") {
+		t.Errorf("quick-run source = %q, want image:api", opts.source())
+	}
 
 	remote := runCommandWith(t, map[string]string{flagImage: "team-base", flagNoInteractive: "true"})
 	if remote.image != "ghcr.io/acme/base:1" {
@@ -67,7 +71,8 @@ func TestRunImageErrors(t *testing.T) {
 		{"unbuilt definition", map[string]string{flagImage: "android", flagNoInteractive: "true"}, "devcontainer-cli image build android"},
 		{"unknown definition", map[string]string{flagImage: "nope", flagNoInteractive: "true"}, "devcontainer-cli image list"},
 		{"neither flag", map[string]string{flagNoInteractive: "true"}, "--profile or --image"},
-		{"both flags", map[string]string{flagProfile: "base", flagImage: "api"}, "none of the others can be"},
+		{"both flags", map[string]string{flagProfile: "base", flagImage: "api", flagNoInteractive: "true"}, "--profile and --image are mutually exclusive"},
+		{"registry with an image", map[string]string{flagImage: "api", "registry": "ghcr.io/acme", flagNoInteractive: "true"}, "--registry applies only to --profile"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -88,5 +93,69 @@ func TestRunImageFlagCompletesImageNames(t *testing.T) {
 	got, _ := fn(nil, nil, "a")
 	if strings.Join(got, ",") != "android,api" {
 		t.Errorf("completion = %v, want android,api", got)
+	}
+}
+
+// agent run shares run's code, so it must accept every flag that code names
+// in its errors.
+func TestAgentRunAcceptsImage(t *testing.T) {
+	seedImageDefs(t)
+	useLocalImages(t, "devcontainer-cli-img/api:latest")
+
+	cmd := newAgentRunCommand()
+	if _, ok := cmd.GetFlagCompletionFunc(flagImage); !ok {
+		t.Fatal("agent run --image has no completion")
+	}
+	if err := cmd.Flags().Set(flagNoInteractive, "true"); err != nil {
+		t.Fatal(err)
+	}
+	_, err := resolveRunOptions(cmd, service.RunService{Report: console})
+	if err == nil || !strings.Contains(err.Error(), "--profile or --image") {
+		t.Fatalf("error = %v, want both source flags named", err)
+	}
+	if err := cmd.Flags().Set(flagImage, "api"); err != nil {
+		t.Fatalf("agent run must define --image: %v", err)
+	}
+	opts, err := resolveRunOptions(cmd, service.RunService{Report: console})
+	if err != nil || opts.image != "devcontainer-cli-img/api:latest" {
+		t.Fatalf("agent run --image api = %q, %v", opts.image, err)
+	}
+}
+
+// selectPrompter answers each Select with the next scripted value, recording
+// the choices it was offered.
+type selectPrompter struct {
+	fakeScriptedPrompter
+	answers []string
+	offered [][]service.Option
+}
+
+func (p *selectPrompter) Select(_ string, choices []service.Option, _ service.Option) (service.Option, error) {
+	p.offered = append(p.offered, choices)
+	answer := p.answers[0]
+	p.answers = p.answers[1:]
+	return service.Option{Value: answer}, nil
+}
+
+// The interactive picker labels definitions like the wizard does, and asks
+// again when the chosen one cannot run yet instead of aborting the command.
+func TestRunImagePickerReasksForAnUnbuiltDefinition(t *testing.T) {
+	seedImageDefs(t)
+	useLocalImages(t, "devcontainer-cli-img/api:latest")
+
+	p := &selectPrompter{answers: []string{"image", "android", "api"}}
+	got, err := promptRunImage(p)
+	if err != nil || got != "api" {
+		t.Fatalf("picked %q, %v; want api after android was refused", got, err)
+	}
+	if len(p.offered) != 3 {
+		t.Fatalf("asked %d times, want source + two picks", len(p.offered))
+	}
+	labels := make([]string, 0, len(p.offered[1]))
+	for _, c := range p.offered[1] {
+		labels = append(labels, c.Label)
+	}
+	if !slices.Contains(labels, "api — API toolchain") {
+		t.Errorf("image choices %v lack the definition label", labels)
 	}
 }

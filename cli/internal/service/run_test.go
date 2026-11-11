@@ -4,6 +4,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 )
 
 func TestRunCreatesWhenAbsent(t *testing.T) {
@@ -11,7 +13,7 @@ func TestRunCreatesWhenAbsent(t *testing.T) {
 	defer useFakeDocker(runner)()
 
 	svc := RunService{Report: nopReporter{}}
-	err := svc.Run(QuickRunSpec{Variant: "nodejs", ContainerName: "dc-nodejs", Image: "ghcr.io/x/devcontainer-nodejs:latest"})
+	err := svc.Run(QuickRunSpec{Source: QuickRunSource(QuickRunProfile, "nodejs"), ContainerName: "dc-nodejs", Image: "ghcr.io/x/devcontainer-nodejs:latest"})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -32,7 +34,7 @@ func TestRunStartsExisting(t *testing.T) {
 	defer useFakeDocker(runner)()
 
 	svc := RunService{Report: nopReporter{}}
-	if err := svc.Run(QuickRunSpec{ContainerName: "dc-ssh"}); err != nil {
+	if err := svc.Run(QuickRunSpec{Source: QuickRunSource(QuickRunProfile, "ssh"), ContainerName: "dc-ssh"}); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 	if call := runner.callContaining("start"); call == nil || !slices.Contains(call, "dc-ssh") {
@@ -44,11 +46,11 @@ func TestRunStartsExisting(t *testing.T) {
 }
 
 func TestRunAlreadyRunningIsNoop(t *testing.T) {
-	runner := &fakeRunner{status: 0, stdout: "running|ssh"}
+	runner := &fakeRunner{status: 0, stdout: "running|profile:ssh"}
 	defer useFakeDocker(runner)()
 
 	svc := RunService{Report: nopReporter{}}
-	if err := svc.Run(QuickRunSpec{ContainerName: "dc-ssh"}); err != nil {
+	if err := svc.Run(QuickRunSpec{Source: QuickRunSource(QuickRunProfile, "ssh"), ContainerName: "dc-ssh"}); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 	if runner.callContaining("run") != nil || runner.callContaining("start") != nil {
@@ -80,8 +82,10 @@ func TestValidateContainerName(t *testing.T) {
 		wantErr bool
 	}{
 		{"absent", "", false},
-		{"existing quick-run container", "running|ssh", false},
-		{"existing quick-run container stopped", "exited|nodejs", false},
+		{"existing quick-run container", "running|profile:ssh", false},
+		{"existing quick-run container stopped", "exited|profile:ssh", false},
+		{"legacy label from before sources were recorded", "exited|ssh", false},
+		{"quick-run container from another source", "running|image:ssh", true},
 		{"existing unmanaged container", "running|", true},
 	}
 	for _, c := range cases {
@@ -90,7 +94,7 @@ func TestValidateContainerName(t *testing.T) {
 			defer useFakeDocker(runner)()
 
 			svc := RunService{Report: nopReporter{}}
-			err := svc.ValidateContainerName("dc-ssh")
+			err := svc.ValidateContainerName("dc-ssh", QuickRunSource(QuickRunProfile, "ssh"))
 			if c.wantErr && err == nil {
 				t.Fatal("expected an error, got nil")
 			}
@@ -98,6 +102,31 @@ func TestValidateContainerName(t *testing.T) {
 				t.Fatalf("expected no error, got %v", err)
 			}
 		})
+	}
+}
+
+// dc-<name> is shared by a profile and an image definition of the same name,
+// so the label records which one started the container and only that source
+// reuses it.
+func TestRunLabelsAndMatchesTheSource(t *testing.T) {
+	runner := &fakeRunner{status: 0, stdout: ""}
+	defer useFakeDocker(runner)()
+	svc := RunService{Report: nopReporter{}}
+	if err := svc.Run(QuickRunSpec{Source: QuickRunSource(QuickRunImage, "nodejs"), ContainerName: "dc-nodejs", Image: "img"}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if call := runner.callContaining("run"); !slices.Contains(call, types.LabelQuickRun+"=image:nodejs") {
+		t.Errorf("run call lacks the source label: %v", call)
+	}
+
+	other := &fakeRunner{status: 0, stdout: "exited|nodejs"}
+	defer useFakeDocker(other)()
+	err := svc.Run(QuickRunSpec{Source: QuickRunSource(QuickRunImage, "nodejs"), ContainerName: "dc-nodejs", Image: "img"})
+	if err == nil || !strings.Contains(err.Error(), "profile:nodejs") {
+		t.Fatalf("error = %v, want a conflict naming the profile container", err)
+	}
+	if other.callContaining("start") != nil || other.callContaining("run") != nil {
+		t.Errorf("must not reuse a container started from another source; calls=%v", other.calls)
 	}
 }
 

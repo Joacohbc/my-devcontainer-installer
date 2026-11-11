@@ -35,19 +35,22 @@ config volume and which AI installer scripts to copy; with --no-interactive
 every value must come from a flag (--profile or --image becomes required,
 --name falls back to dc-<profile> or dc-<image>).
 
-The container name (default: dc-<profile>) is validated as you type it: if it
-already belongs to a container created by a previous 'run', that container is
-reused as-is (started if stopped, left alone if already running). If it
-belongs to any other container — a devcontainer project container, or an
-unrelated container entirely — the prompt rejects it and asks again (and
---name fails the same way non-interactively); pick a different name or remove
-the existing container first.
+The container name (default: dc-<profile> or dc-<image>) is validated as you
+type it: if it already belongs to a container a previous 'run' started from the
+same profile or image, that container is reused as-is (started if stopped, left
+alone if already running). If it belongs to any other container — one started
+from a different source, a devcontainer project container, or an unrelated
+container entirely — the prompt rejects it and asks again (and --name fails the
+same way non-interactively); pick a different name or remove the existing
+container first.
 
 --profile takes exactly one profile id with a published image — run
 'devcontainer-cli profile list' and look for the [remote] tag. A [local]
 profile (one of your own profiles) has no matching ghcr.io/devcontainer-<id>
-image and is rejected here; build it instead with 'devcontainer-cli --profile
-<id>' and the default mode=custom, which generates project files and builds.`,
+image and is rejected here; build it instead with 'devcontainer-cli workspace
+init --profile <id>' and the default mode=custom, which generates project
+files and builds. --profile and --image are mutually exclusive, and --registry
+only applies to --profile (a definition carries its own reference).`,
 		Example: `  # Interactive: pick a profile and options
   devcontainer-cli run
 
@@ -64,25 +67,33 @@ image and is rejected here; build it instead with 'devcontainer-cli --profile
 		RunE:         runQuickRun,
 	}
 	cmd.Flags().String("profile", "", "Single [remote]-tagged profile id to run as a prebuilt image, e.g. base, nodejs, python (it or --image is required with --no-interactive); see 'profile list'")
-	cmd.Flags().String(flagImage, "", "Image definition to run instead of a profile (see 'image list'); a build definition must be built first")
-	cmd.Flags().String("name", "", "Container name (default: dc-<profile> or dc-<image>); if it belongs to an existing quick-run container it is reused/restarted, but a name already used by any other container is rejected")
+	cmd.Flags().String("name", "", "Container name (default: dc-<profile> or dc-<image>); if it belongs to a quick-run container started from the same source it is reused/restarted, but a name already used by any other container is rejected")
 	cmd.Flags().StringSlice("volumes", nil, "Volume mounts (e.g. myvol:/workspace); repeatable or comma-separated")
 	cmd.Flags().StringSlice("ports", nil, "Port mappings (e.g. 2222:22); bound to 127.0.0.1 unless --expose-all; repeatable or comma-separated")
 	cmd.Flags().Bool("expose-all", false, "Publish ports on all interfaces (0.0.0.0) instead of binding to 127.0.0.1")
 	cmd.Flags().Bool("shared-config", true, "Mount the global shared AI/dev tool config volume (devcontainer-shared-config) so logins/sessions persist across containers; --shared-config=false to opt out")
-	cmd.Flags().String("registry", "", "Registry prefix override")
+	cmd.Flags().String("registry", "", "Registry prefix override for --profile")
 	addInteractiveFlag(cmd)
+	addRunImageFlag(cmd)
 
 	_ = cmd.RegisterFlagCompletionFunc("profile", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return profileIDs(true), cobra.ShellCompDirectiveNoFileComp
 	})
-	_ = cmd.RegisterFlagCompletionFunc(flagImage, completeImageNames)
-	cmd.MarkFlagsMutuallyExclusive(flagProfile, flagImage)
 
 	return cmd
 }
 
+// addRunImageFlag adds --image to a command built on runQuickRun ('run' and
+// 'agent run'), whose source resolution reads it.
+func addRunImageFlag(cmd *cobra.Command) {
+	cmd.Flags().String(flagImage, "", "Image definition to run instead of a profile (see 'image list'); a build definition must be built first, a remote one is pulled and verified")
+	_ = cmd.RegisterFlagCompletionFunc(flagImage, completeImageNames)
+}
+
 type runOptions struct {
+	// kind is where the image comes from: service.QuickRunProfile or
+	// service.QuickRunImage.
+	kind string
 	// variant names the source: the profile id, or the image definition name.
 	variant string
 	// image is the resolved reference of an image definition; empty for a
@@ -94,6 +105,11 @@ type runOptions struct {
 	exposeAll     bool
 	sharedConfig  bool
 	aiScripts     []string
+}
+
+// source is the quick-run label value of the container these options run.
+func (o runOptions) source() string {
+	return service.QuickRunSource(o.kind, o.variant)
 }
 
 func runQuickRun(cmd *cobra.Command, _ []string) error {
@@ -113,7 +129,7 @@ func runQuickRun(cmd *cobra.Command, _ []string) error {
 	printRunSummary(image, opts)
 
 	if err := svc.Run(service.QuickRunSpec{
-		Variant:       opts.variant,
+		Source:        opts.source(),
 		ContainerName: opts.containerName,
 		Image:         image,
 		Volumes:       opts.volumes,
@@ -146,15 +162,15 @@ func resolveRunOptions(cmd *cobra.Command, svc service.RunService) (runOptions, 
 	opts.volumes = filterEmpty(rawVolumes)
 	opts.ports = filterEmpty(rawPorts)
 
-	variant, image, err := resolveRunSource(cmd, interactive)
+	kind, variant, image, err := resolveRunSource(cmd, interactive)
 	if err != nil {
 		return runOptions{}, err
 	}
-	opts.variant, opts.image = variant, image
+	opts.kind, opts.variant, opts.image = kind, variant, image
 
 	name, _ := cmd.Flags().GetString("name")
 	if interactive && !cmd.Flags().Changed("name") {
-		name, err = promptContainerName(svc, variant)
+		name, err = promptContainerName(svc, variant, opts.source())
 		if err != nil {
 			return runOptions{}, err
 		}
@@ -194,76 +210,86 @@ func resolveRunOptions(cmd *cobra.Command, svc service.RunService) (runOptions, 
 }
 
 // resolveRunSource picks what 'run' starts from: --image (an image definition,
-// returned with its runnable reference) or --profile. With neither flag it
-// asks, offering the image choice only when definitions exist.
-func resolveRunSource(cmd *cobra.Command, interactive bool) (string, string, error) {
+// returned with its runnable reference, pulled and verified when remote) or
+// --profile. With neither flag it asks, offering the image choice only when
+// definitions exist. It returns the source kind, its name and, for an image,
+// the reference to run.
+func resolveRunSource(cmd *cobra.Command, interactive bool) (string, string, string, error) {
 	imageName, _ := cmd.Flags().GetString(flagImage)
 	profile, _ := cmd.Flags().GetString(flagProfile)
+	registry, _ := cmd.Flags().GetString("registry")
+	if imageName != "" && profile != "" {
+		return "", "", "", fmt.Errorf("--profile and --image are mutually exclusive: pass --profile <id> for a prebuilt profile image or --image <name> for an image definition")
+	}
+	if imageName != "" && registry != "" {
+		return "", "", "", fmt.Errorf("--registry applies only to --profile; an image definition carries its own reference, so drop --registry")
+	}
 	if imageName == "" && profile == "" {
 		if !interactive {
-			return "", "", fmt.Errorf("--profile or --image required in non-interactive mode")
+			return "", "", "", fmt.Errorf("--profile or --image required in non-interactive mode")
 		}
-		picked, err := promptRunImage()
+		picked, err := promptRunImage(console)
 		if err != nil {
-			return "", "", err
+			return "", "", "", err
 		}
 		imageName = picked
 	}
 	if imageName == "" {
-		variant, err := resolveRunProfile(cmd, interactive)
-		return variant, "", err
+		variant, err := resolveRunProfile(cmd)
+		return service.QuickRunProfile, variant, "", err
 	}
-	ref, err := service.ImageService{}.Available(imageName)
+	ref, err := service.ImageService{Report: console}.Ready(imageName)
 	if err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
-	return imageName, ref, nil
+	return service.QuickRunImage, imageName, ref, nil
 }
 
 // promptRunImage asks whether to run a profile or an image definition, and
-// which definition; an empty answer means a profile. Without definitions it
-// asks nothing.
-func promptRunImage() (string, error) {
-	names := imageNames()
-	if len(names) == 0 {
+// which definition, asking again while the chosen one cannot run yet; an
+// empty answer means a profile. Without definitions it asks nothing.
+func promptRunImage(p service.Prompter) (string, error) {
+	defs, _ := domain.LoadImageDefs(domain.UserImageDir())
+	if len(defs) == 0 {
 		return "", nil
 	}
 	sources := []service.Option{
-		{Value: "profile", Label: "profile — a prebuilt image published for a profile"},
-		{Value: "image", Label: "image — one of your image definitions"},
+		{Value: service.QuickRunProfile, Label: "profile — a prebuilt image published for a profile"},
+		{Value: service.QuickRunImage, Label: "image — one of your image definitions"},
 	}
-	source, err := console.Select("Source:", sources, sources[0])
-	if err != nil || source.Value != "image" {
+	source, err := p.Select("Source:", sources, sources[0])
+	if err != nil || source.Value != service.QuickRunImage {
 		return "", err
 	}
-	choices := make([]service.Option, len(names))
-	for i, n := range names {
-		choices[i] = service.Option{Value: n, Label: n}
+	choices := service.ImageDefChoices(defs)
+	for {
+		picked, err := p.Select("Image:", choices, choices[0])
+		if err != nil {
+			return "", err
+		}
+		if _, err := (service.ImageService{}).Available(picked.Value); err != nil {
+			console.Warn("%v", err)
+			continue
+		}
+		return picked.Value, nil
 	}
-	picked, err := console.Select("Image:", choices, choices[0])
-	if err != nil {
-		return "", err
-	}
-	return picked.Value, nil
 }
 
 // resolveRunProfile reads --profile, validating it against the
-// [remote]-tagged profiles the run command can actually pull.
-func resolveRunProfile(cmd *cobra.Command, interactive bool) (string, error) {
+// [remote]-tagged profiles the run command can actually pull; with no
+// --profile (only reachable interactively) it asks for one.
+func resolveRunProfile(cmd *cobra.Command) (string, error) {
 	profile, _ := cmd.Flags().GetString("profile")
-	if profile != "" {
-		if len(splitCSV(profile)) > 1 {
-			return "", fmt.Errorf("'run' accepts exactly one profile, got %q (run pulls a prebuilt image; multiple profiles can only be combined with mode=custom)", profile)
-		}
-		if !validRemoteVariant(profile) {
-			return "", remoteVariantError(profile)
-		}
-		return profile, nil
+	if profile == "" {
+		return promptVariant()
 	}
-	if !interactive {
-		return "", fmt.Errorf("--profile required in non-interactive mode")
+	if len(splitCSV(profile)) > 1 {
+		return "", fmt.Errorf("'run' accepts exactly one profile, got %q (run pulls a prebuilt image; multiple profiles can only be combined with mode=custom)", profile)
 	}
-	return promptVariant()
+	if !validRemoteVariant(profile) {
+		return "", remoteVariantError(profile)
+	}
+	return profile, nil
 }
 
 func promptVariant() (string, error) {
@@ -282,12 +308,12 @@ func promptVariant() (string, error) {
 	return picked.Value, nil
 }
 
-func promptContainerName(svc service.RunService, variant string) (string, error) {
+func promptContainerName(svc service.RunService, variant, source string) (string, error) {
 	raw, err := console.AskDefault("Container name:", "dc-"+variant, func(s string) error {
 		if strings.TrimSpace(s) == "" {
 			return fmt.Errorf("name cannot be empty")
 		}
-		return svc.ValidateContainerName(strings.TrimSpace(s))
+		return svc.ValidateContainerName(strings.TrimSpace(s), source)
 	})
 	if err != nil {
 		return "", err

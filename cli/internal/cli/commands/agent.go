@@ -335,27 +335,37 @@ func runAgentList(cmd *cobra.Command, args []string) error {
 func newAgentRunCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "run",
-		Short: "Spin up an ephemeral container from a prebuilt remote image (no project files)",
+		Short: "Spin up an ephemeral container from a prebuilt or named image (no project files)",
 		Long: `devcontainer-cli agent run — start a one-off devcontainer from a prebuilt remote
-image without generating project files. Prompting is disabled by default:
-every value must come from flags (--profile is required, --name falls back to dc-<profile>).`,
+image or one of your image definitions, without generating project files.
+Prompting is disabled by default: every value must come from flags (--profile
+or --image is required, --name falls back to dc-<profile> or dc-<image>).
+
+--image names an image definition ('image list'): a build definition must be
+built first with 'devcontainer-cli image build <name>', a remote one is pulled
+and verified. --profile and --image are mutually exclusive, and --registry only
+applies to --profile.`,
 		Example: `  # Run a throwaway Python container
   devcontainer-cli agent run --profile python --name my-task
 
   # Expose ports on the LAN
-  devcontainer-cli agent run --profile nodejs --ports 8080:80 --expose-all`,
+  devcontainer-cli agent run --profile nodejs --ports 8080:80 --expose-all
+
+  # Run one of your image definitions
+  devcontainer-cli agent run --image android --name android-task`,
 		SilenceUsage: true,
 		PreRunE:      agentNonInteractive,
 		RunE:         runQuickRun,
 	}
-	cmd.Flags().String("profile", "", "Single [remote]-tagged profile id to run as a prebuilt image, e.g. base, nodejs, python; see 'profile list'")
-	cmd.Flags().String("name", "", "Container name (default: dc-<profile>); if it belongs to an existing quick-run container it is reused/restarted, but a name already used by any other container is rejected")
+	cmd.Flags().String("profile", "", "Single [remote]-tagged profile id to run as a prebuilt image, e.g. base, nodejs, python (it or --image is required); see 'profile list'")
+	cmd.Flags().String("name", "", "Container name (default: dc-<profile> or dc-<image>); if it belongs to a quick-run container started from the same source it is reused/restarted, but a name already used by any other container is rejected")
 	cmd.Flags().StringSlice("volumes", nil, "Volume mounts (e.g. myvol:/workspace); repeatable or comma-separated")
 	cmd.Flags().StringSlice("ports", nil, "Port mappings (e.g. 2222:22); bound to 127.0.0.1 unless --expose-all; repeatable or comma-separated")
 	cmd.Flags().Bool("expose-all", false, "Publish ports on all interfaces (0.0.0.0) instead of binding to 127.0.0.1")
 	cmd.Flags().Bool("shared-config", true, "Mount the global shared AI/dev tool config volume (devcontainer-shared-config) so logins/sessions persist across containers; --shared-config=false to opt out")
-	cmd.Flags().String("registry", "", "Registry prefix override")
+	cmd.Flags().String("registry", "", "Registry prefix override for --profile")
 	addInteractiveFlag(cmd)
+	addRunImageFlag(cmd)
 
 	_ = cmd.RegisterFlagCompletionFunc("profile", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return profileIDs(true), cobra.ShellCompDirectiveNoFileComp

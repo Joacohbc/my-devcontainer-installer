@@ -18,7 +18,9 @@ type RunService struct {
 
 // QuickRunSpec fully describes a quick-run container to create or resume.
 type QuickRunSpec struct {
-	Variant       string
+	// Source is what the container runs, recorded in its quick-run label
+	// (see QuickRunSource) so a later run reuses it only for the same source.
+	Source        string
 	ContainerName string
 	Image         string
 	Volumes       []string // docker volume specs: name:/path or /host:/container
@@ -32,6 +34,29 @@ type QuickRunSpec struct {
 	SharedConfig bool
 }
 
+// Quick-run sources: a profile's published image or an image definition.
+const (
+	QuickRunProfile = "profile"
+	QuickRunImage   = "image"
+)
+
+// QuickRunSource is the quick-run label value for a container started from
+// kind (QuickRunProfile or QuickRunImage) named name. The default container
+// name dc-<name> is shared by a profile and a definition of the same name, so
+// the label keeps the two apart.
+func QuickRunSource(kind, name string) string {
+	return kind + ":" + name
+}
+
+// normalizeQuickRunSource reads a quick-run label: labels written before the
+// source was recorded hold a bare profile id.
+func normalizeQuickRunSource(label string) string {
+	if strings.Contains(label, ":") {
+		return label
+	}
+	return QuickRunSource(QuickRunProfile, label)
+}
+
 // Run reuses the container if it already exists (starting it when stopped),
 // otherwise creates it from the image. If a container with the same name
 // already exists but was not created by 'run' (no quick-run label), it
@@ -41,8 +66,8 @@ type QuickRunSpec struct {
 func (s RunService) Run(spec QuickRunSpec) error {
 	lookup := s.lookupQuickRunContainer(spec.ContainerName)
 	if lookup.Exists {
-		if !lookup.QuickRun {
-			return nameConflictErr(spec.ContainerName)
+		if err := lookup.reusableFor(spec.ContainerName, spec.Source); err != nil {
+			return err
 		}
 		switch lookup.State {
 		case StateRunning:
@@ -65,7 +90,7 @@ func (s RunService) Run(spec QuickRunSpec) error {
 		"run", "-d",
 		"--name", spec.ContainerName,
 		"--label", types.LabelManaged + "=true",
-		"--label", types.LabelQuickRun + "=" + spec.Variant,
+		"--label", types.LabelQuickRun + "=" + spec.Source,
 	}
 	if spec.SharedConfig {
 		// Best-effort: ensure the volume carries the managed labels. Even if this
@@ -122,12 +147,12 @@ func (s RunService) CopyAIScripts(container string, names []string) error {
 // quick-run container, returns nil. Intended for interactive prompt
 // validation, so the user is asked again rather than failing after the image
 // has already been pulled.
-func (s RunService) ValidateContainerName(name string) error {
+func (s RunService) ValidateContainerName(name, source string) error {
 	lookup := s.lookupQuickRunContainer(name)
-	if lookup.Exists && !lookup.QuickRun {
-		return nameConflictErr(name)
+	if !lookup.Exists {
+		return nil
 	}
-	return nil
+	return lookup.reusableFor(name, source)
 }
 
 func nameConflictErr(name string) error {
@@ -142,6 +167,20 @@ type quickRunLookup struct {
 	Exists   bool
 	State    ContainerState
 	QuickRun bool
+	// Source is the normalized quick-run label (see QuickRunSource).
+	Source string
+}
+
+// reusableFor reports whether an existing container may be reused for source:
+// only a quick-run container started from that same source.
+func (l quickRunLookup) reusableFor(name, source string) error {
+	if !l.QuickRun {
+		return nameConflictErr(name)
+	}
+	if l.Source != source {
+		return fmt.Errorf("container name '%s' already belongs to a quick-run container started from %s, not %s; pick a different name with --name (or remove that container) and try again", name, l.Source, source)
+	}
+	return nil
 }
 
 // lookupQuickRunContainer inspects name in a single docker call, returning
@@ -157,5 +196,8 @@ func (s RunService) lookupQuickRunContainer(name string) quickRunLookup {
 	if state == "" {
 		return quickRunLookup{}
 	}
-	return quickRunLookup{Exists: true, State: ContainerState(state), QuickRun: found && label != ""}
+	if !found || label == "" {
+		return quickRunLookup{Exists: true, State: ContainerState(state)}
+	}
+	return quickRunLookup{Exists: true, State: ContainerState(state), QuickRun: true, Source: normalizeQuickRunSource(label)}
 }
