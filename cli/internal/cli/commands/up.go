@@ -6,8 +6,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func init() { register(newUpCommand()) }
-
 func newUpCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "up",
@@ -27,7 +25,7 @@ compose file exists.`,
 		SilenceUsage: true,
 		RunE:         runUp,
 	}
-	cmd.Flags().Bool("build", false, "Build images before starting (docker compose up -d --build); use after changing the Dockerfile or modules")
+	addBuildFlag(cmd, false, "Build images before starting (docker compose up -d --build); use after changing the Dockerfile or modules")
 	return cmd
 }
 
@@ -45,6 +43,7 @@ func runUp(cmd *cobra.Command, _ []string) error {
 
 	workspace := resolveWorkspace(cwd)
 
+	warnIfBuildStale(cwd, workspace)
 	build, _ := cmd.Flags().GetBool("build")
 	if err := svc.Up(composeFile, workspace, build); err != nil {
 		return err

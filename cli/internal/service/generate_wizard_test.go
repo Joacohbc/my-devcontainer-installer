@@ -200,7 +200,8 @@ func TestConfigureHonorsSharedConfigAnswer(t *testing.T) {
 }
 
 // ProfileChoices backs --profile under mode=profiles, so it must only offer
-// profiles with a published image, never e.g. 'base' (local build only).
+// profiles with a published image. 'base' is published (devcontainer-base) and
+// is the bare, no-language choice, so it is offered first.
 func TestProfileChoicesOnlyListsRemoteProfiles(t *testing.T) {
 	choices := ProfileChoices()
 
@@ -221,25 +222,23 @@ func TestProfileChoicesOnlyListsRemoteProfiles(t *testing.T) {
 			t.Errorf("choice[%d].Value = %q, want %q", i, choices[i].Value, p.ID)
 		}
 	}
-	for _, c := range choices {
-		if c.Value == "base" {
-			t.Error("ProfileChoices must not offer 'base': it has no published remote image")
-		}
+	if choices[0].Value != "base" {
+		t.Errorf("first choice = %q, want the bare 'base' profile", choices[0].Value)
 	}
 }
 
-// A profile saved under the pre-rename presets/ directory must still be offered
-// by the wizard and still pre-select its modules.
-func TestConfigureAppliesUserProfileFromLegacyPresetsDir(t *testing.T) {
+// A user profile directory must be offered by the wizard and pre-select its
+// modules.
+func TestConfigureAppliesUserProfileFromProfilesDir(t *testing.T) {
 	defer useFakeDocker(&fakeRunner{status: 0})()
 
 	tmp := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", tmp)
-	presetsDir := filepath.Join(tmp, "devcontainer-cli", "presets")
-	if err := os.MkdirAll(presetsDir, 0o755); err != nil {
+	profileDir := filepath.Join(tmp, "devcontainer-cli", "profiles", "mystack")
+	if err := os.MkdirAll(profileDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(presetsDir, "mystack.yml"),
+	if err := os.WriteFile(filepath.Join(profileDir, "profile.yml"),
 		[]byte("id: mystack\nmodules: [claude-code, antigravity-cli]\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -686,12 +685,12 @@ func TestConfigureProfileSkillsArePreSelected(t *testing.T) {
 
 	tmp := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", tmp)
-	profilesDir := filepath.Join(tmp, "devcontainer-cli", "profiles")
+	profilesDir := filepath.Join(tmp, "devcontainer-cli", "profiles", "withskills")
 	if err := os.MkdirAll(profilesDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	manifest := "id: withskills\nmodules: [nodejs]\nskills: [agent-browser]\nskills_mode: auto\n"
-	if err := os.WriteFile(filepath.Join(profilesDir, "withskills.yml"), []byte(manifest), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(profilesDir, "profile.yml"), []byte(manifest), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -726,12 +725,12 @@ func TestConfigureExplicitSkillsBeatProfile(t *testing.T) {
 
 	tmp := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", tmp)
-	profilesDir := filepath.Join(tmp, "devcontainer-cli", "profiles")
+	profilesDir := filepath.Join(tmp, "devcontainer-cli", "profiles", "withskills")
 	if err := os.MkdirAll(profilesDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	manifest := "id: withskills\nmodules: [nodejs]\nskills: [find-skills]\nskills_mode: auto\n"
-	if err := os.WriteFile(filepath.Join(profilesDir, "withskills.yml"), []byte(manifest), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(profilesDir, "profile.yml"), []byte(manifest), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -816,5 +815,57 @@ func TestCategorySteps_PreSelectsRequiredDependencies(t *testing.T) {
 	}
 	if !slices.Contains(devInitial, "github-cli") {
 		t.Errorf("expected github-cli to be pre-selected in dev-tools, got %v", devInitial)
+	}
+}
+
+// Starting from a profile in the wizard applies its template too: services
+// are preselected, and env and volumes reach the config.
+func TestConfigureProfileTemplateSeedsServicesEnvAndVolumes(t *testing.T) {
+	defer useFakeDocker(&fakeRunner{status: 0})()
+
+	tmp := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmp)
+	profilesDir := filepath.Join(tmp, "devcontainer-cli", "profiles", "webdb")
+	if err := os.MkdirAll(profilesDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	manifest := "id: webdb\nmodules: [nodejs]\nservices: [postgres]\nvolumes: [\"cache:/cache\"]\nenv:\n  APP_ENV: dev\n"
+	if err := os.WriteFile(filepath.Join(profilesDir, "profile.yml"), []byte(manifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	svc := GenerateService{Report: nopReporter{}}
+	base := &types.DevcontainerConfig{Env: map[string]string{}}
+	prompter := scriptedPrompter{answers: map[string]any{
+		stepKeyWorkspace: "ws",
+		stepKeyMode:      modeChoiceCustomFromProfile,
+		stepKeyProfile:   "webdb",
+		stepKeySubnet:    "172.20.0.0/24",
+	}}
+	cfg, err := svc.Configure(base, tmp, prompter)
+	if err != nil {
+		t.Fatalf("Configure: %v", err)
+	}
+	if !slices.ContainsFunc(cfg.Compose.Services, func(s types.SelectedService) bool { return s.ID == types.ServicePostgres }) {
+		t.Errorf("expected postgres preselected, got %+v", cfg.Compose.Services)
+	}
+	if cfg.Env["APP_ENV"] != "dev" || !slices.Contains(cfg.Compose.Volumes, "cache:/cache") {
+		t.Errorf("env=%v volumes=%v", cfg.Env, cfg.Compose.Volumes)
+	}
+}
+
+func TestConfigureRejectsAnInvalidProfileTemplate(t *testing.T) {
+	defer useFakeDocker(&fakeRunner{status: 0})()
+	tmp := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmp)
+	dir := filepath.Join(tmp, "devcontainer-cli", "profiles", "bad")
+	_ = os.MkdirAll(dir, 0o755)
+	_ = os.WriteFile(filepath.Join(dir, "profile.yml"), []byte("id: bad\nmodules: [nodejs]\nenv:\n  BAD-NAME: x\n"), 0o644)
+
+	_, err := (GenerateService{Report: nopReporter{}}).Configure(&types.DevcontainerConfig{Env: map[string]string{}}, tmp, scriptedPrompter{answers: map[string]any{
+		stepKeyWorkspace: "ws", stepKeyMode: modeChoiceCustomFromProfile, stepKeyProfile: "bad", stepKeySubnet: "172.20.0.0/24",
+	}})
+	if err == nil {
+		t.Fatal("an invalid profile template must be reported, not silently dropped")
 	}
 }

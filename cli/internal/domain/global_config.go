@@ -1,6 +1,8 @@
 package domain
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -24,7 +26,7 @@ type GlobalConfig struct {
 	// Aliases are the user's own shell aliases, name → command. They are the
 	// single source of truth for ~/.alias.sh in every container: rendered by
 	// RenderUserAliases and pushed into the shared-config volume with
-	// `config alias sync`. Managed with `config alias set/unset`, never by hand.
+	// `config shared sync`. Managed with `config alias set/unset`, never by hand.
 	Aliases map[string]string `json:"aliases,omitempty"`
 	// GitInit opts into `generate` offering to run `git init` when the project
 	// directory is not a repository yet. Off by default: the directory is the
@@ -186,7 +188,7 @@ func RenderUserAliases(aliases map[string]string) string {
 	b.WriteString("#!/bin/sh\n")
 	b.WriteString("# devcontainer-cli — your own shell aliases.\n")
 	b.WriteString("# GENERATED from the CLI config; edit with `devcontainer-cli config alias set/unset`\n")
-	b.WriteString("# and apply with `devcontainer-cli config alias sync`. Manual edits are overwritten.\n")
+	b.WriteString("# and apply with `devcontainer-cli config shared sync`. Manual edits are overwritten.\n")
 
 	names := make([]string, 0, len(aliases))
 	for name := range aliases {
@@ -210,4 +212,17 @@ func ResolveSSHKeyPath(flagOverride string) string {
 		return cfg.Defaults.SSHKeyPath
 	}
 	return DefaultManagedSSHKeyPath()
+}
+
+// RegistryOwnerID identifies this configuration registry (the user's config
+// directory) on a Docker daemon that other users or config directories may
+// share. Images carry it as a label so automatic collection only removes what
+// this registry built.
+func RegistryOwnerID() string {
+	dir := GlobalConfigDir()
+	if abs, err := filepath.Abs(dir); err == nil {
+		dir = abs
+	}
+	sum := sha256.Sum256([]byte(dir))
+	return hex.EncodeToString(sum[:6])
 }

@@ -105,13 +105,14 @@ func TestGenerateDockerfile_MinimalIncludesZellij(t *testing.T) {
 }
 
 // The aliases module is always-on too: every container gets lsof, the default
-// aliases/functions, ~/CONTEXT.md and the get-devcontainer-context command.
+// aliases/functions and the get-devcontainer-context command. ~/CONTEXT.md is
+// bind-mounted at runtime (see ContextMount), never baked.
 func TestGenerateDockerfile_MinimalIncludesAliasesAndContext(t *testing.T) {
 	df := mustGenerateDockerfile(t, makeConfig())
 	assertContainsStr(t, df, "\n    lsof \\", "minimal dockerfile")
 	assertContainsStr(t, df, "COPY alias.sh /home/devuser/.devcontainer_aliases.sh", "minimal dockerfile")
 	assertContainsStr(t, df, "COPY get-devcontainer-context.sh /home/devuser/.local/bin/get-devcontainer-context", "minimal dockerfile")
-	assertContainsStr(t, df, "COPY CONTEXT.md /home/devuser/CONTEXT.md", "minimal dockerfile")
+	assertNotContainsStr(t, df, "COPY CONTEXT.md", "minimal dockerfile")
 	// The agent aliases live unconditionally in the shipped script now, so the
 	// old build-time yolo flag file must be gone.
 	assertNotContainsStr(t, df, `devcontainer_agents_yolo`, "minimal dockerfile")
@@ -144,7 +145,8 @@ func TestGenerateDockerfile_AliasesIgnoresOptions(t *testing.T) {
 	plain := mustGenerateDockerfile(t, makeConfig(func(c *types.DevcontainerConfig) {
 		c.Dockerfile.Modules = []types.SelectedModule{{ID: "aliases"}}
 	}))
-	if withOpt != plain {
+	// Labels record the selected options; the build instructions must not differ.
+	if !domain.SameDockerfile(withOpt, plain) {
 		t.Error("the aliases module must render identically regardless of options")
 	}
 	assertContainsStr(t, plain, "COPY alias.sh /home/devuser/.devcontainer_aliases.sh", "aliases")
@@ -919,8 +921,8 @@ func TestGenerateCompose_FingerprintUsedAsImageName(t *testing.T) {
 	}
 	services := parsed["services"].(map[string]any)
 	devSvc := services["devcontainer-ssh"].(map[string]any)
-	if devSvc["image"] != "devcontainer-cli/abc123def456:latest" {
-		t.Errorf("expected fingerprint image, got %v", devSvc["image"])
+	if devSvc["image"] != "devcontainer-cli/custom-abc123de:latest" {
+		t.Errorf("expected the origin+content image, got %v", devSvc["image"])
 	}
 	build, ok := devSvc["build"].(map[string]any)
 	if !ok {
@@ -1133,7 +1135,7 @@ func TestGenerateCompose_RemovedTunnelServiceErrorPointsAtTheModule(t *testing.T
 	if err == nil {
 		t.Fatal("expected an error for the removed tunnel service")
 	}
-	for _, frag := range []string{"tunnel", "cloudflared", "--with"} {
+	for _, frag := range []string{"tunnel", "cloudflared", "--modules"} {
 		if !strings.Contains(err.Error(), frag) {
 			t.Errorf("error %q must mention %q", err, frag)
 		}
@@ -1329,66 +1331,75 @@ func TestLayerSharing_Baseline(t *testing.T) {
 	t.Logf("nodejs ws-alpha vs ws-beta: shared %d of %d instructions", sharedWs, totalAlpha)
 }
 
-func TestGenerateDockerfile_ProjectLayerComesLast(t *testing.T) {
-	cfg := makeConfig(func(c *types.DevcontainerConfig) {
-		c.Dockerfile.Modules = []types.SelectedModule{
-			{ID: "nodejs"},
-			{ID: "pnpm"},
-		}
-		c.Dockerfile.Scripts = []types.CustomScript{
-			{File: "custom-build.sh", When: types.ScriptWhenBuild},
-		}
-	})
-	df := mustGenerateDockerfile(t, cfg)
-
-	idxProject := strings.Index(df, "## PROJECT")
-	idxCleanup := strings.Index(df, "## CLEANUP")
-	idxEnv := strings.Index(df, "## ENVIRONMENT")
-	idxCustom := strings.Index(df, "## CUSTOM SCRIPTS")
-	idxLabels := strings.Index(df, "LABEL ")
-
-	if idxProject == -1 {
-		t.Fatal("expected ## PROJECT block in dockerfile")
-	}
-	if idxCleanup == -1 || idxProject < idxCleanup {
-		t.Errorf("## PROJECT (%d) must come after ## CLEANUP (%d)", idxProject, idxCleanup)
-	}
-	if idxEnv == -1 || idxProject < idxEnv {
-		t.Errorf("## PROJECT (%d) must come after ## ENVIRONMENT (%d)", idxProject, idxEnv)
-	}
-	if idxCustom == -1 || idxProject < idxCustom {
-		t.Errorf("## PROJECT (%d) must come after ## CUSTOM SCRIPTS (%d)", idxProject, idxCustom)
-	}
-	if idxLabels == -1 || idxProject > idxLabels {
-		t.Errorf("## PROJECT (%d) must come before LABEL (%d)", idxProject, idxLabels)
-	}
-}
-
-func TestGenerateDockerfile_LeadingLayersIndependentOfWorkspace(t *testing.T) {
+// CONTEXT.md names the workspace path, so baking it made every workspace's
+// image unique. The Dockerfile must carry nothing workspace-specific: two
+// projects with the same content render the same Dockerfile and share an image.
+func TestGenerateDockerfile_HasNoWorkspaceSpecificContent(t *testing.T) {
 	nodeProf, _ := catalog.Resolve("nodejs")
 	var mods []types.SelectedModule
 	for _, m := range nodeProf.Modules {
 		mods = append(mods, types.SelectedModule{ID: types.ModuleID(m)})
 	}
+	render := func(ws string) string {
+		return mustGenerateDockerfile(t, makeConfig(func(c *types.DevcontainerConfig) {
+			c.Workspace = ws
+			c.Dockerfile.Modules = mods
+			c.Dockerfile.Scripts = []types.CustomScript{{File: "custom-build.sh", When: types.ScriptWhenBuild}}
+		}))
+	}
+	df1, df2 := render("repo-1"), render("repo-2")
+	if df1 != df2 {
+		t.Fatal("the Dockerfile must be byte-identical regardless of workspace")
+	}
+	assertNotContainsStr(t, df1, "## PROJECT", "dockerfile")
+	assertNotContainsStr(t, df1, "COPY "+types.ContextFileName, "dockerfile")
+	if idx := strings.LastIndex(df1, "LABEL "); idx == -1 || strings.Contains(df1[idx:], "\nRUN ") || strings.Contains(df1[idx:], "\nCOPY ") {
+		t.Error("LABEL must be the last instruction")
+	}
+}
 
-	cfg1 := makeConfig(func(c *types.DevcontainerConfig) {
-		c.Workspace = "repo-1"
-		c.Dockerfile.Modules = mods
-	})
-	cfg2 := makeConfig(func(c *types.DevcontainerConfig) {
-		c.Workspace = "repo-2"
-		c.Dockerfile.Modules = mods
-	})
+// Every project image is labelled so it can be classified from the daemon
+// alone: kind, origin, modules, fingerprint and the CLI version.
+func TestGenerateDockerfile_LabelsIdentifyTheImage(t *testing.T) {
+	types.CLIVersion = "1.19.0"
+	t.Cleanup(func() { types.CLIVersion = "dev" })
+	df := mustGenerateDockerfile(t, makeConfig(func(c *types.DevcontainerConfig) {
+		c.Origin = "ai-browser"
+		c.Fingerprint = "feedface"
+		c.Dockerfile.Modules = []types.SelectedModule{{ID: "nodejs"}, {ID: "pnpm"}}
+	}))
+	for _, want := range []string{
+		types.LabelKind + `="project"`,
+		types.LabelOrigin + `="ai-browser"`,
+		types.LabelModules + `="nodejs,pnpm"`,
+		types.LabelFingerprint + `="feedface"`,
+		types.LabelCLIVersion + `="1.19.0"`,
+	} {
+		assertContainsStr(t, df, want, "labels")
+	}
+}
 
-	df1 := mustGenerateDockerfile(t, cfg1)
-	df2 := mustGenerateDockerfile(t, cfg2)
+// The labels change with the fingerprint and CLI version, so they must never
+// feed the fingerprint themselves.
+func TestFingerprintIgnoresLabels(t *testing.T) {
+	cfg := makeConfig()
+	before := domain.ComputeFingerprint(mustGenerateDockerfile(t, cfg), nil, nil, nil)
+	cfg.Fingerprint = before
+	cfg.Origin = "other"
+	types.CLIVersion = "9.9.9"
+	t.Cleanup(func() { types.CLIVersion = "dev" })
+	if after := domain.ComputeFingerprint(mustGenerateDockerfile(t, cfg), nil, nil, nil); after != before {
+		t.Errorf("labels leaked into the fingerprint: %s != %s", after, before)
+	}
+}
 
-	sep := "## PROJECT"
-	part1 := strings.Split(df1, sep)[0]
-	part2 := strings.Split(df2, sep)[0]
-
-	if part1 != part2 {
-		t.Fatalf("Dockerfile before %s must be byte-identical regardless of workspace", sep)
+func TestGenerateCompose_MountsContextReadOnly(t *testing.T) {
+	for _, mode := range []types.BuildMode{types.BuildModeCustom, types.BuildModeProfiles, types.BuildModeImage} {
+		yml := mustGenerateCompose(t, makeConfig(func(c *types.DevcontainerConfig) {
+			c.Mode = mode
+			c.Remote = &types.RemoteConfig{Variant: "nodejs"}
+		}))
+		assertContainsStr(t, yml, "./CONTEXT.md:/home/devuser/CONTEXT.md:ro", string(mode))
 	}
 }
 

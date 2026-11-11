@@ -71,3 +71,52 @@ func TestSaveAndPostProcessSucceedsWhenTheBuildSucceeds(t *testing.T) {
 		t.Fatalf("a successful build must not fail the command: %v", err)
 	}
 }
+
+func TestParseGenFlags_BuildFalse(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	flags, err := parseGenFlagsFor(t, "--build=false")
+	if err != nil {
+		t.Fatalf("parseGenFlags: %v", err)
+	}
+	if flags.build == nil {
+		t.Fatal("expected flags.build to be non-nil when --build=false is set")
+	}
+	if *flags.build != false {
+		t.Fatalf("flags.build = %v, want false", *flags.build)
+	}
+}
+
+func TestBuildFalseDoesNotTriggerComposeBuild(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	cwd := t.TempDir()
+
+	runner := &buildStatusRunner{buildStatus: 1} // Fails if build is invoked
+	docker.SetRunner(runner)
+	docker.ResetDockerCache()
+	t.Cleanup(func() {
+		docker.ResetRunner()
+		docker.ResetDockerCache()
+	})
+
+	flags, err := parseGenFlagsFor(t, "--build=false", "--no-interactive")
+	if err != nil {
+		t.Fatalf("parseGenFlags: %v", err)
+	}
+
+	sharedConfigOff := false
+	config := &types.DevcontainerConfig{
+		Mode:       types.BuildModeCustom,
+		Image:      "devcontainer-cli/test:latest",
+		Workspace:  "buildws",
+		Dockerfile: types.DockerfileConfig{Modules: []types.SelectedModule{}},
+		Compose:    types.ComposeConfig{SharedConfig: &sharedConfigOff},
+	}
+
+	if err := saveAndPostProcess(cwd, config, &service.GeneratePlan{}, project.ProjectPaths(cwd, config.Workspace), flags, generateService(), nil); err != nil {
+		t.Fatalf("saveAndPostProcess failed: %v", err)
+	}
+	if len(runner.calls) != 0 {
+		t.Errorf("expected no docker runner calls when --build=false, got %v", runner.calls)
+	}
+}

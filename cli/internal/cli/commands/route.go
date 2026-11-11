@@ -13,8 +13,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func init() { register(newRouteCommand()) }
-
 func newRouteCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "route",

@@ -2,7 +2,6 @@ package commands
 
 import (
 	"fmt"
-	"os"
 	"slices"
 	"strings"
 
@@ -19,18 +18,18 @@ import (
 // The skill group is attached under `config` (see newConfigCommand); it is not
 // registered as a top-level command. Not to be confused with the top-level
 // `skill` command, which installs the host-side devcontainer-cli skill — this
-// one manages the agent skills selectable with --skill when generating a
+// one manages the agent skills selectable with --skills when generating a
 // project.
 func newConfigSkillCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "skill",
 		Short: "List built-in and user-defined agent skills",
-		Long: `devcontainer-cli config skill — the agent skills selectable with --skill (or
+		Long: `devcontainer-cli config skill — the agent skills selectable with --skills (or
 in the interactive wizard), installed project-scoped into the workspace via
 the Skills CLI ('npx skills add').
 
 Built-in skills ship with the CLI. Your own are saved as
-~/.devcontainer-cli/skills/<id>.yml — a flat manifest, no scripts or directory
+~/.config/devcontainer-cli/skills/<id>.yml — a flat manifest, no scripts or directory
 shape, since a skill's install source is already a git ref, not files this
 repo ships:
 
@@ -45,7 +44,7 @@ repo ships:
       What it teaches an agent to do.
 
 A user-defined id shadows a built-in of the same id. Pass it to
-'--skill <id>' (comma-separated for several).
+'--skills <id>' (comma-separated for several).
 
 Subcommands:
   list                  List built-in and user-defined skills.
@@ -62,7 +61,7 @@ Subcommands:
   devcontainer-cli config skill remove my-skill
   devcontainer-cli config skill install agent-browser
   devcontainer-cli config skill install --all
-  devcontainer-cli --with nodejs --skill my-skill`,
+  devcontainer-cli --modules nodejs --skills my-skill`,
 	}
 	cmd.AddCommand(newConfigSkillListCommand())
 	cmd.AddCommand(newConfigSkillInfoCommand())
@@ -117,7 +116,7 @@ func newConfigSkillListCommand() *cobra.Command {
 
 			printGroup("Built-in skills", builtin, "(none)")
 			console.Print("\n")
-			printGroup("Your skills", user, "(none — add one at ~/.devcontainer-cli/skills/<id>.yml)")
+			printGroup("Your skills", user, "(none — add one at ~/.config/devcontainer-cli/skills/<id>.yml)")
 			return nil
 		},
 	}
@@ -201,7 +200,7 @@ func newConfigSkillAddCommand() *cobra.Command {
 		Use:   "add <skill-id|source>",
 		Short: "Add a user-defined agent skill or discover skills from a source",
 		Long: `devcontainer-cli config skill add — add user-defined agent skills saved at
-~/.devcontainer-cli/skills/<id>.yml, selectable with --skill exactly like built-in
+~/.config/devcontainer-cli/skills/<id>.yml, selectable with --skills exactly like built-in
 skills.
 
 When passed a repository or source (containing '/', ':', or starting with '.'),
@@ -434,11 +433,10 @@ func runConfigSkillAddManual(cmd *cobra.Command, id string) error {
 
 func newConfigSkillRemoveCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "remove <skill-id...>",
-		Aliases: []string{"rm", "delete"},
-		Short:   "Delete user-defined agent skills (built-ins cannot be removed)",
+		Use:   "remove <skill-id...>",
+		Short: "Delete user-defined agent skills (built-ins cannot be removed)",
 		Long: `devcontainer-cli config skill remove — delete one or more of your own agent
-skills from ~/.devcontainer-cli/skills/.
+skills from ~/.config/devcontainer-cli/skills/.
 
 Only user-defined skills can be removed; attempting to remove a built-in
 errors out. Every id is validated before anything is deleted, so a bad id
@@ -456,17 +454,9 @@ aborts the whole operation. Skill ids tab-complete.`,
 }
 
 func runConfigSkillRemove(cmd *cobra.Command, args []string) error {
-	// Resolve every target up front so we fail before deleting anything.
-	paths := make([]string, 0, len(args))
-	for _, id := range args {
-		path, ok := userSkillPath(id)
-		if !ok {
-			if isBuiltinSkill(types.SkillID(id)) {
-				return fmt.Errorf("skill %q is a built-in skill and cannot be removed", id)
-			}
-			return fmt.Errorf("user-defined skill %q not found", id)
-		}
-		paths = append(paths, path)
+	svc := configSkillServiceFactory()
+	if _, err := svc.LocateUserSkills(args); err != nil {
+		return err
 	}
 
 	if !yesFlag(cmd) {
@@ -483,11 +473,11 @@ func runConfigSkillRemove(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	for i, path := range paths {
-		if err := os.Remove(path); err != nil {
-			return fmt.Errorf("failed to remove skill %q: %w", args[i], err)
-		}
-		console.Success("Removed skill %q", args[i])
+	if err := svc.RemoveUserSkills(args); err != nil {
+		return err
+	}
+	for _, id := range args {
+		console.Success("Removed skill %q", id)
 	}
 	return nil
 }

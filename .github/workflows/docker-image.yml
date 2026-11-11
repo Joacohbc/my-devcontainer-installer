@@ -66,8 +66,8 @@ jobs:
   # ubuntu, apt install, useradd devuser, zsh). We build a base image using the
   # "base" profile (always-on base + cleanup + GitHub CLI + Zellij) and publish it
   # with an inline cache so the variant builds below can `cache-from` it and
-  # skip rebuilding those shared layers. This is not a RemoteVariant — it's a
-  # cache/base image only.
+  # skip rebuilding those shared layers. It is also the published `base`
+  # RemoteVariant (see D24), so it is not part of the build-variants matrix.
   build-base-cache:
     runs-on: ubuntu-latest
     steps:
@@ -113,7 +113,7 @@ jobs:
             --workspace devcontainer \
             --profile base \
             --image ghcr.io/${{ env.REPO_OWNER }}/devcontainer-base:latest \
-            --no-build
+            --build=false
 
       # No build-args are passed, so the Dockerfile's USER_UID/USER_GID default
       # to 1000: prebuilt remote images bake devuser at UID 1000 and rely on the
@@ -200,7 +200,7 @@ jobs:
             --workspace devcontainer \
             --profile ${{ matrix.name }} \
             --image ghcr.io/${{ env.REPO_OWNER }}/devcontainer-${{ matrix.name }}:latest \
-            --no-build
+            --build=false
 
       - name: Build and push single-language image
         uses: docker/build-push-action@v7
@@ -287,7 +287,7 @@ jobs:
             --workspace devcontainer \
             --profile ${{ matrix.name }} \
             --image ghcr.io/${{ env.REPO_OWNER }}/devcontainer-${{ matrix.name }}:latest \
-            --no-build
+            --build=false
 
       - name: Build and push combined-language image
         uses: docker/build-push-action@v7

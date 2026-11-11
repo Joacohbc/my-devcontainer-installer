@@ -40,7 +40,9 @@ func collectSetupSshFlags(cmd *cobra.Command) (*setupSshFlags, error) {
 	}
 	interactive := interactiveFlag(cmd)
 	g := &setupSshFlags{}
-	g.remote, _ = f.GetString("setup-external")
+	if f.Lookup("setup-external") != nil {
+		g.remote, _ = f.GetString("setup-external")
+	}
 	g.via, _ = f.GetString("via")
 	g.alias = sshdefaults.Alias
 	g.key, _ = f.GetString("key")
@@ -159,7 +161,7 @@ func ensureStack(ssh service.SshService, f *setupSshFlags) error {
 
 	composePath := filepath.Join(cwd, f.composeFile)
 	if _, err := os.Stat(composePath); err != nil {
-		return fmt.Errorf("compose file not found: %s\nRun 'devcontainer-cli agent create' first to generate it, or pass -f <path> to specify a different compose file", composePath)
+		return fmt.Errorf("compose file not found: %s\nRun 'devcontainer-cli agent create' first to generate it", composePath)
 	}
 
 	proceed := true

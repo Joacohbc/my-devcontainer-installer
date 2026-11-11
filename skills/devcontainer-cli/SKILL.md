@@ -23,19 +23,18 @@ you waiting on a prompt you cannot answer.
 | Command | What it does |
 |---|---|
 | `agent cli-info` | Print the catalogue: modules, services, profiles, skills, scripts, paths |
-| `agent create [--temporal]` | Generate + build + start an environment for the current directory (or throwaway with `--temporal`) |
+| `agent create` | Generate + build + start an environment for the current directory |
+| `agent run --profile <id>` | Run a standalone or temporal throwaway container from a profile |
 | `agent exec [-w] -- <cmd>` | Run a command inside the container (use `-w` to run from the workspace directory) |
 | `agent ssh [--ephemeral]` | Open an SSH session into the container (ephemeral by default, bypassing ~/.ssh/config) |
 | `agent forward <ports>` | Tunnel a container port to 127.0.0.1 (or a leading bind IP, e.g. `0.0.0.0:8000:8000`) via direct SSH tunnel (ephemeral by default); `reverse:<port>` tunnels the other way, exposing a host port inside the container |
-| `agent copy <src> <dest>` | Move files between host and container |
 | `agent list [path]` | List a directory inside the container (--json and -a supported) |
-| `agent context` | Print what the container IS and has installed: its `~/CONTEXT.md` plus a live tool inventory (`--json`) |
-| `agent skill install [ids...]` | Install agent skills into the workspace via an ephemeral mini-container (`npx --yes skills add`) |
-| `agent clean` | Destroy the project and remove what it left behind |
+| `agent destroy [--yes]` | Tear down the project stack, remove volumes and configuration, and remove built images |
 
-Use these first. The plain commands they wrap (`shell`, `ssh`, `port-forward`,
-`copy`, `ls`, `destroy`, `clean`) still exist and are documented at the end —
-reach for them only for the cases the group does not cover.
+Use these first. Commands like file copying (`access copy`), context inspection
+(`inspect context`), skill installation (`config skill install`), or container lifecycle
+(`workspace up`, `workspace down`, `workspace destroy`, `config clean`) live in their
+canonical 6 domains and are documented below.
 
 ## 🚨 STRICT RULE: NEVER TOUCH DOCKER DIRECTLY
 
@@ -45,15 +44,16 @@ You must **NEVER** manually edit the generated `docker-compose.yml` or `Dockerfi
 Instead, you must always use the CLI commands provided:
 - To run commands inside: `devcontainer-cli agent exec -w -- <cmd>`
 - To port-forward: `devcontainer-cli agent forward <ports>`
-- To SSH: `devcontainer-cli agent ssh`
-- To run temporal tasks: `devcontainer-cli agent create --temporal --profile <id>`
+- To SSH: `devcontainer-cli agent ssh -- <cmd>`
+- To run temporal tasks: `devcontainer-cli agent run --profile <id>`
+- To tear down a workspace: `devcontainer-cli agent destroy --yes`
 
 ## Orient before acting
 
     devcontainer-cli --version
     devcontainer-cli agent cli-info       # what this CLI can build; --json to parse
-    devcontainer-cli status               # this project's containers
-    devcontainer-cli status --all         # every managed container on the machine
+    devcontainer-cli inspect status       # this project's containers
+    devcontainer-cli inspect status --all # every managed container on the machine
 
 If the binary is missing, say so instead of installing it silently — the
 installer is the user's call (`cli/install.sh` in the project repo).
@@ -83,7 +83,7 @@ never commit those files.
   `agent create --workspace <other>` keeps the saved subnet while the first
   workspace's network still holds it, and fails with
   `subnet X overlaps with existing Docker network X`. To rename, run
-  `agent clean` first. Pass `--workspace` only when two checkouts share a
+  `devcontainer-cli agent destroy --yes` first. Pass `--workspace` only when two checkouts share a
   directory name (e.g. `~/a/app` and `~/b/app`).
 - **Run git on the host, not inside the container.** A worktree's `.git` is a
   file pointing at the main checkout's host path, which the container does not
@@ -91,7 +91,7 @@ never commit those files.
   VCS info by default, so run them with `GOFLAGS=-buildvcs=false`.
 - **Target a container explicitly** with `agent exec -c <workspace>-devcontainer-ssh`
   when the directory's config no longer matches the container you want, and
-  check `devcontainer-cli status --all` before creating anything.
+  check `devcontainer-cli inspect status --all` before creating anything.
 
 ## Pre-flight: Prompt Intent & Skill Assessment
 
@@ -113,32 +113,32 @@ user-defined skills).
 > (e.g., `agent-browser` for browser automation, `impeccable` for design tokens, `theme-factory`
 > for color palettes, `canvas-design` for visual art, `pdf`/`docx` for office docs, etc.):
 
-| User Task / Prompt Intent | Sample Suggested Skills (`--skill`) | Primary Category |
+| User Task / Prompt Intent | Sample Suggested Skills (`--skills`) | Primary Category |
 |---|---|---|
 | Frontend UI, styling, design tokens | `frontend-design`, `ui-ux-pro-max`, `impeccable`, `theme-factory`, `web-artifacts-builder`, `algorithmic-art` | `frontend-ux-design` |
 | Discovery & browser automation | `find-skills`, `agent-browser` | `core-agents` |
 | Documentation, canvas, office formats | `canvas-design`, `docx`, `pdf`, `pptx`, `xlsx` | `docs-content` |
 
-*(Note: `--skill` installs skills into the project's `.agents/skills` via the Skills CLI and automatically adds the `skills` module, which requires `nodejs`).*
+*(Note: `--skills` installs skills into the project's `.agents/skills` via the Skills CLI and automatically adds the `skills` module, which requires `nodejs`).*
 
 ### 2. Match prompt requirements to profiles, modules, and services
 
 - **Prebuilt profile first**: If the stack matches a prebuilt profile (`nodejs`,
   `bun`, `python`, `go`, `node-python`, `node-go`, etc.), prefer `--mode profiles --profile <id>`
   for fast remote pull instead of a slow local build.
-- **Databases**: Add `--service postgres`, `redis`, or `mongo` as requested in the prompt.
-- **Client tools**: Add `--with postgres-client` if the user will need CLI tools (`psql`).
+- **Databases**: Add `--services postgres`, `redis`, or `mongo` as requested in the prompt.
+- **Client tools**: Add `--modules postgres-client` if the user will need CLI tools (`psql`).
 
 ### 3. Apply skills atomically or incrementally
 
-- **When creating a new environment**: Pass `--skill` directly to `agent create`:
+- **When creating a new environment**: Pass `--skills` directly to `agent create`:
   ```bash
-  devcontainer-cli agent create --mode profiles --profile nodejs --service postgres --skill webapp-testing,impeccable,tdd
+  devcontainer-cli agent create --mode profiles --profile nodejs --services postgres --skills webapp-testing,impeccable,tdd
   ```
 - **When the container is ALREADY running**: Do not rebuild or recreate the container
   just to add an agent skill. Install it directly into the workspace with the ephemeral runner:
   ```bash
-  devcontainer-cli agent skill install webapp-testing impeccable
+  devcontainer-cli config skill install webapp-testing impeccable
   ```
 
 ## Create an environment
@@ -147,31 +147,26 @@ Run it from the project directory. It generates the files, builds the image and
 leaves the stack running, so the next `agent exec` works immediately:
 
     cd /path/to/project
-    devcontainer-cli agent create --with nodejs,pnpm,github-cli
+    devcontainer-cli agent create --modules nodejs,pnpm,github-cli
 
 Re-run it with different flags to change an existing project; it overwrites the
 generated files without asking.
 
 | Flag | Effect |
 |---|---|
-| `--with a,b,c` | Dockerfile modules (toolchains/tools) to install |
+| `--modules a,b,c` | Dockerfile modules (toolchains/tools) to install |
 | `--profile <id>` | With mode=custom (default): start from a profile — a module bundle plus its custom scripts. With mode=profiles: the `[remote]`-tagged id to pull instead of building |
 | `--script <path>[:build\|start\|service\|manual]` | Add a script of your own (repeatable): baked into the image, run once per container start, run as background service on every start, or only copied to `~/post-script/` |
-| `--skill find-skills,agent-browser,impeccable` | Agent skills installed **into the project workspace** via the Skills CLI. Adds the internal `skills` module, which requires `nodejs` |
+| `--skills find-skills,agent-browser,impeccable` | Agent skills installed **into the project workspace** via the Skills CLI. Adds the internal `skills` module, which requires `nodejs` |
 | `--skills-mode manual\|auto` | `manual` (default) leaves the `install-skills` command to the user; `auto` installs on every container start, writing into the workspace unprompted |
-| `--service mongo,postgres,redis` | Add database services to the compose stack |
-| `--ports 3000:3000,8080:80` | Publish container ports (bound to 127.0.0.1 unless an IP is given). **Avoid this by default** — prefer `agent forward`/`route add` instead (see below) |
-| `--forward-ports 3000,reverse:5432` | Tunnels `port-forward` opens for this project when called with no argument. Nothing is published; a `reverse:` spec brings a host port into the container instead |
+| `--services mongo,postgres,redis` | Add database services to the compose stack |
+| `--ports 3000:3000,8080:80` | Publish container ports (bound to 127.0.0.1 unless an IP is given). **Avoid this by default** — prefer `agent forward`/`access route add` instead (see below) |
+| `--forward-ports 3000,reverse:5432` | Tunnels `access forward` opens for this project when called with no argument. Nothing is published; a `reverse:` spec brings a host port into the container instead |
 | `--volumes myvol:/data,./cache:/cache` | Extra mounts on the dev container |
 | `--workspace <name>` | Override the workspace name (default: directory name) |
 | `--mode profiles --profile nodejs` | Skip the local build, pull a prebuilt ghcr.io image for a `[remote]`-tagged profile |
-| `--no-up` | Generate and build, but leave the containers stopped |
-| `--temporal` | Run an ephemeral container without project files |
-| `--name <name>` | Container name for temporal run (default: `dc-<profile>`) |
-| `--expose-all` | Publish ports on all interfaces for temporal run |
-| `--copy-ai-scripts` | Copy AI scripts into the temporal container |
 
-Module ids for `--with`: `github-cli`, `nodejs`, `pnpm`, `yarn`, `bun`,
+Module ids for `--modules`: `github-cli`, `nodejs`, `pnpm`, `yarn`, `bun`,
 `python`, `go`, `rust`, `php`, `c-cpp`, `java-temurin`, `java-openjdk`,
 `sqlite`, `postgres-client`, `redis-client`, `mongo-client`, `claude-code`,
 `codex-cli`, `copilot-cli`, `opencode`, `antigravity-cli`, `chrome`, `ffmpeg`,
@@ -179,17 +174,17 @@ Module ids for `--with`: `github-cli`, `nodejs`, `pnpm`, `yarn`, `bun`,
 `java-*` modules.
 
 `base`, `aliases`, `zellij` and `cleanup` are always applied, and the `skills`
-module is added for you by `--skill` — none of them go in `--with`.
+module is added for you by `--skills` — none of them go in `--modules`.
 **`agent cli-info` is authoritative for all of this**, including any profile or
 skill the user defined themselves; the list above is a summary that can lag.
 
-Databases are compose **services**, not modules: use `--service postgres`, and
-`--with postgres-client` only if you also want `psql` in the dev container.
+Databases are compose **services**, not modules: use `--services postgres`, and
+`--modules postgres-client` only if you also want `psql` in the dev container.
 
 Prebuilt images exist for these profile ids, and pulling one with
-`--mode profiles --profile <id>` is much faster than a local build: `nodejs`,
-`bun`, `python`, `go`, `java-temurin`, `node-go`, `node-python`,
-`node-java-temurin`, `bun-go`, `bun-python`, `bun-java-temurin`. A `[local]` profile (e.g. a user-created one) has nothing to
+`--mode profiles --profile <id>` is much faster than a local build: `base`,
+`nodejs`, `bun`, `python`, `go`, `java-temurin`, `node-go`, `node-python`,
+`node-java-temurin`, `bun-go`, `bun-python`, `bun-java-temurin`. A `[local]` profile (only user-created ones) has nothing to
 pull — build it with `agent create --profile <id>` on the default mode.
 
 ### Then read the container, before running anything in it
@@ -198,7 +193,7 @@ pull — build it with `agent create --profile <id>` on the default mode.
 in it — a profile carries modules you did not name, a module pins a version, a
 service publishes a port. Read that once, up front:
 
-    devcontainer-cli agent context            # or --json to parse
+    devcontainer-cli inspect context          # or --json to parse
 
 It streams the container's own `~/CONTEXT.md`, generated at build time from the
 modules and services this project selected, plus a live inventory of the tools
@@ -206,7 +201,7 @@ with their versions and the reachable services. That is where the answers to
 "which Python is in here", "how do I reach postgres", "is pnpm installed" are,
 so you stop guessing and stop probing with throwaway `agent exec` calls.
 
-Read it again after any `agent create` re-run or `update --rebuild`: both can
+Read it again after any `agent create` re-run or `image update --build`: both can
 change what is inside.
 
 ## Run commands inside
@@ -299,7 +294,7 @@ wrong one. Run `devcontainer-cli context` to see which of these the image has.
   with `error: externally-managed-environment`. `pip`/`pip3` are shell
   *functions* forwarding to `uv pip`, so they work in a shell but not from a
   bare `agent exec` — call `uv pip` directly. If the image was built without uv
-  (`--with python` sets the `uv` option, which can be turned off), you are on
+  (`--modules python` sets the `uv` option, which can be turned off), you are on
   plain pip and a venv is then the honest answer.
 - **Node: call `pnpm` directly.** `npm`/`npx` are *aliases*, and a
   non-interactive shell does not expand aliases — so `bash -lc 'npm install'`
@@ -313,14 +308,16 @@ wrong one. Run `devcontainer-cli context` to see which of these the image has.
 
 `agent create` already starts the stack. To drive it afterwards:
 
-    devcontainer-cli up                # create/recreate and start (detached)
-    devcontainer-cli up --build        # rebuild the image first
-    devcontainer-cli start | stop | restart
-    devcontainer-cli down              # remove containers + network, keep volumes
-    devcontainer-cli down -v --yes     # also delete the named volumes (data loss)
+    devcontainer-cli workspace init              # interactive wizard (prompts: never from an agent)
+    devcontainer-cli workspace auto-init         # detect the stack, build and start without prompts
+    devcontainer-cli workspace up                # create/recreate and start (detached)
+    devcontainer-cli workspace up --build        # rebuild the image first
+    devcontainer-cli workspace start | stop | restart
+    devcontainer-cli workspace down              # remove containers + network, keep volumes
+    devcontainer-cli workspace down -v --yes     # also delete the named volumes (data loss)
 
-    devcontainer-cli update            # rebuild (mode=custom) or pull (mode=profiles)
-    devcontainer-cli update --rebuild  # force a rebuild
+    devcontainer-cli image update                # rebuild (mode=custom) or pull (mode=profiles)
+    devcontainer-cli image update --build        # force a rebuild
 
 `start`/`stop`/`restart` accept `-c <container>` to act on one container.
 
@@ -331,9 +328,9 @@ case) and from the container back to something running on this machine.
 
 ### From here into the container
 
-**Prefer `agent forward` or `route add` over publishing ports with `--ports`.**
+**Prefer `agent forward` or `access route add` over publishing ports with `--ports`.**
 A published port is a permanent, host-wide change to the project (it changes
-the compose file and stays open on every future `up`), while a tunnel or a
+the compose file and stays open on every future `workspace up`), while a tunnel or a
 route is created on demand and torn down when you are done — it needs no
 regenerate/rebuild and cannot collide with another project's port on the same
 host. Reach for `--ports` only when the user explicitly wants the port
@@ -356,7 +353,7 @@ interrupted, so run it in the background (or in a separate terminal) if you need
 to keep working.
 
 For a stable local domain instead of a raw port (e.g. to hand a URL to
-something else, or keep it running across sessions) use `route add` — see
+something else, or keep it running across sessions) use `access route add` — see
 below — rather than publishing.
 
 Only publish a port permanently (via `--ports`) when a tunnel/route genuinely
@@ -400,54 +397,54 @@ one permanent for a project, put it in its `forward_ports` instead — a
 For a real SSH session rather than a `docker exec`:
 
     devcontainer-cli agent ssh -- go version
-    devcontainer-cli agent ssh --via me@docker-host -c mycontainer -- uname -a
+    devcontainer-cli access ssh --via me@docker-host -c mycontainer -- uname -a
 
 Sibling services are reached **inside** the container by compose service name
 (`postgres`, `redis`, `mongo`), never `localhost`.
 
 To let an unrelated container talk to the project:
 
-    devcontainer-cli network connect other-app
+    devcontainer-cli access network connect other-app
 
 To route a local domain to a container service via the global Caddy reverse proxy:
 
-    devcontainer-cli route add 3000                  # http://<workspace>-3000.devcli.localhost
-    devcontainer-cli route add 8000 --domain api     # http://api.devcli.localhost
-    devcontainer-cli route ls                        # list active routes
-    devcontainer-cli route status                    # check global Caddy router status
+    devcontainer-cli access route add 3000                  # http://<workspace>-3000.devcli.localhost
+    devcontainer-cli access route add 8000 --domain api     # http://api.devcli.localhost
+    devcontainer-cli access route ls                        # list active routes
+    devcontainer-cli access route status                    # check global Caddy router status
 
 ## Inspect
 
-    devcontainer-cli context           # what is installed inside; --json for parsing
-    devcontainer-cli status            # compact table (state, ports, image)
-    devcontainer-cli info              # ports, mounts, IPs, timestamps
-    devcontainer-cli logs -f
-    devcontainer-cli logs postgres --tail 100
+    devcontainer-cli inspect context       # what is installed inside; --json for parsing
+    devcontainer-cli inspect status        # compact table (state, ports, image)
+    devcontainer-cli inspect info          # ports, mounts, IPs, timestamps
+    devcontainer-cli inspect logs -f
+    devcontainer-cli inspect logs postgres --tail 100
     devcontainer-cli agent list /home/devuser --json
 
-`context` is the one to read before planning work inside a container: it prints
+`inspect context` is the one to read before planning work inside a container: it prints
 the container's own `~/CONTEXT.md` plus the live tool inventory with versions,
 so you never guess whether a toolchain is there. `agent cli-info` describes the
-CLI; `context` describes one running container.
+CLI; `inspect context` describes one running container.
 
-Move files with `agent copy` (`:` marks the container side):
+Move files with `access copy` (`:` marks the container side):
 
-    devcontainer-cli agent copy ./seed.sql :/home/devuser/seed.sql
-    devcontainer-cli agent copy :/home/devuser/out.log ./out.log
-    devcontainer-cli agent copy --asset install-claude-code
+    devcontainer-cli access copy ./seed.sql :/home/devuser/seed.sql
+    devcontainer-cli access copy :/home/devuser/out.log ./out.log
+    devcontainer-cli access copy --asset install-claude-code
 
 ## Clean up
 
-    devcontainer-cli agent clean --dry-run    # what would go
-    devcontainer-cli agent clean --yes        # this project only
+    devcontainer-cli agent destroy --dry-run    # what would go
+    devcontainer-cli agent destroy --yes        # this project only
 
-`agent clean` is irreversible: it brings the stack down with its volumes (data
+`agent destroy` is irreversible: it brings the stack down with its volumes (data
 in them is deleted), removes `.dc_<workspace>/` and `devcontainer.config.json`,
 prunes the project's SSH host block, and removes the image built for it. An
 image pulled from a registry is left alone — other projects share it.
 
 Confirm with the user before running it, and **always** before
-`agent clean --all`, which additionally sweeps every other managed container,
+`agent destroy --all --yes`, which additionally sweeps every other managed container,
 image, network and volume on the machine.
 
 ## Beyond the agent group
@@ -456,29 +453,29 @@ These have no `agent` spelling; use them when the task calls for it.
 
 Any compose verb the wrappers do not cover, scoped to this project:
 
-    devcontainer-cli compose ps
-    devcontainer-cli compose exec -T postgres psql -U devuser -c '\l'
+    devcontainer-cli workspace compose ps
+    devcontainer-cli workspace compose exec -T postgres psql -U devuser -c '\l'
 
 A throwaway container with no project to configure:
 
-    devcontainer-cli run --no-interactive --profile nodejs --name scratch
-    devcontainer-cli destroy --container scratch --yes
+    devcontainer-cli agent run --profile nodejs --name scratch
+    devcontainer-cli agent destroy --container scratch --yes
 
-`run --profile` only accepts a `[remote]`-tagged id (or `ssh` for the hand-built
+`agent run --profile` only accepts a `[remote]`-tagged id (or `ssh` for the hand-built
 full image), since it always pulls.
 
 A container on a **different Docker host**, through an existing SSH connection
 to it:
 
-    devcontainer-cli shell --via me@docker-host -c dc-ssh -- uname -a
-    devcontainer-cli ssh --via me@docker-host --container dc-ssh
+    devcontainer-cli access shell --via me@docker-host -c dc-ssh -- uname -a
+    devcontainer-cli access ssh --via me@docker-host --container dc-ssh
 
 Global config, profiles and shared logins:
 
     devcontainer-cli config                       # current defaults
-    devcontainer-cli config profile list          # bundles for --profile; [remote]/[local] tag
-    devcontainer-cli config profile info <id>     # one profile's full resolved definition
-    devcontainer-cli config skill list            # agent skills for --skill; built-in + user-defined
+    devcontainer-cli profile list                 # bundles for --profile; [remote]/[local] tag
+    devcontainer-cli profile info <id>            # one profile's full resolved definition
+    devcontainer-cli config skill list            # agent skills for --skills; built-in + user-defined
     devcontainer-cli config skill install [ids...] # install skills at project level in an ephemeral container
     devcontainer-cli config skill add <id> --ref owner/repo   # define your own
     devcontainer-cli config alias set ll "ls -la" # aliases for every container
@@ -491,22 +488,22 @@ for it, and never as a side effect of another task.
 
 Targeted cleanup across the machine, one category at a time:
 
-    devcontainer-cli clean --dry-run           # preview across all categories
-    devcontainer-cli clean containers          # stopped managed containers
-    devcontainer-cli clean images
-    devcontainer-cli clean all --yes           # sweep everything managed
+    devcontainer-cli config clean --dry-run           # preview across all categories
+    devcontainer-cli config clean containers          # stopped managed containers
+    devcontainer-cli config clean images
+    devcontainer-cli config clean all --yes           # sweep everything managed
 
-Every `clean` subcommand touches only resources this CLI created (they carry a
+Every `config clean` subcommand touches only resources this CLI created (they carry a
 managed label). Use `--dry-run` first and show the user what would go.
 
 ## Rules
 
 - **Prefer `agent <verb>`.** Those never prompt. If you drop to a plain command
-  that can prompt (generation, `run`, `down`, `destroy`, `clean`,
-  `port-forward`), pass `--no-interactive` or it opens a wizard and hangs. Add
+  that can prompt (generation, `workspace init`, `run`, `workspace down`, `workspace destroy`, `config clean`,
+  `access forward`), pass `--no-interactive` or it opens a wizard and hangs. Add
   `-y/--yes` for destructive commands — and get the user's agreement first for
-  `agent clean`, `destroy`, `down -v` and `clean --all`.
-- **Reach a service with `agent forward` or `route add`, not `--ports`.**
+  `agent destroy`, `workspace destroy`, `workspace down -v` and `config clean all`.
+- **Reach a service with `agent forward` or `access route add`, not `--ports`.**
   Publishing a port is a permanent project change; a tunnel or a route is
   on-demand and leaves nothing behind. Only publish when the user explicitly
   needs the port open outside a tunnel/route.
@@ -518,19 +515,19 @@ managed label). Use `--dry-run` first and show the user what would go.
   and explore the full catalogue (`agent cli-info --json` or `config skill list`) across its
   categories (`core-agents`, `frontend-ux-design`, `docs-content`, plus user-defined skills).
   Do not default to the same subset every time; select the specific skill that best solves
-  the prompt. If the container already exists, use `agent skill install <id...>` instead of recreating it.
+  the prompt. If the container already exists, use `config skill install <id...>` instead of recreating it.
 - **Read `agent cli-info` before composing a create.** It is generated from the
   live catalogue, so it never names a module this binary does not have — and it
   includes the user's own profiles and skills, which no document can.
-- **Read `agent context` after every create, before working inside.**
-  `cli-info` says what this CLI could build; `agent context` says what the
+- **Read `inspect context` after every create, before working inside.**
+  `cli-info` says what this CLI could build; `inspect context` says what the
   container actually has. Skipping it is how you end up running the wrong
   Python, guessing a database host, or installing something already there.
 - **`bash -lc '…'` only for shell syntax** (`&&`, `|`, `*`, `cd`, `$VAR`) or the
   container's `pip`/`npm` indirections — not to find a binary, which the image
   PATH already handles. `command not found` from `agent exec` on an image built
   before that was in place means the PATH lives only in the rc files: re-run it
-  wrapped, check with `context`, and rebuild with `update --rebuild`.
+  wrapped, check with `inspect context`, and rebuild with `image update --build`.
 - **Install packages with the container's package manager**, and with the right
   one for the job: `uv add` for a project dependency, `uv tool install` for a
   CLI, `uv pip install` for something importable container-wide, `pnpm` for
@@ -539,13 +536,13 @@ managed label). Use `--dry-run` first and show the user what would go.
   it; the image already sets what `uv pip` needs.
 - **Nothing outside the workspace mount and `/home/devuser` survives** a
   recreate. Install-and-forget inside the container is fine for a one-off; a
-  toolchain that must persist belongs in `--with` and a re-run of `agent create`.
+  toolchain that must persist belongs in `--modules` and a re-run of `agent create`.
 - **Changing the image is a host-side action.** Adding a module, a service or a
   published port means re-running `agent create` with the new flags — not
   `apt-get install` inside the container.
 - Run every command from the project directory; the CLI resolves the workspace
   from the current directory unless `--workspace` says otherwise.
-- Long-running commands (`logs -f`, `agent forward`, `agent ssh` without a
+- Long-running commands (`inspect logs -f`, `agent forward`, `agent ssh` without a
   command) do not return. Give them a command, a `--tail`, or run them in the
   background.
 - `--help` on any command is authoritative and current; check it before

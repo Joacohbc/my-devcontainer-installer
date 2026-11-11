@@ -1,46 +1,36 @@
 package commands
 
-import (
-	"os"
-	"path/filepath"
-	"testing"
-)
+import "testing"
 
-func TestInitCommand_RegistrationAndFlags(t *testing.T) {
+func TestInitCommand_IsTheWizard(t *testing.T) {
 	cmd := newInitCommand()
 	if cmd.Name() != "init" {
-		t.Errorf("expected command name 'init', got %s", cmd.Name())
+		t.Fatalf("expected command name init, got %s", cmd.Name())
 	}
-
-	flags := []string{
-		flagMode, flagRegistry, flagWith, flagService, flagServices,
-		flagWorkspace, flagPorts, flagVolumes, flagForwardPorts,
-		flagSharedConfig, flagProfile, flagNoUp, flagNoBuild,
-		flagNoInteractive, flagNonInteractive, flagForce,
+	if err := cmd.Args(cmd, []string{"./dir"}); err == nil {
+		t.Fatal("init must reject positional arguments")
 	}
-
-	for _, f := range flags {
+	if !cmd.Flags().Lookup(flagVersion).Hidden {
+		t.Error("--version is a root concern and must stay hidden on init")
+	}
+	for _, f := range []string{flagMode, flagModules, flagServices, flagProfile, flagSkills, flagBuild} {
 		if cmd.Flags().Lookup(f) == nil {
-			t.Errorf("expected flag --%s to be defined on init command", f)
+			t.Errorf("expected wizard flag --%s on init", f)
 		}
+	}
+	if cmd.Flags().Lookup(flagNoUp) != nil {
+		t.Error("init must not expose the auto-init only flag --no-up")
 	}
 }
 
-func TestInitCommand_Execution(t *testing.T) {
-	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "package.json"), []byte(`{"name":"test-init"}`), 0o644); err != nil {
-		t.Fatalf("WriteFile failed: %v", err)
+func TestWorkspace_RegistersInitAndAutoInit(t *testing.T) {
+	have := map[string]bool{}
+	for _, c := range newWorkspaceCommand().Commands() {
+		have[c.Name()] = true
 	}
-
-	cmd := newInitCommand()
-	cmd.SetArgs([]string{dir, "--no-build", "--no-up", "--no-interactive"})
-
-	if err := cmd.Execute(); err != nil {
-		t.Fatalf("cmd.Execute() failed: %v", err)
-	}
-
-	cfgPath := filepath.Join(dir, "devcontainer.config.json")
-	if _, err := os.Stat(cfgPath); os.IsNotExist(err) {
-		t.Errorf("expected devcontainer.config.json to exist at %s", cfgPath)
+	for _, name := range []string{"init", "auto-init"} {
+		if !have[name] {
+			t.Errorf("workspace must register %q", name)
+		}
 	}
 }

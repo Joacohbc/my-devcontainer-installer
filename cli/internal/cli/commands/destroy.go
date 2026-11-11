@@ -11,8 +11,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func init() { register(newDestroyCommand()) }
-
 func newDestroyCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "destroy",
@@ -25,6 +23,9 @@ volumes, so all data is deleted), then deletes the generated .dc_<workspace>/
 directory and the devcontainer.config.json. After this the project is gone and
 would have to be regenerated from scratch. Use 'down' instead if you only want
 to stop containers but keep your files and data.
+
+The project image is removed too unless another project shares it: images are
+named by content, so identical projects use one image until the last one goes.
 
 It also prunes the SSH state 'ssh' wrote for the target: its managed
 managed Host block and the container host keys pinned for the address that

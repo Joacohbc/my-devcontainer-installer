@@ -3,6 +3,7 @@ package commands
 import (
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -18,17 +19,16 @@ import (
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/assets"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/sshdefaults"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/service"
+	"unicode"
+
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 func TestNewRootCommand_RegistersAllSubcommands(t *testing.T) {
 	root := NewRootCommand("test")
 	want := []string{
-		"ssh", "clean", "port-forward", "run", "down", "destroy",
-		"start", "stop", "restart", "update",
-		"upgrade-cli", "config", "cleanup-tips", "shell", "logs", "copy",
-		"up", "status", "ls", "info", "network", "context", "compose",
-		"agent", "route", "init", "image",
+		"workspace", "access", "inspect", "profile", "image", "config", "agent", "run",
 	}
 	have := map[string]bool{}
 	for _, c := range root.Commands() {
@@ -36,25 +36,145 @@ func TestNewRootCommand_RegistersAllSubcommands(t *testing.T) {
 	}
 	for _, name := range want {
 		if !have[name] {
-			t.Errorf("expected subcommand %q to be registered", name)
+			t.Errorf("expected subcommand %q to be registered at root", name)
+		}
+	}
+
+	legacyFlat := []string{
+		"ssh", "clean", "port-forward", "forward", "down", "destroy",
+		"start", "stop", "restart", "update", "upgrade-cli", "shell", "logs",
+		"copy", "up", "status", "ls", "info", "network", "context", "compose",
+		"route", "init",
+	}
+	for _, name := range legacyFlat {
+		if have[name] {
+			t.Errorf("legacy flat command %q should NOT be registered at root", name)
 		}
 	}
 }
 
-func TestComposeCommand_AliasAndPassthrough(t *testing.T) {
+func TestCLIParadigmInvariants(t *testing.T) {
 	root := NewRootCommand("test")
-	var compose *cobra.Command
+
+	// 1. Top-level boundary:
+	// Root command only registers the 6 canonical resource domains (workspace, access,
+	// inspect, profile, image, config), the agent facade, the standalone run command,
+	// plus Cobra built-ins (help, completion).
+	allowedTopLevel := map[string]bool{
+		"workspace":  true,
+		"access":     true,
+		"inspect":    true,
+		"profile":    true,
+		"image":      true,
+		"config":     true,
+		"agent":      true,
+		"run":        true,
+		"help":       true,
+		"completion": true,
+	}
 	for _, c := range root.Commands() {
-		if c.Name() == "compose" {
-			compose = c
-			break
+		if !allowedTopLevel[c.Name()] {
+			t.Errorf("top-level command %q violates canonical domain boundary (workspace, access, inspect, profile, image, config, agent, run)", c.Name())
 		}
 	}
-	if compose == nil {
-		t.Fatal("compose command not registered")
+
+	bannedFlags := []string{
+		"preset",
+		"non-interactive",
+		"no-build",
+		"service",
+		"skill",
+		"with",
+		"setup-external",
+		"temporal",
 	}
-	if !slices.Contains(compose.Aliases, "dc") {
-		t.Errorf("expected compose to have alias %q, got %v", "dc", compose.Aliases)
+
+	reservedShorthands := map[string]string{
+		"c": "container",
+		"y": "yes",
+		"a": "all",
+		"f": "follow",
+		"w": "workdir",
+		"v": "volumes",
+	}
+
+	var checkCommand func(cmd *cobra.Command)
+	checkCommand = func(cmd *cobra.Command) {
+		if cmd.Name() == "help" || cmd.Name() == "completion" {
+			return
+		}
+
+		// 2. Zero command aliases
+		if len(cmd.Aliases) > 0 {
+			t.Errorf("command %q has aliases %v; expected zero aliases across entire tree", cmd.CommandPath(), cmd.Aliases)
+		}
+
+		// 3. Non-empty Short description: capitalized and without trailing period
+		short := strings.TrimSpace(cmd.Short)
+		if short == "" {
+			t.Errorf("command %q has empty Short description", cmd.CommandPath())
+		} else {
+			firstRune := []rune(short)[0]
+			if !unicode.IsUpper(firstRune) {
+				t.Errorf("command %q Short %q must be capitalized", cmd.CommandPath(), short)
+			}
+			if strings.HasSuffix(short, ".") {
+				t.Errorf("command %q Short %q must not end with a period", cmd.CommandPath(), short)
+			}
+		}
+
+		// 4. Banned / eliminated flag names
+		for _, banned := range bannedFlags {
+			// Exempt legitimate single-entity selector / target parameters on specific non-generation commands:
+			// --service on 'forward' specifies a target compose service host for port forwarding.
+			// --skill on 'config skill add' selects a specific skill from a multi-skill repository.
+			if banned == "service" && cmd.Name() == "forward" {
+				continue
+			}
+			if banned == "skill" && cmd.Name() == "add" && cmd.Parent() != nil && cmd.Parent().Name() == "skill" {
+				continue
+			}
+
+			if cmd.Flags().Lookup(banned) != nil {
+				t.Errorf("command %q registers banned flag --%s", cmd.CommandPath(), banned)
+			}
+		}
+
+		// 5. Reserved shorthands: must map to their canonical long flag name
+		cmd.Flags().VisitAll(func(f *pflag.Flag) {
+			if f.Shorthand != "" {
+				if expectedLong, isReserved := reservedShorthands[f.Shorthand]; isReserved {
+					if f.Name != expectedLong {
+						t.Errorf("command %q shorthand -%s maps to --%s; must only map to --%s",
+							cmd.CommandPath(), f.Shorthand, f.Name, expectedLong)
+					}
+				}
+				if f.Shorthand == "v" && f.Name == "version" {
+					t.Errorf("command %q flag --version must not use shorthand -v (reserved for --volumes)", cmd.CommandPath())
+				}
+			}
+		})
+
+		for _, sub := range cmd.Commands() {
+			checkCommand(sub)
+		}
+	}
+
+	checkCommand(root)
+}
+
+func TestComposeCommand_Passthrough(t *testing.T) {
+	root := NewRootCommand("test")
+	wsCmd := findSubcommand(root, "workspace")
+	if wsCmd == nil {
+		t.Fatal("workspace command not registered")
+	}
+	compose := findSubcommand(wsCmd, "compose")
+	if compose == nil {
+		t.Fatal("compose command not registered under workspace")
+	}
+	if len(compose.Aliases) > 0 {
+		t.Errorf("expected compose to have zero aliases, got %v", compose.Aliases)
 	}
 	// Flag parsing must be disabled so tokens like "-it" reach docker compose
 	// instead of being consumed (and rejected) by cobra.
@@ -124,56 +244,33 @@ func TestCompleteComposeArgs(t *testing.T) {
 	}
 }
 
-func TestCleanSubcommands_HaveAliases(t *testing.T) {
+func TestCleanSubcommands_ZeroAliases(t *testing.T) {
 	root := NewRootCommand("test")
-	var clean *cobra.Command
-	for _, c := range root.Commands() {
-		if c.Name() == "clean" {
-			clean = c
-			break
-		}
+	cfgCmd := findSubcommand(root, "config")
+	if cfgCmd == nil {
+		t.Fatal("config command not registered")
 	}
+	clean := findSubcommand(cfgCmd, "clean")
 	if clean == nil {
-		t.Fatal("clean command not registered")
-	}
-
-	want := map[string][]string{
-		"containers": {"container", "rm"},
-		"images":     {"image", "rmi"},
-		"catalog":    {"deprecated", "registry"},
-		"ssh":        {"sshs"},
-		"networks":   {"network"},
-		"volumes":    {"volume"},
+		t.Fatal("clean command not registered under config")
 	}
 
 	for _, sub := range clean.Commands() {
-		aliases, ok := want[sub.Name()]
-		if !ok {
-			continue
+		if len(sub.Aliases) > 0 {
+			t.Errorf("clean subcommand %q must have zero aliases, got %v", sub.Name(), sub.Aliases)
 		}
-		for _, a := range aliases {
-			if !slices.Contains(sub.Aliases, a) {
-				t.Errorf("expected clean subcommand %q to have alias %q, got %v", sub.Name(), a, sub.Aliases)
-			}
-		}
-		delete(want, sub.Name())
-	}
-	for name := range want {
-		t.Errorf("clean subcommand %q not found", name)
 	}
 }
 
 func TestCleanCommands_AcceptArgsAndComplete(t *testing.T) {
 	root := NewRootCommand("test")
-	var clean *cobra.Command
-	for _, c := range root.Commands() {
-		if c.Name() == "clean" {
-			clean = c
-			break
-		}
+	cfgCmd := findSubcommand(root, "config")
+	if cfgCmd == nil {
+		t.Fatal("config command not registered")
 	}
+	clean := findSubcommand(cfgCmd, "clean")
 	if clean == nil {
-		t.Fatal("clean command not registered")
+		t.Fatal("clean command not registered under config")
 	}
 
 	byName := map[string]*cobra.Command{}
@@ -199,15 +296,13 @@ func TestCleanCommands_AcceptArgsAndComplete(t *testing.T) {
 
 func TestCleanCommand_HasResourceSubcommands(t *testing.T) {
 	root := NewRootCommand("test")
-	var clean *cobra.Command
-	for _, c := range root.Commands() {
-		if c.Name() == "clean" {
-			clean = c
-			break
-		}
+	cfgCmd := findSubcommand(root, "config")
+	if cfgCmd == nil {
+		t.Fatal("config command not registered")
 	}
+	clean := findSubcommand(cfgCmd, "clean")
 	if clean == nil {
-		t.Fatal("clean command not registered")
+		t.Fatal("clean command not registered under config")
 	}
 	have := map[string]bool{}
 	for _, c := range clean.Commands() {
@@ -222,15 +317,13 @@ func TestCleanCommand_HasResourceSubcommands(t *testing.T) {
 
 func TestNetworkCommand_HasConnectAndDisconnect(t *testing.T) {
 	root := NewRootCommand("test")
-	var network *cobra.Command
-	for _, c := range root.Commands() {
-		if c.Name() == "network" {
-			network = c
-			break
-		}
+	accessCmd := findSubcommand(root, "access")
+	if accessCmd == nil {
+		t.Fatal("access command not registered")
 	}
+	network := findSubcommand(accessCmd, "network")
 	if network == nil {
-		t.Fatal("network command not registered")
+		t.Fatal("network command not registered under access")
 	}
 	have := map[string]*cobra.Command{}
 	for _, c := range network.Commands() {
@@ -256,18 +349,19 @@ func TestNetworkCommand_HasConnectAndDisconnect(t *testing.T) {
 
 func TestCleanAndSubcommands_HaveAllFlag(t *testing.T) {
 	root := NewRootCommand("test")
-	var clean *cobra.Command
-	for _, c := range root.Commands() {
-		if c.Name() == "clean" {
-			clean = c
-			break
-		}
+	cfgCmd := findSubcommand(root, "config")
+	if cfgCmd == nil {
+		t.Fatal("config command not registered")
 	}
+	clean := findSubcommand(cfgCmd, "clean")
 	if clean == nil {
-		t.Fatal("clean command not registered")
+		t.Fatal("clean command not registered under config")
 	}
-	if clean.Flags().Lookup("all") == nil {
-		t.Error("expected clean command to have --all flag")
+	if clean.Flags().Lookup("include-active") == nil {
+		t.Error("expected clean command to have --include-active flag")
+	}
+	if clean.Flags().Lookup("all") != nil {
+		t.Error("expected clean command NOT to have --all flag (renamed to --include-active)")
 	}
 
 	byName := map[string]*cobra.Command{}
@@ -281,32 +375,63 @@ func TestCleanAndSubcommands_HaveAllFlag(t *testing.T) {
 			t.Errorf("clean subcommand %q not registered", name)
 			continue
 		}
-		if sub.Flags().Lookup("all") == nil {
-			t.Errorf("expected clean subcommand %q to have --all flag", name)
+		if sub.Flags().Lookup("include-active") == nil {
+			t.Errorf("expected clean subcommand %q to have --include-active flag", name)
+		}
+		if sub.Flags().Lookup("all") != nil {
+			t.Errorf("expected clean subcommand %q NOT to have --all flag", name)
 		}
 	}
 }
 
 func TestRootCommand_HasGenerateFlags(t *testing.T) {
 	root := NewRootCommand("test")
-	for _, name := range []string{"mode", "profile", "with", "service", "image", "workspace", "force", "build", "no-build", "version"} {
+	for _, name := range []string{"mode", "profile", "modules", "services", "skills", "image", "workspace", "force", "build", "version"} {
 		if root.Flags().Lookup(name) == nil {
 			t.Errorf("expected root flag --%s", name)
 		}
+	}
+	for _, name := range []string{"with", "service", "skill", "no-build", "preset", "non-interactive"} {
+		if root.Flags().Lookup(name) != nil {
+			t.Errorf("expected root flag --%s to be permanently removed per D4", name)
+		}
+	}
+}
+
+func TestParseGenFlags_PluralCSVFlags(t *testing.T) {
+	cmd := &cobra.Command{Use: "generate"}
+	addGenerateFlags(cmd)
+	if err := cmd.ParseFlags([]string{
+		"--modules", "nodejs,golang",
+		"--services", "postgres,redis",
+		"--skills", "agent-browser",
+	}); err != nil {
+		t.Fatalf("ParseFlags: %v", err)
+	}
+	flags, err := parseGenFlags(cmd)
+	if err != nil {
+		t.Fatalf("parseGenFlags: %v", err)
+	}
+	if !slices.Equal(flags.withModules, []string{"nodejs", "golang"}) {
+		t.Errorf("modules = %v, want [nodejs golang]", flags.withModules)
+	}
+	if !slices.Equal(flags.services, []string{"postgres", "redis"}) {
+		t.Errorf("services = %v, want [postgres redis]", flags.services)
+	}
+	if len(flags.skills) != 1 || flags.skills[0] != types.SkillAgentBrowser {
+		t.Errorf("skills = %v, want [agent-browser]", flags.skills)
 	}
 }
 
 func TestCleanSshCommand_Flags(t *testing.T) {
 	root := NewRootCommand("test")
-	var clean *cobra.Command
-	for _, c := range root.Commands() {
-		if c.Name() == "clean" {
-			clean = c
-			break
-		}
+	cfgCmd := findSubcommand(root, "config")
+	if cfgCmd == nil {
+		t.Fatal("config command not registered")
 	}
+	clean := findSubcommand(cfgCmd, "clean")
 	if clean == nil {
-		t.Fatal("clean command not registered")
+		t.Fatal("clean command not registered under config")
 	}
 	var sshSub *cobra.Command
 	for _, c := range clean.Commands() {
@@ -370,33 +495,11 @@ func TestParseGenFlags_Ports(t *testing.T) {
 	}
 }
 
-func TestCleanupInstructionLines(t *testing.T) {
-	cfg := &types.DevcontainerConfig{Workspace: "myws"}
-	out := strings.Join(cleanupInstructionLines(cfg), "\n")
-
-	// Native commands must be surfaced as the primary action.
-	for _, native := range []string{
-		"devcontainer-cli ls",
-		"devcontainer-cli down -v",
-		"devcontainer-cli destroy",
-		"devcontainer-cli clean containers",
-		"devcontainer-cli clean images",
-		"devcontainer-cli clean",
-		"devcontainer-cli update",
-	} {
-		if !strings.Contains(out, native) {
-			t.Errorf("expected cleanup tips to mention native command %q", native)
-		}
-	}
-
-	// The raw docker equivalents must still be shown for reference.
-	for _, raw := range []string{
-		"docker compose down -v",
-		"docker image prune -a",
-		"docker compose build --no-cache",
-	} {
-		if !strings.Contains(out, raw) {
-			t.Errorf("expected cleanup tips to keep docker equivalent %q", raw)
+func TestCleanupTips_CommandRemoved(t *testing.T) {
+	root := NewRootCommand("test")
+	for _, c := range root.Commands() {
+		if c.Name() == "cleanup-tips" {
+			t.Errorf("cleanup-tips should no longer be registered on root")
 		}
 	}
 }
@@ -490,10 +593,20 @@ func TestRunCommand_HasSharedConfigFlag(t *testing.T) {
 	}
 }
 
-func TestRunCommand_HasCopyAIScriptsFlag(t *testing.T) {
+func TestRunCommand_HasNoCopyAIScriptsFlag(t *testing.T) {
 	cmd := newRunCommand()
-	if cmd.Flags().Lookup("copy-ai-scripts") == nil {
-		t.Error("expected run --copy-ai-scripts flag")
+	if cmd.Flags().Lookup("copy-ai-scripts") != nil {
+		t.Error("run --copy-ai-scripts flag must not exist")
+	}
+}
+
+func TestResolveRunAIScripts_NonInteractiveCopiesNothing(t *testing.T) {
+	names, err := resolveRunAIScripts(false)
+	if err != nil {
+		t.Fatalf("resolveRunAIScripts: %v", err)
+	}
+	if names != nil {
+		t.Errorf("expected no scripts non-interactively, got %v", names)
 	}
 }
 
@@ -507,13 +620,29 @@ func TestRunCommand_HasProfileFlag(t *testing.T) {
 	}
 }
 
+// writeLocalOnlyUserProfile installs a user profile, which never has a
+// published image, so tests have a real local-only profile to reject.
+func writeLocalOnlyUserProfile(t *testing.T, id string) {
+	t.Helper()
+	configDir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", configDir)
+	dir := filepath.Join(configDir, "devcontainer-cli", "profiles", id)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	manifest := "id: " + id + "\nmodules:\n  - sqlite\n"
+	if err := os.WriteFile(filepath.Join(dir, "profile.yml"), []byte(manifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // resolveRunProfile must reject a [local]-only profile (nothing published to
 // pull) but accept "ssh" (the hand-built full image, not a catalog profile).
 func TestResolveRunProfile_RejectsLocalOnlyAcceptsSSH(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	writeLocalOnlyUserProfile(t, "local-only")
 
 	cmd := newRunCommand()
-	if err := cmd.Flags().Set("profile", "base"); err != nil {
+	if err := cmd.Flags().Set("profile", "local-only"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := resolveRunProfile(cmd, true); err == nil {
@@ -572,21 +701,15 @@ func TestShellInteractiveDefaults(t *testing.T) {
 
 func TestCleanVolumesCommand_HasSharedFlag(t *testing.T) {
 	root := NewRootCommand("test")
-	var clean *cobra.Command
-	for _, c := range root.Commands() {
-		if c.Name() == "clean" {
-			clean = c
-		}
+	cfgCmd := findSubcommand(root, "config")
+	if cfgCmd == nil {
+		t.Fatal("config command not found")
 	}
+	clean := findSubcommand(cfgCmd, "clean")
 	if clean == nil {
-		t.Fatal("clean command not found")
+		t.Fatal("clean command not found under config")
 	}
-	var vol *cobra.Command
-	for _, c := range clean.Commands() {
-		if c.Name() == "volumes" {
-			vol = c
-		}
-	}
+	vol := findSubcommand(clean, "volumes")
 	if vol == nil {
 		t.Fatal("clean volumes subcommand not found")
 	}
@@ -684,14 +807,23 @@ func TestConfigAliasCommand_Structure(t *testing.T) {
 	if aliasCmd == nil {
 		t.Fatal("expected 'config alias' command to be registered")
 	}
-	// Bare `config alias` lists the aliases; it takes no positional args.
-	if err := aliasCmd.Args(aliasCmd, []string{"extra"}); err == nil {
-		t.Error("expected 'config alias' to reject positional arguments")
+	// Bare `config alias` shows help (no RunE).
+	if aliasCmd.RunE != nil {
+		t.Error("expected bare 'config alias' to have no RunE so it shows help")
 	}
-	for _, name := range []string{"set", "unset", "sync"} {
+	for _, name := range []string{"list", "set", "unset"} {
 		if findSubcommand(aliasCmd, name) == nil {
 			t.Errorf("expected 'config alias %s' subcommand", name)
 		}
+	}
+	listCmd := findSubcommand(aliasCmd, "list")
+	if listCmd != nil && listCmd.Args != nil {
+		if err := listCmd.Args(listCmd, []string{"extra"}); err == nil {
+			t.Error("expected 'config alias list' to reject positional arguments")
+		}
+	}
+	if findSubcommand(aliasCmd, "sync") != nil {
+		t.Error("expected 'config alias sync' to be folded into 'config shared sync' and removed")
 	}
 	// set takes a name plus a command; unset takes exactly the name.
 	if err := findSubcommand(aliasCmd, "set").Args(nil, []string{"only-name"}); err == nil {
@@ -736,9 +868,13 @@ func TestConfigCommand_HasSSHConfigFileSubcommand(t *testing.T) {
 
 func TestContextCommand_Flags(t *testing.T) {
 	root := NewRootCommand("test")
-	ctx := findSubcommand(root, "context")
+	inspectCmd := findSubcommand(root, "inspect")
+	if inspectCmd == nil {
+		t.Fatal("expected 'inspect' command to be registered")
+	}
+	ctx := findSubcommand(inspectCmd, "context")
 	if ctx == nil {
-		t.Fatal("expected 'context' command to be registered")
+		t.Fatal("expected 'inspect context' command to be registered")
 	}
 	for _, name := range []string{"container", "json"} {
 		if ctx.Flags().Lookup(name) == nil {
@@ -824,7 +960,7 @@ func TestConfigSSHKeyCommand_Flags(t *testing.T) {
 	if sshKey == nil {
 		t.Fatal("config ssh-key subcommand not found")
 	}
-	for _, flag := range []string{"unset", "generate", "public", "private"} {
+	for _, flag := range []string{"unset", "generate", "public", "private", "export"} {
 		if sshKey.Flags().Lookup(flag) == nil {
 			t.Errorf("expected config ssh-key to define --%s", flag)
 		}
@@ -943,14 +1079,21 @@ func TestBuildSshTunnels_ReversePrefix(t *testing.T) {
 
 func TestSshCommandRegistered(t *testing.T) {
 	root := NewRootCommand("test")
-	sshCmd := findSubcommand(root, "ssh")
-	if sshCmd == nil {
-		t.Fatal("expected 'ssh' command to be registered")
+	accessCmd := findSubcommand(root, "access")
+	if accessCmd == nil {
+		t.Fatal("expected 'access' command to be registered")
 	}
-	for _, name := range []string{"yes", "no-interactive", "forward", "ports", "container", "via", "setup", "setup-external", "key", "user"} {
+	sshCmd := findSubcommand(accessCmd, "ssh")
+	if sshCmd == nil {
+		t.Fatal("expected 'access ssh' command to be registered")
+	}
+	for _, name := range []string{"yes", "no-interactive", "forward", "ports", "container", "via", "setup", "key", "user"} {
 		if sshCmd.Flags().Lookup(name) == nil {
 			t.Errorf("expected 'ssh' to register --%s", name)
 		}
+	}
+	if sshCmd.Flags().Lookup("setup-external") != nil {
+		t.Errorf("expected 'ssh' NOT to register --setup-external (moved to 'config ssh-key --export')")
 	}
 }
 
@@ -1040,9 +1183,13 @@ func TestRunAgentSsh_ViaRequiresContainer_EmptyContainer(t *testing.T) {
 
 func TestDestroyCommandRegistered(t *testing.T) {
 	root := NewRootCommand("test")
-	destroyCmd := findSubcommand(root, "destroy")
+	wsCmd := findSubcommand(root, "workspace")
+	if wsCmd == nil {
+		t.Fatal("expected 'workspace' command to be registered")
+	}
+	destroyCmd := findSubcommand(wsCmd, "destroy")
 	if destroyCmd == nil {
-		t.Fatal("expected 'destroy' command to be registered")
+		t.Fatal("expected 'destroy' command to be registered under workspace")
 	}
 	for _, name := range []string{"yes", "no-interactive", "container"} {
 		if destroyCmd.Flags().Lookup(name) == nil {
@@ -1319,55 +1466,39 @@ func TestSshCommand_ContainerShorthand(t *testing.T) {
 	}
 }
 
-// --via is a separate flag from --setup-external, both string-valued and unset
-// by default; collectSetupSshFlags must read it into f.via without touching
-// f.remote (which only --setup-external fills).
-func TestCollectSetupSshFlags_Via(t *testing.T) {
+// config ssh-key --export prints the remote setup snippet.
+func TestConfigSSHKey_Export(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	cmd := newSshCommand()
-	if err := cmd.Flags().Parse([]string{"--via", "me@docker-host", "-c", "dc-ssh"}); err != nil {
-		t.Fatalf("parse flags: %v", err)
+	root := NewRootCommand("test")
+	root.SetArgs([]string{"config", "ssh-key", "--generate"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("config ssh-key --generate: %v", err)
 	}
-	f, err := collectSetupSshFlags(cmd)
-	if err != nil {
-		t.Fatalf("collectSetupSshFlags: %v", err)
-	}
-	if f.via != "me@docker-host" {
-		t.Errorf("via = %q, want %q", f.via, "me@docker-host")
-	}
-	if f.remote != "" {
-		t.Errorf("remote = %q, want empty", f.remote)
-	}
-}
 
-// --setup-external maps onto f.remote (the paste-a-private-key jump mode).
-func TestCollectSetupSshFlags_SetupExternal(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	cmd := newSshCommand()
-	if err := cmd.Flags().Parse([]string{"--setup-external", "me@docker-host"}); err != nil {
-		t.Fatalf("parse flags: %v", err)
-	}
-	f, err := collectSetupSshFlags(cmd)
+	root = NewRootCommand("test")
+	orig := os.Stdout
+	r, w, err := os.Pipe()
 	if err != nil {
-		t.Fatalf("collectSetupSshFlags: %v", err)
+		t.Fatalf("os.Pipe: %v", err)
 	}
-	if f.remote != "me@docker-host" {
-		t.Errorf("remote = %q, want %q", f.remote, "me@docker-host")
+	os.Stdout = w
+	root.SetArgs([]string{"config", "ssh-key", "--export", "me@docker-host"})
+	execErr := root.Execute()
+	_ = w.Close()
+	os.Stdout = orig
+	if execErr != nil {
+		t.Fatalf("config ssh-key --export: %v", execErr)
 	}
-}
-
-// --setup-external and --via are two different ways of routing setup through a
-// second host (paste-a-private-key vs. client-driven); combining them is
-// ambiguous and must be rejected before any docker/ssh work starts.
-func TestRunSshSetup_ExternalAndViaMutuallyExclusive(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	cmd := newSshCommand()
-	if err := cmd.Flags().Parse([]string{"--setup-external", "me@host", "--via", "me@host", "-c", "dc-ssh"}); err != nil {
-		t.Fatalf("parse flags: %v", err)
+	out, err := io.ReadAll(r)
+	if err != nil {
+		t.Fatalf("read output: %v", err)
 	}
-	_, err := runSshSetup(cmd)
-	if err == nil || !strings.Contains(err.Error(), "mutually exclusive") {
-		t.Errorf("runSshSetup error = %v, want a mutually-exclusive error", err)
+	got := string(out)
+	if !strings.Contains(got, "ProxyCommand ssh me@docker-host") {
+		t.Errorf("export snippet missing ProxyCommand, got:\n%s", got)
+	}
+	if !strings.Contains(got, "Remote setup — run these steps on the machine you'll connect FROM:") {
+		t.Errorf("export output missing header, got:\n%s", got)
 	}
 }
 
@@ -1450,15 +1581,13 @@ services:
 
 func TestShellCommand_HasFlags(t *testing.T) {
 	root := NewRootCommand("test")
-	var shell *cobra.Command
-	for _, c := range root.Commands() {
-		if c.Name() == "shell" {
-			shell = c
-			break
-		}
+	accessCmd := findSubcommand(root, "access")
+	if accessCmd == nil {
+		t.Fatal("access command not found")
 	}
+	shell := findSubcommand(accessCmd, "shell")
 	if shell == nil {
-		t.Fatal("shell command not found")
+		t.Fatal("shell command not found under access")
 	}
 	for _, name := range []string{"user", "no-tty", "via"} {
 		if shell.Flags().Lookup(name) == nil {
@@ -1486,15 +1615,13 @@ func TestRunShell_ViaRequiresContainer(t *testing.T) {
 
 func TestLogsCommand_HasFlags(t *testing.T) {
 	root := NewRootCommand("test")
-	var logs *cobra.Command
-	for _, c := range root.Commands() {
-		if c.Name() == "logs" {
-			logs = c
-			break
-		}
+	inspectCmd := findSubcommand(root, "inspect")
+	if inspectCmd == nil {
+		t.Fatal("inspect command not found")
 	}
+	logs := findSubcommand(inspectCmd, "logs")
 	if logs == nil {
-		t.Fatal("logs command not found")
+		t.Fatal("logs command not found under inspect")
 	}
 	for _, name := range []string{"follow", "tail"} {
 		if logs.Flags().Lookup(name) == nil {
@@ -1505,18 +1632,19 @@ func TestLogsCommand_HasFlags(t *testing.T) {
 
 func TestCopyCommand_AssetFlag(t *testing.T) {
 	root := NewRootCommand("test")
-	var copyCmd *cobra.Command
-	for _, c := range root.Commands() {
-		if c.Name() == "copy" {
-			copyCmd = c
-			break
-		}
+	accessCmd := findSubcommand(root, "access")
+	if accessCmd == nil {
+		t.Fatal("access command not found")
 	}
+	copyCmd := findSubcommand(accessCmd, "copy")
 	if copyCmd == nil {
-		t.Fatal("copy command not found")
+		t.Fatal("copy command not found under access")
 	}
 	if copyCmd.Flags().Lookup("asset") == nil {
 		t.Fatal("expected copy flag --asset")
+	}
+	if copyCmd.Flags().ShorthandLookup("a") != nil {
+		t.Error("expected copy command NOT to have shorthand -a on --asset (-a is reserved for --all)")
 	}
 
 	// Completion lists the copyable asset names.
@@ -1605,15 +1733,13 @@ func TestResolveProjectComposeFile(t *testing.T) {
 
 func TestCopyCommand_HasFlags(t *testing.T) {
 	root := NewRootCommand("test")
-	var copyCmd *cobra.Command
-	for _, c := range root.Commands() {
-		if c.Name() == "copy" {
-			copyCmd = c
-			break
-		}
+	accessCmd := findSubcommand(root, "access")
+	if accessCmd == nil {
+		t.Fatal("access command not found")
 	}
+	copyCmd := findSubcommand(accessCmd, "copy")
 	if copyCmd == nil {
-		t.Fatal("copy command not found")
+		t.Fatal("copy command not found under access")
 	}
 	for _, name := range []string{"container", "asset"} {
 		if copyCmd.Flags().Lookup(name) == nil {
@@ -1624,15 +1750,13 @@ func TestCopyCommand_HasFlags(t *testing.T) {
 
 func TestUpCommand_HasFlags(t *testing.T) {
 	root := NewRootCommand("test")
-	var upCmd *cobra.Command
-	for _, c := range root.Commands() {
-		if c.Name() == "up" {
-			upCmd = c
-			break
-		}
+	wsCmd := findSubcommand(root, "workspace")
+	if wsCmd == nil {
+		t.Fatal("workspace command not found")
 	}
+	upCmd := findSubcommand(wsCmd, "up")
 	if upCmd == nil {
-		t.Fatal("up command not found")
+		t.Fatal("up command not found under workspace")
 	}
 	for _, name := range []string{"build"} {
 		if upCmd.Flags().Lookup(name) == nil {
@@ -1643,29 +1767,25 @@ func TestUpCommand_HasFlags(t *testing.T) {
 
 func TestStatusCommand_Exists(t *testing.T) {
 	root := NewRootCommand("test")
-	var statusCmd *cobra.Command
-	for _, c := range root.Commands() {
-		if c.Name() == "status" {
-			statusCmd = c
-			break
-		}
+	inspectCmd := findSubcommand(root, "inspect")
+	if inspectCmd == nil {
+		t.Fatal("inspect command not found")
 	}
+	statusCmd := findSubcommand(inspectCmd, "status")
 	if statusCmd == nil {
-		t.Fatal("status command not found")
+		t.Fatal("status command not found under inspect")
 	}
 }
 
 func TestLsCommand_HasFlags(t *testing.T) {
 	root := NewRootCommand("test")
-	var lsCmd *cobra.Command
-	for _, c := range root.Commands() {
-		if c.Name() == "ls" {
-			lsCmd = c
-			break
-		}
+	inspectCmd := findSubcommand(root, "inspect")
+	if inspectCmd == nil {
+		t.Fatal("inspect command not found")
 	}
+	lsCmd := findSubcommand(inspectCmd, "ls")
 	if lsCmd == nil {
-		t.Fatal("ls command not found")
+		t.Fatal("ls command not found under inspect")
 	}
 	for _, name := range []string{"all", "long"} {
 		if lsCmd.Flags().Lookup(name) == nil {
@@ -1676,52 +1796,82 @@ func TestLsCommand_HasFlags(t *testing.T) {
 
 func TestAllCommands_HaveContainerFlag(t *testing.T) {
 	root := NewRootCommand("test")
-	cmds := []string{"copy", "update", "ls", "logs", "status", "shell", "start", "stop", "restart", "info"}
-	for _, name := range cmds {
-		var target *cobra.Command
-		for _, c := range root.Commands() {
-			if c.Name() == name {
-				target = c
-				break
-			}
+	accessCmd := findSubcommand(root, "access")
+	imageCmd := findSubcommand(root, "image")
+	inspectCmd := findSubcommand(root, "inspect")
+	wsCmd := findSubcommand(root, "workspace")
+
+	type lookup struct {
+		parent *cobra.Command
+		name   string
+	}
+	cmds := []lookup{
+		{accessCmd, "copy"},
+		{imageCmd, "update"},
+		{inspectCmd, "ls"},
+		{inspectCmd, "logs"},
+		{inspectCmd, "status"},
+		{accessCmd, "shell"},
+		{wsCmd, "start"},
+		{wsCmd, "stop"},
+		{wsCmd, "restart"},
+		{inspectCmd, "info"},
+	}
+	for _, l := range cmds {
+		if l.parent == nil {
+			t.Fatalf("parent for %q not found", l.name)
 		}
+		target := findSubcommand(l.parent, l.name)
 		if target == nil {
-			t.Fatalf("command %q not found", name)
+			t.Fatalf("command %q not found under %q", l.name, l.parent.Name())
 		}
 		if target.Flags().Lookup("container") == nil {
-			t.Errorf("expected command %q to have --container flag", name)
+			t.Errorf("expected command %q to have --container flag", l.name)
 		}
 	}
 }
 
 func TestOperationalCommands_HaveNoWorkspaceFlag(t *testing.T) {
 	root := NewRootCommand("test")
-	byName := map[string]*cobra.Command{}
-	for _, c := range root.Commands() {
-		byName[c.Name()] = c
+	accessCmd := findSubcommand(root, "access")
+	inspectCmd := findSubcommand(root, "inspect")
+	wsCmd := findSubcommand(root, "workspace")
+
+	type lookup struct {
+		parent *cobra.Command
+		name   string
 	}
-	// Operational commands act only on the current directory's project; none of
-	// them expose a --workspace flag to target another one.
-	for _, name := range []string{"up", "down", "start", "stop", "restart", "shell", "ssh", "copy", "info", "status", "logs", "ls"} {
-		cmd := byName[name]
+	cmds := []lookup{
+		{wsCmd, "up"},
+		{wsCmd, "down"},
+		{wsCmd, "start"},
+		{wsCmd, "stop"},
+		{wsCmd, "restart"},
+		{accessCmd, "shell"},
+		{accessCmd, "ssh"},
+		{accessCmd, "copy"},
+		{inspectCmd, "info"},
+		{inspectCmd, "status"},
+		{inspectCmd, "logs"},
+		{inspectCmd, "ls"},
+	}
+	for _, l := range cmds {
+		if l.parent == nil {
+			t.Fatalf("parent for %q not found", l.name)
+		}
+		cmd := findSubcommand(l.parent, l.name)
 		if cmd == nil {
-			t.Fatalf("command %q not found", name)
+			t.Fatalf("command %q not found under %q", l.name, l.parent.Name())
 		}
 		if cmd.Flags().Lookup("workspace") != nil {
-			t.Errorf("command %q must not have a --workspace flag", name)
+			t.Errorf("command %q must not have a --workspace flag", l.name)
 		}
-		// -w is reserved so it can never read as a workspace selector. 'shell'
-		// is the one holder, where it is --workdir: it changes the directory
-		// *inside* the current project's container, which is the opposite of
-		// targeting another project.
 		if sh := cmd.Flags().ShorthandLookup("w"); sh != nil && sh.Name != "workdir" {
-			t.Errorf("command %q binds -w to %q; -w must only ever be --workdir", name, sh.Name)
+			t.Errorf("command %q binds -w to %q; -w must only ever be --workdir", l.name, sh.Name)
 		}
 	}
 
-	// And pin that the one -w in the tree really is the workdir flag, so it
-	// cannot quietly turn into a workspace selector later.
-	shell := byName["shell"]
+	shell := findSubcommand(accessCmd, "shell")
 	sh := shell.Flags().ShorthandLookup("w")
 	if sh == nil || sh.Name != "workdir" {
 		t.Errorf("shell -w should be --workdir, got %v", sh)
@@ -1758,16 +1908,14 @@ func TestFilterContainerNames_ByState(t *testing.T) {
 
 func TestStartStopCompletion_FilterByState(t *testing.T) {
 	root := NewRootCommand("test")
-	byName := map[string]*cobra.Command{}
-	for _, c := range root.Commands() {
-		byName[c.Name()] = c
+	wsCmd := findSubcommand(root, "workspace")
+	if wsCmd == nil {
+		t.Fatal("workspace command not found")
 	}
-	// start completes stopped containers, stop completes running ones; both
-	// register a flag completion func for --container.
 	for _, name := range []string{"start", "stop"} {
-		cmd := byName[name]
+		cmd := findSubcommand(wsCmd, name)
 		if cmd == nil {
-			t.Fatalf("command %q not found", name)
+			t.Fatalf("command %q not found under workspace", name)
 		}
 		if _, ok := cmd.GetFlagCompletionFunc("container"); !ok {
 			t.Errorf("expected %q to register --container completion", name)
@@ -1849,18 +1997,14 @@ func findSubcommand(parent *cobra.Command, name string) *cobra.Command {
 	return nil
 }
 
-func TestConfigProfileCommand_Exists(t *testing.T) {
+func TestProfileCommand_Exists(t *testing.T) {
 	root := NewRootCommand("test")
-	configCmd := findSubcommand(root, "config")
-	if configCmd == nil {
-		t.Fatal("expected 'config' command to be registered")
-	}
-	profileCmd := findSubcommand(configCmd, "profile")
+	profileCmd := findSubcommand(root, "profile")
 	if profileCmd == nil {
-		t.Fatal("expected 'config profile' command to be registered")
+		t.Fatal("expected 'profile' command to be registered")
 	}
 	if findSubcommand(profileCmd, "list") == nil {
-		t.Error("expected 'config profile list' subcommand")
+		t.Error("expected 'profile list' subcommand")
 	}
 }
 
@@ -1888,15 +2032,14 @@ func TestConfigSkillCommand_Exists(t *testing.T) {
 	}
 }
 
-func TestConfigProfileInfoCommand_Exists(t *testing.T) {
+func TestProfileInfoCommand_Exists(t *testing.T) {
 	root := NewRootCommand("test")
-	configCmd := findSubcommand(root, "config")
-	profileCmd := findSubcommand(configCmd, "profile")
+	profileCmd := findSubcommand(root, "profile")
 	if profileCmd == nil {
-		t.Fatal("expected 'config profile' command to be registered")
+		t.Fatal("expected 'profile' command to be registered")
 	}
 	if findSubcommand(profileCmd, "info") == nil {
-		t.Error("expected 'config profile info' subcommand")
+		t.Error("expected 'profile info' subcommand")
 	}
 }
 
@@ -1951,27 +2094,30 @@ func TestRunConfigSkillInfo_UserDefinedSkill(t *testing.T) {
 	}
 }
 
-// 'preset' was the old name of the group and stays as an alias, so an existing
-// script or muscle-memory invocation keeps working.
-func TestConfigProfileCommand_PresetAlias(t *testing.T) {
+func TestProfileCommand_ZeroAliases(t *testing.T) {
 	root := NewRootCommand("test")
-	configCmd := findSubcommand(root, "config")
-	if configCmd == nil {
-		t.Fatal("expected 'config' command to be registered")
+	profileCmd := findSubcommand(root, "profile")
+	if profileCmd == nil {
+		t.Fatal("expected 'profile' command to be registered at root")
 	}
-	aliased, _, err := configCmd.Find([]string{"preset", "list"})
-	if err != nil {
-		t.Fatalf("expected 'config preset list' to still resolve: %v", err)
+	if len(profileCmd.Aliases) != 0 {
+		t.Errorf("expected zero aliases on 'profile', got %v", profileCmd.Aliases)
 	}
-	if aliased.Name() != "list" || aliased.Parent().Name() != "profile" {
-		t.Errorf("expected 'config preset' to alias 'config profile', got %s under %s", aliased.Name(), aliased.Parent().Name())
+	for _, sub := range profileCmd.Commands() {
+		if len(sub.Aliases) != 0 {
+			t.Errorf("expected zero aliases on 'profile %s', got %v", sub.Name(), sub.Aliases)
+		}
 	}
 }
 
-func TestProfileCommand_NotTopLevel(t *testing.T) {
+func TestProfileCommand_IsTopLevel(t *testing.T) {
 	root := NewRootCommand("test")
-	if findSubcommand(root, "profile") != nil {
-		t.Error("expected no top-level 'profile' command; it lives under 'config profile'")
+	if findSubcommand(root, "profile") == nil {
+		t.Error("expected top-level 'profile' command")
+	}
+	configCmd := findSubcommand(root, "config")
+	if configCmd != nil && findSubcommand(configCmd, "profile") != nil {
+		t.Error("expected 'profile' to NOT be registered under 'config'")
 	}
 }
 
@@ -2219,17 +2365,17 @@ func TestValidateConfig_KeepsPinnedWorkspaceOnCollision(t *testing.T) {
 	}
 }
 
-// mode=profiles rejects a [local]-only --profile (e.g. 'base'): it has no
+// mode=profiles rejects a [local]-only --profile (e.g. a user profile): it has no
 // published image, so the pull would just fail — caught here instead, once
 // the effective mode is known, not eagerly at flag-parse time (where the same
 // --profile is valid for mode=custom).
 func TestValidateConfig_ModeProfilesRejectsLocalOnlyProfile(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	writeLocalOnlyUserProfile(t, "local-only")
 	cwd := t.TempDir()
 	config := &types.DevcontainerConfig{
 		Workspace: "ws",
 		Mode:      types.BuildModeProfiles,
-		Remote:    &types.RemoteConfig{Variant: "base"},
+		Remote:    &types.RemoteConfig{Variant: "local-only"},
 	}
 	flags := &genFlags{interactive: true, keepWorkspace: true}
 	err := validateConfig(cwd, config, flags, service.GenerateService{})
@@ -2414,13 +2560,9 @@ func TestCompleteCSV_Profiles(t *testing.T) {
 
 func TestProfileCommand_CreateAndCopy(t *testing.T) {
 	root := NewRootCommand("test")
-	configCmd := findSubcommand(root, "config")
-	if configCmd == nil {
-		t.Fatal("expected 'config' command to be registered")
-	}
-	profileCmd := findSubcommand(configCmd, "profile")
+	profileCmd := findSubcommand(root, "profile")
 	if profileCmd == nil {
-		t.Fatal("expected 'config profile' command to be registered")
+		t.Fatal("expected 'profile' command to be registered")
 	}
 
 	// Verify all subcommands exist
@@ -2441,7 +2583,7 @@ func TestProfileCreate_NoInteractiveFails(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", tmpHome)
 
 	root := NewRootCommand("test")
-	root.SetArgs([]string{"config", "profile", "create", "--no-interactive"})
+	root.SetArgs([]string{"profile", "create", "--no-interactive"})
 	if err := root.Execute(); err == nil {
 		t.Fatal("expected error: 'profile create' must fail in --no-interactive mode")
 	}
@@ -2450,28 +2592,35 @@ func TestProfileCreate_NoInteractiveFails(t *testing.T) {
 func TestProfileCreate_RejectsPositionalArg(t *testing.T) {
 	// create no longer takes a positional id; the id is prompted interactively.
 	root := NewRootCommand("test")
-	root.SetArgs([]string{"config", "profile", "create", "some-id"})
+	root.SetArgs([]string{"profile", "create", "some-id"})
 	if err := root.Execute(); err == nil {
 		t.Fatal("expected error: 'profile create' no longer accepts a positional profile id")
 	}
 }
 
+// isolateGit keeps the profile store's automatic commits away from the
+// developer's own git configuration.
+func isolateGit(t *testing.T) {
+	t.Helper()
+	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+}
+
 func TestProfileCopy(t *testing.T) {
-	// Setup isolated XDG config home
+	isolateGit(t)
 	tmpHome := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", tmpHome)
 
 	root := NewRootCommand("test")
 	// Copy 'nodejs' (builtin) to 'my-copied-nodejs' with --no-interactive
-	root.SetArgs([]string{"config", "profile", "copy", "nodejs", "my-copied-nodejs", "--no-interactive"})
+	root.SetArgs([]string{"profile", "copy", "nodejs", "my-copied-nodejs", "--no-interactive"})
 
 	// Run command
 	if err := root.Execute(); err != nil {
 		t.Fatalf("unexpected error executing profile copy: %v", err)
 	}
 
-	// A profile with no scripts stays a flat <id>.yml.
-	copiedPath := filepath.Join(tmpHome, "devcontainer-cli", "profiles", "my-copied-nodejs.yml")
+	copiedPath := filepath.Join(tmpHome, "devcontainer-cli", "profiles", "my-copied-nodejs", "profile.yml")
 	if _, err := os.Stat(copiedPath); os.IsNotExist(err) {
 		t.Fatalf("expected copied profile file to exist at %s, but it does not", copiedPath)
 	}
@@ -2496,9 +2645,39 @@ func TestProfileCopy(t *testing.T) {
 	}
 }
 
+// The config dir is one git repository versioning profiles/, and the copy is
+// its last commit.
+func TestProfileCopy_RecordsGitCommit(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not installed")
+	}
+	isolateGit(t)
+	tmpHome := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmpHome)
+
+	root := NewRootCommand("test")
+	root.SetArgs([]string{"profile", "copy", "nodejs", "my-node", "--no-interactive"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("unexpected error executing profile copy: %v", err)
+	}
+
+	configDir := filepath.Join(tmpHome, "devcontainer-cli")
+	if _, err := os.Stat(filepath.Join(configDir, ".git")); err != nil {
+		t.Fatalf("expected the config directory to be a git repository: %v", err)
+	}
+	out, err := exec.Command("git", "-C", configDir, "log", "-1", "--format=%s", "--name-only").Output()
+	if err != nil {
+		t.Fatalf("git log: %v", err)
+	}
+	if got, want := strings.TrimSpace(string(out)), "feat(profile): copy nodejs to my-node\n\nprofiles/my-node/profile.yml"; got != want {
+		t.Errorf("expected last commit %q, got %q", want, got)
+	}
+}
+
 // Copying a profile that carries scripts has to copy the scripts too, or the
 // copy would reference files that only exist in the source profile.
 func TestProfileCopy_CarriesScripts(t *testing.T) {
+	isolateGit(t)
 	tmpHome := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", tmpHome)
 
@@ -2515,7 +2694,7 @@ func TestProfileCopy_CarriesScripts(t *testing.T) {
 	}
 
 	root := NewRootCommand("test")
-	root.SetArgs([]string{"config", "profile", "copy", "src", "dst", "--no-interactive"})
+	root.SetArgs([]string{"profile", "copy", "src", "dst", "--no-interactive"})
 	if err := root.Execute(); err != nil {
 		t.Fatalf("unexpected error executing profile copy: %v", err)
 	}
@@ -2530,30 +2709,35 @@ func TestProfileCopy_CarriesScripts(t *testing.T) {
 }
 
 func TestProfileRemove_UserProfile(t *testing.T) {
+	isolateGit(t)
 	tmpHome := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", tmpHome)
 	profilesDir := filepath.Join(tmpHome, "devcontainer-cli", "profiles")
 	if err := os.MkdirAll(profilesDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	target := filepath.Join(profilesDir, "scratch.yml")
-	if err := os.WriteFile(target, []byte("id: scratch\nmodules: [github-cli]\n"), 0o644); err != nil {
+	target := filepath.Join(profilesDir, "scratch")
+	if err := os.MkdirAll(target, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(target, "profile.yml"), []byte("id: scratch\nmodules: [github-cli]\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
 	root := NewRootCommand("test")
-	root.SetArgs([]string{"config", "profile", "remove", "scratch", "--yes"})
+	root.SetArgs([]string{"profile", "remove", "scratch", "--yes"})
 	if err := root.Execute(); err != nil {
 		t.Fatalf("unexpected error removing profile: %v", err)
 	}
 	if _, err := os.Stat(target); !os.IsNotExist(err) {
-		t.Errorf("expected profile file %s to be deleted", target)
+		t.Errorf("expected profile directory %s to be deleted", target)
 	}
 }
 
 // A directory-shaped profile owns its scripts, so removing it takes the whole
 // directory rather than leaving the scripts orphaned.
 func TestProfileRemove_DirectoryShaped(t *testing.T) {
+	isolateGit(t)
 	tmpHome := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", tmpHome)
 	dir := filepath.Join(tmpHome, "devcontainer-cli", "profiles", "withscripts")
@@ -2568,7 +2752,7 @@ func TestProfileRemove_DirectoryShaped(t *testing.T) {
 	}
 
 	root := NewRootCommand("test")
-	root.SetArgs([]string{"config", "profile", "remove", "withscripts", "--yes"})
+	root.SetArgs([]string{"profile", "remove", "withscripts", "--yes"})
 	if err := root.Execute(); err != nil {
 		t.Fatalf("unexpected error removing profile: %v", err)
 	}
@@ -2577,35 +2761,12 @@ func TestProfileRemove_DirectoryShaped(t *testing.T) {
 	}
 }
 
-// Profiles saved under the pre-rename presets/ directory must keep resolving.
-func TestProfileRemove_LegacyPresetsDir(t *testing.T) {
-	tmpHome := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", tmpHome)
-	legacy := filepath.Join(tmpHome, "devcontainer-cli", "presets")
-	if err := os.MkdirAll(legacy, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	target := filepath.Join(legacy, "old.yml")
-	if err := os.WriteFile(target, []byte("id: old\nmodules: [github-cli]\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	root := NewRootCommand("test")
-	root.SetArgs([]string{"config", "profile", "remove", "old", "--yes"})
-	if err := root.Execute(); err != nil {
-		t.Fatalf("unexpected error removing legacy profile: %v", err)
-	}
-	if _, err := os.Stat(target); !os.IsNotExist(err) {
-		t.Errorf("expected legacy profile file %s to be deleted", target)
-	}
-}
-
 func TestProfileRemove_BuiltinIsRejected(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", tmpHome)
 
 	root := NewRootCommand("test")
-	root.SetArgs([]string{"config", "profile", "remove", "nodejs", "--yes"})
+	root.SetArgs([]string{"profile", "remove", "nodejs", "--yes"})
 	if err := root.Execute(); err == nil {
 		t.Fatal("expected error: built-in profile 'nodejs' must not be removable")
 	}
@@ -2616,7 +2777,7 @@ func TestProfileRemove_UnknownFails(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", tmpHome)
 
 	root := NewRootCommand("test")
-	root.SetArgs([]string{"config", "profile", "remove", "does-not-exist", "--yes"})
+	root.SetArgs([]string{"profile", "remove", "does-not-exist", "--yes"})
 	if err := root.Execute(); err == nil {
 		t.Fatal("expected error removing a non-existent user profile")
 	}
@@ -2891,7 +3052,7 @@ func TestImageCommand_StructureAndFlags(t *testing.T) {
 		t.Fatal("image command not registered")
 	}
 
-	subWant := []string{"list", "info", "create", "build", "pull", "export", "remove"}
+	subWant := []string{"list", "info", "create", "build", "pull", "export", "remove", "update"}
 	subHave := map[string]bool{}
 	for _, c := range imageCmd.Commands() {
 		subHave[c.Name()] = true

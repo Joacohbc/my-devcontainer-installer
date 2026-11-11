@@ -70,7 +70,7 @@ npx skills add Joacohbc/my-devcontainer-installer@devcontainer-cli -g
 ### 3. Actualización y Desinstalación
 ```bash
 # Actualizar la CLI a la última versión disponible
-devcontainer-cli upgrade-cli
+devcontainer-cli config upgrade-cli
 
 # Desinstalar la CLI por completo
 curl -fsSL https://raw.githubusercontent.com/Joacohbc/my-devcontainer-installer/main/cli/uninstall.sh | sh
@@ -87,12 +87,12 @@ mkdir mi-proyecto && cd mi-proyecto
 devcontainer-cli
 
 # 2. Levantar el stack de contenedores
-devcontainer-cli up
+devcontainer-cli workspace up
 
 # 3. Conectarse al entorno (elija SSH o Shell directa)
-devcontainer-cli ssh         # Acceso SSH persistente (registra alias en ~/.ssh/devcontainer-cli.config)
+devcontainer-cli access ssh         # Acceso SSH persistente (registra alias en ~/.ssh/devcontainer-cli.config)
 # o bien:
-devcontainer-cli shell       # Shell directa e interactiva vía docker exec (sin tocar configuración SSH)
+devcontainer-cli access shell       # Shell directa e interactiva vía docker exec (sin tocar configuración SSH)
 ```
 
 ---
@@ -102,14 +102,15 @@ devcontainer-cli shell       # Shell directa e interactiva vía docker exec (sin
 ### 👤 Para Desarrolladores Humanos
 - **Asistente TUI amigable**: Ejecute `devcontainer-cli` en la raíz de su proyecto y elija lenguajes, bases de datos y herramientas con la barra espaciadora.
 - **Arranque instantáneo con perfiles**: Omita la compilación local usando imágenes precompiladas de GHCR con `devcontainer-cli --profile nodejs` (o `python`, `go`, `bun`, `node-go`).
-- **Integración con VS Code**: `devcontainer-cli ssh` configura automáticamente sus claves en `~/.ssh/devcontainer-cli.config`. Abra VS Code, pulse `F1` -> *Remote-SSH: Connect to Host...* y elija el nombre de su proyecto.
-- **Bases de datos listas**: Añada `--service postgres,redis` y conéctese con DBeaver o TablePlus desde el host en `127.0.0.1:5432`.
+- **Integración con VS Code**: `devcontainer-cli access ssh` configura automáticamente sus claves en `~/.ssh/devcontainer-cli.config`. Abra VS Code, pulse `F1` -> *Remote-SSH: Connect to Host...* y elija el nombre de su proyecto.
+- **Bases de datos listas**: Añada `--services postgres,redis` y conéctese con DBeaver o TablePlus desde el host en `127.0.0.1:5432`.
+- **Entorno rápido sin proyecto**: Inicie un contenedor desechable en segundos sin generar archivos con `devcontainer-cli run --profile nodejs`.
 
 ### 🤖 Para Agentes Autónomos de IA (Antigravity, Claude Code, Codex, Copilot)
 - **Fachada desatendida y predecible**: El grupo `devcontainer-cli agent` nunca abre menús interactivos ni espera respuestas; si falta un parámetro, falla de forma inmediata y explícita.
 - **Aislamiento seguro sin root**: `devcontainer-cli agent exec -w -- <comando>` ejecuta tareas estrictamente como `devuser`, impidiendo que se generen archivos propiedad de `root` en su checkout local.
-- **Auto-orientación exacta**: Cada contenedor genera `~/CONTEXT.md` y `devcontainer-cli agent context --json`, informando al agente con exactitud qué herramientas, rutas y credenciales existen.
-- **Entornos temporales desechables**: `devcontainer-cli agent create --temporal --profile python` crea un entorno efímero para reproducir incidencias y se destruye limpiamente con `agent clean`.
+- **Auto-orientación exacta**: Cada contenedor genera `~/CONTEXT.md` y `devcontainer-cli inspect context --json`, informando al agente con exactitud qué herramientas, rutas y credenciales existen.
+- **Entornos temporales desechables**: `devcontainer-cli agent run --profile python` crea un entorno efímero para reproducir incidencias y se destruye limpiamente con `agent destroy --container dc-python --yes`.
 
 > 💡 **Manual Exhaustivo de Casos de Uso:** Consulte [`.docs/manual.md`](.docs/manual.md) para ver ejemplos paso a paso de cada flujo humano y agéntico.
 
@@ -213,55 +214,55 @@ graph LR
 
 ## Flujo de Trabajo Diario y Operaciones
 
-### 1. Acceso por SSH: Persistente vs. Efímero (`devcontainer-cli ssh`)
-`devcontainer-cli ssh` abre una sesión OpenSSH interactiva en el puerto 2222 del contenedor. Ofrece dos modos de operación según la necesidad de persistencia:
+### 1. Acceso por SSH: Persistente vs. Efímero (`devcontainer-cli access ssh`)
+`devcontainer-cli access ssh` abre una sesión OpenSSH interactiva en el puerto 2222 del contenedor. Ofrece dos modos de operación según la necesidad de persistencia:
 
-- **Modo Persistente (`devcontainer-cli ssh`) [Recomendado para humanos y VS Code]**:
+- **Modo Persistente (`devcontainer-cli access ssh`) [Recomendado para humanos y VS Code]**:
   - Registra el bloque `Host <workspace>` en **`~/.ssh/devcontainer-cli.config`**, manteniendo su `~/.ssh/config` intacto con una única línea `Include`. Cambie la ubicación con `devcontainer-cli config ssh-config-file <ruta>`.
   - **Fijación de claves de host (*Host-Key Pinning*)**: Las claves se leen por Docker y se registran en el `known_hosts` de la CLI; reconstruir la imagen nunca dispara advertencias de identidad alterada.
   - Permite conectarse desde cualquier terminal con `ssh <workspace>` o abrir el entorno en **VS Code Remote - SSH**.
   - Con `--setup` fuerza la regeneración y reparación de claves antes de conectar.
 
-- **Modo Efímero (`devcontainer-cli ssh --ephemeral`) [Idóneo para agentes y CI/CD]**:
+- **Modo Efímero (`devcontainer-cli access ssh --ephemeral`) [Idóneo para agentes y CI/CD]**:
   - Se conecta directamente a la IP y puerto 2222 del contenedor mediante la clave privada gestionada (`-i ...`), **sin leer ni modificar `~/.ssh/config` ni `~/.ssh/devcontainer-cli.config`**.
   - No fija claves ni deja entradas huérfanas en el sistema anfitrión (**cero polución**).
   - Es el modo predeterminado para agentes de IA en `devcontainer-cli agent ssh`.
 
 ```bash
-devcontainer-cli ssh                                          # SSH persistente: configura alias y conecta
-devcontainer-cli ssh --ephemeral                              # SSH efímero: conecta directo sin tocar archivos SSH
-devcontainer-cli ssh --setup                                  # Fuerza regeneración de claves y bloques
-devcontainer-cli ssh --via user@docker-host --container dc-ssh # Conexión a contenedor en OTRO host vía salto SSH
-ssh mi-proyecto                                                # Conexión directa mediante alias tradicional (modo persistente)
+devcontainer-cli access ssh                                          # SSH persistente: configura alias y conecta
+devcontainer-cli access ssh --ephemeral                              # SSH efímero: conecta directo sin tocar archivos SSH
+devcontainer-cli access ssh --setup                                  # Fuerza regeneración de claves y bloques
+devcontainer-cli access ssh --via user@docker-host --container dc-ssh # Conexión a contenedor en OTRO host vía salto SSH
+ssh mi-proyecto                                                      # Conexión directa mediante alias tradicional (modo persistente)
 ```
 > `--via` (requiere `--container`) es idóneo para servidores remotos en LAN: la clave privada nunca sale de su máquina cliente. En contraste, `--setup-external USER@HOST` corre en el servidor e imprime un snippet autocontenido para pegar en el cliente.
 
-### 2. Acceso por Shell Directa (`devcontainer-cli shell`)
+### 2. Acceso por Shell Directa (`devcontainer-cli access shell`)
 Utiliza `docker exec` internamente resolviendo automáticamente el contenedor del espacio de trabajo actual, sin requerir OpenSSH ni configuración de claves:
 - **Modo interactivo**: Abre una terminal Zsh interactiva con soporte TTY completo.
 - **Ejecución puntual o tuberías (`-T` / `--no-tty`)**: Desactiva el pseudo-terminal para evitar caracteres de control (`\r`) en redirecciones de archivos, scripts o volcados de bases de datos.
 - **Acceso a contenedores secundarios (`-c <contenedor>`)**: Permite entrar a servicios auxiliares (ej. `postgres`, `redis`).
 
 ```bash
-devcontainer-cli shell                                        # Entra a la shell interactiva (Zsh)
-devcontainer-cli shell -- bash                                # Abre la shell especificando bash
-devcontainer-cli shell -c mi-proyecto-postgres                # Entra directo al contenedor de la base de datos
-devcontainer-cli shell -- uname -a                            # Ejecuta un comando puntual y retorna su salida
-devcontainer-cli shell -T -- pg_dump -U devuser devdb > dump.sql # Dump limpio de base de datos sin corrupción TTY
+devcontainer-cli access shell                                        # Entra a la shell interactiva (Zsh)
+devcontainer-cli access shell -- bash                                # Abre la shell especificando bash
+devcontainer-cli access shell -c mi-proyecto-postgres                # Entra directo al contenedor de la base de datos
+devcontainer-cli access shell -- uname -a                            # Ejecuta un comando puntual y retorna su salida
+devcontainer-cli access shell -T -- pg_dump -U devuser devdb > dump.sql # Dump limpio de base de datos sin corrupción TTY
 ```
 
-### 3. Reenvío de Puertos y Túneles Inversos (`port-forward`)
+### 3. Reenvío de Puertos y Túneles Inversos (`access forward`)
 Permite conectar servicios en ambas direcciones entre el anfitrión y el contenedor:
 ```bash
-devcontainer-cli port-forward 3000                 # Forward directo: escucha en 127.0.0.1:3000 del host
-devcontainer-cli port-forward reverse:5432         # Túnel inverso: el host adentro en localhost:5432
+devcontainer-cli access forward 3000                 # Forward directo: escucha en 127.0.0.1:3000 del host
+devcontainer-cli access forward reverse:5432         # Túnel inverso: el host adentro en localhost:5432
 ```
 
-### 4. Copiar Archivos y Assets (`copy`)
+### 4. Copiar Archivos y Assets (`access copy`)
 Copia archivos hacia/desde el contenedor o materializa instaladores embebidos:
 ```bash
-devcontainer-cli copy ./app.go :/home/devuser/app.go         # Host -> Contenedor
-devcontainer-cli copy --asset install-claude-code             # Materializa instalador de IA en el contenedor
+devcontainer-cli access copy ./app.go :/home/devuser/app.go         # Host -> Contenedor
+devcontainer-cli access copy --asset install-claude-code             # Materializa instalador de IA en el contenedor
 ```
 
 ### 5. Bases de Datos Integradas
@@ -272,10 +273,10 @@ Credenciales predeterminadas para los servicios complementarios (Usuario: `devus
 
 ```bash
 # Reiniciar el esquema de PostgreSQL sin reiniciar el contenedor
-devcontainer-cli shell -c <workspace>-postgres -- psql -U devuser -d devdb -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
+devcontainer-cli access shell -c <workspace>-postgres -- psql -U devuser -d devdb -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
 
 # Backup limpio sin corrupción de TTY (el flag -T es obligatorio)
-devcontainer-cli shell -c <workspace>-postgres -T -- pg_dump -U devuser --no-owner --no-acl devdb > backup.sql
+devcontainer-cli access shell -c <workspace>-postgres -T -- pg_dump -U devuser --no-owner --no-acl devdb > backup.sql
 ```
 > Más detalles de administración de BD en [.docs/post-install.md](.docs/post-install.md).
 
@@ -302,10 +303,10 @@ devcontainer-cli config alias unset ll           # Eliminar un alias
 devcontainer-cli config alias sync               # Sincronizar hacia el volumen compartido
 ```
 
-### 3. Conectar Otros Contenedores a la Red (`network`)
+### 3. Conectar Otros Contenedores a la Red (`access network`)
 Integre cualquier contenedor externo al stack privado del proyecto:
 ```bash
-devcontainer-cli network connect mi-servicio-externo --alias db-externa
+devcontainer-cli access network connect mi-servicio-externo --alias db-externa
 ```
 
 ---
@@ -316,11 +317,11 @@ devcontainer-cli network connect mi-servicio-externo --alias db-externa
 Diseñada específicamente para que agentes autónomos operen sin riesgo de colgarse en prompts ni corromper permisos:
 ```bash
 devcontainer-cli agent cli-info --json                        # Catálogo estructurado de capacidades
-devcontainer-cli agent create --profile node-python --service redis # Crear y levantar stack sin TUI
+devcontainer-cli agent create --profile node-python --services redis # Crear y levantar stack sin TUI
 devcontainer-cli agent exec -w -- go test ./...                # Ejecutar comando como devuser en el workspace
 devcontainer-cli agent forward 8080                           # Reenviar puerto para pruebas o web preview
-devcontainer-cli agent context --json                         # Diagnóstico de herramientas y versiones
-devcontainer-cli agent clean                                  # Limpiar stack e imagen construida del proyecto
+devcontainer-cli inspect context --json                       # Diagnóstico de herramientas y versiones
+devcontainer-cli agent destroy --yes                          # Limpiar stack e imagen construida del proyecto
 ```
 
 ### 2. Contexto Dinámico (`~/CONTEXT.md` y Habilidad Global)
@@ -328,17 +329,17 @@ Cada contenedor genera un `~/CONTEXT.md` único que describe exactamente los mó
 
 ---
 
-## Higiene y Mantenimiento (`clean` y `destroy`)
+## Higiene y Mantenimiento (`config clean` y `workspace destroy`)
 
 ```bash
 # Limpiar bloques SSH obsoletos y entradas huérfanas en known_hosts
-devcontainer-cli clean ssh -y
+devcontainer-cli config clean ssh -y
 
 # Menú interactivo o limpieza completa de contenedores/imágenes/redes en desuso
-devcontainer-cli clean all
+devcontainer-cli config clean all
 
 # Destruir completamente el devcontainer del proyecto actual y sus volúmenes
-devcontainer-cli destroy
+devcontainer-cli workspace destroy
 ```
 
 ---
@@ -348,15 +349,15 @@ devcontainer-cli destroy
 <details>
 <summary><b>Permission denied (publickey)</b></summary>
 
-- Ejecute `devcontainer-cli ssh` para verificar y reinstalar automáticamente la clave pública gestionada en `~/.ssh/authorized_keys` dentro del contenedor.
+- Ejecute `devcontainer-cli access ssh` para verificar y reinstalar automáticamente la clave pública gestionada en `~/.ssh/authorized_keys` dentro del contenedor.
 - Si modificó los archivos manualmente en el contenedor, asegure los permisos requeridos: `chmod 700 ~/.ssh` y `chmod 600 ~/.ssh/authorized_keys`.
 </details>
 
 <details>
 <summary><b>Connection refused o cambio de IP / host key</b></summary>
 
-- Confirme que el contenedor esté activo mediante `devcontainer-cli status` o `devcontainer-cli compose ps`.
-- Si se reconstruyó la imagen o cambió la IP, ejecute `devcontainer-cli ssh`: la CLI detecta el cambio, actualiza la IP y re-fija automáticamente la host key en su archivo de configuración gestionado.
+- Confirme que el contenedor esté activo mediante `devcontainer-cli inspect status` o `devcontainer-cli workspace compose ps`.
+- Si se reconstruyó la imagen o cambió la IP, ejecute `devcontainer-cli access ssh`: la CLI detecta el cambio, actualiza la IP y re-fija automáticamente la host key en su archivo de configuración gestionado.
 </details>
 
 <details>

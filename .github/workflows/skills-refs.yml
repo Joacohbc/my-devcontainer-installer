@@ -1,7 +1,7 @@
 name: Skill References
 
 # Every catalogued agent skill (internal/domain/modules/skills/skills.yml,
-# plus anything a user could add under ~/.devcontainer-cli/skills/) names a
+# plus anything a user could add under ~/.config/devcontainer-cli/skills/) names a
 # `ref` (a GitHub source) and, for multi-skill repos, a `skill` selector. Both
 # are free text pointing at someone else's repository — a rename, a deleted
 # branch, or a restructured `skills/` tree upstream breaks the entry with no

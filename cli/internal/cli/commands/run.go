@@ -10,7 +10,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func init() { register(newRunCommand()) }
+func init() {
+	register(newRunCommand())
+}
 
 func newRunCommand() *cobra.Command {
 	cmd := &cobra.Command{
@@ -35,9 +37,9 @@ unrelated container entirely — the prompt rejects it and asks again (and
 the existing container first.
 
 --profile takes exactly one profile id with a published image — run
-'devcontainer-cli config profile list' and look for the [remote] tag — or the
-special value 'ssh' for the hand-built full image. A [local] profile (e.g.
-'base', or one of your own) has no matching ghcr.io/devcontainer-<id>
+'devcontainer-cli profile list' and look for the [remote] tag — or the
+special value 'ssh' for the hand-built full image. A [local] profile (one of your own profiles)
+has no matching ghcr.io/devcontainer-<id>
 image and is rejected here; build it instead with 'devcontainer-cli --profile
 <id>' and the default mode=custom, which generates project files and builds.`,
 		Example: `  # Interactive: pick a profile and options
@@ -46,8 +48,8 @@ image and is rejected here; build it instead with 'devcontainer-cli --profile
   # Non-interactive SSH box with a named volume and a forwarded port
   devcontainer-cli run --profile ssh --name dev --volumes work:/workspace --ports 2222:22
 
-  # Expose ports on the LAN and pre-install the AI CLI scripts
-  devcontainer-cli run --profile nodejs --ports 8080:80 --expose-all --copy-ai-scripts`,
+  # Expose ports on the LAN
+  devcontainer-cli run --profile nodejs --ports 8080:80 --expose-all`,
 		SilenceUsage: true,
 		RunE:         runQuickRun,
 	}
@@ -57,7 +59,6 @@ image and is rejected here; build it instead with 'devcontainer-cli --profile
 	cmd.Flags().StringSlice("ports", nil, "Port mappings (e.g. 2222:22); bound to 127.0.0.1 unless --expose-all; repeatable or comma-separated")
 	cmd.Flags().Bool("expose-all", false, "Publish ports on all interfaces (0.0.0.0) instead of binding to 127.0.0.1")
 	cmd.Flags().Bool("shared-config", true, "Mount the global shared AI/dev tool config volume (devcontainer-shared-config) so logins/sessions persist across containers; --shared-config=false to opt out")
-	cmd.Flags().Bool("copy-ai-scripts", false, "Copy the AI/dev tool installer scripts into the container; in non-interactive mode copies all of them")
 	cmd.Flags().String("registry", "", "Registry prefix override")
 	addInteractiveFlag(cmd)
 
@@ -165,7 +166,7 @@ func resolveRunOptions(cmd *cobra.Command, svc service.RunService) (runOptions, 
 		}
 	}
 
-	opts.aiScripts, err = resolveRunAIScripts(cmd, interactive)
+	opts.aiScripts, err = resolveRunAIScripts(interactive)
 	if err != nil {
 		return runOptions{}, err
 	}
@@ -228,15 +229,9 @@ func promptCommaList(prompt string) ([]string, error) {
 	return filterEmpty(strings.Split(raw, ",")), nil
 }
 
-// resolveRunAIScripts decides which installer scripts to copy: interactively it
-// asks (unless --copy-ai-scripts was set explicitly and lets the user pick);
-// non-interactively --copy-ai-scripts copies all of them.
-func resolveRunAIScripts(cmd *cobra.Command, interactive bool) ([]string, error) {
-	if interactive && !cmd.Flags().Changed("copy-ai-scripts") {
+func resolveRunAIScripts(interactive bool) ([]string, error) {
+	if interactive {
 		return promptAIScripts()
-	}
-	if copyAIScripts, _ := cmd.Flags().GetBool("copy-ai-scripts"); copyAIScripts {
-		return assets.CopyableNames(), nil
 	}
 	return nil, nil
 }
@@ -298,14 +293,14 @@ func printRunNextSteps(containerName string) {
 	console.Success("Container running.")
 	console.NewLine()
 	console.Header("Next: open a shell")
-	console.Info("   $ devcontainer-cli shell -c %s", containerName)
+	console.Info("   $ devcontainer-cli access shell -c %s", containerName)
 	console.NewLine()
 	console.Header("Or set up SSH access")
-	console.Info("   $ devcontainer-cli ssh --setup --container %s", containerName)
+	console.Info("   $ devcontainer-cli access ssh --setup --container %s", containerName)
 	console.NewLine()
 	console.Header("Post-install scripts (baked into the image, run on demand):")
-	console.Info("   $ devcontainer-cli shell -c %s -- ls ~/post-script", containerName)
-	console.Info("   $ devcontainer-cli shell -c %s --user devuser -- bash ~/post-script/login-github-cli.sh", containerName)
+	console.Info("   $ devcontainer-cli access shell -c %s -- ls ~/post-script", containerName)
+	console.Info("   $ devcontainer-cli access shell -c %s --user devuser -- bash ~/post-script/login-github-cli.sh", containerName)
 	console.Bar()
 	console.NewLine()
 }

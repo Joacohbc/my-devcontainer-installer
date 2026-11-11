@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -24,15 +25,17 @@ const ImageManifestFileName = "image.yml"
 
 // ImageDef represents a reusable devcontainer image definition.
 type ImageDef struct {
-	Name       string                 `json:"name" yaml:"name"`
-	Label      string                 `json:"label,omitempty" yaml:"label,omitempty"`
-	Tag        string                 `json:"tag,omitempty" yaml:"tag,omitempty"`
-	Source     ImageSource            `json:"source" yaml:"source"`
-	Ref        string                 `json:"ref,omitempty" yaml:"ref,omitempty"`
-	Modules    []types.SelectedModule `json:"modules,omitempty" yaml:"modules,omitempty"`
-	Scripts    []types.CustomScript   `json:"scripts,omitempty" yaml:"scripts,omitempty"`
-	Dockerfile string                 `json:"dockerfile,omitempty" yaml:"dockerfile,omitempty"`
-	Files      []string               `json:"files,omitempty" yaml:"files,omitempty"`
+	Name   string      `json:"name" yaml:"name"`
+	Label  string      `json:"label,omitempty" yaml:"label,omitempty"`
+	Tag    string      `json:"tag,omitempty" yaml:"tag,omitempty"`
+	Source ImageSource `json:"source" yaml:"source"`
+	Ref    string      `json:"ref,omitempty" yaml:"ref,omitempty"`
+	// From derives this image from another one instead of ubuntu: the name of
+	// another image definition or a registry reference to an image built by
+	// devcontainer-cli. Only the modules the parent lacks are installed.
+	From    string                 `json:"from,omitempty" yaml:"from,omitempty"`
+	Modules []types.SelectedModule `json:"modules,omitempty" yaml:"modules,omitempty"`
+	Scripts []types.CustomScript   `json:"scripts,omitempty" yaml:"scripts,omitempty"`
 }
 
 // ValidateImageName checks if the image name matches the allowed character set.
@@ -43,16 +46,19 @@ func ValidateImageName(name string) error {
 	return nil
 }
 
-// UserImageDir returns the directory where user-defined image manifests are stored.
+// ImageDirName is where user-defined image definitions live inside the global
+// config dir, next to profiles/ and skills/ in the same configuration repository.
+const ImageDirName = "images"
+
+// UserImageDir returns the directory where user-defined image manifests are
+// stored. It derives from GlobalConfigDir (not os.UserConfigDir, which is
+// ~/Library/Application Support on macOS) so images always sit in the same
+// configuration repository as profiles and skills.
 func UserImageDir(customBaseDir ...string) string {
 	if len(customBaseDir) > 0 && customBaseDir[0] != "" {
-		return filepath.Join(customBaseDir[0], "images")
+		return filepath.Join(customBaseDir[0], ImageDirName)
 	}
-	configDir, err := os.UserConfigDir()
-	if err != nil {
-		configDir = filepath.Join(os.Getenv("HOME"), ".config")
-	}
-	return filepath.Join(configDir, "devcontainer-cli", "images")
+	return filepath.Join(GlobalConfigDir(), ImageDirName)
 }
 
 // ImageTag returns the Docker image tag for this image definition.
@@ -73,6 +79,8 @@ func ImageDefConfig(def ImageDef) *types.DevcontainerConfig {
 	return &types.DevcontainerConfig{
 		Mode:      types.BuildModeCustom,
 		Image:     ImageTag(def),
+		ImageKind: types.ImageKindNamed,
+		Origin:    def.Name,
 		Workspace: "image",
 		Dockerfile: types.DockerfileConfig{
 			Modules: def.Modules,
@@ -185,4 +193,77 @@ func CheckImageCompat(ref string, capture CaptureFunc) error {
 	}
 
 	return nil
+}
+
+// ImageParent is what a derived build starts from: the image reference and the
+// modules that image already has.
+type ImageParent struct {
+	Ref     string
+	Modules []types.SelectedModule
+}
+
+// ResolveImageParent resolves a `from` value: an image definition name (whose
+// lineage is read from the definitions themselves, following its own `from`)
+// or a registry reference (whose modules are read from its labels). A cycle
+// of definitions is an error.
+func ResolveImageParent(from string, capture CaptureFunc, dirs ...string) (ImageParent, error) {
+	return resolveImageParent(from, capture, map[string]bool{}, dirs)
+}
+
+func resolveImageParent(from string, capture CaptureFunc, visiting map[string]bool, dirs []string) (ImageParent, error) {
+	def, ok, _ := ResolveImageDef(from, dirs...)
+	if !ok {
+		return imageParentFromLabels(from, capture)
+	}
+	if visiting[def.Name] {
+		return ImageParent{}, fmt.Errorf("image %q derives from itself through its 'from' chain", def.Name)
+	}
+	visiting[def.Name] = true
+	if def.Source == ImageSourceRemote {
+		return imageParentFromLabels(ImageTag(def), capture)
+	}
+	parent := ImageParent{Ref: ImageTag(def)}
+	if def.From != "" {
+		grand, err := resolveImageParent(def.From, capture, visiting, dirs)
+		if err != nil {
+			return ImageParent{}, err
+		}
+		parent.Modules = append(parent.Modules, grand.Modules...)
+	}
+	parent.Modules = append(parent.Modules, def.Modules...)
+	return parent, nil
+}
+
+// ImageParentFromLabels reads what a local image was built with from its
+// labels: its module ids and their options.
+func ImageParentFromLabels(ref string, capture CaptureFunc) (ImageParent, error) {
+	return imageParentFromLabels(ref, capture)
+}
+
+func imageParentFromLabels(ref string, capture CaptureFunc) (ImageParent, error) {
+	status, stdout, _ := capture([]string{"image", "inspect", "-f", `{{index .Config.Labels "` + types.LabelModules + `"}}`, ref})
+	if status != 0 {
+		return ImageParent{}, fmt.Errorf("base image %s is not available locally; pull or build it first", ref)
+	}
+	value := strings.TrimSpace(stdout)
+	if value == "" || value == "<no value>" {
+		return ImageParent{}, fmt.Errorf("base image %s has no %s label: only images built by devcontainer-cli can be derived from", ref, types.LabelModules)
+	}
+	options := map[string]map[string]any{}
+	if status, stdout, _ := capture([]string{"image", "inspect", "-f", `{{index .Config.Labels "` + types.LabelModuleOptions + `"}}`, ref}); status == 0 {
+		if raw := strings.TrimSpace(stdout); raw != "" && raw != "<no value>" {
+			_ = json.Unmarshal([]byte(raw), &options)
+		}
+	}
+	parent := ImageParent{Ref: ref}
+	for _, id := range strings.Split(value, ",") {
+		if id = strings.TrimSpace(id); id != "" {
+			opts := options[id]
+			if opts == nil {
+				opts = map[string]any{}
+			}
+			parent.Modules = append(parent.Modules, types.SelectedModule{ID: types.ModuleID(id), Options: opts})
+		}
+	}
+	return parent, nil
 }

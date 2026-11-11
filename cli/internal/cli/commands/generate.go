@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/logger"
@@ -19,75 +18,64 @@ import (
 
 // Flag names for the default generate command flow.
 const (
-	flagMode           = "mode"
-	flagRegistry       = "registry"
-	flagWith           = "with"
-	flagService        = "service"
-	flagServices       = "services"
-	flagImage          = "image"
-	flagWorkspace      = "workspace"
-	flagPorts          = "ports"
-	flagVolumes        = "volumes"
-	flagSharedConfig   = "shared-config"
-	flagProfile        = "profile"
-	flagPreset         = "preset"
-	flagScript         = "script"
-	flagSkill          = "skill"
-	flagSkillsMode     = "skills-mode"
-	flagForwardPorts   = "forward-ports"
-	flagNoInteractive  = "no-interactive"
-	flagNonInteractive = "non-interactive"
-	flagForcePrompt    = "force-prompt"
-	flagForce          = "force"
-	flagBuild          = "build"
-	flagNoBuild        = "no-build"
-	flagVersion        = "version"
+	flagMode          = "mode"
+	flagRegistry      = "registry"
+	flagModules       = "modules"
+	flagServices      = "services"
+	flagImage         = "image"
+	flagWorkspace     = "workspace"
+	flagPorts         = "ports"
+	flagVolumes       = "volumes"
+	flagSharedConfig  = "shared-config"
+	flagProfile       = "profile"
+	flagScript        = "script"
+	flagSkills        = "skills"
+	flagSkillsMode    = "skills-mode"
+	flagForwardPorts  = "forward-ports"
+	flagNoInteractive = "no-interactive"
+	flagForcePrompt   = "force-prompt"
+	flagForce         = "force"
+	flagBuild         = "build"
+	flagVersion       = "version"
 )
 
 func addGenerateFlags(cmd *cobra.Command) {
 	f := cmd.Flags()
 	f.String(flagMode, "", "Build mode: custom (default, full local build), profiles (pull a prebuilt image), or image (use a reusable image)")
 	f.String(flagRegistry, "", "Container registry prefix for remote images (overrides global)")
-	f.String(flagWith, "", "Comma-separated dockerfile modules (e.g. nodejs,golang,rust)")
-	f.String(flagService, "", "Comma-separated compose services (e.g. mongo,postgres,redis)")
-	f.String(flagServices, "", "Alias for --service")
-	f.String(flagImage, "", "Image name (default: derived from fingerprint for mode=custom)")
+	f.String(flagModules, "", "Comma-separated dockerfile modules (e.g. nodejs,golang,rust)")
+	f.String(flagServices, "", "Comma-separated compose services (e.g. mongo,postgres,redis)")
+	f.String(flagImage, "", "Image name (ignored for mode=custom, whose image is named by origin and content: devcontainer-cli/<profiles>-<hash>)")
 	f.String(flagWorkspace, "", "Workspace name (default: current dir name)")
 	f.String(flagPorts, "", "Ports to publish on the devcontainer (e.g. 8080:80,5432:5432); bound to 127.0.0.1 unless an IP is given; 'none' clears them")
 	f.String(flagVolumes, "", "Extra volume mounts on the devcontainer (e.g. myvol:/data,./cache:/cache); 'none' clears them")
 	f.String(flagForwardPorts, "", "Ports 'port-forward' tunnels when called with no argument (e.g. 3000,8080:80, reverse:5432 for a host port reachable inside the container); 'none' clears them")
 	f.Bool(flagSharedConfig, true, "Mount the global shared AI/dev tool config volume (devcontainer-shared-config) so logins/sessions persist across containers; --shared-config=false to opt out")
 	f.String(flagProfile, "", "Apply profile(s): comma-separated module bundles for mode=custom (e.g. 'nodejs,my-tools'), or a single pull target for mode=profiles (must be [remote]-tagged). See 'config profile list'.")
-	f.String(flagPreset, "", "Deprecated alias for --profile")
-	_ = f.MarkDeprecated(flagPreset, "use --profile instead")
 	f.StringArray(flagScript, nil, "Custom script to add, as <path>[:build|start|service|manual] (default build); repeatable. build bakes it into the image, start runs once per container, service runs as background service on every start, manual only copies it to ~/post-script/")
-	f.String(flagSkill, "", "Comma-separated agent skills installed into the project workspace; implies the nodejs module. See 'config skill list' (built-in + your own)")
+	f.String(flagSkills, "", "Comma-separated agent skills installed into the project workspace; implies the nodejs module. See 'config skill list' (built-in + your own)")
 	f.String(flagSkillsMode, "", "How the project's agent skills get installed: manual (default — you run 'install-skills') or auto (on every container start, writing into the workspace unprompted)")
-	f.Bool(flagNoInteractive, false, "Fail if any value is missing instead of prompting")
-	f.Bool(flagNonInteractive, false, "Alias for --no-interactive")
+	addInteractiveFlag(cmd)
 	f.Bool(flagForcePrompt, false, "Prompt even if config file exists")
 	f.Bool(flagForce, false, "Overwrite existing files without prompting")
-	f.Bool(flagBuild, false, "Run 'docker compose build/pull' after generating")
-	f.Bool(flagNoBuild, false, "Skip the build/pull step after generating")
-	f.BoolP(flagVersion, "v", false, "Print the CLI version")
+	addBuildFlag(cmd, false, "Run 'docker compose build/pull' after generating")
+	f.Bool(flagVersion, false, "Print the CLI version")
 
 	completeProfileFunc := func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return completeCSV(toComplete, profileIDs(false)), cobra.ShellCompDirectiveNoFileComp
 	}
 	_ = cmd.RegisterFlagCompletionFunc(flagProfile, completeProfileFunc)
-	_ = cmd.RegisterFlagCompletionFunc(flagPreset, completeProfileFunc)
-	_ = cmd.RegisterFlagCompletionFunc(flagSkill, func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	_ = cmd.RegisterFlagCompletionFunc(flagSkills, func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return completeCSV(toComplete, catalog.AgentSkillIDs(domain.SkillDirs()...)), cobra.ShellCompDirectiveNoFileComp
 	})
 	_ = cmd.RegisterFlagCompletionFunc(flagSkillsMode, staticCompletion(string(types.SkillModeAuto), string(types.SkillModeManual)))
 	_ = cmd.RegisterFlagCompletionFunc(flagMode, staticCompletion(string(types.BuildModeCustom), string(types.BuildModeProfiles), string(types.BuildModeImage)))
-	_ = cmd.RegisterFlagCompletionFunc(flagWith, func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	_ = cmd.RegisterFlagCompletionFunc(flagModules, func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return completeCSV(toComplete, catalog.ModuleIDs()), cobra.ShellCompDirectiveNoFileComp
 	})
 	completeServiceFunc := func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return completeCSV(toComplete, catalog.ServiceIDs()), cobra.ShellCompDirectiveNoFileComp
 	}
-	_ = cmd.RegisterFlagCompletionFunc(flagService, completeServiceFunc)
 	_ = cmd.RegisterFlagCompletionFunc(flagServices, completeServiceFunc)
 }
 
@@ -101,7 +89,7 @@ const remoteVariantSSH = "ssh"
 // its only caller for that is 'run', which always pulls, plus "ssh" (the
 // hand-built full image, not a catalog profile). Everywhere else every known
 // profile is offered, since --profile also selects a mode=custom module
-// bundle, where a local-build-only profile like 'base' or a user profile is valid too.
+// bundle, where a local-build-only user profile is valid too.
 func profileIDs(remoteOnly bool) []string {
 	ids := make([]string, 0)
 	for _, p := range catalog.All(domain.ProfileDirs()...) {
@@ -119,7 +107,7 @@ func profileIDs(remoteOnly bool) []string {
 // validRemoteVariant reports whether v is usable as --profile's pull target
 // under mode=profiles (or 'run', which is always that target): "ssh", or a
 // profile id with a published image. A profile that exists but was never
-// published (e.g. 'base') is rejected here — it would only fail the pull —
+// published (e.g. a user profile) is rejected here — it would only fail the pull —
 // even though it remains valid for --profile under mode=custom.
 func validRemoteVariant(v string) bool {
 	if v == remoteVariantSSH {
@@ -130,14 +118,14 @@ func validRemoteVariant(v string) bool {
 }
 
 // remoteVariantError builds the mode=profiles / 'run' --profile validation
-// error. A profile that exists but has no published image (e.g. 'base' or a user profile)
+// error. A profile that exists but has no published image (e.g. a user profile)
 // gets a pointer to the local-build path instead of being reported as merely
 // "unknown".
 func remoteVariantError(v string) error {
 	if p, ok := catalog.Resolve(v, domain.ProfileDirs()...); ok && !p.Remote {
 		return fmt.Errorf("profile %q has no published remote image, so mode=profiles can't pull it; use --profile %s with mode=custom to build it locally instead", v, v)
 	}
-	return fmt.Errorf("unknown profile: %s. Run 'devcontainer-cli config profile list' to see available profiles", v)
+	return fmt.Errorf("unknown profile: %s. Run 'devcontainer-cli profile list' to see available profiles", v)
 }
 
 type genFlags struct {
@@ -168,6 +156,9 @@ type genFlags struct {
 	// to the explicit flags above.
 	profilePorts        []string
 	profileForwardPorts []string
+	// profileTemplate is the resolved profile, whose project-level settings
+	// (services, volumes, env, image) are applied before the explicit flags.
+	profileTemplate *catalog.Profile
 	// keepWorkspace is set when the workspace name must not be auto-uniquified: the
 	// user pinned it with --workspace, or it was already persisted for this project.
 	// Derived in initAndConfigure, not parsed from a flag.
@@ -250,15 +241,14 @@ func populateProfileFlags(g *genFlags) error {
 		return fmt.Errorf("profile %q: %w", p.ID, verr)
 	}
 	g.profilePorts, g.profileForwardPorts = p.Ports, p.ForwardPorts
+	g.profileTemplate = &p
 	return nil
 }
 
 func parseGenFlags(cmd *cobra.Command) (*genFlags, error) {
 	f := cmd.Flags()
-	noI, _ := f.GetBool(flagNoInteractive)
-	nonI, _ := f.GetBool(flagNonInteractive)
 	g := &genFlags{
-		interactive: !(noI || nonI),
+		interactive: interactiveFlag(cmd),
 	}
 	g.forcePrompt, _ = f.GetBool(flagForcePrompt)
 	g.force, _ = f.GetBool(flagForce)
@@ -267,19 +257,13 @@ func parseGenFlags(cmd *cobra.Command) (*genFlags, error) {
 	g.mode, _ = f.GetString(flagMode)
 	g.registry, _ = f.GetString(flagRegistry)
 	g.profile, _ = f.GetString(flagProfile)
-	if g.profile == "" {
-		// --preset is the deprecated spelling; it resolves to the same thing,
-		// whichever role the mode ends up giving it (a module bundle for
-		// mode=custom, a pull target for mode=profiles).
-		g.profile, _ = f.GetString(flagPreset)
-	}
 
 	if err := populateProfileFlags(g); err != nil {
 		return nil, err
 	}
 
-	if f.Changed(flagSkill) {
-		raw, _ := f.GetString(flagSkill)
+	if f.Changed(flagSkills) {
+		raw, _ := f.GetString(flagSkills)
 		for _, id := range splitCSV(raw) {
 			g.skills = append(g.skills, types.SkillID(id))
 		}
@@ -299,23 +283,16 @@ func parseGenFlags(cmd *cobra.Command) (*genFlags, error) {
 	}
 
 	if f.Changed(flagBuild) {
-		t := true
-		g.build = &t
-	}
-	if f.Changed(flagNoBuild) {
-		val := false
+		val, _ := f.GetBool(flagBuild)
 		g.build = &val
 	}
 
-	if f.Changed(flagWith) {
-		w, _ := f.GetString(flagWith)
+	if f.Changed(flagModules) {
+		w, _ := f.GetString(flagModules)
 		g.withModules = splitCSV(w)
 	}
-	if f.Changed(flagService) || f.Changed(flagServices) {
-		s, _ := f.GetString(flagService)
-		if s == "" {
-			s, _ = f.GetString(flagServices)
-		}
+	if f.Changed(flagServices) {
+		s, _ := f.GetString(flagServices)
 		g.services = splitCSV(s)
 	}
 	if f.Changed(flagPorts) {
@@ -345,7 +322,7 @@ func parseGenFlags(cmd *cobra.Command) (*genFlags, error) {
 	}
 	// --profile is validated against the [remote] tag only once the effective
 	// mode is known (validateConfig): it is shared with mode=custom, where any
-	// profile — including a [local]-only one like 'base' — is valid.
+	// profile — including a [local]-only user profile — is valid.
 	return g, nil
 }
 
@@ -506,7 +483,7 @@ func validateConfig(cwd string, config *types.DevcontainerConfig, flags *genFlag
 		for _, id := range missing {
 			ids = append(ids, string(id))
 		}
-		console.Warn("The selected skills expect module(s) this project does not have: %s. Add them with --with, or the skills will describe tools that are not installed.",
+		console.Warn("The selected skills expect module(s) this project does not have: %s. Add them with --modules, or the skills will describe tools that are not installed.",
 			strings.Join(ids, ", "))
 	}
 
@@ -522,7 +499,7 @@ func validateConfig(cwd string, config *types.DevcontainerConfig, flags *genFlag
 			return fmt.Errorf("mode=profiles accepts exactly one profile, got %q (multiple profiles can only be combined with mode=custom)", config.Remote.Variant)
 		}
 		if config.Remote == nil {
-			return fmt.Errorf("mode=profiles requires --profile (a [remote]-tagged profile id — run 'devcontainer-cli config profile list' to see them, or 'ssh' for the full image)")
+			return fmt.Errorf("mode=profiles requires --profile (a [remote]-tagged profile id — run 'devcontainer-cli profile list' to see them, or 'ssh' for the full image)")
 		}
 	}
 	// "ssh" names the hand-built full image rather than a catalog profile, so
@@ -531,7 +508,7 @@ func validateConfig(cwd string, config *types.DevcontainerConfig, flags *genFlag
 		return fmt.Errorf("profile %q is a pull target only (the hand-built full image); use --mode %s to pull it, or pick a profile that carries modules", remoteVariantSSH, types.BuildModeProfiles)
 	}
 	// --profile is shared with mode=custom, where any profile (including a
-	// [local]-only one like 'base') is valid — so this can only be checked
+	// [local]-only user profile) is valid — so this can only be checked
 	// once the effective mode is known, here rather than at flag-parse time.
 	if config.Mode == types.BuildModeProfiles && config.Remote != nil && config.Remote.Variant != "" && !validRemoteVariant(config.Remote.Variant) {
 		return remoteVariantError(config.Remote.Variant)
@@ -586,127 +563,9 @@ func validateConfig(cwd string, config *types.DevcontainerConfig, flags *genFlag
 	return nil
 }
 
-// materializeCustomScripts copies each configured custom script from its source
-// (the profile directory it was resolved from) into the build dir under its
-// namespaced name, and returns those names.
-//
-// A script with no Source is one persisted by an earlier run: the copy in the
-// build dir is the source of truth, so it is only reported, never re-fetched.
-// That is what makes a generated project reproducible after the profile it came
-// from has been edited or deleted.
-func materializeCustomScripts(config *types.DevcontainerConfig, buildDir string) ([]string, error) {
-	names, err := domain.CollectCustomScriptFiles(config)
-	if err != nil {
-		return nil, err
-	}
-	for _, s := range config.Dockerfile.Scripts {
-		if s.Source == "" {
-			continue
-		}
-		data, rerr := domain.ReadCustomScript(s)
-		if rerr != nil {
-			return nil, rerr
-		}
-		if werr := os.WriteFile(filepath.Join(buildDir, s.BuildFile()), data, 0o755); werr != nil {
-			return nil, werr
-		}
-	}
-	return names, nil
-}
-
 // prepareBuildDir constructs the build target filesystem structure and validates dependencies.
-func prepareBuildDir(cwd string, config *types.DevcontainerConfig, paths project.Paths) (map[string]string, []string, error) {
-	buildDir := paths.BuildDir
-	skipBuildArtifacts := config.Mode == types.BuildModeProfiles || config.Mode == types.BuildModeImage
-
-	if err := os.MkdirAll(buildDir, 0o755); err != nil {
-		return nil, nil, err
-	}
-
-	var copyFiles, postScriptFiles, customScripts []string
-	if !skipBuildArtifacts {
-		copyFiles, _ = domain.CollectRequiredCopyFiles(config)
-		postScriptFiles, _ = domain.CollectRequiredPostScriptFiles(config)
-
-		// The user's own scripts are copied in before anything is validated: they
-		// come from a profile directory rather than the embedded FS, and once they
-		// are in the build dir the existing plumbing treats them like any other
-		// referenced file — ValidateRequiredFiles looks there first, Preflight
-		// skips what is already present, and their contents feed the fingerprint.
-		var err error
-		customScripts, err = materializeCustomScripts(config, buildDir)
-		if err != nil {
-			return nil, nil, err
-		}
-
-		referenced := slices.Concat(copyFiles, postScriptFiles, customScripts)
-		if missing := assets.ValidateRequiredFiles(referenced, buildDir); len(missing) > 0 {
-			return nil, nil, fmt.Errorf("missing required script(s) (not embedded in binary or %s): %s", buildDir, strings.Join(missing, ", "))
-		}
-	}
-
-	if !skipBuildArtifacts {
-		if len(copyFiles) > 0 {
-			pre := assets.Preflight(copyFiles, buildDir)
-			if len(pre.Copied) > 0 {
-				logger.Std().Debug("copied build helpers", "workspace", config.Workspace, "files", strings.Join(pre.Copied, ", "))
-			}
-			if len(pre.Missing) > 0 {
-				return nil, nil, fmt.Errorf("missing required scripts: %s", strings.Join(pre.Missing, ", "))
-			}
-		}
-		if len(postScriptFiles) > 0 {
-			pre := assets.Preflight(postScriptFiles, buildDir)
-			if len(pre.Copied) > 0 {
-				logger.Std().Debug("copied post-install scripts", "workspace", config.Workspace, "files", strings.Join(pre.Copied, ", "))
-			}
-			if len(pre.Missing) > 0 {
-				return nil, nil, fmt.Errorf("missing required post-install scripts: %s", strings.Join(pre.Missing, ", "))
-			}
-		}
-	}
-
-	copyContents := map[string]string{}
-	for _, f := range slices.Concat(copyFiles, postScriptFiles, customScripts) {
-		if data, rerr := os.ReadFile(filepath.Join(buildDir, f)); rerr == nil {
-			copyContents[f] = string(data)
-		}
-	}
-
-	// The shared-config catalogue is rendered from types.SharedConfigEntries
-	// rather than kept as a second copy in shell. It is written here for the
-	// same reason CONTEXT.md is (generated, so Preflight would not find it) and
-	// folded into copyContents for the same reason too: adding an entry changes
-	// what the image's entrypoint links, and two projects must not share an
-	// image whose baked catalogue disagrees with the CLI that built it.
-	if !skipBuildArtifacts {
-		table := types.RenderSharedConfigTable()
-		if werr := os.WriteFile(filepath.Join(buildDir, types.SharedConfigTableFileName), []byte(table), 0o644); werr != nil {
-			return nil, nil, werr
-		}
-		copyContents[types.SharedConfigTableFileName] = table
-	}
-
-	// CONTEXT.md is generated rather than materialized from the embedded assets,
-	// so it is written here (after the build dir exists, before the fingerprint
-	// is computed) instead of going through Preflight. Folding it into
-	// copyContents is what makes the fingerprint react to a change that touches
-	// only the compose side — adding a database service alters CONTEXT.md but not
-	// the Dockerfile, and two projects must not then share one image.
-	if !skipBuildArtifacts {
-		contextDoc, cerr := domain.GenerateContext(config)
-		if cerr != nil {
-			return nil, nil, cerr
-		}
-		if contextDoc != "" {
-			if werr := os.WriteFile(filepath.Join(buildDir, types.ContextFileName), []byte(contextDoc), 0o644); werr != nil {
-				return nil, nil, werr
-			}
-			copyContents[types.ContextFileName] = contextDoc
-		}
-	}
-
-	return copyContents, postScriptFiles, nil
+func prepareBuildDir(_ string, config *types.DevcontainerConfig, paths project.Paths) (map[string]string, []string, error) {
+	return generateService().PrepareBuildDir(config, paths)
 }
 
 // writeGeneratedFiles outputs generated environment configuration blueprints.
@@ -787,9 +646,13 @@ func saveAndPostProcess(cwd string, config *types.DevcontainerConfig, plan *serv
 
 	isRemote := config.Mode == types.BuildModeProfiles
 	build := flags.build
-	if plan.CachedImageHit && build == nil {
+	imageReady := false
+	// Re-checked here: prompts sit between Plan and this point, and a shared
+	// image can be collected meanwhile when another project is destroyed.
+	if plan.CachedImageHit && build == nil && svc.ImageExists(config.Image) {
 		skip := false
 		build = &skip
+		imageReady = true
 		console.Success("✓ Local-cached image is up to date — skipping build.")
 	}
 	if build == nil && flags.interactive {
@@ -804,6 +667,10 @@ func saveAndPostProcess(cwd string, config *types.DevcontainerConfig, plan *serv
 		build = &ans
 	}
 
+	// Recorded before building: the build garbage-collects project images no
+	// registered project references, and this project's new image must already
+	// be one of them.
+	domain.RecordProject(cwd, config, "")
 	if build != nil && *build {
 		// A failed build is a failed command. It used to be reported as a
 		// warning with a zero exit, which reads as success to anything that is
@@ -814,13 +681,16 @@ func saveAndPostProcess(cwd string, config *types.DevcontainerConfig, plan *serv
 		if berr := svc.Build(paths.ComposeFile, isRemote); berr != nil {
 			return berr
 		}
+		imageReady = true
 	}
-	domain.RecordProject(cwd, config, "")
 	if build == nil || !*build {
 		console.Done()
 	}
 	console.NewLine()
-	console.Info("SSH access: run 'devcontainer-cli ssh --setup' to generate a key and register the host automatically.")
+	if flags.interactive && imageReady {
+		return offerUpAndAccess(interactiveNextSteps(paths.ComposeFile, config.Workspace))
+	}
+	console.Info(upHint)
 	return nil
 }
 
@@ -886,15 +756,28 @@ func applyProfileBundle(config *types.DevcontainerConfig, flags *genFlags) error
 	if flags.withModules == nil {
 		flags.withModules = profileModules
 	}
-	if flags.services == nil {
+	// A profile with no services of its own still replaces the project's: the
+	// template defines the stack.
+	if flags.services == nil && (flags.profileTemplate == nil || len(flags.profileTemplate.Services) == 0) {
 		flags.services = []string{}
 	}
+	config.Origin = strings.Join(splitCSV(flags.profile), "-")
 	return nil
 }
 
 func applyGenFlags(config *types.DevcontainerConfig, flags *genFlags) error {
 	if err := applyProfileBundle(config, flags); err != nil {
 		return err
+	}
+	if flags.profileTemplate != nil {
+		// The template sees the explicit mode, so it never switches a mode the
+		// caller pinned (the --mode assignment below would also win).
+		if flags.mode != "" {
+			config.Mode = types.BuildMode(flags.mode)
+		}
+		if err := domain.ApplyProfileTemplate(config, *flags.profileTemplate); err != nil {
+			return err
+		}
 	}
 
 	// Scripts come from the profile and from --script; they are persisted in the

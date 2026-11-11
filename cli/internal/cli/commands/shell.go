@@ -9,8 +9,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func init() { register(newShellCommand()) }
-
 func newShellCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "shell [flags] [-- command args...]",

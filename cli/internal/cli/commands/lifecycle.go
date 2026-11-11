@@ -6,12 +6,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func init() {
-	register(newRestartCommand())
-	register(newStartCommand())
-	register(newStopCommand())
-}
-
 func newRestartCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "restart",

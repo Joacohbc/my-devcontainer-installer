@@ -197,23 +197,15 @@ func TestParseGenFlags_Profile(t *testing.T) {
 	}
 }
 
-// --preset is the old spelling. It is deprecated, not removed: an existing
-// script must keep working.
-func TestParseGenFlags_PresetIsADeprecatedAliasOfProfile(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-
-	flags, err := parseGenFlagsFor(t, "--preset", "nodejs")
-	if err != nil {
-		t.Fatalf("parseGenFlags: %v", err)
-	}
-	if flags.profile != "nodejs" {
-		t.Errorf("expected --preset to resolve to the profile, got %q", flags.profile)
-	}
-
+// --preset was permanently removed per D4 (no backward-compatible alias).
+func TestParseGenFlags_PresetFlagDoesNotExist(t *testing.T) {
 	cmd := &cobra.Command{Use: "generate"}
 	addGenerateFlags(cmd)
-	if f := cmd.Flags().Lookup(flagPreset); f == nil || f.Deprecated == "" {
-		t.Error("expected --preset to be marked deprecated")
+	if cmd.Flags().Lookup("preset") != nil {
+		t.Error("expected --preset to be removed completely per D4")
+	}
+	if err := cmd.ParseFlags([]string{"--preset", "nodejs"}); err == nil {
+		t.Error("expected parsing --preset to fail as unknown flag")
 	}
 }
 
@@ -365,7 +357,7 @@ func TestIndexOfScriptFindsANameCollision(t *testing.T) {
 func TestParseGenFlags_Skills(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 
-	flags, err := parseGenFlagsFor(t, "--skill", "agent-browser", "--skills-mode", "manual")
+	flags, err := parseGenFlagsFor(t, "--skills", "agent-browser", "--skills-mode", "manual")
 	if err != nil {
 		t.Fatalf("parseGenFlags: %v", err)
 	}
@@ -380,7 +372,7 @@ func TestParseGenFlags_Skills(t *testing.T) {
 func TestParseGenFlags_RejectsUnknownSkillAndMode(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 
-	if _, err := parseGenFlagsFor(t, "--skill", "no-such-skill"); err == nil {
+	if _, err := parseGenFlagsFor(t, "--skills", "no-such-skill"); err == nil {
 		t.Error("expected an error for an unknown skill")
 	}
 	if _, err := parseGenFlagsFor(t, "--skills-mode", "someday"); err == nil {
@@ -488,10 +480,10 @@ func TestParseGenFlags_ProfileWithInvalidPortsFails(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", tmpHome)
 
 	dir := filepath.Join(tmpHome, "devcontainer-cli", "profiles")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(dir, "broken"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "broken.yml"),
+	if err := os.WriteFile(filepath.Join(dir, "broken", "profile.yml"),
 		[]byte("id: broken\nmodules: [github-cli]\nports: [\"nope\"]\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -504,20 +496,21 @@ func TestParseGenFlags_ProfileWithInvalidPortsFails(t *testing.T) {
 // A copy that silently dropped the source's ports would produce a profile that
 // looks the same and behaves differently.
 func TestProfileCopy_CarriesPortsAndSkills(t *testing.T) {
+	isolateGit(t)
 	tmpHome := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", tmpHome)
 
 	dir := filepath.Join(tmpHome, "devcontainer-cli", "profiles")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(dir, "src"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	manifest := "id: src\nmodules: [github-cli]\nports: [\"3000\"]\nforward_ports: [\"5432:postgres:5432\"]\nskills: [agent-browser]\nskills_mode: auto\n"
-	if err := os.WriteFile(filepath.Join(dir, "src.yml"), []byte(manifest), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "src", "profile.yml"), []byte(manifest), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
 	root := NewRootCommand("test")
-	root.SetArgs([]string{"config", "profile", "copy", "src", "dst", "--no-interactive"})
+	root.SetArgs([]string{"profile", "copy", "src", "dst", "--no-interactive"})
 	if err := root.Execute(); err != nil {
 		t.Fatalf("unexpected error copying the profile: %v", err)
 	}

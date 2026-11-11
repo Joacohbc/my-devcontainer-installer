@@ -10,14 +10,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func init() { register(newComposeCommand()) }
-
 func newComposeCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "compose [docker compose args...]",
-		Aliases: []string{"dc"},
-		Short:   "Run any docker compose command against the project's stack",
-		Long: `devcontainer-cli compose (alias: dc) — a passthrough to 'docker compose' scoped
+		Use:   "compose [docker compose args...]",
+		Short: "Run any docker compose command against the project's stack",
+		Long: `devcontainer-cli workspace compose — a passthrough to 'docker compose' scoped
 to the current project. Every argument is forwarded verbatim after
 '-f .dc_<workspace>/build/docker-compose.yml --env-file .dc_<workspace>/build/.env'.
 

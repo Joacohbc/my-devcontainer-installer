@@ -17,13 +17,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func init() { register(newPortForwardCommand()) }
-
 func newPortForwardCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "port-forward [port_mapping]",
+		Use:   "forward [port_mapping]",
 		Short: "Forward host ports into a running container over SSH",
-		Long: `devcontainer-cli port-forward — open SSH tunnels between your machine and
+		Long: `devcontainer-cli access forward — open SSH tunnels between your machine and
 a running container, in either direction. A listener binds 127.0.0.1 unless the
 mapping names another address, so a tunnel is only exposed on another
 interface when you ask for it. The session stays in the foreground; press
@@ -96,34 +94,8 @@ are opened in parallel after you confirm.`,
 		SilenceUsage: true,
 		RunE:         runPortForward,
 	}
-	addPortForwardFlags(cmd)
+	addForwardFlags(cmd)
 	return cmd
-}
-
-// addPortForwardFlags registers the flags runPortForward reads. It is shared
-// with the 'agent forward' facade, which reuses runPortForward with agent-safe
-// defaults.
-func addPortForwardFlags(cmd *cobra.Command) {
-	cmd.Flags().String("alias", "", "SSH host alias to use (bypasses auto-discovery)")
-	cmd.Flags().String("service", "", "Compose service to map port to (default: localhost)")
-	addInteractiveFlag(cmd)
-	cmd.Flags().Bool("reverse", false, "Reverse every mapping without an explicit prefix: the container listens and reaches a service on this machine (a single mapping can still opt in with 'reverse:')")
-	cmd.Flags().Bool("ephemeral", false, "Forward directly via SSH without modifying ~/.ssh/config or relying on existing Host blocks")
-	addContainerFlag(cmd)
-	cmd.Flags().String("key", "", "Private key path (default: the shared managed key under the CLI config dir)")
-	cmd.Flags().String("user", sshdefaults.User, "SSH user inside the container")
-
-	_ = cmd.RegisterFlagCompletionFunc("alias", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		return listSshHosts(), cobra.ShellCompDirectiveNoFileComp
-	})
-	_ = cmd.RegisterFlagCompletionFunc("service", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		cwd, err := currentDir()
-		if err != nil {
-			return nil, cobra.ShellCompDirectiveNoFileComp
-		}
-		return listComposeServices(defaultComposeFile(cwd)), cobra.ShellCompDirectiveNoFileComp
-	})
-	_ = cmd.MarkFlagFilename("key")
 }
 
 type parsedMapping struct {
@@ -177,7 +149,7 @@ func parsePort(value, label string) (int, error) {
 func parsePortMapping(mapping, defaultService string, defaultReverse bool) (parsedMapping, error) {
 	mapping, reverse := splitDirection(mapping, defaultReverse)
 	if reverse && defaultService != "" {
-		return parsedMapping{}, fmt.Errorf("--service names a compose service inside the container network, which a reverse tunnel never dials; use the 'reverse:LOCAL:HOST:CONTAINER' form to name a host reachable from this machine")
+		return parsedMapping{}, fmt.Errorf("the target service names a compose service inside the container network, which a reverse tunnel never dials; use the 'reverse:LOCAL:HOST:CONTAINER' form to name a host reachable from this machine")
 	}
 	bind, mapping := splitBindAddress(mapping)
 	if bind != "" && reverse {
@@ -265,7 +237,7 @@ func parsePortFields(mapping, defaultService string, reverse bool) (parsedMappin
 			return parsedMapping{}, err
 		}
 		if defaultService != "" && defaultService != targetHost {
-			return parsedMapping{}, fmt.Errorf("conflicting target hosts: mapping specifies '%s' but --service is '%s'", targetHost, defaultService)
+			return parsedMapping{}, fmt.Errorf("conflicting target hosts: mapping specifies '%s' but service target is '%s'", targetHost, defaultService)
 		}
 		return parsedMapping{localPort: local, targetHost: targetHost, containerPort: container, reverse: reverse}, nil
 	default:
@@ -440,7 +412,7 @@ func buildTunnelsInteractive(flagAlias string, reverse, interactive bool) ([]ser
 	// down to running ones here.
 	containers := runningContainers(pick.ListAll())
 	if len(containers) == 0 {
-		return nil, fmt.Errorf("no running containers found. Start one with 'devcontainer-cli up', or create a project first with 'devcontainer-cli agent create'")
+		return nil, fmt.Errorf("no running containers found. Start one with 'devcontainer-cli workspace up', or create a project first with 'devcontainer-cli agent create'")
 	}
 	aliases := getSSHAliases()
 	var tunnels []service.Tunnel

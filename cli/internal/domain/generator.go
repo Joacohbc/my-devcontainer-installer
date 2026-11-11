@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strconv"
@@ -19,15 +20,28 @@ func GenerateDockerfile(config *types.DevcontainerConfig) (string, error) {
 	if config.Mode == types.BuildModeProfiles || config.Mode == types.BuildModeImage {
 		return "", nil
 	}
-	resolved, err := ResolveDockerfileModules(MatchDBClientVersions(config))
+	matched := MatchDBClientVersions(config)
+	resolved, err := ResolveDockerfileModules(append(append([]types.SelectedModule{}, config.Dockerfile.BaseModules...), matched...))
 	if err != nil {
 		return "", err
 	}
-	fragments := make([]string, 0, len(resolved)+4)
+	installed, err := baseImageModules(config)
+	if err != nil {
+		return "", err
+	}
+	fragments := make([]string, 0, len(resolved)+5)
+	if config.Dockerfile.From != "" {
+		fragments = append(fragments, derivedFromBlock(config.Dockerfile.BaseRef))
+	}
 	for _, r := range resolved {
+		if installed[r.Module.ID] {
+			continue
+		}
 		fragments = append(fragments, strings.TrimSpace(r.Module.Render(r.Options)))
 	}
-	fragments = append(fragments, renderEnvironmentBlocks(resolved)...)
+	// The environment is rendered from every module, inherited ones included:
+	// the derived ENV block and ~/.dc-env.sh replace the parent's.
+	fragments = append(fragments, renderEnvironmentBlocks(resolved, config.Dockerfile.From != "")...)
 	postScripts, err := postScriptsDockerfileBlock(config)
 	if err != nil {
 		return "", err
@@ -42,21 +56,74 @@ func GenerateDockerfile(config *types.DevcontainerConfig) (string, error) {
 	if customScripts != "" {
 		fragments = append(fragments, customScripts)
 	}
-	fragments = append(fragments, projectLayerBlock(config))
 	fragments = append(fragments, types.DockerfileLabelBlock(config))
 	return types.GeneratedHeader + "\n\n" + strings.Join(fragments, "\n\n") + "\n", nil
 }
 
-// projectLayerBlock bakes workspace-specific files (specifically CONTEXT.md) as
-// the very last layer before labels. Emitting it after all modules, environments,
-// and custom scripts ensures leading Dockerfile layers remain byte-identical across
-// workspaces, maximizing layer cache reuse.
-func projectLayerBlock(config *types.DevcontainerConfig) string {
+// baseImageModules is what a derived build's parent image already installed:
+// its resolved modules (always-on ones included), minus cleanup, which every
+// build re-renders so the entrypoint and apt state match this CLI version.
+// It is empty for a full build.
+func baseImageModules(config *types.DevcontainerConfig) (map[types.ModuleID]bool, error) {
+	installed := map[types.ModuleID]bool{}
+	if config.Dockerfile.From == "" {
+		return installed, nil
+	}
+	if config.Dockerfile.BaseRef == "" {
+		return nil, fmt.Errorf("base image %q was not resolved before generating the Dockerfile", config.Dockerfile.From)
+	}
+	base, err := ResolveDockerfileModules(config.Dockerfile.BaseModules)
+	if err != nil {
+		return nil, fmt.Errorf("base image %s: %w", config.Dockerfile.From, err)
+	}
+	for _, r := range base {
+		if r.Module.ID != types.ModuleCleanup {
+			installed[r.Module.ID] = true
+		}
+	}
+	// A module the base already has is not reinstalled, so asking for it with
+	// other options would build one thing and describe another.
+	baseOptions := map[types.ModuleID]map[string]any{}
+	for _, m := range config.Dockerfile.BaseModules {
+		baseOptions[m.ID] = m.Options
+	}
+	for _, m := range config.Dockerfile.Modules {
+		if !installed[m.ID] || len(m.Options) == 0 {
+			continue
+		}
+		if !sameOptions(m.Options, baseOptions[m.ID]) {
+			return nil, fmt.Errorf("module %s is already installed in base image %s with other options; drop it from the modules or change the base image", m.ID, config.Dockerfile.From)
+		}
+	}
+	return installed, nil
+}
+
+// derivedFromBlock starts a derived build. The parent was built with its own
+// USER_UID/USER_GID (1000 for a named image); when the host ids differ,
+// devuser is remapped so it still owns the bind-mounted workspace. usermod
+// re-owns the home directory itself; every other path the parent gave devuser
+// (the Python sysconfig dirs, /opt/android-sdk, ...) is found by its old ids.
+func sameOptions(a, b map[string]any) bool {
+	ja, _ := json.Marshal(a)
+	jb, _ := json.Marshal(b)
+	return string(ja) == string(jb)
+}
+
+func derivedFromBlock(ref string) string {
 	return fmt.Sprintf(`##
-## PROJECT (workspace-specific orientation context)
+## BASE IMAGE (derived build)
 ##
-COPY %[1]s /home/devuser/%[1]s
-RUN chmod 0644 /home/devuser/%[1]s && chown devuser:devuser /home/devuser/%[1]s`, types.ContextFileName)
+FROM %s
+USER root
+ARG USER_UID=1000
+ARG USER_GID=1000
+RUN old_uid="$(id -u devuser)" && old_gid="$(id -g devuser)" && \
+    if [ "${old_uid}" != "${USER_UID}" ] || [ "${old_gid}" != "${USER_GID}" ]; then \
+        groupmod -o -g "${USER_GID}" devuser && \
+        usermod -o -u "${USER_UID}" -g "${USER_GID}" devuser && \
+        find / -xdev -path /proc -prune -o -user "${old_uid}" -exec chown -h "${USER_UID}" {} + && \
+        find / -xdev -path /proc -prune -o -group "${old_gid}" -exec chgrp -h "${USER_GID}" {} +; \
+    fi`, ref)
 }
 
 // renderEnvironmentBlocks turns every resolved module's declared environment
@@ -68,7 +135,7 @@ RUN chmod 0644 /home/devuser/%[1]s && chown devuser:devuser /home/devuser/%[1]s`
 // the Dockerfile must stay byte-identical across image variants for the shared
 // base cache to be reused, and an ENV instruction whose content depends on the
 // selected modules would break that if it came earlier.
-func renderEnvironmentBlocks(resolved []ResolvedModule) []string {
+func renderEnvironmentBlocks(resolved []ResolvedModule, derived bool) []string {
 	envs := make([]dockerfile.ContainerEnv, 0, len(resolved))
 	for _, r := range resolved {
 		if r.Module.ProvidesEnv == nil {
@@ -78,7 +145,11 @@ func renderEnvironmentBlocks(resolved []ResolvedModule) []string {
 	}
 	merged := dockerfile.MergeContainerEnv(envs...)
 	var blocks []string
-	for _, block := range []string{dockerfile.RenderDockerfileEnv(merged), dockerfile.RenderEnvScript(merged)} {
+	envBlock := dockerfile.RenderDockerfileEnv(merged)
+	if derived {
+		envBlock = dockerfile.RenderDerivedDockerfileEnv(merged)
+	}
+	for _, block := range []string{envBlock, dockerfile.RenderEnvScript(merged)} {
 		if block != "" {
 			blocks = append(blocks, block)
 		}
@@ -267,12 +338,8 @@ func ResolveDevcontainerImageName(config *types.DevcontainerConfig) string {
 	if config.Mode == types.BuildModeImage {
 		return config.Image
 	}
-	if config.Mode == types.BuildModeCustom && config.Fingerprint != "" {
-		fp := config.Fingerprint
-		if len(fp) > 12 {
-			fp = fp[:12]
-		}
-		return types.ImageNamespace + "/" + fp + ":latest"
+	if config.Mode == types.BuildModeCustom && config.Fingerprint != "" && config.ImageKind != types.ImageKindNamed {
+		return ContentImageTag(config.ResolvedOrigin(), config.Fingerprint)
 	}
 	return config.Image
 }
@@ -448,7 +515,7 @@ func GenerateCompose(config *types.DevcontainerConfig) (string, error) {
 // here untouched.
 func unknownServiceError(id string) error {
 	if id == legacyTunnelService {
-		return fmt.Errorf("compose service %q was replaced by the %q dockerfile module, which installs cloudflared inside the container: use --with %s", id, types.ModuleCloudflared, types.ModuleCloudflared)
+		return fmt.Errorf("compose service %q was replaced by the %q dockerfile module, which installs cloudflared inside the container: use --modules %s", id, types.ModuleCloudflared, types.ModuleCloudflared)
 	}
 	return fmt.Errorf("unknown compose service: %s", id)
 }
@@ -545,6 +612,7 @@ func (c composeContext) configureDevcontainer(rendered *compose.ServiceDef) {
 	// User-defined extra mounts are appended verbatim; named-volume sources are
 	// declared in the top-level volumes section (see volumes()).
 	rendered.Volumes = append(rendered.Volumes, c.config.Compose.Volumes...)
+	rendered.Volumes = append(rendered.Volumes, ContextMount())
 
 	if c.config.Mode == types.BuildModeProfiles || c.config.Mode == types.BuildModeImage {
 		rendered.Build = nil
@@ -770,14 +838,33 @@ func dedupeEnvVars(vars []types.RequiredEnvVar) []types.RequiredEnvVar {
 // the selected modules' env vars into the container. The "${NAME:-}" default is
 // what makes an unanswered var a supported state instead of a compose warning:
 // the value is simply absent from the .env and arrives empty.
+//
+// The project's own env (devcontainer.config.json `env`, which a profile's
+// `env` fills) is forwarded the same way, so a variable defined there reaches
+// the container and not only compose interpolation.
 func devcontainerModuleEnv(config *types.DevcontainerConfig) []string {
 	vars := dedupeEnvVars(moduleEnvVars(config))
-	env := make([]string, len(vars))
-	for i, v := range vars {
-		env[i] = fmt.Sprintf("%s=${%s:-}", v.Name, v.Name)
+	seen := make(map[string]bool, len(vars)+len(config.Env))
+	env := make([]string, 0, len(vars)+len(config.Env))
+	for _, v := range vars {
+		seen[v.Name] = true
+		env = append(env, fmt.Sprintf("%s=${%s:-}", v.Name, v.Name))
+	}
+	names := make([]string, 0, len(config.Env))
+	for name := range config.Env {
+		if !seen[name] && !composeOnlyEnv[name] {
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		env = append(env, fmt.Sprintf("%s=${%s:-}", name, name))
 	}
 	return env
 }
+
+// composeOnlyEnv are .env entries that only steer compose itself.
+var composeOnlyEnv = map[string]bool{"COMPOSE_PROJECT_NAME": true, "DEVCONTAINER_IP": true, "DOCKER_SUBNET": true}
 
 func PlannedComposeNames(config *types.DevcontainerConfig) (containers []string, network string, volumes []string, err error) {
 	result := resolveEnabledServices(config)
@@ -835,4 +922,13 @@ func copyLabels(src map[string]string) map[string]string {
 		dst[k] = v
 	}
 	return dst
+}
+
+// ContextMount bind-mounts the project's generated CONTEXT.md read-only into
+// the devcontainer. It is mounted rather than baked because it names the
+// workspace path: baking it made every workspace's image unique, so identical
+// content could never be shared. Mounting also gives prebuilt (profiles/image)
+// containers an accurate context, which a baked file never could.
+func ContextMount() string {
+	return "./" + types.ContextFileName + ":/home/devuser/" + types.ContextFileName + ":ro"
 }

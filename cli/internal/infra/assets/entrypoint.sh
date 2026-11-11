@@ -122,6 +122,24 @@ stage_workspace() {
 #
 # It ends by publishing DEV_UID/DEV_GID and SC_OWNER, which every later stage
 # reads — SC_OWNER is the shared-config library's one configuration knob.
+# reown_image_paths ROOT OLD_UID OLD_GID NEW_UID NEW_GID hands every path the
+# image gave devuser outside its home (the Python sysconfig dirs, /opt/android-sdk,
+# ...) to devuser's new ids after a remap. The home is re-owned by stage_identity
+# itself; mounts (the workspace, volumes, the docker socket) are skipped by
+# -xdev and the explicit prunes, so nothing outside the image is ever touched.
+reown_image_paths() {
+    local root="${1%/}" old_uid="$2" old_gid="$3" new_uid="$4" new_gid="$5"
+    local prune=(-path "$root/proc" -o -path "$root/sys" -o -path "$root/dev"
+        -o -path "$root$DEV_HOME" -o -path "$root/workspaces" -o -path "$root/workspace"
+        -o -path "$root$SHARED_CONFIG_DIR")
+    if [ "$old_uid" != "$new_uid" ]; then
+        find "${root:-/}" -xdev \( "${prune[@]}" \) -prune -o -user "$old_uid" -exec chown -h "$new_uid" {} + 2>/dev/null || true
+    fi
+    if [ "$old_gid" != "$new_gid" ]; then
+        find "${root:-/}" -xdev \( "${prune[@]}" \) -prune -o -group "$old_gid" -exec chgrp -h "$new_gid" {} + 2>/dev/null || true
+    fi
+}
+
 stage_identity() {
     if [ -d "$WORKSPACE_DIR" ]; then
         WS_UID=$(stat -c %u "$WORKSPACE_DIR")
@@ -135,6 +153,7 @@ stage_identity() {
                 groupmod -g "$WS_GID" devuser 2>/dev/null || true
             fi
             usermod -u "$WS_UID" -g "$WS_GID" devuser 2>/dev/null || usermod -u "$WS_UID" devuser 2>/dev/null || true
+            reown_image_paths / "$CUR_UID" "$CUR_GID" "$(id -u devuser)" "$(id -g devuser)"
         fi
     fi
 
@@ -210,7 +229,7 @@ stage_user_aliases() {
 #
 # NOTE: the shared-config volume is not mounted in this container, so this file
 # is local to it and is lost when the container is recreated. Configure aliases
-# on the host with `devcontainer-cli config alias set` (and `config alias sync`)
+# on the host with `devcontainer-cli config alias set` (and `config shared sync`)
 # to have them persist across every container.
 USER_ALIASES
     chown "$DEV_UID:$DEV_GID" "$DEV_HOME/.alias.sh" 2>/dev/null || true

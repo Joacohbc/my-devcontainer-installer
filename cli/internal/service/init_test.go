@@ -107,3 +107,65 @@ func TestInitServiceSkillsDetection(t *testing.T) {
 		t.Errorf("expected docker compose up to be called")
 	}
 }
+
+func writeInitProfile(t *testing.T, manifest string) {
+	t.Helper()
+	cfgHome := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", cfgHome)
+	dir := filepath.Join(cfgHome, "devcontainer-cli", "profiles", "tpl")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "profile.yml"), []byte(manifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// auto-init is additive: a profile's modules and services join the detected
+// and explicitly requested ones instead of replacing them.
+func TestInitProfileTemplateIsAdditive(t *testing.T) {
+	writeInitProfile(t, "id: tpl\nmodules: [sqlite]\nservices: [redis]\nenv:\n  APP_ENV: dev\n")
+	dir := t.TempDir()
+	_ = os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module x"), 0o644)
+	defer useFakeDocker(&fakeRunner{status: 0})()
+
+	cfg, err := (InitService{Report: nopReporter{}, Prompt: scriptedPrompter{}}).Init(InitOptions{
+		TargetDir: dir, NoBuild: true, NoUp: true, Profile: "tpl", Services: []string{"postgres"},
+	})
+	if err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+	var mods []types.ModuleID
+	for _, m := range cfg.Dockerfile.Modules {
+		mods = append(mods, m.ID)
+	}
+	if !slices.Contains(mods, types.ModuleGolang) || !slices.Contains(mods, types.ModuleSqlite) {
+		t.Errorf("modules = %v, want detected golang plus the profile's sqlite", mods)
+	}
+	var svcs []types.ServiceID
+	for _, s := range cfg.Compose.Services {
+		svcs = append(svcs, s.ID)
+	}
+	if !slices.Contains(svcs, types.ServicePostgres) || !slices.Contains(svcs, "redis") {
+		t.Errorf("services = %v, want the explicit postgres plus the profile's redis", svcs)
+	}
+	if cfg.Env["APP_ENV"] != "dev" {
+		t.Errorf("env = %v", cfg.Env)
+	}
+}
+
+// An explicit --mode wins over the mode a profile's image implies.
+func TestInitExplicitModeBeatsProfileImage(t *testing.T) {
+	writeInitProfile(t, "id: tpl\nimage: ghcr.io/acme/devcontainer-x:1\n")
+	defer useFakeDocker(&fakeRunner{status: 0})()
+
+	cfg, err := (InitService{Report: nopReporter{}, Prompt: scriptedPrompter{}}).Init(InitOptions{
+		TargetDir: t.TempDir(), NoBuild: true, NoUp: true, Profile: "tpl", Mode: string(types.BuildModeCustom),
+	})
+	if err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+	if cfg.Mode != types.BuildModeCustom {
+		t.Errorf("mode = %s", cfg.Mode)
+	}
+}

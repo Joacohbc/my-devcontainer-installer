@@ -6,8 +6,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func init() { register(newLogsCommand()) }
-
 func newLogsCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "logs [service]",

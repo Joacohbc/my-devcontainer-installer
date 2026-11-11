@@ -32,9 +32,9 @@ Todos los comandos de desarrollo deben ejecutarse desde la carpeta `cli/`:
 ### 2. `docker-image.yml`
 - **Disparador**: Cambios en definiciones de módulos Dockerfile o imágenes base.
 - **Estructura en Cascada**:
-  1. `build-base-cache`: Genera una imagen base mínima con capas comunes (`base` + `cleanup`) y la publica como `devcontainer-base:latest` con caché inline (`cache-to: type=inline`).
+  1. `build-base-cache`: Genera la imagen del perfil `base` (capas comunes + GitHub CLI) y la publica como `devcontainer-base:latest` con caché inline (`cache-to: type=inline`).
   2. `build-base`: Construye la imagen completa `devcontainer-ssh:latest` pasando todos los módulos compatibles en `--with`.
-  3. `build-variants`: Matriz que compila las variantes remotas publicadas (`types.RemoteVariants`) consumiendo la caché de capas de `devcontainer-base` (`cache-from`).
+  3. `build-variants`: Matriz que compila las variantes remotas publicadas (`types.RemoteVariants`, salvo `base`, que ya publica `build-base-cache`) consumiendo la caché de capas de `devcontainer-base` (`cache-from`).
 
 ### 3. `skills-refs.yml`
 - **Disparador**: Modificaciones en el catálogo de habilidades `internal/domain/modules/skills/skills.yml`.

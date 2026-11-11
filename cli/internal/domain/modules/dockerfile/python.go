@@ -62,7 +62,7 @@ var PythonModule = &ModuleSpec{
 					"plain `pip install X` is refused. Create a virtualenv for the project",
 					"(`python3 -m venv .venv && .venv/bin/pip install X`) — with uv absent it",
 					"is the one place pip can write to. Rebuilding with the `uv` option on",
-					"(`--with python`, uv defaults to enabled) is the other way out.",
+					"(`--modules python`, uv defaults to enabled) is the other way out.",
 				),
 			}
 		}

@@ -203,34 +203,10 @@ func TestConfigSkillInstall_DocumentedAndRegistered(t *testing.T) {
 	}
 }
 
-func TestAgentSkillInstall_DocumentedAndRegistered(t *testing.T) {
-	cmd := newAgentSkillInstallCommand()
-	if cmd.Short == "" {
-		t.Error("agent skill install has no Short")
-	}
-	if strings.HasSuffix(cmd.Short, ".") {
-		t.Errorf("agent skill install Short should not end with a period: %q", cmd.Short)
-	}
-	if cmd.Long == "" {
-		t.Error("agent skill install has no Long")
-	}
-	if cmd.Example == "" {
-		t.Error("agent skill install has no Example")
-	}
-
-	for _, flagName := range []string{"all", "image", "dir", "no-interactive"} {
-		if cmd.Flags().Lookup(flagName) == nil {
-			t.Errorf("agent skill install missing --%s", flagName)
-		}
-	}
-
-	if cmd.PreRunE != nil {
-		if err := cmd.PreRunE(cmd, nil); err != nil {
-			t.Fatalf("PreRunE: %v", err)
-		}
-	}
-	if interactiveFlag(cmd) {
-		t.Error("agent skill install must default to non-interactive")
+func TestAgentSkill_CommandEliminated(t *testing.T) {
+	agent := agentCommand(t)
+	if findSubcommand(agent, "skill") != nil {
+		t.Error("expected 'agent skill' to be eliminated per D1")
 	}
 }
 
@@ -277,12 +253,10 @@ func TestRunConfigSkillInstall_UnknownSkill_Fails(t *testing.T) {
 	}
 }
 
-func TestRunAgentSkillInstall_NonInteractiveNoSkills_FailsActionable(t *testing.T) {
-	cmd := newAgentSkillInstallCommand()
+func TestRunConfigSkillInstall_NonInteractiveNoSkills_FailsActionable(t *testing.T) {
+	cmd := newConfigSkillInstallCommand()
 	cmd.Flags().Set("dir", t.TempDir())
-	if err := cmd.PreRunE(cmd, nil); err != nil {
-		t.Fatal(err)
-	}
+	cmd.Flags().Set("no-interactive", "true")
 
 	err := runConfigSkillInstall(cmd, nil)
 	if err == nil {
@@ -354,74 +328,6 @@ func TestRunConfigSkillInstall_InvalidDir_Fails(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "does not exist") {
 		t.Errorf("unexpected error message: %v", err)
-	}
-}
-
-func TestRunAgentSkillInstall_UnknownSkill_Fails(t *testing.T) {
-	cmd := newAgentSkillInstallCommand()
-	cmd.Flags().Set("dir", t.TempDir())
-	if err := cmd.PreRunE(cmd, nil); err != nil {
-		t.Fatal(err)
-	}
-
-	err := runConfigSkillInstall(cmd, []string{"unknown-xyz"})
-	if err == nil {
-		t.Fatal("expected error for unknown skill")
-	}
-	if !strings.Contains(err.Error(), "unknown skill: unknown-xyz") {
-		t.Errorf("unexpected error message: %v", err)
-	}
-}
-
-func TestRunAgentSkillInstall_DirIsFile_Fails(t *testing.T) {
-	tempFile := filepath.Join(t.TempDir(), "a-file.txt")
-	if err := os.WriteFile(tempFile, []byte("x"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	cmd := newAgentSkillInstallCommand()
-	cmd.Flags().Set("dir", tempFile)
-	if err := cmd.PreRunE(cmd, nil); err != nil {
-		t.Fatal(err)
-	}
-
-	err := runConfigSkillInstall(cmd, []string{"pdf"})
-	if err == nil {
-		t.Fatal("expected error when target dir is a file")
-	}
-	if !strings.Contains(err.Error(), "not a directory") {
-		t.Errorf("unexpected error message: %v", err)
-	}
-}
-
-func TestRunAgentSkillInstall_ExplicitSkill_InvokesDockerRun(t *testing.T) {
-	runner := &buildStatusRunner{buildStatus: 0}
-	docker.SetRunner(runner)
-	docker.ResetDockerCache()
-	t.Cleanup(func() {
-		docker.ResetRunner()
-		docker.ResetDockerCache()
-	})
-
-	cmd := newAgentSkillInstallCommand()
-	cmd.Flags().Set("dir", t.TempDir())
-	if err := cmd.PreRunE(cmd, nil); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := runConfigSkillInstall(cmd, []string{"agent-browser"}); err != nil {
-		t.Fatalf("runConfigSkillInstall: %v", err)
-	}
-
-	call := findRecordedCall(runner.calls, "--rm")
-	if call == nil {
-		t.Fatalf("expected docker run --rm call, got %v", runner.calls)
-	}
-	if !slices.Contains(call, service.DefaultSkillInstallerImage) {
-		t.Errorf("call missing default image %s: %v", service.DefaultSkillInstallerImage, call)
-	}
-	lastArg := call[len(call)-1]
-	if !strings.Contains(lastArg, "agent-browser") {
-		t.Errorf("expected agent-browser in docker run args: %s", lastArg)
 	}
 }
 

@@ -10,8 +10,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func init() { register(newInfoCommand()) }
-
 func newInfoCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "info",

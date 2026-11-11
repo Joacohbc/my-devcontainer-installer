@@ -8,8 +8,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func init() { register(newUpdateCommand()) }
-
 func newUpdateCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "update",
@@ -22,7 +20,7 @@ from the Dockerfile when its contents changed. By default it updates the project
 in the current directory and records the new image.
 
 Note: this updates container IMAGES, not the CLI. To update the CLI binary
-itself, run 'devcontainer-cli upgrade-cli'.`,
+itself, run 'devcontainer-cli config upgrade-cli'.`,
 		Example: `  # Update the current project's images
   devcontainer-cli update
 

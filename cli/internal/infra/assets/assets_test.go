@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -53,21 +54,35 @@ func TestPreflight_CopiesEmbeddedScript(t *testing.T) {
 	}
 }
 
-func TestPreflight_AlreadyPresentIsSkipped(t *testing.T) {
+// An outdated copy of an embedded script is refreshed (a CLI upgrade must reach
+// the next build); an identical one is left alone.
+func TestPreflight_RefreshesOutdatedEmbeddedScript(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, embeddedScript), []byte("custom"), 0o644); err != nil {
+	target := filepath.Join(dir, embeddedScript)
+	if err := os.WriteFile(target, []byte("old"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	res := assets.Preflight([]string{embeddedScript}, dir)
-	if len(res.AlreadyPresent) != 1 {
-		t.Fatalf("expected file reported already present, got %+v", res)
+	if len(res.Copied) != 1 {
+		t.Fatalf("expected the outdated copy refreshed, got %+v", res)
 	}
-	if len(res.Copied) != 0 {
-		t.Errorf("should not overwrite an existing file, got copied %v", res.Copied)
+	if got, _ := os.ReadFile(target); string(got) == "old" {
+		t.Error("outdated copy was kept")
 	}
-	got, _ := os.ReadFile(filepath.Join(dir, embeddedScript))
-	if string(got) != "custom" {
-		t.Errorf("existing file was overwritten: %q", got)
+	if res = assets.Preflight([]string{embeddedScript}, dir); len(res.AlreadyPresent) != 1 {
+		t.Errorf("an up-to-date copy must be reported already present, got %+v", res)
+	}
+}
+
+// A script that is not embedded (a user's own) is kept as found.
+func TestPreflight_KeepsNonEmbeddedScript(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "custom-mine.sh"), []byte("mine"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	res := assets.Preflight([]string{"custom-mine.sh"}, dir)
+	if len(res.AlreadyPresent) != 1 || len(res.Missing) != 0 {
+		t.Errorf("got %+v", res)
 	}
 }
 
@@ -1178,5 +1193,46 @@ func TestEntrypointSharedConfigStage(t *testing.T) {
 	absent := strings.Replace(script, "SHARED_CONFIG_DIR="+vol, "SHARED_CONFIG_DIR="+filepath.Join(root, "nope"), 1)
 	if out, err := exec.Command("bash", "-c", absent).CombinedOutput(); err != nil {
 		t.Errorf("stage_shared_config must no-op when the volume is not mounted: %v\n%s", err, out)
+	}
+}
+
+// A runtime remap (mode=image) must hand devuser's image paths outside the home
+// to the new ids, while never touching the home (stage_identity re-owns it), the
+// workspace or the shared-config volume.
+func TestEntrypointReownsImagePathsAfterARemap(t *testing.T) {
+	script, err := assets.Content("entrypoint.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fn := extractShellFunc(t, string(script), "reown_image_paths")
+	root := t.TempDir()
+	for _, dir := range []string{"opt/android-sdk", "home/devuser", "workspaces/app", "mnt/shared-config"} {
+		if err := os.MkdirAll(filepath.Join(root, dir), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	bin := t.TempDir()
+	log := filepath.Join(t.TempDir(), "chown.log")
+	fake := "#!/bin/sh\nshift 2\nprintf '%s\\n' \"$@\" >> " + log + "\n"
+	if err := os.WriteFile(filepath.Join(bin, "chown"), []byte(fake), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	uid := strconv.Itoa(os.Getuid())
+	gid := strconv.Itoa(os.Getgid())
+	body := `DEV_HOME=/home/devuser; SHARED_CONFIG_DIR=/mnt/shared-config` + "\n" + fn + "\n" + `reown_image_paths "$1" "$2" "$3" 4242 "$3"`
+	cmd := exec.Command("bash", "-c", body, "bash", root, uid, gid)
+	cmd.Env = append(os.Environ(), "PATH="+bin+":"+os.Getenv("PATH"))
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("%v: %s", err, out)
+	}
+	data, _ := os.ReadFile(log)
+	got := string(data)
+	if !strings.Contains(got, filepath.Join(root, "opt/android-sdk")) {
+		t.Errorf("image paths were not re-owned: %q", got)
+	}
+	for _, kept := range []string{"home/devuser", "workspaces/app", "mnt/shared-config"} {
+		if strings.Contains(got, filepath.Join(root, kept)) {
+			t.Errorf("%s must not be re-owned: %q", kept, got)
+		}
 	}
 }

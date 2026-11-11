@@ -17,11 +17,11 @@ func newAgentCLIInfoCommand() *cobra.Command {
 		Long: `devcontainer-cli agent cli-info — print what this CLI can put in a
 devcontainer: the Dockerfile modules, the compose services, the profiles that
 bundle them, the agent skills, how to add scripts of your own, the built-in
-scripts 'agent copy --asset' can drop into a container, and the paths every
+scripts 'copy --asset' can drop into a container, and the paths every
 project follows.
 
 Read it before composing an 'agent create': it is generated from the live
-catalogue, including any profile or skill defined under ~/.devcontainer-cli/,
+catalogue, including any profile or skill defined under ~/.config/devcontainer-cli/,
 so the ids it lists are the ids this binary accepts. --json emits the same
 content structured.
 
@@ -131,8 +131,8 @@ func printAgentModules(info service.AgentInfo) {
 		automatic = append(automatic, agentInfoRow(m.ID, width, ui.Subtle(m.Label), ui.Subtle("("+reason+")")))
 	}
 
-	agentInfoSection("Modules — ids for 'agent create --with a,b,c'", selectable)
-	agentInfoSection("Modules applied automatically — never pass these to --with", automatic)
+	agentInfoSection("Modules — ids for 'agent create --modules a,b,c'", selectable)
+	agentInfoSection("Modules applied automatically — never pass these to --modules", automatic)
 }
 
 func printAgentServices(info service.AgentInfo) {
@@ -153,7 +153,7 @@ func printAgentServices(info service.AgentInfo) {
 		}
 		lines = append(lines, agentInfoRow(s.ID, width, notes...))
 	}
-	agentInfoSection("Services — ids for 'agent create --service a,b'; reachable inside by service name", lines)
+	agentInfoSection("Services — ids for 'agent create --services a,b'; reachable inside by service name", lines)
 }
 
 func printAgentProfiles(info service.AgentInfo) {
@@ -201,7 +201,7 @@ func printAgentSkills(info service.AgentInfo) {
 		}
 		lines = append(lines, agentInfoRow(s.ID, width, notes...))
 	}
-	agentInfoSection("Agent skills — ids for 'agent create --skill a,b'; installed into the project workspace", lines)
+	agentInfoSection("Agent skills — ids for 'agent create --skills a,b'; installed into the project workspace", lines)
 }
 
 func printAgentScripts(info service.AgentInfo) {
@@ -237,7 +237,7 @@ func printAgentAssets(info service.AgentInfo) {
 	for _, a := range info.Assets {
 		lines = append(lines, agentInfoRow(a.Name, width, ui.Subtle(a.Label)))
 	}
-	agentInfoSection("Built-in scripts — names for 'agent copy --asset <name>'", lines)
+	agentInfoSection("Built-in scripts — names for 'copy --asset <name>'", lines)
 }
 
 func printAgentPaths(info service.AgentInfo) {

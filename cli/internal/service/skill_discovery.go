@@ -63,7 +63,7 @@ func (s ConfigService) DiscoverSkills(source string) ([]*domain.DiscoveredSkill,
 }
 
 // SaveUserSkill validates and writes a single user-defined skill manifest to
-// ~/.devcontainer-cli/skills/<id>.yml. Refuses to overwrite an existing user skill unless force is true.
+// ~/.config/devcontainer-cli/skills/<id>.yml. Refuses to overwrite an existing user skill unless force is true.
 func (s ConfigService) SaveUserSkill(manifest types.UserSkillManifest, force bool) error {
 	id := manifest.ID
 	if err := domain.ValidateSkillID(id); err != nil {
@@ -71,7 +71,8 @@ func (s ConfigService) SaveUserSkill(manifest types.UserSkillManifest, force boo
 	}
 
 	targetPath := filepath.Join(domain.SkillDir(), id+".yml")
-	if _, exists := domain.UserSkillPath(id); exists && !force {
+	_, exists := domain.UserSkillPath(id)
+	if exists && !force {
 		return fmt.Errorf("user-defined skill %q already exists; pass --force to overwrite", id)
 	}
 
@@ -84,6 +85,9 @@ func (s ConfigService) SaveUserSkill(manifest types.UserSkillManifest, force boo
 		return fmt.Errorf("failed to marshal skill manifest: %w", err)
 	}
 
+	repo := NewConfigRepo(reporterOrSilent(s.Report))
+	versioned := repo.Prepare()
+
 	if err := os.MkdirAll(domain.SkillDir(), 0o755); err != nil {
 		return fmt.Errorf("failed to create skills directory: %w", err)
 	}
@@ -92,13 +96,21 @@ func (s ConfigService) SaveUserSkill(manifest types.UserSkillManifest, force boo
 		return fmt.Errorf("failed to save skill: %w", err)
 	}
 
+	if versioned {
+		verb := "add"
+		if exists {
+			verb = "update"
+		}
+		repo.Commit(fmt.Sprintf("feat(skill): %s %s", verb, id), targetPath)
+	}
+
 	if s.Report != nil {
 		s.Report.Success("Skill %q successfully created at %s", id, targetPath)
 	}
 	return nil
 }
 
-// SaveUserSkills writes a slice of discovered skills to ~/.devcontainer-cli/skills/<id>.yml.
+// SaveUserSkills writes a slice of discovered skills to ~/.config/devcontainer-cli/skills/<id>.yml.
 // If a user skill with the same id exists and force is false, it skips that skill with a warning,
 // delegating actual persistence to SaveUserSkill.
 func (s ConfigService) SaveUserSkills(selected []*domain.DiscoveredSkill, force bool) error {

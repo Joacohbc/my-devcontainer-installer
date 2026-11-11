@@ -13,8 +13,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func init() { register(newStatusCommand()) }
-
 func newStatusCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "status",
@@ -131,6 +129,7 @@ func statusForProject(containerMap map[string]pick.Container) error {
 	console.NewLine()
 	console.Header("Workspace: %s", workspace)
 	console.NewLine()
+	warnIfBuildStale(cwd, workspace)
 
 	t := newStatusTable("SERVICE", "CONTAINER NAME", "STATUS", "PORTS", "IMAGE")
 	for serviceKey, svc := range services {

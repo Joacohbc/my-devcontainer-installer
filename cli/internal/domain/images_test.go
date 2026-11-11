@@ -1,9 +1,11 @@
 package domain_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 )
 
 func TestComputeFingerprint_sameContentProducesSameResult(t *testing.T) {
@@ -81,21 +83,40 @@ func TestComputeFingerprint_sameBuildArgsProduceSameResult(t *testing.T) {
 	}
 }
 
-func TestFingerprintTag_usesFirst12Chars(t *testing.T) {
-	fp := "abcdef123456789012"
-	tag := domain.FingerprintTag(fp)
-	expected := "devcontainer-cli/abcdef123456:latest"
-	if tag != expected {
-		t.Errorf("expected %q, got %q", expected, tag)
+func TestContentImageTag(t *testing.T) {
+	fp := "3f2a9c1b7d4e5f60aa"
+	cases := []struct {
+		name, origin, fp, want string
+	}{
+		{"profile origin", "ai-browser", fp, "devcontainer-cli/ai-browser-3f2a9c1b:latest"},
+		{"composed profiles", "nodejs-my-tools", fp, "devcontainer-cli/nodejs-my-tools-3f2a9c1b:latest"},
+		{"no origin falls back to custom", "", fp, "devcontainer-cli/custom-3f2a9c1b:latest"},
+		{"unsafe characters are slugged", "My Tools/v2", fp, "devcontainer-cli/my-tools-v2-3f2a9c1b:latest"},
+		{"short fingerprint used whole", "go", "abc", "devcontainer-cli/go-abc:latest"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := domain.ContentImageTag(c.origin, c.fp); got != c.want {
+				t.Errorf("ContentImageTag(%q, %q) = %q, want %q", c.origin, c.fp, got, c.want)
+			}
+		})
 	}
 }
 
-func TestFingerprintTag_shortFingerprintUsedWhole(t *testing.T) {
-	fp := "abc"
-	tag := domain.FingerprintTag(fp)
-	expected := "devcontainer-cli/abc:latest"
-	if tag != expected {
-		t.Errorf("expected %q, got %q", expected, tag)
+// The tag must depend on content and origin only: the workspace never appears,
+// so two projects with the same content share one image.
+func TestContentImageTagIgnoresWorkspace(t *testing.T) {
+	a := &types.DevcontainerConfig{Mode: types.BuildModeCustom, Workspace: "alpha", Origin: "go", Fingerprint: "deadbeefcafe"}
+	b := &types.DevcontainerConfig{Mode: types.BuildModeCustom, Workspace: "beta", Origin: "go", Fingerprint: "deadbeefcafe"}
+	if domain.ResolveDevcontainerImageName(a) != domain.ResolveDevcontainerImageName(b) {
+		t.Errorf("same content resolved to different images: %q vs %q", domain.ResolveDevcontainerImageName(a), domain.ResolveDevcontainerImageName(b))
+	}
+}
+
+func TestContentImageTagTruncatesLongOrigins(t *testing.T) {
+	tag := domain.ContentImageTag(strings.Repeat("a", 100), "0123456789")
+	if !strings.HasSuffix(tag, "-01234567:latest") || len(tag) > len("devcontainer-cli/")+48+len("-01234567:latest") {
+		t.Errorf("unexpected tag %q", tag)
 	}
 }
 
@@ -105,7 +126,7 @@ func TestIsLocalImage(t *testing.T) {
 		image string
 		want  bool
 	}{
-		{"fingerprint-tagged build", domain.FingerprintTag("abcdef123456789012"), true},
+		{"content-tagged build", domain.ContentImageTag("go", "abcdef123456789012"), true},
 		{"namespace with any tag", "devcontainer-cli/abc:dev", true},
 		{"pulled variant", "ghcr.io/joacohbc/devcontainer-nodejs:latest", false},
 		{"plain upstream image", "postgres:16", false},

@@ -17,7 +17,7 @@ import (
 // Renaming one breaks every skill and script that drives this CLI, so the set
 // is pinned here.
 var agentSubcommands = []string{
-	"cli-info", "create", "ssh", "exec", "forward", "copy", "list", "context", "clean",
+	"cli-info", "create", "run", "ssh", "exec", "forward", "list", "destroy",
 }
 
 func findCommand(t *testing.T, parent *cobra.Command, name string) *cobra.Command {
@@ -46,6 +46,11 @@ func TestAgentCommand_HasEverySubcommand(t *testing.T) {
 	for _, name := range agentSubcommands {
 		if !have[name] {
 			t.Errorf("expected agent subcommand %q to be registered", name)
+		}
+	}
+	for _, eliminated := range []string{"clean", "copy", "context", "skill"} {
+		if have[eliminated] {
+			t.Errorf("agent %s should be eliminated per D1/D4", eliminated)
 		}
 	}
 }
@@ -131,7 +136,7 @@ func TestAgentEphemeral_ExplicitFalseWins(t *testing.T) {
 
 // An explicit value still wins, so a human can opt back into the prompts.
 func TestAgentDefaults_DoNotOverrideExplicitFlags(t *testing.T) {
-	cmd := findCommand(t, agentCommand(t), "clean")
+	cmd := findCommand(t, agentCommand(t), "destroy")
 	if err := cmd.Flags().Set(flagNoInteractive, "false"); err != nil {
 		t.Fatal(err)
 	}
@@ -143,21 +148,14 @@ func TestAgentDefaults_DoNotOverrideExplicitFlags(t *testing.T) {
 	}
 }
 
-// 'create' is generate + build + up, so it must not stop at the overwrite
-// question or the build question either.
+// 'create' is generate + build + up, so it defaults to non-interactive and supports --no-up.
 func TestAgentCreate_ForcesTheFullFlow(t *testing.T) {
 	cmd := findCommand(t, agentCommand(t), "create")
 	if err := cmd.PreRunE(cmd, nil); err != nil {
 		t.Fatalf("PreRunE: %v", err)
 	}
-	for _, name := range []string{flagForce, flagBuild} {
-		v, err := cmd.Flags().GetBool(name)
-		if err != nil {
-			t.Fatalf("flag --%s: %v", name, err)
-		}
-		if !v {
-			t.Errorf("agent create must default --%s to true", name)
-		}
+	if interactiveFlag(cmd) {
+		t.Error("agent create must default to non-interactive")
 	}
 	if cmd.Flags().Lookup(flagNoUp) == nil {
 		t.Errorf("agent create is missing --%s", flagNoUp)
@@ -168,34 +166,31 @@ func TestAgentCreate_KeepsGenerateFlagsAndOmitsNoise(t *testing.T) {
 	cmd := findCommand(t, agentCommand(t), "create")
 
 	// The flags an agent actually composes a project from must be present.
-	for _, name := range []string{flagWith, flagService, flagPorts, flagVolumes, flagProfile, flagMode, flagSkill, flagScript, flagWorkspace} {
+	for _, name := range []string{flagModules, flagServices, flagPorts, flagVolumes, flagProfile, flagMode, flagSkills, flagScript, flagWorkspace} {
 		if cmd.Flags().Lookup(name) == nil {
 			t.Errorf("agent create is missing --%s", name)
 		}
 	}
-	// Irrelevant flags must be omitted entirely rather than registered/hidden.
-	for _, name := range []string{flagVersion, flagPreset, flagNonInteractive, flagForcePrompt} {
+	// Irrelevant or pruned flags must be omitted entirely rather than registered/hidden.
+	for _, name := range []string{"with", "service", "skill", "temporal", "name", "expose-all", flagVersion, "preset", "non-interactive", flagForcePrompt, "no-build", "force", "build"} {
 		if f := cmd.Flags().Lookup(name); f != nil {
 			t.Errorf("--%s should not be registered on agent create", name)
 		}
 	}
 }
 
-func TestAgentCreate_TemporalFlags(t *testing.T) {
-	cmd := findCommand(t, agentCommand(t), "create")
+func TestAgentRun_Flags(t *testing.T) {
+	cmd := findCommand(t, agentCommand(t), "run")
 
-	for _, name := range []string{"temporal", "name", "expose-all", "copy-ai-scripts"} {
+	for _, name := range []string{"profile", "name", "volumes", "ports", "expose-all", "shared-config", "registry"} {
 		if cmd.Flags().Lookup(name) == nil {
-			t.Errorf("agent create is missing temporal flag --%s", name)
+			t.Errorf("agent run is missing flag --%s", name)
 		}
 	}
 }
 
-func TestAgentCreate_TemporalExecution(t *testing.T) {
-	cmd := findCommand(t, agentCommand(t), "create")
-	if err := cmd.Flags().Set("temporal", "true"); err != nil {
-		t.Fatal(err)
-	}
+func TestAgentRun_Execution(t *testing.T) {
+	cmd := findCommand(t, agentCommand(t), "run")
 	if err := cmd.Flags().Set("profile", "nodejs"); err != nil {
 		t.Fatal(err)
 	}
@@ -212,7 +207,7 @@ func TestAgentCreate_TemporalExecution(t *testing.T) {
 	})
 
 	if err := cmd.RunE(cmd, nil); err != nil {
-		t.Fatalf("agent create --temporal: %v", err)
+		t.Fatalf("agent run: %v", err)
 	}
 }
 
@@ -269,7 +264,9 @@ func TestAgentExec_ExplicitUserWins(t *testing.T) {
 // explicit command leaves --user alone so it still works against a container
 // that has no devuser.
 func TestShell_KeepsItsOwnUserSemantics(t *testing.T) {
-	cmd := findCommand(t, NewRootCommand("test"), "shell")
+	root := NewRootCommand("test")
+	accessCmd := findCommand(t, root, "access")
+	cmd := findCommand(t, accessCmd, "shell")
 	if cmd.PreRunE != nil {
 		t.Error("shell must not inherit the agent facade's defaults")
 	}
@@ -307,7 +304,9 @@ func TestShellWorkdir_ResolvesTheProjectMount(t *testing.T) {
 	}
 	t.Chdir(dir)
 
-	cmd := findCommand(t, NewRootCommand("test"), "shell")
+	root := NewRootCommand("test")
+	accessCmd := findCommand(t, root, "access")
+	cmd := findCommand(t, accessCmd, "shell")
 
 	got, err := shellWorkdir(cmd)
 	if err != nil {
@@ -338,11 +337,11 @@ func TestAgentJSONFlags(t *testing.T) {
 	}
 }
 
-func TestAgentClean_Flags(t *testing.T) {
-	cmd := findCommand(t, agentCommand(t), "clean")
-	for _, name := range []string{"yes", "all", "dry-run", flagNoInteractive} {
+func TestAgentDestroy_Flags(t *testing.T) {
+	cmd := findCommand(t, agentCommand(t), "destroy")
+	for _, name := range []string{"yes", "all", "dry-run", "container", flagNoInteractive} {
 		if cmd.Flags().Lookup(name) == nil {
-			t.Errorf("agent clean is missing --%s", name)
+			t.Errorf("agent destroy is missing --%s", name)
 		}
 	}
 }
@@ -352,22 +351,24 @@ func TestAgentClean_Flags(t *testing.T) {
 func TestExtractedFlagHelpers_KeepTheOriginalFlags(t *testing.T) {
 	root := NewRootCommand("test")
 	cases := []struct {
+		parent  string
 		command string
 		flags   []string
 	}{
-		{"ssh", []string{"yes", flagNoInteractive, "container", "setup", "setup-external", "via", "key", "user", "forward", "ports", "ephemeral"}},
-		{"shell", []string{"user", "type", "no-tty", "workdir", "via", "container"}},
-		{"port-forward", []string{"alias", "service", "reverse", flagNoInteractive, "ephemeral", "container", "key", "user"}},
-		{"copy", []string{"container", "asset"}},
-		{"ls", []string{"all", "long", "container"}},
-		{"context", []string{"container", "json"}},
+		{"access", "ssh", []string{"yes", flagNoInteractive, "container", "setup", "via", "key", "user", "forward", "ports", "ephemeral"}},
+		{"access", "shell", []string{"user", "type", "no-tty", "workdir", "via", "container"}},
+		{"access", "forward", []string{"alias", "service", "reverse", flagNoInteractive, "ephemeral", "container", "key", "user"}},
+		{"access", "copy", []string{"container", "asset"}},
+		{"inspect", "ls", []string{"all", "long", "container"}},
+		{"inspect", "context", []string{"container", "json"}},
 	}
 	for _, c := range cases {
-		t.Run(c.command, func(t *testing.T) {
-			cmd := findCommand(t, root, c.command)
+		t.Run(c.parent+"/"+c.command, func(t *testing.T) {
+			parent := findCommand(t, root, c.parent)
+			cmd := findCommand(t, parent, c.command)
 			for _, name := range c.flags {
 				if cmd.Flags().Lookup(name) == nil {
-					t.Errorf("%s lost its --%s flag", c.command, name)
+					t.Errorf("%s %s lost its --%s flag", c.parent, c.command, name)
 				}
 			}
 		})
@@ -392,7 +393,7 @@ func TestAgentPrunedFlags_AreNotRegistered(t *testing.T) {
 		command string
 		pruned  []string
 	}{
-		{"ssh", []string{"setup", "setup-external", "forward", "yes", "ports"}},
+		{"ssh", []string{"setup", "forward", "yes", "ports"}},
 		{"exec", []string{"type"}},
 		{"forward", []string{"non-interactive"}},
 		{"list", []string{"long"}},
@@ -420,7 +421,6 @@ func TestAgentWrappers_KeepFlagCompletion(t *testing.T) {
 		{"ssh", "via"},
 		{"exec", "user"},
 		{"forward", "alias"},
-		{"copy", "asset"},
 	}
 	for _, c := range cases {
 		t.Run(c.command+"/"+c.flag, func(t *testing.T) {
@@ -467,19 +467,26 @@ func TestAgentDirEntries_MarkDirectories(t *testing.T) {
 	}
 }
 
-// The facade is additive: the commands it wraps stay top-level.
+// The facade is additive: the human commands it wraps stay available under their canonical domains.
 func TestAgentGroup_DoesNotReplaceTheHumanCommands(t *testing.T) {
 	root := NewRootCommand("test")
-	have := map[string]bool{}
-	for _, c := range root.Commands() {
-		have[c.Name()] = true
+	checks := []struct {
+		parent  string
+		command string
+	}{
+		{"access", "ssh"},
+		{"access", "shell"},
+		{"access", "forward"},
+		{"access", "copy"},
+		{"inspect", "ls"},
+		{"workspace", "destroy"},
+		{"config", "clean"},
 	}
-	for _, name := range []string{"ssh", "shell", "port-forward", "copy", "ls", "destroy", "clean"} {
-		if !have[name] {
-			t.Errorf("%q must stay available as a top-level command", name)
-		}
+	for _, check := range checks {
+		parent := findCommand(t, root, check.parent)
+		_ = findCommand(t, parent, check.command)
 	}
-	if !slices.Contains(agentSubcommands, "clean") {
+	if !slices.Contains(agentSubcommands, "destroy") {
 		t.Error("agentSubcommands drifted from the documented set")
 	}
 }

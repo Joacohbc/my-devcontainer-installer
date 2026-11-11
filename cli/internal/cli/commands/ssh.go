@@ -14,8 +14,6 @@ import (
 // --container bypasses workspace resolution entirely.
 const sshNoWorkspace = "(none)"
 
-func init() { register(newSshCommand()) }
-
 func newSshCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "ssh [flags] [-- command args...]",
@@ -39,10 +37,6 @@ Pass --via USER@HOST (with --container) to reach a container on a different
 Docker host through an existing SSH connection to it. Only the shared key's
 PUBLIC half ever leaves this machine. --via only needs to be given once: the
 alias remembers the jump target for future reconnects.
-
-Pass --setup-external USER@HOST when this CLI runs ON the Docker host: instead of
-connecting, it prints a self-contained snippet (containing the PRIVATE key) to
-paste on the machine you connect FROM, which sets up a ProxyCommand jump there.
 
 Before connecting it re-pins the container's current SSH host keys (read through
 docker) in the CLI-managed known_hosts, so a rebuilt image — new host keys —
@@ -72,9 +66,6 @@ when the session ends.`,
   # Connect directly without modifying ~/.ssh/config (ephemeral mode)
   devcontainer-cli ssh --ephemeral --via me@docker-host -c dc-ssh
 
-  # Run ON the Docker host: print the snippet to paste on the connecting machine
-  devcontainer-cli ssh --setup-external me@docker-host
-
   # Also forward ports 3000 and 8080 for the session
   devcontainer-cli ssh --forward --ports 3000,8080:80
 
@@ -93,7 +84,6 @@ func addSshFlags(cmd *cobra.Command) {
 	addInteractiveFlag(cmd)
 	addContainerFlag(cmd)
 	cmd.Flags().Bool("setup", false, "Re-run the SSH access setup (key + Host block) before connecting, even if an alias already exists")
-	cmd.Flags().String("setup-external", "", "Run on the Docker host: print a paste-on-the-client snippet (ProxyCommand jump) instead of connecting: USER@HOST")
 	cmd.Flags().String("via", "", "Reach the container through an existing SSH connection to its Docker host (requires --container): USER@HOST or an ssh-config alias")
 	cmd.Flags().String("key", "", "Private key path (default: the shared managed key under the CLI config dir)")
 	cmd.Flags().String("user", sshdefaults.User, "SSH user inside the container")
@@ -104,21 +94,10 @@ func addSshFlags(cmd *cobra.Command) {
 	_ = cmd.RegisterFlagCompletionFunc("via", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return listSshHosts(), cobra.ShellCompDirectiveNoFileComp
 	})
-	_ = cmd.RegisterFlagCompletionFunc("setup-external", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		return listSshHosts(), cobra.ShellCompDirectiveNoFileComp
-	})
 	_ = cmd.MarkFlagFilename("key")
 }
 
 func runSsh(cmd *cobra.Command, args []string) error {
-	// --setup-external configures the machine you connect FROM (it prints a
-	// snippet); it never dials the target from here, so it short-circuits before
-	// any target resolution or connection.
-	if external, _ := cmd.Flags().GetString("setup-external"); external != "" {
-		_, err := runSshSetup(cmd)
-		return err
-	}
-
 	via, _ := cmd.Flags().GetString("via")
 	containerFlag, _ := cmd.Flags().GetString("container")
 	hasContainer := cmd.Flags().Changed("container") && strings.TrimSpace(containerFlag) != ""
@@ -253,9 +232,9 @@ func refreshExistingTarget(ssh service.SshService, alias, containerName string) 
 
 	switch state {
 	case service.TargetAbsent:
-		return fmt.Errorf("container '%s' no longer exists; alias '%s' is stale — run 'devcontainer-cli ssh --setup' to reconfigure it, or 'devcontainer-cli clean ssh' to remove it", containerName, alias)
+		return fmt.Errorf("container '%s' no longer exists; alias '%s' is stale — run 'devcontainer-cli access ssh --setup' to reconfigure it, or 'devcontainer-cli config clean ssh' to remove it", containerName, alias)
 	case service.TargetStopped:
-		console.Warn("Container '%s' is not running; start it before connecting (e.g. 'devcontainer-cli start').", containerName)
+		console.Warn("Container '%s' is not running; start it before connecting (e.g. 'devcontainer-cli workspace start').", containerName)
 		return nil
 	}
 

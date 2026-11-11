@@ -52,10 +52,50 @@ func runDown(cmd *cobra.Command, _ []string) error {
 
 ### Reglas Estrictas para Comandos
 1. **Delegación Total al Servicio**: `RunE` solo procesa argumentos, resuelve banderas de Cobra, instancia el servicio con `ui.Console{}` e invoca el método correspondiente.
-2. **Prohibición de Docker y Procesos**: Ningún comando bajo `internal/cli/commands` puede importar `internal/infra/docker` ni `os/exec`.
+2. **Prohibición de Docker y Procesos**: Ningún comando bajo `internal/cli/commands` puede importar `internal/infra/docker`, `internal/infra/git` ni `os/exec`. `TestCommandsDoNotImportProcessOrInfraAdapters` lo verifica.
 3. **Reutilización de Ayudantes de Banderas**: Utilizar siempre los ayudantes definidos en `flags.go` (`addYesFlag`, `addInteractiveFlag`, `addWorkspaceFlags`) para mantener descripciones y nombres de banderas unificados.
-4. **Soporte No Interactivo**: Nuevos subcomandos deben aceptar `--no-interactive` (no `--non-interactive`; la raíz acepta ambos por retrocompatibilidad). Ante `--no-interactive`, cualquier parámetro obligatorio no provisto debe retornar un error inmediato sin detenerse a consultar. En comandos que efectúan descubrimiento múltiple (como `config skill add <source>`), se exige el uso explícito de `--all` o `--pick <elementos>`.
+4. **Soporte No Interactivo**: Nuevos subcomandos heredan o reciben `--no-interactive` como bandera persistente desde la raíz (no se duplica ni se admite `--non-interactive`). Ante `--no-interactive`, cualquier parámetro obligatorio no provisto debe retornar un error inmediato sin detenerse a consultar. En comandos que efectúan descubrimiento múltiple (como `config skill add <source>`), se exige el uso explícito de `--all` o `--pick <elementos>`.
 5. **Composición de Perfiles en `--profile`**: En modo `custom`, la bandera `--profile` acepta listas separadas por comas (`--profile a,b`) con autocompletado mediante `completeCSV`. En `mode=profiles` y en el comando `run`, debe aceptarse estrictamente un único perfil remoto, rechazando cualquier valor CSV con un error explícito y no interactivo.
+6. **Escritura de Definiciones Versionadas**: Los comandos nunca escriben ni borran perfiles, definiciones de imagen o habilidades de usuario por su cuenta; delegan en `service.ProfileStore`, `service.ImageService` o `service.ConfigService`, que preparan el repositorio de configuración antes de escribir y registran un commit Conventional por operación (D19).
+7. **Invocar un Comando desde Otro**: Cuando un flujo interactivo debe abrir una sesión de otro comando (el menú de acceso de `workspace init`, D23), se construye el comando, se analizan sus banderas con `ParseFlags` y se llama a su `RunE`. Nunca se usa `Execute()`: con argumentos nulos cobra recurre a `os.Args` y la sesión recibiría los argumentos de `init`.
+
+### Tabla de Banderas y Atajos Canónicos
+
+Las siguientes banderas y reglas de nomenclatura son obligatorias en todos los comandos de la CLI:
+
+| Bandera | Atajo | Semántica y Reglas de Uso |
+|---|---|---|
+| `--container` | `-c` | Contenedor de destino (siempre registrado mediante el ayudante `addContainerFlag`). |
+| `--yes` | `-y` | Confirma una acción destructiva (la ÚNICA bandera canónica de confirmación). |
+| `--force` | *(sin atajo)* | Sobrescribe archivos existentes únicamente; nunca debe emplearse como sinónimo de `--yes`. |
+| `--no-interactive` | *(sin atajo)* | Registrada una sola vez como bandera persistente en la raíz; nunca duplicada como `--non-interactive`. |
+| `--all` | `-a` | Incluye todos los elementos; el atajo `-a` está reservado exclusivamente para `--all`. |
+| `--include-active` | *(sin atajo)* | Incluye recursos activos o en ejecución en operaciones de `clean`. |
+| `--dry-run` | *(sin atajo)* | Previsualiza operaciones destructivas sin mutar el estado. |
+| `--services`, `--skills`, `--modules`, `--ports`, `--volumes`, `--forward-ports` | *(sin atajo)* | Banderas de lista CSV en plural (las formas singulares `--service`, `--skill` y `--with` quedan terminantemente prohibidas). |
+| `--x` / `--x=false` | *(según aplique)* | Banderas booleanas canónicas; se prohíben parejas tri-state (`--x` / `--no-x`), excepto `--no-interactive`, `--no-tty` y `--no-up`. |
+| `--follow` | `-f` | Atajo `-f` reservado exclusivamente para seguimiento de flujos (ej. logs). |
+| `--workdir` | `-w` | Bandera booleana para indicar el directorio de montaje del workspace. |
+| `--version` | *(sin atajo)* | Imprime la versión de la CLI (`-v` está reservado exclusivamente para `down -v` / `--volumes`). |
+
+### Jerarquía de Comandos en 6 Dominios y Fachada de Agente
+
+La CLI estructura todas sus operaciones en 6 dominios canónicos orientados a recursos, junto con una fachada `agent` especializada:
+
+1. **`workspace`**: Ciclo de vida completo del devcontainer asociado al proyecto (`init` con wizard, `auto-init` con detección de stack sin prompts, `up`, `down`, `start`, `stop`, `restart`, `destroy`, `compose`, `export`, `import`).
+2. **`access`**: Sesiones interactivas y conectividad de red con el contenedor (`shell`, `ssh`, `forward`, `route`, `network`, `copy`, `password`).
+3. **`inspect`**: Observabilidad, inspección y telemetría de recursos (`status`, `info`, `logs`, `context`, `ls`).
+4. **`profile`**: Gestión, catálogo y autoría de perfiles y plantillas modulares (`list`, `info`, `create`, `copy`, `remove`).
+5. **`image`**: Ciclo de vida y registro de imágenes independientes de proyecto (`list`, `info`, `create`, `build`, `pull`, `export`, `remove`, `update`).
+6. **`config`**: Parámetros globales y mantenimiento (`registry`, `git-init`, `db-user`, `db-password`, `ssh-key`, `ssh-config-file`, `alias`, `shared`, `skill`, `clean`, `upgrade-cli`).
+
+**Utilidad independiente en la raíz**:
+- **`run`**: `devcontainer-cli run` inicia un contenedor desechable directamente a partir de una imagen remota preconstruida, sin asociarse a ningún workspace de proyecto ni generar archivos en disco.
+
+**Fachada `agent`**:
+- Contiene exclusivamente comandos que presentan valores predeterminados y semántica inherentemente desatendida para agentes de IA: `exec`, `ssh`, `forward`, `create`, `run`, `destroy`, `list`, `cli-info`.
+- Se prohíbe crear clones 1:1 de comandos humanos en la fachada `agent`.
+- Se prohíbe mantener alias retrocompatibles que dupliquen rutas de invocación entre dominios.
 
 ---
 

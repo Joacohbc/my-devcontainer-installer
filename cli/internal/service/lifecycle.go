@@ -49,7 +49,14 @@ func (s LifecycleService) Up(composeFile, workspace string, build bool) error {
 		args = append(args, "--build")
 	}
 	s.Report.Warn("\nBringing up '%s'...", workspace)
-	return docker.DockerComposeOrThrow(composeFile, args, nil)
+	if err := docker.DockerComposeOrThrow(composeFile, args, nil); err != nil {
+		return err
+	}
+	if build {
+		// The container now runs the rebuilt image; the one it replaced is unused.
+		PruneService{Report: s.Report}.CollectProjectImages()
+	}
+	return nil
 }
 
 // Down brings the stack down, optionally removing named volumes (deletes data).
