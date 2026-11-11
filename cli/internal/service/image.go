@@ -345,6 +345,13 @@ func (s ImageService) Remove(name string, deleteDockerImage bool) error {
 		return fmt.Errorf("image definition %q not found", name)
 	}
 
+	tag := domain.ImageTag(def)
+	if deleteDockerImage {
+		if users := imageUsers(tag); len(users) > 0 {
+			return fmt.Errorf("image %s is still used by %s; destroy those first with 'devcontainer-cli workspace destroy --yes', or remove only the definition", tag, strings.Join(users, ", "))
+		}
+	}
+
 	repo := s.prepareRepo()
 	if err := domain.DeleteImageDef(name, s.getImagesDir()); err != nil {
 		return fmt.Errorf("deleting definition: %w", err)
@@ -352,13 +359,30 @@ func (s ImageService) Remove(name string, deleteDockerImage bool) error {
 	if repo != nil {
 		repo.Commit("chore(image): remove "+name, filepath.Join(s.getImagesDir(), name))
 	}
-
-	if deleteDockerImage {
-		tag := domain.ImageTag(def)
-		s.Report.Info("Removing Docker image %s...", tag)
-		_, _ = docker.DockerInherit([]string{"rmi", tag})
-	}
-
 	s.Report.Success("Removed image definition '%s'", name)
+
+	if !deleteDockerImage || !domain.LocalImageExists(tag, captureFunc()) {
+		return nil
+	}
+	s.Report.Info("Removing Docker image %s...", tag)
+	status, _, stderr, err := docker.DockerCapture([]string{"rmi", tag})
+	if err != nil || status != 0 {
+		return fmt.Errorf("the definition was removed but docker could not remove image %s: %s", tag, strings.TrimSpace(stderr))
+	}
 	return nil
+}
+
+// imageUsers names what still needs an image: registered projects that build
+// on it and containers created from it.
+func imageUsers(ref string) []string {
+	var users []string
+	for _, e := range domain.ListEntries() {
+		if e.Image == ref {
+			users = append(users, "project "+e.ProjectDir)
+		}
+	}
+	if imagesInUse()[ref] {
+		users = append(users, "a container")
+	}
+	return users
 }

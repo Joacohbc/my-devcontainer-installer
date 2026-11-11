@@ -254,7 +254,7 @@ func ResolveDevcontainerImageName(config *types.DevcontainerConfig) string {
 	if config.Mode == types.BuildModeImage {
 		return config.Image
 	}
-	if config.Mode == types.BuildModeCustom && config.Fingerprint != "" {
+	if config.Mode == types.BuildModeCustom && config.Fingerprint != "" && config.ImageKind != types.ImageKindNamed {
 		return ContentImageTag(config.ResolvedOrigin(), config.Fingerprint)
 	}
 	return config.Image

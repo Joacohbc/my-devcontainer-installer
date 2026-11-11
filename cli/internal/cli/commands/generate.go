@@ -659,6 +659,10 @@ func saveAndPostProcess(cwd string, config *types.DevcontainerConfig, plan *serv
 		build = &ans
 	}
 
+	// Recorded before building: the build garbage-collects project images no
+	// registered project references, and this project's new image must already
+	// be one of them.
+	domain.RecordProject(cwd, config, "")
 	if build != nil && *build {
 		// A failed build is a failed command. It used to be reported as a
 		// warning with a zero exit, which reads as success to anything that is
@@ -670,7 +674,6 @@ func saveAndPostProcess(cwd string, config *types.DevcontainerConfig, plan *serv
 			return berr
 		}
 	}
-	domain.RecordProject(cwd, config, "")
 	if build == nil || !*build {
 		console.Done()
 	}

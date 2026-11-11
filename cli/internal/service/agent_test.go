@@ -143,10 +143,15 @@ func TestAgentInfoSerializesToJSON(t *testing.T) {
 // imageListRunner answers `docker images` with a canned managed-image table and
 // every other call with success, so image resolution can be exercised without a
 // daemon.
+// imageListRunner answers `docker images` with images (and the kind=named
+// query with named), `docker ps` with containers, and everything else with
+// success and no output.
 type imageListRunner struct {
-	mu     sync.Mutex
-	calls  [][]string
-	images string
+	mu         sync.Mutex
+	calls      [][]string
+	images     string
+	named      string
+	containers string
 }
 
 func (r *imageListRunner) Run(_ context.Context, args []string, _ string, _ string, _ map[string]string) (int, string, string) {
@@ -157,7 +162,13 @@ func (r *imageListRunner) Run(_ context.Context, args []string, _ string, _ stri
 	r.calls = append(r.calls, args)
 	r.mu.Unlock()
 	if len(args) >= 2 && args[1] == "images" {
+		if slices.Contains(args, "label="+types.LabelKind+"="+types.ImageKindNamed) {
+			return 0, r.named, ""
+		}
 		return 0, r.images, ""
+	}
+	if len(args) >= 2 && args[1] == "ps" {
+		return 0, r.containers, ""
 	}
 	return 0, "", ""
 }

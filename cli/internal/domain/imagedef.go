@@ -76,6 +76,8 @@ func ImageDefConfig(def ImageDef) *types.DevcontainerConfig {
 	return &types.DevcontainerConfig{
 		Mode:      types.BuildModeCustom,
 		Image:     ImageTag(def),
+		ImageKind: types.ImageKindNamed,
+		Origin:    def.Name,
 		Workspace: "image",
 		Dockerfile: types.DockerfileConfig{
 			Modules: def.Modules,

@@ -146,6 +146,12 @@ func (s GenerateService) Build(composeFile string, remote bool) error {
 	if status != 0 {
 		return fmt.Errorf("docker compose %s failed (exit %d)", action, status)
 	}
+	if !remote {
+		// A rebuild supersedes the previous image (a new content tag, or the same
+		// tag leaving the old one dangling). The caller records the project
+		// before building, so only images nothing references are collected.
+		PruneService{Report: s.Report}.CollectProjectImages()
+	}
 	return nil
 }
 
