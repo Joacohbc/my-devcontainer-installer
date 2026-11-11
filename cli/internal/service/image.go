@@ -387,7 +387,7 @@ func (s ImageService) Remove(name string, deleteDockerImage bool) error {
 	tag := domain.ImageTag(def)
 	if deleteDockerImage {
 		if users := imageUsers(name, tag, s.getImagesDir()); len(users) > 0 {
-			return fmt.Errorf("image %s is still used by %s; destroy those first with 'devcontainer-cli workspace destroy --yes', or keep the image with 'devcontainer-cli image remove %s --keep-docker-image'", tag, strings.Join(users, ", "), name)
+			return fmt.Errorf("image %s is still used by %s; remove or repoint those first (an image with 'devcontainer-cli image remove <name>', a project with 'devcontainer-cli workspace destroy --yes', a profile by editing its image)", tag, strings.Join(users, ", "))
 		}
 	}
 
