@@ -235,3 +235,11 @@ El orden es estricto: `stage_workspace` determina el UID/GID de devuser; `stage_
   5. Un perfil con `image` y `modules` produce un proyecto derivado; `image create --from` y `--modules` crean definiciones derivadas; `--from-profile` lee perfiles de usuario y copia sus scripts junto a `image.yml`. Se eliminan `ImageDef.Dockerfile` y `ImageDef.Files`.
   6. Se agrega el módulo `android-sdk` (requiere `java-temurin`) como primer caso de imagen compartible.
 - **Consecuencias**: Las imágenes compartibles se componen por capas sin recompilar lo heredado, y los perfiles describen casos de uso sobre ellas. Eliminar una imagen padre con hijas falla en Docker y se reporta (D20). Un proyecto en `mode=image` (sin derivación) sigue usando el UID/GID con que se construyó la imagen.
+
+### D23: El Asistente Solo Edita Compilaciones Locales
+- **Contexto**: El paso «Build mode» del asistente ofrecía `profiles` (descargar una imagen precompilada) junto a `custom` y «custom, desde un perfil». Desde D21 un perfil es una plantilla de proyecto completa, por lo que «custom, desde un perfil» ya cubre partir de un perfil, y la opción de descarga duplicaba ese camino con un paso `variant` propio.
+- **Decisión**:
+  1. El asistente (`workspace init` interactivo) ofrece únicamente `custom` y `custom, desde un perfil`; se eliminan el paso `variant` y el paso de nombre de imagen, que solo existían para `profiles`.
+  2. `--mode profiles` se conserva en `workspace init`, `workspace auto-init`, `agent create` y `run`: es la vía no interactiva para descargar una imagen publicada.
+  3. `GenerateService.Configure` rechaza un proyecto existente en `mode=profiles` con un error que nombra el comando sin prompts (`service.PrebuiltRetargetHint`: `workspace init --no-interactive --mode profiles --profile <id>`), en lugar de reabrir el asistente con un modo que ya no puede editar.
+- **Consecuencias**: Cambiar el perfil de un proyecto que descarga una imagen ya no es posible desde el asistente; se hace con la bandera o recreando el proyecto. `update` y `up` siguen operando proyectos `profiles` existentes.

@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain"
@@ -868,5 +869,46 @@ func TestConfigureRejectsAnInvalidProfileTemplate(t *testing.T) {
 	}})
 	if err == nil {
 		t.Fatal("an invalid profile template must be reported, not silently dropped")
+	}
+}
+
+func TestWizardModeStepOffersOnlyLocalBuildChoices(t *testing.T) {
+	ctx := wizardContext{base: &types.DevcontainerConfig{Env: map[string]string{}}, workspace: "testws"}
+
+	state := NewState()
+	var modeStep Step
+	for _, step := range ctx.steps(state) {
+		if step.Key == stepKeyMode {
+			modeStep = step
+		}
+	}
+	if modeStep.Build == nil {
+		t.Fatalf("mode step missing")
+	}
+
+	var values []string
+	for _, choice := range modeStep.Build(state).Choices {
+		values = append(values, choice.Value)
+	}
+	want := []string{string(types.BuildModeCustom), modeChoiceCustomFromProfile}
+	if !slices.Equal(values, want) {
+		t.Errorf("mode choices = %v, want %v", values, want)
+	}
+}
+
+func TestConfigureRefusesPrebuiltProfilesProject(t *testing.T) {
+	defer useFakeDocker(&fakeRunner{status: 0})()
+
+	svc := GenerateService{Report: nopReporter{}}
+	base := &types.DevcontainerConfig{Mode: types.BuildModeProfiles, Env: map[string]string{}}
+
+	_, err := svc.Configure(base, "/home/user/proj", scriptedPrompter{answers: map[string]any{}})
+	if err == nil {
+		t.Fatalf("Configure accepted a profiles-mode project")
+	}
+	for _, want := range []string{"profiles", "workspace init --no-interactive --mode profiles --profile"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not mention %q", err, want)
+		}
 	}
 }

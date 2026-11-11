@@ -7,8 +7,10 @@ func newInitCommand() *cobra.Command {
 		Use:   "init",
 		Short: "Create a devcontainer for the current project with the interactive wizard",
 		Long: `devcontainer-cli workspace init — walk the interactive wizard to design the
-devcontainer for the current directory: build mode, Dockerfile modules, compose
-services, profiles, agent skills, published ports and extra volumes.
+devcontainer for the current directory: local build (from scratch or from a
+profile), Dockerfile modules, compose services, agent skills, published ports and
+extra volumes. The wizard only edits local builds; to pull a prebuilt image use
+'--mode profiles --profile <id>' with '--no-interactive'.
 
 Any value given as a flag skips its wizard step. Use '--no-interactive' to fail
 instead of prompting. To detect the project stack and generate everything without
