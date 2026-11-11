@@ -23,21 +23,15 @@ const CustomScriptNamePattern = `^[A-Za-z0-9][A-Za-z0-9._-]*\.sh$`
 // customScriptFileRe is the accepted shape of a custom script's file name.
 var customScriptFileRe = regexp.MustCompile(CustomScriptNamePattern)
 
-// LegacyProfileDirName is the directory profiles were called presets in. It is
-// still read so an existing installation keeps working, but nothing is written
-// there anymore.
-const LegacyProfileDirName = "presets"
-
 // ProfileDir is the directory new profiles are written to.
 func ProfileDir() string {
 	return filepath.Join(GlobalConfigDir(), ProfileDirName)
 }
 
-// ProfileDirs is every directory profiles are read from, in precedence order:
-// the current one first, the legacy `presets/` second, so a profile that exists
-// in both resolves to the current one.
+// ProfileDirs is every directory profiles are read from. It is a list so the
+// catalog API stays variadic, but only the current directory is read.
 func ProfileDirs() []string {
-	return []string{ProfileDir(), filepath.Join(GlobalConfigDir(), LegacyProfileDirName)}
+	return []string{ProfileDir()}
 }
 
 // ValidateProfileID rejects empty ids and ids with characters outside the

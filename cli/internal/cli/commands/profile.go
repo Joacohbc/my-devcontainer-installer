@@ -3,7 +3,6 @@ package commands
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 
@@ -27,9 +26,12 @@ func newProfileCommand() *cobra.Command {
 		Long: `devcontainer-cli profile — manage profiles, named bundles of Dockerfile
 modules plus your own scripts, that you can reuse when generating projects.
 
-Built-in profiles ship with the CLI; your own are saved under ~/.config/devcontainer-cli/profiles/. A
-profile with no scripts is a single <id>.yml; one that carries scripts is an
-<id>/ directory holding profile.yml and the .sh files next to it. Pass one or
+Built-in profiles ship with the CLI; your own are saved under ~/.config/devcontainer-cli/profiles/.
+Every user profile is an <id>/ directory holding profile.yml and, next to it,
+the .sh files it carries (flat <id>.yml files are no longer read). The profiles/
+directory is its own git repository: create, copy and remove each record one
+Conventional commit, so the history is yours to inspect, diff or revert; nothing
+is ever pushed. Pass one or
 more profiles to 'devcontainer-cli --profile <id1>,<id2>' (or pick one in the
 interactive wizard) to compose module bundles and combine their scripts. In mode=custom, profiles stack together (modules union, scripts
 concatenated, ports and skills unioned); under mode=profiles or 'run', exactly
@@ -87,6 +89,7 @@ func newProfileListCommand() *cobra.Command {
 		Long:         "devcontainer-cli config profile list — show every available profile, grouped\ninto built-in and your own, with the module ids each one bundles and the custom\nscripts it carries. Each is tagged [remote] (--profile also pulls it under\nmode=profiles) or [local] (--profile only builds it under mode=custom).",
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			service.NewProfileStore(console).LegacyWarnings()
 			profiles := (service.ConfigService{Report: console}).Profiles()
 
 			var builtin, user []catalog.Profile
@@ -152,8 +155,8 @@ func newProfileInfoCommand() *cobra.Command {
 		Use:   "info <profile-id>",
 		Short: "Show one profile's full resolved definition",
 		Long: `devcontainer-cli config profile info — print one profile's full definition:
-where it comes from (built-in or user, and its directory when it carries
-scripts), whether it is [remote]-pullable, and the resolved yaml (modules,
+where it comes from (built-in or user, and its directory for a user
+profile), whether it is [remote]-pullable, and the resolved yaml (modules,
 scripts, skills, ports).`,
 		Example:           "  devcontainer-cli config profile info nodejs",
 		Args:              cobra.ExactArgs(1),
@@ -220,8 +223,9 @@ func newProfileCreateCommand() *cobra.Command {
 It prompts for a profile id and label, opens the module picker so you can choose
 which Dockerfile modules the profile bundles, then lets you add your own scripts
 (copied into the profile, so it stays self-contained) and pick when each one
-runs. Saved under ~/.config/devcontainer-cli/profiles/. This is an interactive command:
-it cannot run with --no-interactive.`,
+runs. Saved as ~/.config/devcontainer-cli/profiles/<id>/profile.yml and committed
+to the profiles/ git repository. This is an interactive command: it cannot run
+with --no-interactive.`,
 		Example:      "  devcontainer-cli config profile create",
 		Args:         cobra.NoArgs,
 		SilenceUsage: true,
@@ -286,7 +290,7 @@ func runProfileCreate(cmd *cobra.Command, _ []string) error {
 		Skills:     skills.Skills,
 		SkillsMode: skills.Mode,
 	}
-	path, err := saveProfile(domain.ProfileDir(), profile)
+	path, err := service.NewProfileStore(console).Save(profile, fmt.Sprintf("feat(profile): add %s", profileID))
 	if err != nil {
 		return err
 	}
@@ -297,7 +301,7 @@ func runProfileCreate(cmd *cobra.Command, _ []string) error {
 
 // askCustomScripts collects the user's own scripts for a new profile: a host
 // path and, for each, when it should run. The files themselves are copied in by
-// saveProfile, so the profile stays self-contained.
+// the profile store, so the profile stays self-contained.
 func askCustomScripts() ([]types.CustomScript, error) {
 	add, err := console.Confirm("Add custom scripts to this profile?")
 	if err != nil {
@@ -399,8 +403,9 @@ func newProfileCopyCommand() *cobra.Command {
 		Long: `devcontainer-cli config profile copy — duplicate an existing profile (built-in or
 user) into a new user profile you can then edit.
 
-The new profile is saved under ~/.config/devcontainer-cli/profiles/ with the same
-modules and a copy of the source profile's scripts. In interactive mode you're
+The new profile is saved as ~/.config/devcontainer-cli/profiles/<new-id>/profile.yml
+(and committed to the profiles/ git repository) with the same modules and a copy
+of the source profile's scripts. In interactive mode you're
 asked for a label; with --no-interactive the source label is kept.`,
 		Example: `  # Fork the built-in 'nodejs' profile
   devcontainer-cli config profile copy nodejs my-node`,
@@ -444,14 +449,14 @@ func runProfileCopy(cmd *cobra.Command, args []string) error {
 		label = p.Label
 	}
 
-	// Resolve the source scripts so saveProfile copies the files themselves, not
+	// Resolve the source scripts so the profile store copies the files themselves, not
 	// just the manifest entries — the copy has to stand on its own.
 	scripts, err := domain.ProfileScripts(p)
 	if err != nil {
 		return err
 	}
 
-	path, err := saveProfile(domain.ProfileDir(), catalog.Profile{
+	path, err := service.NewProfileStore(console).Save(catalog.Profile{
 		ID:           newID,
 		Label:        label,
 		Modules:      p.Modules,
@@ -460,7 +465,7 @@ func runProfileCopy(cmd *cobra.Command, args []string) error {
 		SkillsMode:   p.SkillsMode,
 		Ports:        p.Ports,
 		ForwardPorts: p.ForwardPorts,
-	})
+	}, fmt.Sprintf("feat(profile): copy %s to %s", existingID, newID))
 	if err != nil {
 		return err
 	}
@@ -478,8 +483,9 @@ from ~/.config/devcontainer-cli/profiles/.
 
 Only user profiles can be removed; attempting to remove a built-in profile
 errors out. Every id is validated before anything is deleted, so a bad id aborts
-the whole operation. A profile that carries scripts is a directory, and removing
-it removes those scripts with it. Profile ids tab-complete.`,
+the whole operation. A profile is a directory, so removing it removes its scripts
+with it; the removal is recorded as one commit in the profiles/ git repository
+(revert it to bring the profiles back). Profile ids tab-complete.`,
 		Example: `  devcontainer-cli config profile remove my-node
   devcontainer-cli config profile rm old-profile another --yes`,
 		Args:              cobra.MinimumNArgs(1),
@@ -493,17 +499,9 @@ it removes those scripts with it. Profile ids tab-complete.`,
 }
 
 func runProfileRemove(cmd *cobra.Command, args []string) error {
-	// Resolve every target up front so we fail before deleting anything.
-	paths := make([]string, 0, len(args))
-	for _, id := range args {
-		path, ok := userProfilePath(id)
-		if !ok {
-			if _, isProfile := catalog.Resolve(id, domain.ProfileDirs()...); isProfile {
-				return fmt.Errorf("profile %q is a built-in profile and cannot be removed", id)
-			}
-			return fmt.Errorf("user profile %q not found", id)
-		}
-		paths = append(paths, path)
+	store := service.NewProfileStore(console)
+	if err := store.Locate(args); err != nil {
+		return err
 	}
 
 	if !yesFlag(cmd) {
@@ -520,31 +518,13 @@ func runProfileRemove(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	for i, path := range paths {
-		// A directory-shaped profile owns its scripts, so it goes as a whole.
-		if err := os.RemoveAll(path); err != nil {
-			return fmt.Errorf("failed to remove profile %q: %w", args[i], err)
-		}
-		console.Success("Removed profile %q", args[i])
+	if err := store.Remove(args); err != nil {
+		return err
+	}
+	for _, id := range args {
+		console.Success("Removed profile %q", id)
 	}
 	return nil
-}
-
-// userProfilePath returns the on-disk path of a user profile id, in either
-// shape and in either the current or the legacy directory.
-func userProfilePath(id string) (string, bool) {
-	for _, dir := range domain.ProfileDirs() {
-		for _, ext := range []string{".yml", ".yaml"} {
-			if p := filepath.Join(dir, id+ext); fileExists(p) {
-				return p, true
-			}
-		}
-		p := filepath.Join(dir, id)
-		if info, err := os.Stat(p); err == nil && info.IsDir() {
-			return p, true
-		}
-	}
-	return "", false
 }
 
 func completeUserProfileArgs(_ *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
@@ -570,49 +550,4 @@ func completeProfileCopyArgs(_ *cobra.Command, args []string, toComplete string)
 		}
 	}
 	return out, cobra.ShellCompDirectiveNoFileComp
-}
-
-// saveProfile writes p under dir and returns the path it wrote. A profile with
-// scripts becomes a directory holding profile.yml plus a copy of each script,
-// so it is self-contained; one without stays a flat <id>.yml.
-func saveProfile(dir string, p catalog.Profile) (string, error) {
-	if len(p.Scripts) == 0 {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			return "", fmt.Errorf("failed to create profiles directory: %w", err)
-		}
-		path := filepath.Join(dir, p.ID+".yml")
-		return path, writeProfileManifest(path, p)
-	}
-
-	profileDir := filepath.Join(dir, p.ID)
-	if err := os.MkdirAll(profileDir, 0o755); err != nil {
-		return "", fmt.Errorf("failed to create profile directory: %w", err)
-	}
-	for _, s := range p.Scripts {
-		if s.Source == "" {
-			continue
-		}
-		// Goes through the domain reader, the same path generation uses to read a
-		// profile's scripts.
-		data, err := domain.ReadCustomScript(s)
-		if err != nil {
-			return "", err
-		}
-		if err := os.WriteFile(filepath.Join(profileDir, s.File), data, 0o755); err != nil {
-			return "", fmt.Errorf("failed to copy script %s: %w", s.File, err)
-		}
-	}
-	path := filepath.Join(profileDir, catalog.ProfileFileName)
-	return path, writeProfileManifest(path, p)
-}
-
-func writeProfileManifest(path string, p catalog.Profile) error {
-	data, err := yaml.Marshal(p)
-	if err != nil {
-		return fmt.Errorf("failed to marshal profile: %w", err)
-	}
-	if err := os.WriteFile(path, data, 0o644); err != nil {
-		return fmt.Errorf("failed to save profile: %w", err)
-	}
-	return nil
 }

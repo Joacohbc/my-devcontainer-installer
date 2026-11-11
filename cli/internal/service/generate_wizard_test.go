@@ -228,18 +228,18 @@ func TestProfileChoicesOnlyListsRemoteProfiles(t *testing.T) {
 	}
 }
 
-// A profile saved under the pre-rename presets/ directory must still be offered
-// by the wizard and still pre-select its modules.
-func TestConfigureAppliesUserProfileFromLegacyPresetsDir(t *testing.T) {
+// A user profile directory must be offered by the wizard and pre-select its
+// modules.
+func TestConfigureAppliesUserProfileFromProfilesDir(t *testing.T) {
 	defer useFakeDocker(&fakeRunner{status: 0})()
 
 	tmp := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", tmp)
-	presetsDir := filepath.Join(tmp, "devcontainer-cli", "presets")
-	if err := os.MkdirAll(presetsDir, 0o755); err != nil {
+	profileDir := filepath.Join(tmp, "devcontainer-cli", "profiles", "mystack")
+	if err := os.MkdirAll(profileDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(presetsDir, "mystack.yml"),
+	if err := os.WriteFile(filepath.Join(profileDir, "profile.yml"),
 		[]byte("id: mystack\nmodules: [claude-code, antigravity-cli]\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -686,12 +686,12 @@ func TestConfigureProfileSkillsArePreSelected(t *testing.T) {
 
 	tmp := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", tmp)
-	profilesDir := filepath.Join(tmp, "devcontainer-cli", "profiles")
+	profilesDir := filepath.Join(tmp, "devcontainer-cli", "profiles", "withskills")
 	if err := os.MkdirAll(profilesDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	manifest := "id: withskills\nmodules: [nodejs]\nskills: [agent-browser]\nskills_mode: auto\n"
-	if err := os.WriteFile(filepath.Join(profilesDir, "withskills.yml"), []byte(manifest), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(profilesDir, "profile.yml"), []byte(manifest), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -726,12 +726,12 @@ func TestConfigureExplicitSkillsBeatProfile(t *testing.T) {
 
 	tmp := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", tmp)
-	profilesDir := filepath.Join(tmp, "devcontainer-cli", "profiles")
+	profilesDir := filepath.Join(tmp, "devcontainer-cli", "profiles", "withskills")
 	if err := os.MkdirAll(profilesDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	manifest := "id: withskills\nmodules: [nodejs]\nskills: [find-skills]\nskills_mode: auto\n"
-	if err := os.WriteFile(filepath.Join(profilesDir, "withskills.yml"), []byte(manifest), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(profilesDir, "profile.yml"), []byte(manifest), 0o644); err != nil {
 		t.Fatal(err)
 	}
 

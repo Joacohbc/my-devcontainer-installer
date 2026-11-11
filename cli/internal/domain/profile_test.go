@@ -211,20 +211,14 @@ func TestPartitionCustomScriptsRejectsInvalid(t *testing.T) {
 	}
 }
 
-func TestProfileDirsPrefersCurrentOverLegacy(t *testing.T) {
+func TestProfileDirsIsOnlyTheProfilesDir(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	dirs := domain.ProfileDirs()
-	if len(dirs) != 2 {
-		t.Fatalf("expected 2 profile directories, got %v", dirs)
+	if len(dirs) != 1 || dirs[0] != domain.ProfileDir() {
+		t.Fatalf("expected only %q, got %v", domain.ProfileDir(), dirs)
 	}
 	if !strings.HasSuffix(dirs[0], string(os.PathSeparator)+domain.ProfileDirName) {
-		t.Errorf("expected the current profiles dir first, got %q", dirs[0])
-	}
-	if !strings.HasSuffix(dirs[1], string(os.PathSeparator)+domain.LegacyProfileDirName) {
-		t.Errorf("expected the legacy presets dir second, got %q", dirs[1])
-	}
-	if dirs[0] != domain.ProfileDir() {
-		t.Errorf("expected ProfileDir() to be the write target %q, got %q", dirs[0], domain.ProfileDir())
+		t.Errorf("expected the profiles dir, got %q", dirs[0])
 	}
 }
 

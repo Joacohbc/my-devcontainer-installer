@@ -132,15 +132,24 @@ func TestResolveUnknown(t *testing.T) {
 	}
 }
 
+func writeProfileDir(t *testing.T, root, id, manifest string) string {
+	t.Helper()
+	dir := filepath.Join(root, id)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "profile.yml"), []byte(manifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
 func TestLoadUserProfilesValid(t *testing.T) {
 	dir := t.TempDir()
 	content := `id: myteam
 label: My Team
 modules: [nodejs, python]`
-	err := os.WriteFile(filepath.Join(dir, "myteam.yml"), []byte(content), 0644)
-	if err != nil {
-		t.Fatalf("failed to write test profile file: %v", err)
-	}
+	profileDir := writeProfileDir(t, dir, "myteam", content)
 
 	profiles := catalog.LoadUserProfiles(dir)
 	if len(profiles) != 1 {
@@ -149,8 +158,8 @@ modules: [nodejs, python]`
 	if profiles[0].ID != "myteam" {
 		t.Errorf("expected ID myteam, got %s", profiles[0].ID)
 	}
-	if profiles[0].Dir != dir {
-		t.Errorf("expected flat profile to resolve scripts against %s, got %s", dir, profiles[0].Dir)
+	if profiles[0].Dir != profileDir {
+		t.Errorf("expected profile to resolve scripts against %s, got %s", profileDir, profiles[0].Dir)
 	}
 }
 
@@ -201,8 +210,8 @@ func TestLoadUserProfilesIgnoresDirWithoutManifest(t *testing.T) {
 
 func TestLoadUserProfilesIgnoresBroken(t *testing.T) {
 	dir := t.TempDir()
-	_ = os.WriteFile(filepath.Join(dir, "broken.yml"), []byte("not: [yaml"), 0644)
-	_ = os.WriteFile(filepath.Join(dir, "good.yml"), []byte("id: good"), 0644)
+	writeProfileDir(t, dir, "broken", "not: [yaml")
+	writeProfileDir(t, dir, "good", "id: good")
 
 	profiles := catalog.LoadUserProfiles(dir)
 	if len(profiles) != 1 {
@@ -213,34 +222,72 @@ func TestLoadUserProfilesIgnoresBroken(t *testing.T) {
 	}
 }
 
-// Several directories are how the legacy presets/ dir keeps working: an id in
-// both resolves to the one from the earlier (current) directory.
+// Several directories stay supported by the variadic API: an id in both
+// resolves to the one from the earlier directory.
 func TestLoadUserProfilesEarlierDirWins(t *testing.T) {
-	current, legacy := t.TempDir(), t.TempDir()
-	if err := os.WriteFile(filepath.Join(current, "shared.yml"), []byte("id: shared\nmodules: [go]"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(legacy, "shared.yml"), []byte("id: shared\nmodules: [bun]"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(legacy, "onlylegacy.yml"), []byte("id: onlylegacy\nmodules: [python]"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	current, other := t.TempDir(), t.TempDir()
+	writeProfileDir(t, current, "shared", "id: shared\nmodules: [go]")
+	writeProfileDir(t, other, "shared", "id: shared\nmodules: [bun]")
+	writeProfileDir(t, other, "onlyother", "id: onlyother\nmodules: [python]")
 
-	profiles := catalog.LoadUserProfiles(current, legacy)
+	profiles := catalog.LoadUserProfiles(current, other)
 	if len(profiles) != 2 {
 		t.Fatalf("expected 2 profiles (deduplicated), got %d", len(profiles))
 	}
-	got, ok := catalog.Resolve("shared", current, legacy)
+	got, ok := catalog.Resolve("shared", current, other)
 	if !ok {
 		t.Fatal("expected to resolve shared")
 	}
 	if !slices.Equal(got.Modules, []string{"go"}) {
-		t.Errorf("expected the current directory to win, got %v", got.Modules)
+		t.Errorf("expected the earlier directory to win, got %v", got.Modules)
 	}
-	// A profile that only exists in the legacy directory is still found.
-	if _, ok := catalog.Resolve("onlylegacy", current, legacy); !ok {
-		t.Error("expected a legacy-only profile to still resolve")
+	if _, ok := catalog.Resolve("onlyother", current, other); !ok {
+		t.Error("expected an id only in the later directory to still resolve")
+	}
+}
+
+func TestLoadUserProfilesIgnoresFlatFiles(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "flat.yml"), []byte("id: flat"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if profiles := catalog.LoadUserProfiles(dir); len(profiles) != 0 {
+		t.Fatalf("expected flat files to be ignored, got %d profiles", len(profiles))
+	}
+}
+
+func TestLegacyFlatProfilesFindsFlatFiles(t *testing.T) {
+	dir := t.TempDir()
+	writeProfileDir(t, dir, "ok", "id: ok")
+	for _, name := range []string{"a.yml", "b.yaml", "notes.txt"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("id: x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got := catalog.LegacyFlatProfiles(dir, filepath.Join(dir, "missing"))
+	want := []string{filepath.Join(dir, "a.yml"), filepath.Join(dir, "b.yaml")}
+	if !slices.Equal(got, want) {
+		t.Errorf("expected %v, got %v", want, got)
+	}
+}
+
+func TestResolveComposedHintsAtLegacyFlatFile(t *testing.T) {
+	dir := t.TempDir()
+	flat := filepath.Join(dir, "ai-browser.yml")
+	if err := os.WriteFile(flat, []byte("id: ai-browser"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := catalog.ResolveComposed([]string{"ai-browser"}, dir)
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	for _, want := range []string{"unknown profile: ai-browser", flat, filepath.Join(dir, "ai-browser", "profile.yml")} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("expected error to contain %q, got %v", want, err)
+		}
+	}
+	if _, err := catalog.ResolveComposed([]string{"nope"}, dir); err == nil || strings.Contains(err.Error(), "legacy") {
+		t.Errorf("expected a plain unknown-profile error, got %v", err)
 	}
 }
 
@@ -248,10 +295,7 @@ func TestUserOverridesBuiltin(t *testing.T) {
 	dir := t.TempDir()
 	content := `id: nodejs
 modules: [bun]`
-	err := os.WriteFile(filepath.Join(dir, "fs.yml"), []byte(content), 0644)
-	if err != nil {
-		t.Fatalf("failed to write file: %v", err)
-	}
+	writeProfileDir(t, dir, "nodejs", content)
 
 	got, ok := catalog.Resolve("nodejs", dir)
 	if !ok {

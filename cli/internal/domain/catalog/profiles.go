@@ -10,9 +10,9 @@ import (
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 )
 
-// ProfileFileName is the manifest inside a directory-shaped profile. A profile
-// that carries custom scripts is a directory (the scripts live next to the
-// manifest); one that is only a module bundle may stay a single <id>.yml file.
+// ProfileFileName is the manifest inside a profile directory. Every user
+// profile is a directory <id>/ holding this manifest and, next to it, the
+// scripts it references.
 const ProfileFileName = "profile.yml"
 
 // Profile is a reusable bundle of Dockerfile module ids plus, optionally, the
@@ -42,9 +42,8 @@ type Profile struct {
 	// mode=custom; it is just never a pull target.
 	Remote bool   `yaml:"remote,omitempty"`
 	Source string `yaml:"-"`
-	// Dir is the directory the profile's scripts are resolved against: the
-	// profile's own directory for a directory-shaped profile, and the containing
-	// directory for a flat <id>.yml. Empty for a profile that ships no scripts.
+	// Dir is the profile's own directory, which its scripts are resolved
+	// against. Empty for a built-in.
 	Dir string `yaml:"-"`
 }
 
@@ -175,8 +174,7 @@ var plainBuiltinProfiles = []Profile{
 }
 
 // Resolve looks an id up across the given user directories (earlier ones win)
-// and then the built-ins. Passing several directories is how the legacy
-// `presets/` directory keeps working alongside `profiles/`.
+// and then the built-ins.
 func Resolve(id string, userDirs ...string) (Profile, bool) {
 	for _, p := range LoadUserProfiles(userDirs...) {
 		if p.ID == id {
@@ -214,9 +212,9 @@ func All(userDirs ...string) []Profile {
 }
 
 // LoadUserProfiles reads every profile in the given directories, in order, and
-// drops any whose id an earlier directory already provided. Both on-disk shapes
-// are accepted: a flat <id>.yml, and a <id>/profile.yml directory whose custom
-// scripts sit next to the manifest.
+// drops any whose id an earlier directory already provided. Only the
+// <id>/profile.yml directory shape is accepted; flat files are ignored (see
+// LegacyFlatProfiles).
 func LoadUserProfiles(dirs ...string) []Profile {
 	seen := map[string]bool{}
 	var out []Profile
@@ -242,27 +240,57 @@ func loadProfileDir(dir string) []Profile {
 	}
 	var out []Profile
 	for _, e := range entries {
-		path := filepath.Join(dir, e.Name())
-		scriptDir := dir
-		if e.IsDir() {
-			// A directory-shaped profile: the manifest is inside, and so are the
-			// scripts it references.
-			manifest, ok := profileManifest(path)
-			if !ok {
-				continue
-			}
-			path, scriptDir = manifest, path
-		} else if !hasYAMLSuffix(e.Name()) {
+		if !e.IsDir() {
 			continue
 		}
-		p, ok := readProfile(path)
+		profileDir := filepath.Join(dir, e.Name())
+		manifest, ok := profileManifest(profileDir)
 		if !ok {
 			continue
 		}
-		p.Dir = scriptDir
+		p, ok := readProfile(manifest)
+		if !ok {
+			continue
+		}
+		p.Dir = profileDir
 		out = append(out, p)
 	}
 	return out
+}
+
+// LegacyFlatProfiles returns the paths of flat *.yml / *.yaml files found
+// directly in dirs. They are no longer loaded; callers use the list to tell the
+// user to move them into <id>/profile.yml.
+func LegacyFlatProfiles(dirs ...string) []string {
+	var out []string
+	for _, dir := range dirs {
+		if dir == "" {
+			continue
+		}
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			continue
+		}
+		for _, e := range entries {
+			if !e.IsDir() && hasYAMLSuffix(e.Name()) {
+				out = append(out, filepath.Join(dir, e.Name()))
+			}
+		}
+	}
+	return out
+}
+
+// legacyFlatFile returns the flat file <dir>/<id>.yml|.yaml if one exists.
+func legacyFlatFile(id string, dirs []string) (string, bool) {
+	for _, dir := range dirs {
+		for _, ext := range []string{".yml", ".yaml"} {
+			path := filepath.Join(dir, id+ext)
+			if info, err := os.Stat(path); err == nil && !info.IsDir() {
+				return path, true
+			}
+		}
+	}
+	return "", false
 }
 
 // profileManifest returns the manifest path inside a directory-shaped profile.
@@ -411,6 +439,9 @@ func ResolveComposed(ids []string, userDirs ...string) (Profile, error) {
 	for _, id := range ids {
 		p, ok := Resolve(id, userDirs...)
 		if !ok {
+			if path, found := legacyFlatFile(id, userDirs); found {
+				return Profile{}, fmt.Errorf("unknown profile: %s (found legacy flat file %s; move it to %s)", id, path, filepath.Join(filepath.Dir(path), id, ProfileFileName))
+			}
 			return Profile{}, fmt.Errorf("unknown profile: %s", id)
 		}
 		resolved = append(resolved, p)
