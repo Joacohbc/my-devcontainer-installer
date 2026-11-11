@@ -378,6 +378,35 @@ devcontainer-cli config skill add mi-habilidad --ref owner/repo --label "Mi Habi
 
 ---
 
+### Caso 1.13: Imagen Compartible Derivada y Perfil sobre Ella (`image create --from`)
+
+**Escenario**: Desea una imagen reutilizable con la base más el SDK de Android y `adb`, y un perfil para proyectos Android con Node.js que parta de ella.
+
+**Paso a paso**:
+1. Cree y construya la imagen base y la derivada (la derivada solo instala lo que falta):
+   ```bash
+   devcontainer-cli image create base
+   devcontainer-cli image build base
+   devcontainer-cli image create android --from base --modules android-sdk
+   devcontainer-cli image build android
+   ```
+2. Defina el perfil en `~/.config/devcontainer-cli/profiles/android-app/profile.yml`:
+   ```yaml
+   id: android-app
+   image: android
+   modules:
+     - nodejs
+   env:
+     GRADLE_OPTS: -Xmx2g
+   ```
+3. Genere el proyecto; su imagen se construye `FROM devcontainer-cli-img/android:latest` añadiendo solo Node.js:
+   ```bash
+   devcontainer-cli workspace init --profile android-app --no-interactive --build
+   ```
+*Si reconstruye `android`, la siguiente generación del proyecto produce una imagen nueva y la anterior se recolecta cuando nadie la usa. Con solo `image` (sin `modules`) el proyecto usa la imagen tal cual en `mode=image`.*
+
+---
+
 # PARTE II: Casos de Uso para Agentes Autónomos de IA
 
 ---

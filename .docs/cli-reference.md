@@ -868,9 +868,11 @@ Create a new reusable image definition
 
 | Bandera | Atajo | Tipo | Por defecto | Descripción |
 |---|---|---|---|---|
-| `--from-profile` |  | string | - | Seed the image modules from an existing profile |
+| `--from` |  | string | - | Derive from another image definition or a devcontainer-cli registry image, installing only the missing modules |
+| `--from-profile` |  | string | - | Seed the image modules and scripts from an existing profile |
 | `--label` |  | string | - | Human-readable description label |
 | `--log-level` |  | string | `warn` | Log level: debug\|info\|warn\|error |
+| `--modules` |  | string | - | Comma-separated dockerfile modules for the image (replaces the profile's or the github-cli default) |
 | `--no-interactive` |  | bool | `false` | Fail if any value is missing instead of prompting |
 | `--remote` |  | string | - | Point image definition directly to a remote registry image reference |
 | `--tag` |  | string | `latest` | Docker tag for the image |

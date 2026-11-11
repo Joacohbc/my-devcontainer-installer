@@ -114,6 +114,7 @@ Cada módulo implementa `dockerfile.ModuleSpec` y declara sus contratos de const
 | `golang` | Lenguajes | Toolchain Go descargado y verificado en `/usr/local/go`. Añade `/usr/local/go/bin` y `~/go/bin` al `ProvidesEnv`. |
 | `java-temurin` | Lenguajes | Eclipse Temurin OpenJDK (versiones seleccionables: 17, 21, etc.). Incompatible con `java-openjdk`. |
 | `java-openjdk` | Lenguajes | OpenJDK estándar de distribución con `--no-install-recommends` (headless). Incompatible con `java-temurin`. |
+| `android-sdk` | Herramientas de desarrollo | Android SDK en `/opt/android-sdk` (`ANDROID_HOME`): cmdline-tools fijados, platform-tools (`adb`, `fastboot`), plataforma y build-tools del nivel de API elegido (34 o 35). Requiere `java-temurin` y se renderiza después del JDK. Sin emulador: los dispositivos se alcanzan con `adb connect`. |
 | `bun` | Lenguajes | Runtime de JavaScript Bun instalado en `~/.bun/bin`, integrado en `ProvidesEnv`. |
 | `pnpm` | Herramientas | Gestor de paquetes de Node.js. Requiere el módulo `nodejs`. |
 | `yarn` | Herramientas | Gestor de paquetes clásico/moderno de Node.js. Requiere el módulo `nodejs`. |
@@ -144,7 +145,17 @@ Servicios complementarios definidos en `docker-compose.yml`:
 
 ## 4. Perfiles y Temporización de Scripts (`CustomScript.When`)
 
-Un perfil es una plantilla de proyecto: agrupa módulos (o una imagen de partida con `image`, excluyente con `modules`), scripts personalizados, servicios compose, volúmenes, variables de entorno, puertos y habilidades, con el mismo significado que en `devcontainer.config.json`. Un perfil con `image` deja el proyecto en `mode=image`; el valor es el nombre de una definición de imagen o una referencia de registro. La CLI incluye 12 perfiles planos integrados (`base`, `nodejs`, `bun`, `java-temurin`, `python`, `go`, `node-go`, `node-python`, `node-java-temurin`, `bun-go`, `bun-python`, `bun-java-temurin`), y permite a los usuarios definir perfiles propios en `~/.config/devcontainer-cli/profiles/<id>/` (siempre como directorio `<id>/profile.yml` acompañado de sus scripts `.sh`; los archivos planos `<id>.yml` y el directorio heredado `presets/` ya no se leen). Los perfiles, las definiciones de imagen y las habilidades de usuario se versionan juntos en el repositorio de configuración (ver D19).
+Un perfil es una plantilla de proyecto: agrupa módulos, una imagen de partida opcional (`image`), scripts personalizados, servicios compose, volúmenes, variables de entorno, puertos y habilidades, con el mismo significado que en `devcontainer.config.json`. El valor de `image` es el nombre de una definición de imagen o una referencia de registro de una imagen construida por la CLI. Un perfil con solo `image` deja el proyecto en `mode=image`; con `image` y `modules` el proyecto se construye derivado de esa imagen (ver D22).
+
+### Imágenes Derivadas (`from`)
+
+Una definición de imagen (`images/<name>/image.yml`) o un proyecto (`dockerfile.from` en `devcontainer.config.json`) puede partir de otra imagen en lugar de `ubuntu`:
+
+- **Linaje**: si `from` es una definición, sus módulos se leen de las propias definiciones siguiendo su cadena `from` (los ciclos son un error); si es una referencia de registro, se leen de su etiqueta `dev.devcontainer-installer.modules`. Una imagen sin esa etiqueta no puede usarse como base.
+- **Generación**: el Dockerfile comienza con `FROM <padre>`, reasigna el UID/GID de `devuser` si difieren de los del anfitrión, renderiza solo los módulos que el padre no tiene (más `cleanup`, que siempre se vuelve a renderizar) y emite el entorno completo (`ENV` y `~/.dc-env.sh`) de todo el linaje.
+- **Etiqueta de módulos**: lista el linaje completo, de modo que una imagen derivada puede a su vez ser padre.
+- **Disponibilidad del padre**: un padre definido debe estar construido (`image build <padre>`); una referencia de registro se descarga si falta. En ambos casos debe cumplir el contrato de imagen (D17).
+- **Huella**: en proyectos derivados, el ID del contenido del padre alimenta la huella, por lo que reconstruir el padre con la misma etiqueta genera una nueva imagen de proyecto. La CLI incluye 12 perfiles planos integrados (`base`, `nodejs`, `bun`, `java-temurin`, `python`, `go`, `node-go`, `node-python`, `node-java-temurin`, `bun-go`, `bun-python`, `bun-java-temurin`), y permite a los usuarios definir perfiles propios en `~/.config/devcontainer-cli/profiles/<id>/` (siempre como directorio `<id>/profile.yml` acompañado de sus scripts `.sh`; los archivos planos `<id>.yml` y el directorio heredado `presets/` ya no se leen). Los perfiles, las definiciones de imagen y las habilidades de usuario se versionan juntos en el repositorio de configuración (ver D19).
 
 Los scripts personalizados definidos por el usuario o provistos en sus perfiles se ejecutan en momentos precisos según su propiedad `When`:
 

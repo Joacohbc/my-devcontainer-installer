@@ -27,6 +27,7 @@ Actualmente no hay decisiones abiertas que bloqueen las funcionalidades en produ
 
 ## 3. Configuración y Parámetros Candidatos
 
+- Reasignación de UID/GID de `devuser` en tiempo de ejecución (entrypoint) para proyectos en `mode=image`, que hoy usan los ids con los que se construyó la imagen; los proyectos derivados ya la resuelven en el build (D22).
 - Soporte para variables de entorno encriptadas mediante age o sops antes de inyectarlas en el `.env` generado.
 - Parámetro para limitar el uso de memoria RAM y núcleos de CPU en `devcontainer.config.json` para stacks de bases de datos locales.
 

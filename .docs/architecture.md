@@ -217,7 +217,18 @@ El orden es estricto: `stage_workspace` determina el UID/GID de devuser; `stage_
 - **Decisión**:
   1. `catalog.Profile` acepta `image`, `services`, `volumes` y `env`, con el mismo significado que en `devcontainer.config.json`. `domain.ApplyProfileTemplate` los aplica al proyecto; las banderas explícitas prevalecen, igual que con los módulos.
   2. Un perfil con `services` reemplaza los servicios del proyecto; uno sin ellos los vacía en `mode=custom`, como antes.
-  3. `image` es excluyente con `modules` y deja el proyecto en `mode=image` con la imagen resuelta (definición nombrada o referencia de registro).
+  3. `image` sin `modules` deja el proyecto en `mode=image` con la imagen resuelta (definición nombrada o referencia de registro); con `modules`, el proyecto se construye derivado de esa imagen (D22).
   4. Al componer perfiles se unen servicios y volúmenes, y se rechazan valores de `env` contradictorios o imágenes de partida distintas.
   5. `workspace auto-init --profile` falla ante un perfil inválido en lugar de ignorarlo.
 - **Consecuencias**: Los perfiles describen proyectos completos y reutilizables, mientras las imágenes nombradas siguen siendo el artefacto compartible de herramientas (D16, D20).
+
+### D22: Imágenes Derivadas (`from`) como Artefacto Compartible
+- **Contexto**: Una imagen compartible de herramientas (por ejemplo, base + JDK + Android SDK + adb) debía reconstruirse completa desde `ubuntu`, y un perfil no podía partir de ella y añadir módulos. `image create --from-profile` además ignoraba los perfiles de usuario y no copiaba sus scripts, y `ImageDef` arrastraba campos `dockerfile`/`files` sin uso.
+- **Decisión**:
+  1. `ImageDef.From` y `DockerfileConfig.From` aceptan el nombre de otra definición o una referencia de registro de una imagen construida por la CLI. El linaje se resuelve en cada generación (`domain.ResolveImageParent`): desde las definiciones (siguiendo `from`, rechazando ciclos) o desde la etiqueta `modules` de la imagen.
+  2. El Dockerfile derivado comienza con `FROM <padre>`, reasigna UID/GID de `devuser` si difieren del anfitrión, renderiza solo los módulos ausentes en el padre más `cleanup`, y emite el entorno de todo el linaje. La etiqueta `modules` lista el linaje completo, por lo que las cadenas son ilimitadas.
+  3. El padre debe existir localmente: una definición se construye antes (`image build <padre>`, sugerido en el error); una referencia de registro se descarga. Ambos deben cumplir el contrato de imagen (D17).
+  4. En proyectos derivados, el ID de contenido del padre alimenta la huella, de modo que reconstruir el padre bajo la misma etiqueta produce una nueva imagen de proyecto en lugar de una obsoleta.
+  5. Un perfil con `image` y `modules` produce un proyecto derivado; `image create --from` y `--modules` crean definiciones derivadas; `--from-profile` lee perfiles de usuario y copia sus scripts junto a `image.yml`. Se eliminan `ImageDef.Dockerfile` y `ImageDef.Files`.
+  6. Se agrega el módulo `android-sdk` (requiere `java-temurin`) como primer caso de imagen compartible.
+- **Consecuencias**: Las imágenes compartibles se componen por capas sin recompilar lo heredado, y los perfiles describen casos de uso sobre ellas. Eliminar una imagen padre con hijas falla en Docker y se reporta (D20). Un proyecto en `mode=image` (sin derivación) sigue usando el UID/GID con que se construyó la imagen.
