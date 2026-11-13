@@ -52,6 +52,11 @@ func GlobalConfigPath() string {
 	return filepath.Join(GlobalConfigDir(), "config.json")
 }
 
+// UpdateCheckCachePath returns the path to the cached update-check state file.
+func UpdateCheckCachePath() string {
+	return filepath.Join(GlobalConfigDir(), "update-check.json")
+}
+
 func LoadGlobalConfig() GlobalConfig {
 	data, err := os.ReadFile(GlobalConfigPath())
 	if err != nil {

@@ -69,12 +69,13 @@ La versión se inyecta en `cmd/devcontainer-cli/main.go` mediante banderas del e
 
 Si el binario se compila localmente sin inyección, el valor por defecto de `version` es `dev`.
 
-### Mecanismo de Auto-Actualización (`devcontainer-cli config upgrade-cli`)
+### Mecanismo de Auto-Actualización (`devcontainer-cli config upgrade-cli`) y Validación al Arrancar
 - Consulta la API de lanzamientos de GitHub (`/repos/<owner>/<repo>/releases`), respetando `GITHUB_TOKEN` para evitar límites de tasa.
 - Compara versiones semánticas y selecciona la versión estable más reciente (o pre-lanzamientos si se pasa `--pre-release`).
 - Descarga el binario correspondiente al triplete de la máquina actual y su hash `.sha256`.
 - Valida la integridad mediante comparación en tiempo constante (`subtle.ConstantTimeCompare`).
-- Reemplaza el binario en ejecución mediante una operación atómica de renombramiento en el sistema de archivos.
+- Reemplaza el binario en ejecución mediante una operación atómica de renombramiento en el sistema de archivos y actualiza el caché local de versiones.
+- **Validación automática al arrancar (`PersistentPreRunE`)**: en compilaciones versionadas (`version != "dev"`), la CLI consulta y almacena en caché de 24 h (`~/.config/devcontainer-cli/update-check.json`, tiempo máximo HTTP 1 500 ms y backoff de 1 h si no hay red) tanto el último tag estable como el SHA-256 remoto de `skills/devcontainer-cli/SKILL.md`. Si el binario o alguna copia instalada del skill del anfitrión están desactualizados, emite una advertencia en `stderr` sin afectar salidas `--json`. Se omite en `completion`, `help`, `config upgrade-cli` o definiendo `DEVCONTAINER_CLI_NO_UPDATE_CHECK=1`. `devcontainer-cli config upgrade-cli --check` fuerza la verificación de ambos al momento.
 
 ---
 

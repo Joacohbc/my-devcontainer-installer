@@ -27,7 +27,7 @@ you waiting on a prompt you cannot answer.
 | `agent run --profile <id>` | Run a standalone or temporal throwaway container from a profile |
 | `agent exec [-w] -- <cmd>` | Run a command inside the container (use `-w` to run from the workspace directory) |
 | `agent ssh [--ephemeral]` | Open an SSH session into the container (ephemeral by default, bypassing ~/.ssh/config) |
-| `agent forward <ports>` | Tunnel a container port to 127.0.0.1 (or a leading bind IP, e.g. `0.0.0.0:8000:8000`) via direct SSH tunnel (ephemeral by default); `reverse:<port>` tunnels the other way, exposing a host port inside the container |
+| `agent forward <ports>` | Tunnel a container port to 127.0.0.1 (or a leading bind IP, e.g. `100.x.y.z:8000:8000`) via direct SSH tunnel (ephemeral by default); `reverse:<port>` tunnels the other way, exposing a host port inside the container |
 | `agent list [path]` | List a directory inside the container (--json and -a supported) |
 | `agent destroy [--yes]` | Tear down the project stack, remove volumes and configuration, and remove built images |
 
@@ -54,6 +54,8 @@ Instead, you must always use the CLI commands provided:
     devcontainer-cli agent cli-info       # what this CLI can build; --json to parse
     devcontainer-cli inspect status       # this project's containers
     devcontainer-cli inspect status --all # every managed container on the machine
+
+Note: release builds validate CLI version and installed host skill freshness once every 24h on startup (printing notices to `stderr`); run `devcontainer-cli config upgrade-cli --check` to verify both immediately.
 
 If the binary is missing, say so instead of installing it silently — the
 installer is the user's call (`cli/install.sh` in the project repo).
@@ -226,8 +228,13 @@ change what is inside.
     devcontainer-cli agent exec -w -- pnpm install
     devcontainer-cli agent exec -c myapp-postgres --user postgres -T -- pg_dump devdb > dump.sql
 
-`agent exec` is a `docker exec` wrapper and the normal way to do work in the
-container. It requires a command — there is no interactive mode to fall into.
+`agent exec` is a `docker exec` wrapper and **always the first choice when the
+container is local**: it avoids SSH overhead, runs immediately without `sshd`,
+and enforces `devuser`. Only reach for `agent ssh` on a local container when the
+task specifically requires SSH (`ssh-agent` forwarding, a real SSH PTY, or a tool
+that shells out to `ssh`). When the container lives on a **remote Docker host**,
+flip that priority and use `agent ssh --via <user@host> -c <container> -- <cmd>`
+first. `agent exec` requires a command — there is no interactive mode to fall into.
 
 It runs as **devuser**, who owns the workspace files. That matters more than it
 looks: the container itself runs as root, so a command run as root that writes
@@ -283,19 +290,19 @@ which has no such directory.
 
 ### Long-lived interactive or TUI processes in the background (Zellij)
 
-Interactive TUI tools (such as `claude --remote-control ...`) require a real PTY
-and exit immediately if launched with `nohup ... < /dev/null &`, or die when you
-`exit` your interactive shell. Because `zellij` is preinstalled in every image,
-use a detached Zellij session to give the process a persistent PTY independent
-of your shell session and PID 1 (`sshd`):
+Interactive TUI tools require a real PTY and exit immediately if launched with
+`nohup ... < /dev/null &`, or die when you `exit` your interactive shell.
+Because `zellij` is preinstalled in every image, use a detached Zellij session
+to give the process a persistent PTY independent of your shell session and PID 1
+(`sshd`):
 
     # Create a detached background session and run the command inside it
-    devcontainer-cli agent exec -w -- zellij attach --create-background claude
-    devcontainer-cli agent exec -w -- zellij --session claude run -- claude --remote-control claude-docker-16gb
+    devcontainer-cli agent exec -w -- zellij attach --create-background <session>
+    devcontainer-cli agent exec -w -- zellij --session <session> run -- <command>
 
     # Check active sessions or reattach later (detach with Ctrl+O, then D)
     devcontainer-cli agent exec -- zellij list-sessions
-    devcontainer-cli access shell -- zellij attach claude
+    devcontainer-cli access shell -- zellij attach <session>
 
 ### Package managers are not the ones you expect
 
@@ -335,15 +342,17 @@ on demand and cannot collide with another project; a published port changes the
 project for good.
 
     devcontainer-cli agent forward 3000                 # 127.0.0.1:3000 -> container:3000 (foreground)
-    devcontainer-cli agent forward 5432:postgres:5432   # a sibling compose service
+    devcontainer-cli agent forward 5432 --service postgres  # a sibling compose service
     devcontainer-cli agent forward reverse:5432         # container:5432 -> a service on THIS machine
-    devcontainer-cli access route add 3000              # http://<workspace>-3000.devcli.localhost
-    devcontainer-cli agent ssh -- go version
+    devcontainer-cli access route add 3000              # http://<workspace>-3000.devcli.localhost (foreground; Ctrl+C removes)
+    devcontainer-cli access network connect other-app --alias billing  # attach another stack container
+    devcontainer-cli agent ssh -- go version            # only locally if SSH semantics are needed
 
 Inside the container, sibling services are reached by compose service name
-(`postgres`, `redis`, `mongo`), never `localhost`. Bind addresses, reverse-tunnel
-limits, permanent `forward_ports`, routes and connecting other containers:
-`references/networking.md`.
+(`postgres`, `redis`, `mongo`), never `localhost`. Both `agent forward` and
+`access route add` bind strictly to `127.0.0.1` by default and stay in the
+foreground. Bind addresses, reverse-tunnel limits, permanent `forward_ports`,
+routes (`rm`/`stop`) and `network disconnect`: `references/networking.md`.
 
 ## Inspect
 
@@ -397,10 +406,11 @@ A throwaway container with no project to configure:
 language), since it always pulls.
 
 A container on a **different Docker host**, through an existing SSH connection
-to it:
+to it — **prefer `agent ssh --via`** (ephemeral, runs as `devuser`, never prompts):
 
-    devcontainer-cli access shell --via me@docker-host -c dc-base -- uname -a
-    devcontainer-cli access ssh --via me@docker-host --container dc-base
+    devcontainer-cli agent ssh --via me@docker-host -c dc-base -- uname -a
+    devcontainer-cli access shell --via me@docker-host -c dc-base --user devuser -- uname -a  # fallback if target has no sshd
+    devcontainer-cli config ssh-key --export me@docker-host  # only if the user asks to configure cross-host SSH client access
 
 Global config, profiles and shared logins:
 
@@ -474,11 +484,16 @@ managed label). Use `--dry-run` first and show the user what would go.
   `apt-get install` inside the container.
 - Run every command from the project directory; the CLI resolves the workspace
   from the current directory unless `--workspace` says otherwise.
-- Long-running commands (`inspect logs -f`, `agent forward`, `agent ssh` without a
-  command) do not return. Give them a command, a `--tail`, or run them in the
-  background.
+- **Local = `agent exec` first; Remote (`--via`) = `agent ssh --via` first.** Use
+  `agent exec` on local containers unless SSH-specific features are needed. On
+  remote Docker hosts (`--via`), prioritize `agent ssh --via <user@host> -c <ctr> -- <cmd>`
+  (ephemeral and non-interactive), falling back to `access shell --via ... --user devuser`
+  only if the container runs no `sshd`.
+- Long-running commands (`inspect logs -f`, `agent forward`, `access route add`,
+  `agent ssh` without a command) do not return. Give them a command, a `--tail`,
+  or run them in the background.
 - `--help` on any command is authoritative and current; check it before
   inventing a flag.
 
-<!-- devcontainer-cli:managed skill=devcontainer-cli — written by 'devcontainer-cli skill install'; local edits are replaced on reinstall. -->
+<!-- devcontainer-cli:managed skill=devcontainer-cli — installed via 'npx skills add Joacohbc/my-devcontainer-installer@devcontainer-cli -g'; local edits are replaced on reinstall. -->
 

@@ -36,7 +36,7 @@ Environment:
 		SilenceUsage: true,
 		RunE:         runSelfUpdate,
 	}
-	cmd.Flags().Bool("check", false, "Print current vs latest and exit (no download)")
+	cmd.Flags().Bool("check", false, "Print current vs latest CLI and host skill status and exit (no download)")
 	cmd.Flags().Bool("force", false, "Reinstall even if the current version matches latest")
 	cmd.Flags().Bool("pre-release", false, "Install the latest pre-release (testing) if it is newer")
 	addInteractiveFlag(cmd)
@@ -73,6 +73,16 @@ func runSelfUpdate(cmd *cobra.Command, _ []string) error {
 		if preReleaseAvailable && !wantPreRelease {
 			console.Warn("Pre-release version available: %s (install with --pre-release)", top.Tag)
 		}
+		checkSvc := service.UpdateCheckService{
+			Report: console,
+			FetchLatestCLI: func() (string, error) {
+				if target == nil {
+					return "", nil
+				}
+				return target.Tag, nil
+			},
+		}
+		reportHostSkillStatus(checkSvc.Check(current, true))
 		return nil
 	}
 
@@ -110,6 +120,7 @@ func runSelfUpdate(cmd *cobra.Command, _ []string) error {
 	if err := svc.Install(target); err != nil {
 		return err
 	}
+	service.UpdateCheckService{Report: console}.RecordCLITag(target.Tag)
 
 	console.Success("Updated to %s. Restart any running session to use the new binary.", target.Tag)
 	return nil

@@ -229,9 +229,16 @@ func newGitHubRequest(rawURL string, withAuth bool) (*http.Request, *http.Client
 }
 
 func httpGet(rawURL string, withAuth bool, maxBytes int64) (int, []byte, error) {
+	return httpGetWithTimeout(rawURL, withAuth, maxBytes, 0)
+}
+
+func httpGetWithTimeout(rawURL string, withAuth bool, maxBytes int64, timeoutMs int) (int, []byte, error) {
 	req, client, err := newGitHubRequest(rawURL, withAuth)
 	if err != nil {
 		return 0, nil, err
+	}
+	if timeoutMs > 0 {
+		client.Timeout = time.Duration(timeoutMs) * time.Millisecond
 	}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -251,8 +258,14 @@ func httpGet(rawURL string, withAuth bool, maxBytes int64) (int, []byte, error) 
 // ListReleases fetches recent releases (newest first per the GitHub API),
 // including pre-releases.
 func (s UpgradeService) ListReleases() ([]Release, error) {
+	return s.ListReleasesWithTimeout(0)
+}
+
+// ListReleasesWithTimeout fetches recent GitHub releases with an optional
+// client timeout in milliseconds.
+func (s UpgradeService) ListReleasesWithTimeout(timeoutMs int) ([]Release, error) {
 	apiURL := fmt.Sprintf("https://%s/repos/%s/releases?per_page=30", primaryAPIHost, selfUpdateRepo)
-	status, body, err := httpGet(apiURL, true, 5*1024*1024)
+	status, body, err := httpGetWithTimeout(apiURL, true, 5*1024*1024, timeoutMs)
 	if err != nil {
 		return nil, err
 	}
@@ -274,7 +287,13 @@ func (s UpgradeService) ListReleases() ([]Release, error) {
 // can offer them as an opt-in while defaulting to stable. top is never nil on
 // success; stable may be nil when only pre-releases exist.
 func (s UpgradeService) UpgradeTargets() (top, stable *Release, err error) {
-	rels, err := s.ListReleases()
+	return s.UpgradeTargetsWithTimeout(0)
+}
+
+// UpgradeTargetsWithTimeout resolves top and stable release targets with an
+// optional client timeout in milliseconds.
+func (s UpgradeService) UpgradeTargetsWithTimeout(timeoutMs int) (top, stable *Release, err error) {
+	rels, err := s.ListReleasesWithTimeout(timeoutMs)
 	if err != nil {
 		return nil, nil, err
 	}

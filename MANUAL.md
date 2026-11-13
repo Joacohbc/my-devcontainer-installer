@@ -108,8 +108,8 @@ Este manual proporciona una guía directa, exhaustiva y orientada a la práctica
 
 | Método | Comando | Mecanismo | Modifica `~/.ssh/` en Host | Caso de Uso Ideal |
 |---|---|---|---|---|
-| **SSH Persistente** | `devcontainer-cli access ssh` | OpenSSH (puerto 2222) | **Sí** (registra bloque `Host` en `devcontainer-cli.config`) | Desarrollo interactivo diario, editores gráficos (VS Code Remote - SSH), alias corto `ssh <workspace>`. |
-| **SSH Efímero** | `devcontainer-cli access ssh --ephemeral` | OpenSSH (puerto 2222) | **No** (conecta directo a IP sin dejar rastro) | Tareas puntuales por SSH, scripts, automatizaciones o cuando no desea alterar su configuración SSH local. |
+| **SSH Persistente** | `devcontainer-cli access ssh` | OpenSSH (puerto 22 interno) | **Sí** (registra bloque `Host` en `devcontainer-cli.config`) | Desarrollo interactivo diario, editores gráficos (VS Code Remote - SSH), alias corto `ssh <workspace>`. |
+| **SSH Efímero** | `devcontainer-cli access ssh --ephemeral` | OpenSSH (puerto 22 interno) | **No** (conecta directo a IP sin dejar rastro) | Tareas puntuales por SSH, scripts, automatizaciones o cuando no desea alterar su configuración SSH local. |
 | **Shell Directa** | `devcontainer-cli access shell` | `docker exec` | **No** (interactúa vía socket de Docker) | Entrada rápida a la terminal, pipes y redirecciones limpias (`-T`), acceso a BD auxiliares (`-c`). |
 
 ---
@@ -137,7 +137,7 @@ Conéctese directamente sin tocar su archivo de configuración SSH ni registrar 
 ```bash
 devcontainer-cli access ssh --ephemeral
 ```
-*La CLI resuelve la IP del contenedor y utiliza la clave privada gestionada (`-i ~/.config/devcontainer-cli/ssh/id_devcontainer`) para abrir la sesión OpenSSH en el puerto 2222, garantizando **cero polución** en sus archivos de configuración locales.*
+*La CLI resuelve la IP del contenedor y utiliza la clave privada gestionada (`-i ~/.config/devcontainer-cli/ssh/id_devcontainer`) para abrir la sesión OpenSSH en el puerto 22 interno, garantizando **cero polución** en sus archivos de configuración locales. (Más detalles sobre red, claves, modo guardado/efímero, `forward` y `route` en [`NETWORKING.md`](NETWORKING.md)).*
 
 ---
 

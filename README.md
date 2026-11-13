@@ -109,90 +109,97 @@ curl -fsSL https://codeload.github.com/Joacohbc/my-devcontainer-installer/tar.gz
 | **Runtimes y Lenguajes** | [![Python](https://img.shields.io/badge/Python-3776AB?logo=python&logoColor=white)](#) [![Node.js](https://img.shields.io/badge/Node.js-6DA55F?logo=node.js&logoColor=white)](#) [![Bun](https://img.shields.io/badge/Bun-000000?logo=bun&logoColor=white)](#) [![Go](https://img.shields.io/badge/Go-00ADD8?logo=go&logoColor=white)](#) [![Rust](https://img.shields.io/badge/Rust-000000?logo=rust&logoColor=white)](#) [![Java](https://img.shields.io/badge/Java-ED8B00?logo=openjdk&logoColor=white)](#) [![PHP](https://img.shields.io/badge/PHP-777BB4?logo=php&logoColor=white)](#) [![C++](https://img.shields.io/badge/C%2B%2B-00599C?logo=c%2B%2B&logoColor=white)](#) | Módulos dinámicos para Dockerfile con versiones configurables (`nvm`/`fnm`, Corepack, `rustup`, OpenJDK/Temurin, CMake). |
 | **Gestores de Paquetes** | [![npm](https://img.shields.io/badge/npm-CB3837?logo=npm&logoColor=white)](#) [![pnpm](https://img.shields.io/badge/pnpm-F69220?logo=pnpm&logoColor=white)](#) [![Yarn](https://img.shields.io/badge/Yarn-2C8EBB?logo=yarn&logoColor=white)](#) [![pip](https://img.shields.io/badge/pip-3776AB?logo=pypi&logoColor=white)](#) [![uv](https://img.shields.io/badge/uv-DE5FE9?logo=astral&logoColor=white)](#) | Integración nativa con los gestores de paquetes más populares. |
 | **Bases de Datos** | [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?logo=postgresql&logoColor=white)](#) [![MongoDB](https://img.shields.io/badge/MongoDB-47A248?logo=mongodb&logoColor=white)](#) [![Redis](https://img.shields.io/badge/Redis-DC382D?logo=redis&logoColor=white)](#) [![SQLite](https://img.shields.io/badge/SQLite-003B57?logo=sqlite&logoColor=white)](#) | Servicios orquestados en red privada (`postgres`, `mongo`, `redis`) o cliente local (`sqlite3`). Incluye clientes CLI opcionales (`psql`, `mongosh`, `redis-cli`). |
-| **Agentes de IA y Herramientas** | [![Claude Code](https://img.shields.io/badge/Claude_Code-D97757?logo=claude&logoColor=white)](#) [![GitHub Copilot](https://img.shields.io/badge/GitHub_Copilot-000000?logo=githubcopilot&logoColor=white)](#) [![Codex CLI](https://img.shields.io/badge/Codex_CLI-10A37F?logo=openai&logoColor=white)](#) [![OpenCode](https://img.shields.io/badge/OpenCode-4B32C6?logo=gnubash&logoColor=white)](#) [![Antigravity CLI](https://img.shields.io/badge/Antigravity_CLI-4285F4?logo=google&logoColor=white)](#) | CLIs e instaladores integrados para Claude Code, Copilot CLI, Codex CLI, OpenCode y Antigravity CLI. |
+| **Agentes de IA y Herramientas** | [![Claude Code](https://img.shields.io/badge/Claude_Code-D97757?logo=claude&logoColor=white)](#) [![GitHub Copilot](https://img.shields.io/badge/GitHub_Copilot-000000?logo=githubcopilot&logoColor=white)](#) [![Codex CLI](https://img.shields.io/badge/Codex_CLI-10A37F?logo=openai&logoColor=white)](#) [![OpenCode](https://img.shields.io/badge/OpenCode-4B32C6?logo=gnubash&logoColor=white)](#) [![Antigravity CLI](https://img.shields.io/badge/Antigravity_CLI-4285F4?logo=google&logoColor=white)](#) [![Herdr](https://img.shields.io/badge/Herdr-111827?logo=gnu-bash&logoColor=white)](#) | CLIs e instaladores integrados para Claude Code, Copilot CLI, Codex CLI, OpenCode, Antigravity CLI y Herdr. |
 | **Herramientas de Sistema** | [![Docker](https://img.shields.io/badge/Docker_DoD-2496ED?logo=docker&logoColor=white)](#) [![GitHub CLI](https://img.shields.io/badge/GitHub_CLI-181717?logo=github&logoColor=white)](#) [![Chromium](https://img.shields.io/badge/Chromium-4285F4?logo=googlechrome&logoColor=white)](#) [![FFmpeg](https://img.shields.io/badge/FFmpeg-007808?logo=ffmpeg&logoColor=white)](#) | Docker-out-of-Docker (`/var/run/docker.sock`), `gh`, Chromium headless para testing/web scraping y FFmpeg para procesamiento multimedia. |
 | **Red y Conectividad** | [![OpenSSH](https://img.shields.io/badge/OpenSSH-000000?logo=openssh&logoColor=white)](#) [![Cloudflare](https://img.shields.io/badge/Cloudflare_Tunnel-F38020?logo=cloudflare&logoColor=white)](#) | Automatización de claves SSH, ProxyCommand para servidores remotos, túneles seguros con Cloudflare Zero Trust y gestión de puertos. |
 | **Entorno de Terminal** | [![Zsh](https://img.shields.io/badge/Zsh-F15A24?logo=zsh&logoColor=white)](#) [![Zellij](https://img.shields.io/badge/Zellij-000000?logo=gnu-bash&logoColor=white)](#) [![Micro](https://img.shields.io/badge/Micro-4A154B?logo=visualstudiocode&logoColor=white)](#) | ZSH con Oh My Zsh preconfigurado, multiplexor Zellij, editores `micro`/`nano` y manual integrado (`cat ~/help`). |
 
 ---
 
-## Arquitectura y Topologías de Red
+## Cómo se conecta tu equipo al contenedor (Red y SSH)
 
-El entorno ofrece un contenedor principal (`devcontainer-ssh`) accesible vía OpenSSH en el puerto 2222, permitiendo conectar tu editor o terminal según el escenario de infraestructura:
+Cada proyecto corre en una subred privada de Docker (ej. `172.25.0.0/28`) **sin publicar puertos al host por defecto**. El contenedor principal (`<workspace>-devcontainer-ssh`) ejecuta OpenSSH en su **puerto 22 interno**, y toda exposición o túnel local apunta por defecto a **`127.0.0.1`** para evitar conflictos entre proyectos y exposición accidental en LAN. Puedes conectarte por IP privada o salto SSH según dónde corra Docker, o abrir apps web y DBs bajo demanda con `devcontainer-cli access forward <puerto>` (`127.0.0.1`) y `devcontainer-cli access route add <puerto>` (`http://<workspace>-<puerto>.devcli.localhost`). Consulta el resumen práctico de red y SSH en [**`NETWORKING.md`**](NETWORKING.md).
 
 <details>
-<summary><b>1. Acceso Local (Host de desarrollo)</b></summary>
+<summary><b>1. En tu misma máquina — <code>devcontainer-cli access ssh</code> (conexión directa por IP privada)</b></summary>
 
-Conexión SSH directa a la IP privada del contenedor en el mismo equipo. No requiere exponer puertos al exterior.
+Úsalo cuando Docker corre en tu propio equipo. La CLI obtiene la IP privada del contenedor, instala tu clave y registra un alias en `~/.ssh/devcontainer-cli.config` apuntando a `<IP-privada>:22` (sin exponer puertos al exterior).
+
+```bash
+devcontainer-cli access ssh
+```
 
 ```mermaid
 graph LR
     subgraph Host["Tu Computadora (Host)"]
         VSCode["VS Code / Terminal"]
         
-        subgraph DockerEnv["Entorno Docker"]
-            DevContainer["🖥️ Devcontainer-SSH"]
-            DBs[("🗄️ Bases de Datos")]
+        subgraph DockerEnv["Subred Privada Docker (ej. 172.25.0.0/28)"]
+            DevContainer["<workspace>-devcontainer-ssh (:22)"]
+            DBs[("Bases de Datos")]
         end
     end
     
-    VSCode -- "SSH Directo (IP Privada)" --> DevContainer
+    VSCode -- "SSH Directo (<IP-privada>:22)" --> DevContainer
     DevContainer <--> DBs
 ```
 </details>
 
 <details>
-<summary><b>2. Acceso Remoto LAN (Laptop → Servidor con --via)</b></summary>
+<summary><b>2. Desde tu laptop hacia un servidor en tu red/LAN — <code>devcontainer-cli access ssh --via usuario@servidor</code></b></summary>
 
-Conexión desde una laptop a un servidor local (Raspberry Pi, Mini PC) usando el servicio SSH del servidor como puente seguro (`netcat`), sin exponer puertos del contenedor.
+Úsalo cuando los contenedores corren en otro equipo (Mini PC, Home Server, Raspberry Pi). Tu laptop usa el servidor como puente SSH (`ProxyCommand` con `nc`) hasta `<IP-privada>:22` del contenedor, sin abrir puertos en el servidor. (Si el cliente no tiene acceso al daemon Docker o prefieres copiar un bloque manual, ejecuta `devcontainer-cli config ssh-key --export usuario@servidor` en el servidor).
+
+```bash
+devcontainer-cli access ssh --via usuario@servidor --container <workspace>-devcontainer-ssh
+```
 
 ```mermaid
 graph LR
     subgraph Laptop["Tu Laptop (Cliente)"]
-        VSCode["VS Code"]
+        VSCode["VS Code / Terminal"]
     end
     
-    subgraph Server["Servidor (Host)"]
-        SSHD["SSHD (Host)"]
+    subgraph Server["Servidor Docker (Host Remoto)"]
+        SSHD["SSHD del Servidor"]
         
-        subgraph DockerEnv["Entorno Docker"]
-            DevContainer["🖥️ Devcontainer-SSH"]
+        subgraph DockerEnv["Subred Privada Docker"]
+            DevContainer["<workspace>-devcontainer-ssh (:22)"]
+            DBs[("Bases de Datos")]
         end
     end
     
     VSCode -- "SSH (ProxyCommand)" --> SSHD
-    SSHD -- "netcat (nc): Reenvía tráfico TCP" --> DevContainer
+    SSHD -- "nc <IP-privada> 22" --> DevContainer
+    DevContainer <--> DBs
 ```
 </details>
 
 <details>
-<summary><b>3. Acceso Remoto Seguro (Cloudflare Tunnel)</b></summary>
+<summary><b>3. Desde cualquier red externa — módulo <code>cloudflared</code> + cliente WARP</b></summary>
 
-Acceso desde cualquier lugar mediante Cloudflare Zero Trust y cliente WARP sin abrir puertos en el router. `cloudflared` se instala **dentro** del devcontainer (módulo `cloudflared`), alcanzando `localhost` sin saltos de red. (Ver [.docs/cloudflare-tunnel.md](.docs/cloudflare-tunnel.md)).
+Úsalo para conectarte desde fuera de tu red sin abrir puertos en el router. El módulo `cloudflared` se instala dentro de `<workspace>-devcontainer-ssh` y publica la subred Docker (`DOCKER_SUBNET`) hacia Cloudflare Zero Trust; luego te conectas desde cualquier lugar con el cliente WARP activo (`ssh devuser@<DEVCONTAINER_IP>`). También admite túneles rápidos efímeros (`cloudflared tunnel --url http://localhost:3000`). Ver [.docs/cloudflare-tunnel.md](.docs/cloudflare-tunnel.md).
 
 ```mermaid
 graph LR
-    subgraph Remote["Remoto (Cafetería/Casa)"]
+    subgraph Remote["Remoto (Fuera de tu red)"]
         Laptop["Laptop + WARP Client"]
     end
     
     subgraph Internet["Cloudflare Edge"]
-        ZeroTrust["Zero Trust Network"]
+        ZeroTrust["Zero Trust Private Network"]
     end
     
-    subgraph LocalNetwork["Tu Red Local"]
-        subgraph DockerEnv["Entorno Docker"]
-            subgraph DevContainer["🖥️ Devcontainer-SSH"]
-                Cloudflared["Cloudflared (Túnel)"]
-            end
-            DBs[("🗄️ Bases de Datos")]
+    subgraph LocalNetwork["Tu Red Local (Docker)"]
+        subgraph DockerEnv["Subred Privada (ej. 172.25.0.0/28)"]
+            DevContainer["<workspace>-devcontainer-ssh (sshd :22 + cloudflared)"]
+            DBs[("Bases de Datos")]
         end
     end
     
-    Laptop -- "Túnel Seguro" --> ZeroTrust
-    ZeroTrust -- "Túnel Encriptado" --> Cloudflared
-    Cloudflared -- "localhost" --> DevContainer
-    Cloudflared -- "Ruteo IP Privada" --> DBs
+    Laptop -- "Tráfico WARP cifrado" --> ZeroTrust
+    ZeroTrust -- "Túnel saliente" --> DevContainer
+    DevContainer -- "Ruteo IP Privada" --> DBs
 ```
 </details>
 
@@ -211,7 +218,7 @@ graph LR
 | `devcontainer-cli inspect context` | Muestra herramientas instaladas, versiones y `~/CONTEXT.md` del contenedor |
 | `devcontainer-cli workspace destroy` | Elimina contenedores, red y volúmenes del proyecto actual |
 
-> ¿Necesitas dejar un proceso interactivo o TUI (como `claude --remote-control`) corriendo en segundo plano al salir de la shell? Consulta [UTILITIES.md](UTILITIES.md).
+> ¿Necesitas dejar una herramienta interactiva o TUI corriendo en segundo plano con PTY persistente al salir de la shell? Consulta [UTILITIES.md](UTILITIES.md). Para entender el modelo de red `/28`, por qué todo vincula a `127.0.0.1` y qué comando usar (`ssh`, `forward`, `route`, `network`), consulta [NETWORKING.md](NETWORKING.md).
 
 ---
 
@@ -242,7 +249,8 @@ devcontainer-cli config clean all
 
 ## Guías de Uso
 
-- [**`UTILITIES.md`**](UTILITIES.md) — Sesiones persistentes en segundo plano con Zellij (PTY) y procesos desacoplados.
+- [**`NETWORKING.md`**](NETWORKING.md) — Modelo de red `/28`, por qué todo va a `127.0.0.1`, SSH y cuándo usar `forward`, `route` o `network`.
+- [**`UTILITIES.md`**](UTILITIES.md) — Sesiones persistentes en segundo plano con Zellij (PTY).
 - [**`MANUAL.md`**](MANUAL.md) — Casos de uso paso a paso (VS Code, servidores LAN con `--via`, bases de datos, agentes).
 - [**`.docs/cli-reference.md`**](.docs/cli-reference.md) — Referencia completa de comandos y flags.
 - [**`.docs/post-install.md`**](.docs/post-install.md) — Operaciones post-instalación y administración de bases de datos.

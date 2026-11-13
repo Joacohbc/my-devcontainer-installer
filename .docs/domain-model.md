@@ -135,7 +135,7 @@ Servicios complementarios definidos en `docker-compose.yml`:
 
 | Servicio ID | Imagen Base | Puertos Típicos | Volúmenes y Características |
 |---|---|---|---|
-| `devcontainer` | Construida localmente o GHCR | `2222:22` (SSH) | Montaje del workspace en `/workspaces/<ws>`, volumen compartido `devcontainer-shared-config` y red interna. |
+| `devcontainer` | Construida localmente o GHCR | Ninguno por defecto (`22` interno para SSH) | Montaje del workspace en `/workspaces/<ws>`, volumen compartido `devcontainer-shared-config` y red interna (`/28`). |
 | `postgres` | `postgres:alpine` | `5432:5432` | Volumen de datos persistente `<workspace>-postgres-data`, variables `POSTGRES_USER` y `POSTGRES_PASSWORD`. |
 | `redis` | `redis:alpine` | `6379:6379` | Cache en memoria con persistencia en `<workspace>-redis-data`. |
 | `mongo` | `mongo:latest` | `27017:27017` | Base de datos NoSQL con volumen persistente `<workspace>-mongo-data`. |
@@ -203,6 +203,6 @@ stateDiagram-v2
 1. **Unconfigured**: No existe `.dc_<workspace>/`.
 2. **Configured**: `devcontainer.config.json`, `docker-compose.yml` y `Dockerfile` han sido generados.
 3. **Building / Pulling**: Resolución de imagen según modo (`custom` calcula huella digital SHA-256 y nombra la imagen por origen y contenido; `profiles` verifica variante remota). Tras compilar se recolectan las imágenes de proyecto que ya nadie referencia.
-4. **Running**: El contenedor `devcontainer-ssh` se encuentra activo, el entrypoint completó sus etapas y el daemon OpenSSH escucha en el puerto 2222.
+4. **Running**: El contenedor `<workspace>-devcontainer-ssh` se encuentra activo, el entrypoint completó sus etapas y el daemon OpenSSH escucha en el puerto 22 interno de su red Docker.
 5. **Stopped**: Contenedores detenidos conservando volúmenes y configuración.
 6. **Destroyed**: Eliminación total de contenedores, redes, volúmenes de datos, archivos en `.dc_<workspace>/` y desasociación de claves SSH y entradas en `known_hosts`. La imagen del proyecto se elimina si ningún otro proyecto la comparte.
