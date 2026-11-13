@@ -18,7 +18,8 @@ This file holds the constitutional rules an agent must follow. Detailed document
 | Test pyramid, runner mocks, and invariant regression tests | `.docs/testing.md` |
 | Cloudflare Tunnel private network access | `.docs/cloudflare-tunnel.md` |
 | Post-install shell access, credentials, and DB operations | `.docs/post-install.md` |
-| Container utilities (Zellij background PTY, detached processes) | `UTILITIES.md` |
+| SSH architecture (shared key, persistent config, ephemeral mode) | `SSH.md` |
+| Container utilities (Zellij background PTY) | `UTILITIES.md` |
 | Automated CLI commands and flags reference | `.docs/cli-reference.md` |
 | Pending work, open decisions, and technical debt | `.docs/roadmap.md` (the single task list) |
 

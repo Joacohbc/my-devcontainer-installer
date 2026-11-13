@@ -283,19 +283,19 @@ which has no such directory.
 
 ### Long-lived interactive or TUI processes in the background (Zellij)
 
-Interactive TUI tools (such as `claude --remote-control ...`) require a real PTY
-and exit immediately if launched with `nohup ... < /dev/null &`, or die when you
-`exit` your interactive shell. Because `zellij` is preinstalled in every image,
-use a detached Zellij session to give the process a persistent PTY independent
-of your shell session and PID 1 (`sshd`):
+Interactive TUI tools require a real PTY and exit immediately if launched with
+`nohup ... < /dev/null &`, or die when you `exit` your interactive shell.
+Because `zellij` is preinstalled in every image, use a detached Zellij session
+to give the process a persistent PTY independent of your shell session and PID 1
+(`sshd`):
 
     # Create a detached background session and run the command inside it
-    devcontainer-cli agent exec -w -- zellij attach --create-background claude
-    devcontainer-cli agent exec -w -- zellij --session claude run -- claude --remote-control claude-docker-16gb
+    devcontainer-cli agent exec -w -- zellij attach --create-background <session>
+    devcontainer-cli agent exec -w -- zellij --session <session> run -- <command>
 
     # Check active sessions or reattach later (detach with Ctrl+O, then D)
     devcontainer-cli agent exec -- zellij list-sessions
-    devcontainer-cli access shell -- zellij attach claude
+    devcontainer-cli access shell -- zellij attach <session>
 
 ### Package managers are not the ones you expect
 

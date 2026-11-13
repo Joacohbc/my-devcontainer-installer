@@ -148,7 +148,7 @@ graph LR
 <details>
 <summary><b>2. Desde tu laptop hacia un servidor en tu red/LAN — <code>devcontainer-cli access ssh --via usuario@servidor</code></b></summary>
 
-Úsalo cuando los contenedores corren en otro equipo (Mini PC, Home Server, Raspberry Pi). Tu laptop usa el servidor como puente SSH (`ProxyCommand` con `nc`) hasta `<IP-privada>:22` del contenedor, sin abrir puertos en el servidor. (Si el cliente no tiene acceso al daemon Docker o prefieres copiar un bloque manual, usa `--setup-external usuario@servidor` en el servidor).
+Úsalo cuando los contenedores corren en otro equipo (Mini PC, Home Server, Raspberry Pi). Tu laptop usa el servidor como puente SSH (`ProxyCommand` con `nc`) hasta `<IP-privada>:22` del contenedor, sin abrir puertos en el servidor. (Si el cliente no tiene acceso al daemon Docker o prefieres copiar un bloque manual, ejecuta `devcontainer-cli config ssh-key --export usuario@servidor` en el servidor).
 
 ```bash
 devcontainer-cli access ssh --via usuario@servidor --container <workspace>-devcontainer-ssh
@@ -218,7 +218,7 @@ graph LR
 | `devcontainer-cli inspect context` | Muestra herramientas instaladas, versiones y `~/CONTEXT.md` del contenedor |
 | `devcontainer-cli workspace destroy` | Elimina contenedores, red y volúmenes del proyecto actual |
 
-> ¿Necesitas dejar un proceso interactivo o TUI (como `claude --remote-control`) corriendo en segundo plano al salir de la shell? Consulta [UTILITIES.md](UTILITIES.md).
+> ¿Necesitas dejar una herramienta interactiva o TUI corriendo en segundo plano con PTY persistente al salir de la shell? Consulta [UTILITIES.md](UTILITIES.md). Para el funcionamiento detallado de claves, modo guardado y modo efímero de SSH, consulta [SSH.md](SSH.md).
 
 ---
 
@@ -249,7 +249,8 @@ devcontainer-cli config clean all
 
 ## Guías de Uso
 
-- [**`UTILITIES.md`**](UTILITIES.md) — Sesiones persistentes en segundo plano con Zellij (PTY) y procesos desacoplados.
+- [**`SSH.md`**](SSH.md) — Arquitectura SSH: clave compartida, modo guardado (`devcontainer-cli.config`) y modo efímero (`--ephemeral`).
+- [**`UTILITIES.md`**](UTILITIES.md) — Sesiones persistentes en segundo plano con Zellij (PTY).
 - [**`MANUAL.md`**](MANUAL.md) — Casos de uso paso a paso (VS Code, servidores LAN con `--via`, bases de datos, agentes).
 - [**`.docs/cli-reference.md`**](.docs/cli-reference.md) — Referencia completa de comandos y flags.
 - [**`.docs/post-install.md`**](.docs/post-install.md) — Operaciones post-instalación y administración de bases de datos.
