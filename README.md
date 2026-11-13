@@ -159,21 +159,12 @@ devcontainer-cli config clean all
 
 ---
 
-## Documentación Detallada
+## Guías de Uso
 
-| Documento | Contenido |
-|---|---|
-| [**`UTILITIES.md`**](UTILITIES.md) | Sesiones persistentes en segundo plano con Zellij (PTY) y procesos desacoplados |
-| [**`.docs/manual.md`**](.docs/manual.md) | Manual práctico paso a paso para humanos y agentes de IA |
-| [**`.docs/cli-reference.md`**](.docs/cli-reference.md) | Referencia completa de comandos y flags |
-| [**`.docs/post-install.md`**](.docs/post-install.md) | Operaciones post-instalación, scripts embebidos y bases de datos |
-| [**`.docs/cloudflare-tunnel.md`**](.docs/cloudflare-tunnel.md) | Acceso remoto privado con Cloudflare Zero Trust y WARP |
-| [**`.docs/product.md`**](.docs/product.md) | Visión del producto y flujos de extremo a extremo |
-| [**`.docs/architecture.md`**](.docs/architecture.md) | Arquitectura en 4 capas y decisiones D1–D27 |
-| [**`.docs/domain-model.md`**](.docs/domain-model.md) | Catálogo de módulos Dockerfile, servicios Compose y perfiles |
-| [**`.docs/code-conventions.md`**](.docs/code-conventions.md) | Convenciones Go y autoría de comandos Cobra |
-| [**`.docs/dev-environment.md`**](.docs/dev-environment.md) | Toolchain local, CI, GoReleaser y auto-actualización |
-| [**`.docs/testing.md`**](.docs/testing.md) | Estrategia de pruebas y tests de invariantes |
-| [**`.docs/roadmap.md`**](.docs/roadmap.md) | Lista viva de tareas pendientes y deuda técnica |
-| [**`.docs/context.md`**](.docs/context.md) | Glosario del dominio |
-| [**`AGENTS.md`**](AGENTS.md) | Reglas constitucionales para agentes de IA en este repositorio |
+- [**`UTILITIES.md`**](UTILITIES.md) — Sesiones persistentes en segundo plano con Zellij (PTY) y procesos desacoplados.
+- [**`.docs/manual.md`**](.docs/manual.md) — Casos de uso paso a paso (VS Code, servidores LAN con `--via`, bases de datos, agentes).
+- [**`.docs/cli-reference.md`**](.docs/cli-reference.md) — Referencia completa de comandos y flags.
+- [**`.docs/post-install.md`**](.docs/post-install.md) — Operaciones post-instalación y administración de bases de datos.
+- [**`.docs/cloudflare-tunnel.md`**](.docs/cloudflare-tunnel.md) — Acceso remoto privado con Cloudflare Zero Trust y WARP.
+
+> *¿Contribuir al desarrollo de la CLI?* La arquitectura, convenciones y flujo interno están en [`AGENTS.md`](AGENTS.md) y [`.docs/`](.docs/).
