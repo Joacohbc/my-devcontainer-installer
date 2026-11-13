@@ -70,6 +70,7 @@ var SharedConfigEntries = []SharedConfigEntry{
 	{ID: "gemini", Target: ".gemini", Kind: SharedConfigDir}, // Gemini CLI creds + Antigravity CLI settings/plugins/skills/MCP
 	{ID: "agents", Target: ".agents", Kind: SharedConfigDir}, // reusable agent rules/workflows/skills (Antigravity, …)
 	{ID: "codex", Target: ".codex", Kind: SharedConfigDir},
+	{ID: "herdr", Target: ".config/herdr", Kind: SharedConfigDir},
 	{ID: "gh", Target: ".config/gh", Kind: SharedConfigDir},
 	// The user's own shell aliases. Persisting them here is what makes
 	// `config alias` edits apply to every container without an image rebuild:

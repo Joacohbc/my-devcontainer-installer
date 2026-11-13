@@ -38,6 +38,7 @@ var Registry = []Asset{
 	{Name: "install-claude-code", File: "install-claude-code.sh", Kind: KindScript, Label: "Claude Code installer"},
 	{Name: "install-codex-cli", File: "install-codex-cli.sh", Kind: KindScript, Label: "Codex CLI installer"},
 	{Name: "install-copilot", File: "install-copilot.sh", Kind: KindScript, Label: "GitHub Copilot CLI installer"},
+	{Name: "install-herdr", File: "install-herdr.sh", Kind: KindScript, Label: "Herdr CLI installer"},
 	{Name: "install-opencode", File: "install-opencode.sh", Kind: KindScript, Label: "OpenCode installer"},
 	{Name: "login-github-cli", File: "login-github-cli.sh", Kind: KindScript, Label: "GitHub CLI login helper"},
 	{Name: "setup-help", File: "setup-help.sh", Kind: KindBuild, Label: "~/help quick reference writer"},

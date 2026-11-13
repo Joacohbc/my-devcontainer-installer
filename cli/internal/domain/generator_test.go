@@ -1073,6 +1073,14 @@ func TestGenerateDockerfile_CopilotCli(t *testing.T) {
 	assertContainsStr(t, df, "install-copilot.sh", "copilot-cli script")
 }
 
+func TestGenerateDockerfile_Herdr(t *testing.T) {
+	cfg := makeConfig(func(c *types.DevcontainerConfig) {
+		c.Dockerfile.Modules = []types.SelectedModule{{ID: "herdr"}}
+	})
+	df := mustGenerateDockerfile(t, cfg)
+	assertContainsStr(t, df, "install-herdr.sh", "herdr script")
+}
+
 func TestGenerateCompose_DependsOnSortedRegardlessOfInputOrder(t *testing.T) {
 	orders := [][]types.SelectedService{
 		{{ID: "redis"}, {ID: "postgres"}, {ID: "mongo"}},

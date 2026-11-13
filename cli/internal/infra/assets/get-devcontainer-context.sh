@@ -88,6 +88,7 @@ codex|--version|Codex CLI
 copilot|--version|GitHub Copilot CLI
 agy|--version|Antigravity CLI
 opencode|--version|OpenCode
+herdr|--version|Herdr CLI
 '
 
 # first_line trims a version banner down to one usable line, skipping the JVM's
