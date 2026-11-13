@@ -281,6 +281,22 @@ and it is why most commands do not need a `bash -lc 'cd … && …'` wrapper:
 `-w` targets the project's own mount, so leave it off for a database container,
 which has no such directory.
 
+### Long-lived interactive or TUI processes in the background (Zellij)
+
+Interactive TUI tools (such as `claude --remote-control ...`) require a real PTY
+and exit immediately if launched with `nohup ... < /dev/null &`, or die when you
+`exit` your interactive shell. Because `zellij` is preinstalled in every image,
+use a detached Zellij session to give the process a persistent PTY independent
+of your shell session and PID 1 (`sshd`):
+
+    # Create a detached background session and run the command inside it
+    devcontainer-cli agent exec -w -- zellij attach --create-background claude
+    devcontainer-cli agent exec -w -- zellij --session claude run -- claude --remote-control claude-docker-16gb
+
+    # Check active sessions or reattach later (detach with Ctrl+O, then D)
+    devcontainer-cli agent exec -- zellij list-sessions
+    devcontainer-cli access shell -- zellij attach claude
+
 ### Package managers are not the ones you expect
 
 - **Python: `uv`, never `pip`.** `uv add X` for a project dependency, `uv tool

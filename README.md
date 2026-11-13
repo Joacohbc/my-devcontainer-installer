@@ -239,6 +239,18 @@ devcontainer-cli access shell -- uname -a                            # Ejecuta u
 devcontainer-cli access shell -T -- pg_dump -U devuser devdb > dump.sql # Dump limpio de base de datos sin corrupción TTY
 ```
 
+#### Procesos interactivos en segundo plano con Zellij (PTY persistente)
+Herramientas TUI interactivas (como `claude --remote-control ...`) requieren una pseudo-terminal (PTY) real y fallan si se lanzan con `nohup ... < /dev/null &`, o se cierran al hacer `exit` de la sesión. Como **Zellij** viene preinstalado en todas las imágenes, puede crear una sesión desacoplada en segundo plano que sobrevive al cierre de la terminal sin depender de su shell ni del PID 1 (`sshd`):
+```bash
+# Desde el contenedor (en el workspace) o vía agent exec -w:
+zellij attach --create-background claude
+zellij --session claude run -- claude --remote-control claude-docker-16gb
+
+# Listar sesiones activas o reconectarse luego (desacoplar con Ctrl+O y luego D):
+zellij list-sessions
+devcontainer-cli access shell -- zellij attach claude
+```
+
 ### 3. Reenvío de Puertos y Túneles Inversos (`access forward`)
 Permite conectar servicios en ambas direcciones entre el anfitrión y el contenedor:
 ```bash
