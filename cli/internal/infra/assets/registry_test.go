@@ -55,7 +55,7 @@ func TestBuildOnlyAssetsAreNotCopyable(t *testing.T) {
 		"get-devcontainer-context",
 		"install-antigravity", "install-claude-code",
 		"install-codex-cli", "install-copilot",
-		"install-opencode", "login-github-cli",
+		"install-herdr", "install-opencode", "login-github-cli",
 	}
 	if len(CopyableNames()) != len(want) {
 		t.Fatalf("expected %d copyable assets, got %v", len(want), CopyableNames())

@@ -594,6 +594,7 @@ func TestPostScriptAutoStartFlags(t *testing.T) {
 		{"antigravity", dockerfile.AntigravityCliModule, true, 0},
 		{"copilot", dockerfile.CopilotCliModule, true, 0},
 		{"opencode", dockerfile.OpencodeModule, true, 0},
+		{"herdr", dockerfile.HerdrModule, true, 0},
 		{"skills", dockerfile.SkillsModule, true, 95},
 		{"codex", dockerfile.CodexCliModule, false, 0},
 		{"cleanup (github login)", dockerfile.CleanupModule, false, 0},

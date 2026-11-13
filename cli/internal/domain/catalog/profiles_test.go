@@ -86,7 +86,7 @@ func TestBuiltinProfileRemoteFlagMatchesPublishedVariants(t *testing.T) {
 
 func TestBuiltinProfilesExcludeAITools(t *testing.T) {
 	aiModules := []string{
-		"claude-code", "opencode", "codex-cli", "antigravity-cli", "copilot-cli",
+		"claude-code", "opencode", "codex-cli", "antigravity-cli", "copilot-cli", "herdr",
 	}
 	for _, p := range catalog.BuiltinProfiles {
 		for _, m := range p.Modules {

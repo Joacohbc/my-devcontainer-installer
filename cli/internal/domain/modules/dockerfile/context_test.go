@@ -221,7 +221,7 @@ func TestModuleContextSectionsAreNonEmpty(t *testing.T) {
 		PnpmModule, YarnModule, BunModule, GolangModule, RustModule, PhpModule,
 		CCppModule, SqliteModule, ZellijModule, ChromeModule, FfmpegModule,
 		CloudflaredModule, DodModule, ClaudeCodeModule, CodexCliModule,
-		AntigravityCliModule, CopilotCliModule, OpencodeModule,
+		AntigravityCliModule, CopilotCliModule, OpencodeModule, HerdrModule,
 		PostgresClientModule, RedisClientModule, MongoClientModule,
 	} {
 		sec := m.Context(nil)

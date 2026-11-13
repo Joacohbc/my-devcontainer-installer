@@ -31,6 +31,7 @@ const (
 	ModuleCodexCli       ModuleID = "codex-cli"
 	ModuleAntigravityCli ModuleID = "antigravity-cli"
 	ModuleCopilotCli     ModuleID = "copilot-cli"
+	ModuleHerdr          ModuleID = "herdr"
 	ModuleZellij         ModuleID = "zellij"
 	ModuleChrome         ModuleID = "chrome"
 	ModuleFfmpeg         ModuleID = "ffmpeg"
