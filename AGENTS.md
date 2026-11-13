@@ -9,7 +9,7 @@ This file holds the constitutional rules an agent must follow. Detailed document
 | Need | Read |
 |---|---|
 | Product purpose, personas, and end-to-end flows | `.docs/product.md` |
-| Practical use cases handbook (human and agentic) | `.docs/manual.md` |
+| Practical use cases handbook (human and agentic) | `MANUAL.md` |
 | 4-layer architecture, boundaries, and decisions D1–D27 | `.docs/architecture.md` |
 | Entities, Dockerfile modules, compose services, profiles | `.docs/domain-model.md` |
 | Domain vocabulary (ubiquitous language) | `.docs/context.md` |
@@ -18,6 +18,7 @@ This file holds the constitutional rules an agent must follow. Detailed document
 | Test pyramid, runner mocks, and invariant regression tests | `.docs/testing.md` |
 | Cloudflare Tunnel private network access | `.docs/cloudflare-tunnel.md` |
 | Post-install shell access, credentials, and DB operations | `.docs/post-install.md` |
+| Container utilities (Zellij background PTY, detached processes) | `UTILITIES.md` |
 | Automated CLI commands and flags reference | `.docs/cli-reference.md` |
 | Pending work, open decisions, and technical debt | `.docs/roadmap.md` (the single task list) |
 
