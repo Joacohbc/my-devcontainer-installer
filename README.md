@@ -118,7 +118,7 @@ curl -fsSL https://codeload.github.com/Joacohbc/my-devcontainer-installer/tar.gz
 
 ## Cómo se conecta tu equipo al contenedor (Red y SSH)
 
-Cada proyecto corre en una subred privada de Docker (ej. `172.25.0.0/28`) **sin publicar puertos al host por defecto**. El contenedor principal (`<workspace>-devcontainer-ssh`) ejecuta OpenSSH en su **puerto 22 interno**, y puedes conectarte por IP privada o salto SSH según dónde corra Docker. Para abrir apps web o DBs desde el host bajo demanda, usa `devcontainer-cli access forward <puerto>` (túnel a `127.0.0.1`) o `devcontainer-cli access route add <puerto>` (`http://<workspace>-<puerto>.devcli.localhost`).
+Cada proyecto corre en una subred privada de Docker (ej. `172.25.0.0/28`) **sin publicar puertos al host por defecto**. El contenedor principal (`<workspace>-devcontainer-ssh`) ejecuta OpenSSH en su **puerto 22 interno**, y toda exposición o túnel local apunta por defecto a **`127.0.0.1`** para evitar conflictos entre proyectos y exposición accidental en LAN. Puedes conectarte por IP privada o salto SSH según dónde corra Docker, o abrir apps web y DBs bajo demanda con `devcontainer-cli access forward <puerto>` (`127.0.0.1`) y `devcontainer-cli access route add <puerto>` (`http://<workspace>-<puerto>.devcli.localhost`). Consulta el flujo completo y todos los subcomandos de `access` en [**`NETWORKING.md`**](NETWORKING.md).
 
 <details>
 <summary><b>1. En tu misma máquina — <code>devcontainer-cli access ssh</code> (conexión directa por IP privada)</b></summary>
@@ -218,7 +218,7 @@ graph LR
 | `devcontainer-cli inspect context` | Muestra herramientas instaladas, versiones y `~/CONTEXT.md` del contenedor |
 | `devcontainer-cli workspace destroy` | Elimina contenedores, red y volúmenes del proyecto actual |
 
-> ¿Necesitas dejar una herramienta interactiva o TUI corriendo en segundo plano con PTY persistente al salir de la shell? Consulta [UTILITIES.md](UTILITIES.md). Para el funcionamiento detallado de claves, modo guardado y modo efímero de SSH, consulta [SSH.md](SSH.md).
+> ¿Necesitas dejar una herramienta interactiva o TUI corriendo en segundo plano con PTY persistente al salir de la shell? Consulta [UTILITIES.md](UTILITIES.md). Para el flujo completo de red, por qué todo vincula a `127.0.0.1`, SSH (claves, modo guardado y efímero), `forward`, `route` y `network`, consulta [NETWORKING.md](NETWORKING.md).
 
 ---
 
@@ -249,7 +249,7 @@ devcontainer-cli config clean all
 
 ## Guías de Uso
 
-- [**`SSH.md`**](SSH.md) — Arquitectura SSH: clave compartida, modo guardado (`devcontainer-cli.config`) y modo efímero (`--ephemeral`).
+- [**`NETWORKING.md`**](NETWORKING.md) — Red, SSH y conectividad: por qué todo va a `127.0.0.1`, claves y modo efímero, `forward`/`reverse`, `route`, `network` y todos los comandos de `access`.
 - [**`UTILITIES.md`**](UTILITIES.md) — Sesiones persistentes en segundo plano con Zellij (PTY).
 - [**`MANUAL.md`**](MANUAL.md) — Casos de uso paso a paso (VS Code, servidores LAN con `--via`, bases de datos, agentes).
 - [**`.docs/cli-reference.md`**](.docs/cli-reference.md) — Referencia completa de comandos y flags.

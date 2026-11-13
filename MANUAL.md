@@ -137,7 +137,7 @@ Conéctese directamente sin tocar su archivo de configuración SSH ni registrar 
 ```bash
 devcontainer-cli access ssh --ephemeral
 ```
-*La CLI resuelve la IP del contenedor y utiliza la clave privada gestionada (`-i ~/.config/devcontainer-cli/ssh/id_devcontainer`) para abrir la sesión OpenSSH en el puerto 22 interno, garantizando **cero polución** en sus archivos de configuración locales. (Más detalles sobre claves, modo guardado y modo efímero en [`SSH.md`](SSH.md)).*
+*La CLI resuelve la IP del contenedor y utiliza la clave privada gestionada (`-i ~/.config/devcontainer-cli/ssh/id_devcontainer`) para abrir la sesión OpenSSH en el puerto 22 interno, garantizando **cero polución** en sus archivos de configuración locales. (Más detalles sobre red, claves, modo guardado/efímero, `forward` y `route` en [`NETWORKING.md`](NETWORKING.md)).*
 
 ---
 
