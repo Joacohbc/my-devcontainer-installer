@@ -198,7 +198,7 @@ devcontainer-cli access forward reverse:5432
 3. Su clave privada **nunca abandona su laptop**.
 4. Conéctese directamente en cualquier momento con:
    ```bash
-   ssh <workspace>
+   ssh <workspace>-devcontainer-ssh
    ```
 
 ---
@@ -223,7 +223,7 @@ devcontainer-cli access forward reverse:5432
    ```bash
    ssh devuser@172.25.0.14
    ```
-*(Consulte [`cloudflare-tunnel.md`](cloudflare-tunnel.md) para detalles avanzados).*
+*(Consulte [`.docs/cloudflare-tunnel.md`](.docs/cloudflare-tunnel.md) y [`UTILITIES.md`](UTILITIES.md) para detalles avanzados y la documentación oficial de Cloudflare).*
 
 ---
 
@@ -418,6 +418,50 @@ devcontainer-cli run --image android --no-interactive   # contenedor dc-android
    devcontainer-cli workspace init --mode image --image android --no-interactive
    ```
    *Si la definición es `build` y nunca se construyó, el comando falla indicando `devcontainer-cli image build android`.*
+
+---
+
+### Caso 1.14: Acceso Privado Remoto con Tailscale en el Host
+
+**Escenario**: Desea acceder desde su laptop o dispositivo móvil a un devcontainer que corre en un servidor anfitrión conectado a su *tailnet* de Tailscale (SSH, VS Code Remote - SSH, aplicaciones web en *Secure Context* o APIs privadas), sin modificar el contenedor ni abrir puertos en `0.0.0.0`.
+
+**Paso a paso**:
+1. **Instale Tailscale en el servidor anfitrión** (consulte <https://tailscale.com/docs/install/linux>):
+   ```bash
+   curl -fsSL https://tailscale.com/install.sh | sh
+   sudo tailscale up
+   ```
+2. **Conecte por SSH desde su laptop (`--via`)**:
+   ```bash
+   devcontainer-cli access ssh --via <usuario>@<ip-o-magicdns-tailscale> --container <workspace>-devcontainer-ssh
+   ssh <workspace>-devcontainer-ssh
+   ```
+3. **Publique puertos web según su cliente**:
+   - **Escritorio / Laptop** (mantiene `localhost` como *Secure Context* nativo):
+     ```bash
+     devcontainer-cli access forward 3000 --alias <workspace>-devcontainer-ssh
+     ```
+     Luego abra `http://localhost:3000` (alternativamente: `devcontainer-cli access forward 3000` en el host y `ssh -L 3000:127.0.0.1:3000 <usuario>@<ip-o-magicdns-tailscale>` desde el cliente).
+   - **Móvil / PWA con HTTPS automático (`tailscale serve`)** (documentación oficial: <https://tailscale.com/kb/1312/serve>):
+     ```bash
+     devcontainer-cli access forward 3000
+     # En otra terminal del servidor anfitrión:
+     sudo tailscale serve --bg 3000
+     ```
+     *(En Vite 6+, añada el dominio `*.ts.net` en `server.allowedHosts` dentro de `vite.config.ts`).*
+   - **APIs / servicios sin frontend TLS** (enlazando únicamente a su IP Tailscale `100.x.y.z`, nunca `0.0.0.0`):
+     ```bash
+     devcontainer-cli access forward <ip_tailscale>:8000:8000
+     ```
+4. **Alternativa sin instalar Tailscale en el host (Contenedor Gateway + `access network connect`)**: si prefiere aislar Tailscale en un único contenedor `tailscale/tailscale` configurado como *Subnet Router* (`TS_ROUTES`, `/dev/net/tun` y `NET_ADMIN`), conéctelo a la red interna de cada proyecto y acceda por su `DEVCONTAINER_IP` (`.dc_<workspace>/build/.env`):
+   ```bash
+   devcontainer-cli access network connect tailscale-gateway
+   ssh devuser@172.25.0.14
+   # Al apagar/destruir el proyecto:
+   devcontainer-cli access network disconnect tailscale-gateway
+   ```
+
+*(Consulte [`.docs/tailscale.md`](.docs/tailscale.md) para automatización con `--forward-ports`, túneles inversos `reverse:` hacia la tailnet y la configuración completa del contenedor gateway).*
 
 ---
 

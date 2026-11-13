@@ -1,6 +1,10 @@
 # Configuración de Cloudflare Tunnel (Red Privada)
 
-Esta guía explica cómo configurar una **Red Privada** utilizando Cloudflare Tunnel y Docker. Esto permite acceder a su entorno de desarrollo (`devcontainer-ssh`) y otros servicios de forma segura desde cualquier lugar utilizando el cliente WARP, sin exponer puertos a internet.
+Esta guía explica cómo configurar una **Red Privada** utilizando Cloudflare Tunnel y Docker. Esto permite acceder a su entorno de desarrollo (`devcontainer-ssh`) y otros servicios de forma segura desde cualquier lugar utilizando el cliente WARP, sin exponer puertos a internet ni instalar un demonio de túnel en el anfitrión.
+
+> [!NOTE]
+> **Documentación oficial de referencia (Cloudflare)**:
+> - Conectar redes privadas con Cloudflare Tunnel y WARP: <https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/private-net/>
 
 ---
 
@@ -26,7 +30,7 @@ Existen tres formas de iniciar un túnel, de menor a mayor grado de configuraci�
    ```bash
    cloudflared tunnel run --token <token>
    ```
-   El connector queda autorizado contra el túnel creado en el panel de control. Es el método recomendado para Red Privada + WARP, pues ofrece una dirección fija. La CLI no solicita dicho token en la generación; se provee en la sesión o se exporta manualmente como variable `TUNNEL_TOKEN`.
+   El connector queda autorizado contra el túnel creado en el panel de control. Es el método recomendado para Red Privada + WARP, pues ofrece una dirección fija. La CLI no solicita dicho token en la generación; se provee en la sesión o se exporta manualmente como variable `TUNNEL_TOKEN`. Para dejarlo ejecutándose en segundo plano tras salir de la shell, utilice `nohup` + `disown` según [UTILITIES.md](../UTILITIES.md#2-procesos-no-interactivos-en-segundo-plano-nohup--disown).
 
 3. **Túnel con nombre sin token**:
    Inicie sesión desde dentro del contenedor con `cloudflared tunnel login` (el certificado se almacena en `~/.cloudflared/cert.pem`). Es el único método que autoriza comandos administrativos como `cloudflared tunnel route ip add`.

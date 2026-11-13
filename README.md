@@ -203,6 +203,32 @@ graph LR
 ```
 </details>
 
+<details>
+<summary><b>4. Acceso Remoto Privado (Tailscale en Host o Contenedor Gateway)</b></summary>
+
+Conexión privada desde cualquier dispositivo de tu *tailnet* usando Tailscale en el host (`--via` para SSH, `access forward` + `ssh -L` para navegador en *Secure Context*, `tailscale serve` para HTTPS automático o IP `100.x.y.z`), o conectando un contenedor gateway `tailscale/tailscale` bajo demanda con `devcontainer-cli access network connect` para enrutar la red interna Docker (`DEVCONTAINER_IP`). (Ver [`.docs/tailscale.md`](.docs/tailscale.md) y [`UTILITIES.md`](UTILITIES.md)).
+
+```mermaid
+graph LR
+    subgraph Client["Dispositivo en Tailnet"]
+        Browser["Laptop / Móvil"]
+    end
+
+    subgraph Server["Servidor Anfitrión (Host)"]
+        TS["Tailscale (Host / serve)"]
+        SSHD["SSHD / access forward"]
+
+        subgraph DockerEnv["Entorno Docker"]
+            DevContainer["🖥️ Devcontainer-SSH"]
+        end
+    end
+
+    Browser -- "Tailnet (SSH --via / HTTPS / 100.x)" --> TS
+    TS -- "127.0.0.1 / Túnel SSH" --> SSHD
+    SSHD --> DevContainer
+```
+</details>
+
 ---
 
 ## Comandos frecuentes
@@ -250,10 +276,11 @@ devcontainer-cli config clean all
 ## Guías de Uso
 
 - [**`NETWORKING.md`**](NETWORKING.md) — Modelo de red `/28`, por qué todo va a `127.0.0.1`, SSH y cuándo usar `forward`, `route` o `network`.
-- [**`UTILITIES.md`**](UTILITIES.md) — Sesiones persistentes en segundo plano con Zellij (PTY).
-- [**`MANUAL.md`**](MANUAL.md) — Casos de uso paso a paso (VS Code, servidores LAN con `--via`, bases de datos, agentes).
+- [**`UTILITIES.md`**](UTILITIES.md) — Sesiones persistentes en segundo plano (Zellij / `nohup`) y resumen de acceso remoto privado (Cloudflare Tunnel y Tailscale).
+- [**`MANUAL.md`**](MANUAL.md) — Casos de uso paso a paso (VS Code, servidores LAN con `--via`, Tailscale, bases de datos, agentes).
 - [**`.docs/cli-reference.md`**](.docs/cli-reference.md) — Referencia completa de comandos y flags.
 - [**`.docs/post-install.md`**](.docs/post-install.md) — Operaciones post-instalación y administración de bases de datos.
 - [**`.docs/cloudflare-tunnel.md`**](.docs/cloudflare-tunnel.md) — Acceso remoto privado con Cloudflare Zero Trust y WARP.
+- [**`.docs/tailscale.md`**](.docs/tailscale.md) — Acceso remoto privado con Tailscale (en el host o mediante contenedor gateway + `access network connect`).
 
 > *¿Contribuir al desarrollo de la CLI?* La arquitectura, convenciones y flujo interno están en [`AGENTS.md`](AGENTS.md) y [`.docs/`](.docs/).
