@@ -353,6 +353,10 @@ Inside the container, sibling services are reached by compose service name
 `access route add` bind strictly to `127.0.0.1` by default and stay in the
 foreground. Bind addresses, reverse-tunnel limits, permanent `forward_ports`,
 routes (`rm`/`stop`) and `network disconnect`: `references/networking.md`.
+For remote private access, also load:
+
+- **Tailscale** (host-side `--via` / `ssh -L` / `tailscale serve` / `100.x.y.z` forward, or Docker gateway + `access network connect`): `references/tailscale.md`
+- **Cloudflare Tunnel + WARP** (`cloudflared` module + `DOCKER_SUBNET` routing): `references/cloudflare-tunnel.md`
 
 ## Inspect
 

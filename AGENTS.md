@@ -10,16 +10,17 @@ This file holds the constitutional rules an agent must follow. Detailed document
 |---|---|
 | Product purpose, personas, and end-to-end flows | `.docs/product.md` |
 | Practical use cases handbook (human and agentic) | `MANUAL.md` |
-| 4-layer architecture, boundaries, and decisions D1–D28 | `.docs/architecture.md` |
+| 4-layer architecture, boundaries, and decisions D1–D29 | `.docs/architecture.md` |
 | Entities, Dockerfile modules, compose services, profiles | `.docs/domain-model.md` |
 | Domain vocabulary (ubiquitous language) | `.docs/context.md` |
 | Code conventions, `hbc-code-design`, command authoring | `.docs/code-conventions.md` |
 | Local Go toolchain, CI workflows, GoReleaser, releases | `.docs/dev-environment.md` |
 | Test pyramid, runner mocks, and invariant regression tests | `.docs/testing.md` |
 | Cloudflare Tunnel private network access | `.docs/cloudflare-tunnel.md` |
+| Tailscale private network access (host or Docker gateway) | `.docs/tailscale.md` |
 | Post-install shell access, credentials, and DB operations | `.docs/post-install.md` |
 | User connectivity overview (loopback default, SSH modes, forward/route/network) | `NETWORKING.md` |
-| Container utilities (Zellij background PTY) | `UTILITIES.md` |
+| Container utilities (Zellij, detached processes, remote access overview) | `UTILITIES.md` |
 | Automated CLI commands and flags reference | `.docs/cli-reference.md` |
 | Pending work, open decisions, and technical debt | `.docs/roadmap.md` (the single task list) |
 

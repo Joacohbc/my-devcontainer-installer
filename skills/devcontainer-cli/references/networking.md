@@ -96,3 +96,10 @@ background if you need the terminal back:
     devcontainer-cli access route rm api.devcli.localhost   # remove a route manually
     devcontainer-cli access route status                    # check global Caddy router status
     devcontainer-cli access route stop                      # stop global devcli-router
+
+## Remote private networks (Tailscale and Cloudflare Tunnel)
+
+Read the matching reference before setting up remote access beyond the local machine:
+
+- **Tailscale (host-side default, or standalone Docker gateway + `access network connect`)**: `references/tailscale.md`.
+- **Cloudflare Tunnel (`cloudflared` module inside container + WARP)**: `references/cloudflare-tunnel.md`.
