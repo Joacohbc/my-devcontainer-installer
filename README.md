@@ -81,10 +81,9 @@ devcontainer-cli agent forward 3000
 devcontainer-cli agent destroy --yes
 ```
 
-<details>
-<summary><b>Instalar la habilidad (skill) en tu agente del host (opcional, recomendado)</b></summary>
+### Instalar la habilidad (skill) en tu agente del host (muy recomendado)
 
-Enseña a Claude Code, Antigravity u otros agentes compatibles a usar `devcontainer-cli` automáticamente:
+Enseña a Claude Code, Antigravity u otros agentes compatibles a usar `devcontainer-cli` automáticamente para no tocar tu máquina física:
 
 ```bash
 # Con npx skills:
@@ -100,8 +99,6 @@ mkdir -p "$DEST" && \
 curl -fsSL https://codeload.github.com/Joacohbc/my-devcontainer-installer/tar.gz/main | \
   tar -xz -C "$DEST" --strip-components=3 my-devcontainer-installer-main/skills/devcontainer-cli
 ```
-
-</details>
 
 ---
 
@@ -162,7 +159,7 @@ devcontainer-cli config clean all
 ## Guías de Uso
 
 - [**`UTILITIES.md`**](UTILITIES.md) — Sesiones persistentes en segundo plano con Zellij (PTY) y procesos desacoplados.
-- [**`.docs/manual.md`**](.docs/manual.md) — Casos de uso paso a paso (VS Code, servidores LAN con `--via`, bases de datos, agentes).
+- [**`MANUAL.md`**](MANUAL.md) — Casos de uso paso a paso (VS Code, servidores LAN con `--via`, bases de datos, agentes).
 - [**`.docs/cli-reference.md`**](.docs/cli-reference.md) — Referencia completa de comandos y flags.
 - [**`.docs/post-install.md`**](.docs/post-install.md) — Operaciones post-instalación y administración de bases de datos.
 - [**`.docs/cloudflare-tunnel.md`**](.docs/cloudflare-tunnel.md) — Acceso remoto privado con Cloudflare Zero Trust y WARP.
