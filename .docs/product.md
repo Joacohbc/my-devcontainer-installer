@@ -38,7 +38,7 @@
    - `devcontainer-cli access shell`: invoca `docker exec` asignando un pseudo-terminal TTY y Zsh con temas y alias preconfigurados.
    - `devcontainer-cli access shell -T -- <comando>`: ejecución no interactiva para scripts y pipelines.
 2. **Acceso por SSH Nativo**:
-   - `devcontainer-cli access ssh`: gestiona el ciclo de vida de claves y alias en `~/.ssh/devcontainer-cli.config` y abre una sesión OpenSSH contra el contenedor en el puerto 2222.
+   - `devcontainer-cli access ssh`: gestiona el ciclo de vida de claves y alias en `~/.ssh/devcontainer-cli.config` y abre una sesión OpenSSH contra el puerto 22 de la IP privada del contenedor (sin publicar puertos en el host por defecto).
    - Ideal para editores remotos (VS Code Remote - SSH, JetBrains Gateway, editores en terminal).
 3. **Reenvío de Puertos y Túneles**:
    - `devcontainer-cli access forward`: expone puertos del contenedor en el loopback privado del host (`127.0.0.1`), o crea túneles inversos (`reverse:PORT`) para que el contenedor consuma servicios que residen en la máquina física.
