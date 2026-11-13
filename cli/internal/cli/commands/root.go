@@ -1,9 +1,12 @@
 package commands
 
 import (
+	"os"
+
 	"github.com/charmbracelet/log"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/logger"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/service"
 	"github.com/spf13/cobra"
 )
 
@@ -79,17 +82,10 @@ Run 'devcontainer-cli --help' for the full flag list, or
 		SilenceErrors: true,
 		RunE:          runGenerate,
 		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
-			verbose, _ := cmd.Flags().GetBool("verbose")
-			if verbose {
-				logger.SetLevel(log.DebugLevel)
-				return nil
-			}
-			raw, _ := cmd.Flags().GetString("log-level")
-			lvl, err := logger.ParseLevel(raw)
-			if err != nil {
+			if err := configureRootLogger(cmd); err != nil {
 				return err
 			}
-			logger.SetLevel(lvl)
+			checkStartupUpdates(cmd, version, service.UpdateCheckService{Report: console}, os.Stderr)
 			return nil
 		},
 	}
@@ -112,4 +108,19 @@ Run 'devcontainer-cli --help' for the full flag list, or
 	initInherited(root)
 
 	return root
+}
+
+func configureRootLogger(cmd *cobra.Command) error {
+	verbose, _ := cmd.Flags().GetBool("verbose")
+	if verbose {
+		logger.SetLevel(log.DebugLevel)
+		return nil
+	}
+	raw, _ := cmd.Flags().GetString("log-level")
+	lvl, err := logger.ParseLevel(raw)
+	if err != nil {
+		return err
+	}
+	logger.SetLevel(lvl)
+	return nil
 }

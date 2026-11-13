@@ -57,6 +57,17 @@ func TestGlobalConfigPath_isInsideConfigDir(t *testing.T) {
 	})
 }
 
+func TestUpdateCheckCachePath_isInsideConfigDir(t *testing.T) {
+	withTempXDGDir(t, func() {
+		dir := domain.GlobalConfigDir()
+		path := domain.UpdateCheckCachePath()
+		expected := filepath.Join(dir, "update-check.json")
+		if path != expected {
+			t.Errorf("expected path %q, got %q", expected, path)
+		}
+	})
+}
+
 func TestResolveRegistry_flagOverrideTakesPriority(t *testing.T) {
 	withTempXDGDir(t, func() {
 		_ = domain.SaveGlobalConfig(domain.GlobalConfig{Registry: "global.io/"})

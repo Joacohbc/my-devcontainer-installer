@@ -829,7 +829,7 @@ Self-update the CLI binary from the latest GitHub release
 
 | Bandera | Atajo | Tipo | Por defecto | Descripción |
 |---|---|---|---|---|
-| `--check` |  | bool | `false` | Print current vs latest and exit (no download) |
+| `--check` |  | bool | `false` | Print current vs latest CLI and host skill status and exit (no download) |
 | `--force` |  | bool | `false` | Reinstall even if the current version matches latest |
 | `--log-level` |  | string | `warn` | Log level: debug\|info\|warn\|error |
 | `--no-interactive` |  | bool | `false` | Non-interactive mode (fail instead of prompting) |

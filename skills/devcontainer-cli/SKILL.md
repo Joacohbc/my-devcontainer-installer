@@ -55,6 +55,8 @@ Instead, you must always use the CLI commands provided:
     devcontainer-cli inspect status       # this project's containers
     devcontainer-cli inspect status --all # every managed container on the machine
 
+Note: release builds validate CLI version and installed host skill freshness once every 24h on startup (printing notices to `stderr`); run `devcontainer-cli config upgrade-cli --check` to verify both immediately.
+
 If the binary is missing, say so instead of installing it silently — the
 installer is the user's call (`cli/install.sh` in the project repo).
 
@@ -493,5 +495,5 @@ managed label). Use `--dry-run` first and show the user what would go.
 - `--help` on any command is authoritative and current; check it before
   inventing a flag.
 
-<!-- devcontainer-cli:managed skill=devcontainer-cli — written by 'devcontainer-cli skill install'; local edits are replaced on reinstall. -->
+<!-- devcontainer-cli:managed skill=devcontainer-cli — installed via 'npx skills add Joacohbc/my-devcontainer-installer@devcontainer-cli -g'; local edits are replaced on reinstall. -->
 
