@@ -333,6 +333,35 @@ project instead — regenerate with 'agent create --ports <spec>'.`,
 		RunE:         runPortForward,
 	}
 	addForwardFlags(cmd)
+	cmd.AddCommand(newAgentForwardViaCommand())
+	return cmd
+}
+
+func newAgentForwardViaCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "via <host> <container> <port_mapping>",
+		Short: "Forward ports to a container on a remote Docker host over SSH",
+		Long: `devcontainer-cli agent forward via — open an SSH tunnel to a container running
+on a remote Docker host over SSH.
+
+Non-interactive and ephemeral (-J <host>) by default; pass --ephemeral=false
+to reuse or configure a persistent ProxyCommand Host block in ~/.ssh/config.`,
+		Example: `  # Ephemeral forward to container:3000 via remote Docker host
+  devcontainer-cli agent forward via me@docker-host dc-base 3000
+
+  # Ephemeral forward with custom local:container port
+  devcontainer-cli agent forward via me@docker-host dc-base 8080:80`,
+		Args:         cobra.ExactArgs(3),
+		SilenceUsage: true,
+		PreRunE: func(cmd *cobra.Command, _ []string) error {
+			return agentDefaults(cmd, map[string]string{
+				"ephemeral": "true",
+				"yes":       "true",
+			})
+		},
+		RunE: runPortForwardVia,
+	}
+	addForwardViaFlags(cmd, false)
 	return cmd
 }
 

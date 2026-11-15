@@ -57,8 +57,15 @@ type Tunnel struct {
 // EnsureEphemeralAccess as an ephemeral session, so a container that never had
 // `ssh --setup` run still accepts the tunnel instead of refusing the key.
 func (s PortForwardService) BuildEphemeralTunnel(t Tunnel, user, keyPath string) (Tunnel, error) {
+	return s.BuildEphemeralTunnelVia(t, user, keyPath, "")
+}
+
+// BuildEphemeralTunnelVia completes t into an ephemeral SSH tunnel into
+// t.ContainerName, optionally jumping through a remote Docker host via SSH
+// (`-J via`).
+func (s PortForwardService) BuildEphemeralTunnelVia(t Tunnel, user, keyPath, via string) (Tunnel, error) {
 	sshSvc := SshService{Report: s.Report}
-	target, err := sshSvc.EnsureEphemeralAccess(t.ContainerName, user, keyPath, "")
+	target, err := sshSvc.EnsureEphemeralAccess(t.ContainerName, user, keyPath, via)
 	if err != nil {
 		return Tunnel{}, err
 	}

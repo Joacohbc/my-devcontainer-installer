@@ -78,6 +78,24 @@ Forward host ports into a running container over SSH
 | `--user` |  | string | `devuser` | SSH user inside the container |
 | `--verbose` |  | bool | `false` | Enable debug logging (shortcut for --log-level debug) |
 
+## `devcontainer-cli access forward via`
+
+Forward ports to a container on a remote Docker host over SSH
+
+### Banderas
+
+| Bandera | Atajo | Tipo | Por defecto | Descripción |
+|---|---|---|---|---|
+| `--alias` |  | string | - | SSH config alias to use in persistent mode (--ephemeral=false) |
+| `--ephemeral` |  | bool | `true` | Connect directly via SSH (-J) without modifying ~/.ssh/config |
+| `--key` | -k | string | - | Path to SSH private key for ephemeral or setup connections |
+| `--log-level` |  | string | `warn` | Log level: debug\|info\|warn\|error |
+| `--no-interactive` |  | bool | `false` | Disable interactive prompts |
+| `--reverse` | -r | bool | `false` | Reverse tunnel: container listens and dials this machine |
+| `--user` | -u | string | - | Remote container SSH user |
+| `--verbose` |  | bool | `false` | Enable debug logging (shortcut for --log-level debug) |
+| `--yes` | -y | bool | `false` | Assume yes for SSH setup prompts in persistent mode |
+
 ## `devcontainer-cli access network`
 
 Attach or detach containers to the workspace network
@@ -417,6 +435,24 @@ Forward a port between this machine and the running container over SSH
 | `--service` |  | string | - | Compose service to map port to (default: localhost) |
 | `--user` |  | string | `devuser` | SSH user inside the container |
 | `--verbose` |  | bool | `false` | Enable debug logging (shortcut for --log-level debug) |
+
+## `devcontainer-cli agent forward via`
+
+Forward ports to a container on a remote Docker host over SSH
+
+### Banderas
+
+| Bandera | Atajo | Tipo | Por defecto | Descripción |
+|---|---|---|---|---|
+| `--alias` |  | string | - | SSH config alias to use in persistent mode (--ephemeral=false) |
+| `--ephemeral` |  | bool | `true` | Connect directly via SSH (-J) without modifying ~/.ssh/config |
+| `--key` | -k | string | - | Path to SSH private key for ephemeral or setup connections |
+| `--log-level` |  | string | `warn` | Log level: debug\|info\|warn\|error |
+| `--no-interactive` |  | bool | `false` | Fail if any value is missing instead of prompting |
+| `--reverse` | -r | bool | `false` | Reverse tunnel: container listens and dials this machine |
+| `--user` | -u | string | - | Remote container SSH user |
+| `--verbose` |  | bool | `false` | Enable debug logging (shortcut for --log-level debug) |
+| `--yes` | -y | bool | `false` | Assume yes for SSH setup prompts in persistent mode |
 
 ## `devcontainer-cli agent list`
 

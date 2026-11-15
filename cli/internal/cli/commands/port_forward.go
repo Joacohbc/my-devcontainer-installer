@@ -95,7 +95,49 @@ are opened in parallel after you confirm.`,
 		RunE:         runPortForward,
 	}
 	addForwardFlags(cmd)
+	cmd.AddCommand(newPortForwardViaCommand())
 	return cmd
+}
+
+func newPortForwardViaCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "via <host> <container> [port_mapping]",
+		Short: "Forward ports to a container on a remote Docker host over SSH",
+		Long: `devcontainer-cli access forward via — open an SSH tunnel to a container running
+on a remote Docker host over SSH.
+
+By default it runs in ephemeral mode (-J <host>), without modifying ~/.ssh/config.
+Pass --ephemeral=false to reuse or auto-configure a persistent ProxyCommand Host
+block in ~/.ssh/config.
+
+If [port_mapping] is omitted in interactive mode, you are prompted for it.`,
+		Example: `  # Ephemeral forward to container:3000 via remote Docker host
+  devcontainer-cli access forward via me@docker-host dc-base 3000
+
+  # Ephemeral forward with custom local:container port
+  devcontainer-cli access forward via me@docker-host dc-base 8080:80
+
+  # Persistent mode (reuses or configures ~/.ssh/config ProxyCommand block)
+  devcontainer-cli access forward via me@docker-host dc-base 3000 --ephemeral=false`,
+		Args:         cobra.RangeArgs(2, 3),
+		SilenceUsage: true,
+		RunE:         runPortForwardVia,
+	}
+	addForwardViaFlags(cmd, true)
+	return cmd
+}
+
+func addForwardViaFlags(cmd *cobra.Command, includeNoInteractive bool) {
+	f := cmd.Flags()
+	f.String("alias", "", "SSH config alias to use in persistent mode (--ephemeral=false)")
+	f.BoolP("reverse", "r", false, "Reverse tunnel: container listens and dials this machine")
+	f.Bool("ephemeral", true, "Connect directly via SSH (-J) without modifying ~/.ssh/config")
+	f.StringP("key", "k", "", "Path to SSH private key for ephemeral or setup connections")
+	f.StringP("user", "u", "", "Remote container SSH user")
+	f.BoolP("yes", "y", false, "Assume yes for SSH setup prompts in persistent mode")
+	if includeNoInteractive {
+		f.Bool(flagNoInteractive, false, "Disable interactive prompts")
+	}
 }
 
 type parsedMapping struct {
@@ -653,6 +695,83 @@ func openSingleTunnel(opts forwardOptions, portMapping string) error {
 	printTunnelPlan([]service.Tunnel{tunnel})
 	console.Success("Press Ctrl+C to terminate the port forwarding session.\n")
 	return pfSvc.OpenTunnels([]service.Tunnel{tunnel})
+}
+
+func runPortForwardVia(cmd *cobra.Command, args []string) error {
+	viaHost := args[0]
+	containerName := args[1]
+	var portMapping string
+	if len(args) == 3 {
+		portMapping = args[2]
+	}
+
+	ephemeral, _ := cmd.Flags().GetBool("ephemeral")
+	alias, _ := cmd.Flags().GetString("alias")
+	reverse, _ := cmd.Flags().GetBool("reverse")
+	interactive := interactiveFlag(cmd)
+
+	if portMapping == "" {
+		if !interactive {
+			return fmt.Errorf("port mapping is required in non-interactive mode")
+		}
+		var err error
+		portMapping, err = console.AskDefault("Port mapping (e.g. 3000, 8080:80, reverse:5432):", "", func(v string) error {
+			if strings.TrimSpace(v) == "" {
+				return fmt.Errorf("port mapping is required")
+			}
+			_, perr := parsePortMapping(v, "", reverse)
+			return perr
+		})
+		if err != nil {
+			return err
+		}
+	}
+
+	mapping, err := parsePortMapping(portMapping, "", reverse)
+	if err != nil {
+		return err
+	}
+
+	if ephemeral {
+		keyPath, _ := cmd.Flags().GetString("key")
+		user, _ := cmd.Flags().GetString("user")
+		svc := service.PortForwardService{Report: console}
+		tunnel, err := svc.BuildEphemeralTunnelVia(service.Tunnel{
+			BindAddress:   mapping.bindAddress,
+			LocalPort:     mapping.localPort,
+			ContainerPort: mapping.containerPort,
+			Reverse:       mapping.reverse,
+			TargetHost:    mapping.targetHost,
+			ContainerName: containerName,
+		}, user, keyPath, viaHost)
+		if err != nil {
+			return err
+		}
+		printTunnelPlan([]service.Tunnel{tunnel})
+		console.Success("Press Ctrl+C to terminate the port forwarding session.\n")
+		return svc.OpenTunnels([]service.Tunnel{tunnel})
+	}
+
+	if alias == "" {
+		alias, err = runSshSetupWithTarget(cmd, viaHost, containerName)
+		if err != nil {
+			return err
+		}
+	}
+
+	tunnel := service.Tunnel{
+		BindAddress:    mapping.bindAddress,
+		LocalPort:      mapping.localPort,
+		ContainerPort:  mapping.containerPort,
+		Reverse:        mapping.reverse,
+		TargetHost:     mapping.targetHost,
+		Alias:          alias,
+		ContainerName:  containerName,
+		IsDevcontainer: true,
+	}
+	printTunnelPlan([]service.Tunnel{tunnel})
+	console.Success("Press Ctrl+C to terminate the port forwarding session.\n")
+	return service.PortForwardService{Report: console}.OpenTunnels([]service.Tunnel{tunnel})
 }
 
 // forwardConfiguredPorts opens the tunnels the current project declared, and
