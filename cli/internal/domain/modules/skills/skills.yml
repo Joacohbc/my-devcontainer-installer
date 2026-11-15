@@ -1,9 +1,10 @@
 categories:
   - id: core-agents
-    label: "Core Agent Tools (discovery, browser automation)"
+    label: "Core Agent Tools (discovery, browser automation, terminal multiplexer)"
     skills:
       - find-skills
       - agent-browser
+      - herdr
 
   - id: frontend-ux-design
     label: "Frontend & UI/UX Design (components, design tokens, styling, generative art)"
@@ -44,6 +45,16 @@ skills:
     category: "core-agents"
     description: >
       Browser automation CLI for AI agents to navigate pages, fill forms, and take screenshots.
+
+  - id: herdr
+    label: "Herdr (terminal multiplexer built for AI coding agents)"
+    ref: "herdrdev/herdr"
+    skill: "herdr"
+    requires_modules:
+      - nodejs
+    category: "core-agents"
+    description: >
+      Terminal multiplexer built for AI coding agents to inspect workspaces, split panes, and coordinate helper agents.
 
   # Frontend & UX Design
   - id: frontend-design
