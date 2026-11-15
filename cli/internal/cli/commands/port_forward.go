@@ -119,25 +119,24 @@ If [port_mapping] is omitted in interactive mode, you are prompted for it.`,
 
   # Persistent mode (reuses or configures ~/.ssh/config ProxyCommand block)
   devcontainer-cli access forward via me@docker-host dc-base 3000 --ephemeral=false`,
-		Args:         cobra.RangeArgs(2, 3),
-		SilenceUsage: true,
-		RunE:         runPortForwardVia,
+		Args:              cobra.RangeArgs(2, 3),
+		SilenceUsage:      true,
+		ValidArgsFunction: completeViaArgs,
+		RunE:              runPortForwardVia,
 	}
-	addForwardViaFlags(cmd, true)
+	addForwardViaFlags(cmd)
 	return cmd
 }
 
-func addForwardViaFlags(cmd *cobra.Command, includeNoInteractive bool) {
+func addForwardViaFlags(cmd *cobra.Command) {
 	f := cmd.Flags()
 	f.String("alias", "", "SSH config alias to use in persistent mode (--ephemeral=false)")
 	f.BoolP("reverse", "r", false, "Reverse tunnel: container listens and dials this machine")
 	f.Bool("ephemeral", true, "Connect directly via SSH (-J) without modifying ~/.ssh/config")
 	f.StringP("key", "k", "", "Path to SSH private key for ephemeral or setup connections")
 	f.StringP("user", "u", "", "Remote container SSH user")
-	f.BoolP("yes", "y", false, "Assume yes for SSH setup prompts in persistent mode")
-	if includeNoInteractive {
-		f.Bool(flagNoInteractive, false, "Disable interactive prompts")
-	}
+	addYesFlag(cmd)
+	addInteractiveFlag(cmd)
 }
 
 type parsedMapping struct {
@@ -712,7 +711,7 @@ func runPortForwardVia(cmd *cobra.Command, args []string) error {
 
 	if portMapping == "" {
 		if !interactive {
-			return fmt.Errorf("port mapping is required in non-interactive mode")
+			return fmt.Errorf("port mapping is required in non-interactive mode (e.g. 'devcontainer-cli access forward via <host> <container> <port_mapping>')")
 		}
 		var err error
 		portMapping, err = console.AskDefault("Port mapping (e.g. 3000, 8080:80, reverse:5432):", "", func(v string) error {

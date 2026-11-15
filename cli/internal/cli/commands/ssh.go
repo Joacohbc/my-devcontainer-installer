@@ -93,6 +93,7 @@ Docker host through an existing SSH connection to <host>.`,
   # Run a one-off command over SSH
   devcontainer-cli access ssh via me@docker-host dc-base -- uname -a`,
 		Args:              cobra.MinimumNArgs(2),
+		SilenceUsage:      true,
 		ValidArgsFunction: completeViaArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runSshWithTarget(cmd, args[0], args[1], true, args[2:])

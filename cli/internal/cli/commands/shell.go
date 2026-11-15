@@ -106,6 +106,7 @@ container in sh -c "..." or bash -lc "...".`,
   # Host-side redirection writes to a local file
   devcontainer-cli access shell via me@docker-host dc-base -T -- cat /etc/os-release > local.txt`,
 		Args:              cobra.MinimumNArgs(2),
+		SilenceUsage:      true,
 		ValidArgsFunction: completeViaArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runShellWithTarget(cmd, args[0], args[1], args[2:])
@@ -124,7 +125,10 @@ func addShellSessionFlags(cmd *cobra.Command) {
 	cmd.Flags().BoolP("workdir", "w", false, "Run in the project's workspace mount instead of the container default; only the devcontainer has that directory, so a database container needs it left off")
 
 	_ = cmd.RegisterFlagCompletionFunc("type", staticCompletion("bash", "zsh", "sh"))
+	registerViaUserCompletion(cmd)
+}
 
+func registerViaUserCompletion(cmd *cobra.Command) {
 	_ = cmd.RegisterFlagCompletionFunc("user", func(cmd *cobra.Command, args []string, _ string) ([]string, cobra.ShellCompDirective) {
 		if cmd.Name() == "via" && len(args) >= 2 {
 			var users []string

@@ -47,3 +47,24 @@ func TestForwardViaArgValidation(t *testing.T) {
 		t.Error("agent forward via: expected error with 4 args")
 	}
 }
+
+func TestForwardViaCompletionAndAgentDefaults(t *testing.T) {
+	accessVia := newPortForwardViaCommand()
+	if accessVia.ValidArgsFunction == nil {
+		t.Error("access forward via must register ValidArgsFunction")
+	}
+
+	agentVia := newAgentForwardViaCommand()
+	if agentVia.ValidArgsFunction == nil {
+		t.Error("agent forward via must register ValidArgsFunction")
+	}
+	if err := agentVia.PreRunE(agentVia, []string{"host", "container", "3000"}); err != nil {
+		t.Fatalf("agent forward via PreRunE: %v", err)
+	}
+	for _, name := range []string{"ephemeral", "yes", flagNoInteractive} {
+		v, err := agentVia.Flags().GetBool(name)
+		if err != nil || !v {
+			t.Errorf("agent forward via flag %q = (%v, %v), want (true, nil)", name, v, err)
+		}
+	}
+}
