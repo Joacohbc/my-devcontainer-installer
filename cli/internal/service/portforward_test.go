@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/sshdefaults"
@@ -256,5 +257,59 @@ func TestBuildEphemeralTunnel(t *testing.T) {
 	}
 	if !reverse.Reverse || !reverse.Ephemeral {
 		t.Errorf("reverse ephemeral tunnel = %+v, want both Reverse and Ephemeral", reverse)
+	}
+}
+
+func TestBuildEphemeralTunnelVia(t *testing.T) {
+	psOut := `{"Names":"my-container","Image":"img1","Status":"Up","State":"running","Labels":"","Ports":""}`
+	inspectOut := "my-net 172.20.0.10\n"
+	runner := &cmdRoutingRunner{psOut: psOut, inspectOut: inspectOut}
+	defer useFakeDocker(runner)()
+
+	keyPath := filepath.Join(t.TempDir(), "id_ed25519")
+	if err := os.WriteFile(keyPath, []byte("private"), 0o600); err != nil {
+		t.Fatalf("writing key: %v", err)
+	}
+	if err := os.WriteFile(keyPath+".pub", []byte("ssh-ed25519 AAAA test\n"), 0o644); err != nil {
+		t.Fatalf("writing pubkey: %v", err)
+	}
+
+	svc := PortForwardService{Report: nopReporter{}}
+	tunnel, err := svc.BuildEphemeralTunnelVia(Tunnel{
+		LocalPort:     3000,
+		ContainerPort: 3000,
+		TargetHost:    "localhost",
+		ContainerName: "my-container",
+	}, "", keyPath, "jumpuser@remote-host")
+	if err != nil {
+		t.Fatalf("BuildEphemeralTunnelVia: %v", err)
+	}
+	if !tunnel.Ephemeral {
+		t.Error("expected tunnel.Ephemeral to be true")
+	}
+	if tunnel.Target.Via != "jumpuser@remote-host" {
+		t.Errorf("tunnel.Target.Via = %q, want %q", tunnel.Target.Via, "jumpuser@remote-host")
+	}
+	if !runner.sawKeyInstall() {
+		t.Error("BuildEphemeralTunnelVia must install the public key in the container")
+	}
+}
+
+func TestTunnelCommand_ViaJumpHost(t *testing.T) {
+	cmd := tunnelCommand(Tunnel{
+		LocalPort:     3000,
+		ContainerPort: 3000,
+		TargetHost:    "localhost",
+		Ephemeral:     true,
+		Target: EphemeralTarget{
+			IP:      "172.20.0.10",
+			User:    "devuser",
+			KeyPath: "/tmp/id_ed25519",
+			Via:     "jumpuser@remote-host",
+		},
+	})
+	joined := strings.Join(cmd.Args, " ")
+	if !strings.Contains(joined, "-J jumpuser@remote-host") {
+		t.Errorf("tunnelCommand args = %q, want -J jumpuser@remote-host", joined)
 	}
 }
