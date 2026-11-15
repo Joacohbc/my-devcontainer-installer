@@ -69,7 +69,7 @@ Forward host ports into a running container over SSH
 |---|---|---|---|---|
 | `--alias` |  | string | - | SSH host alias to use (bypasses auto-discovery) |
 | `--container` | -c | string | - | Explicit target container name (managed by devcontainer-cli) |
-| `--ephemeral` |  | bool | `false` | Forward directly via SSH without modifying ~/.ssh/config or relying on existing Host blocks |
+| `--ephemeral` |  | bool | `true` | Forward directly via SSH without modifying ~/.ssh/config or relying on existing Host blocks (--ephemeral=false opts into ~/.ssh/devcontainer-cli.config) |
 | `--key` |  | string | - | Private key path (default: the shared managed key under the CLI config dir) |
 | `--log-level` |  | string | `warn` | Log level: debug\|info\|warn\|error |
 | `--no-interactive` |  | bool | `false` | Fail if any value is missing instead of prompting |
@@ -255,12 +255,12 @@ Open a real SSH session into the devcontainer, configuring access first if neede
 | Bandera | Atajo | Tipo | Por defecto | Descripción |
 |---|---|---|---|---|
 | `--container` | -c | string | - | Explicit target container name (managed by devcontainer-cli) |
-| `--ephemeral` |  | bool | `false` | Connect directly via SSH without modifying ~/.ssh/config or relying on existing Host blocks |
+| `--ephemeral` |  | bool | `true` | Connect directly via SSH without modifying ~/.ssh/config or relying on existing Host blocks (--ephemeral=false opts into ~/.ssh/devcontainer-cli.config) |
 | `--forward` |  | bool | `false` | Also open SSH port-forwarding tunnels for the session (prompted when interactive and omitted) |
 | `--key` |  | string | - | Private key path (default: the shared managed key under the CLI config dir) |
 | `--log-level` |  | string | `warn` | Log level: debug\|info\|warn\|error |
 | `--no-interactive` |  | bool | `false` | Non-interactive mode (fail instead of prompting) |
-| `--ports` |  | string | - | Ports to forward, e.g. '3000,8080:80' (implies --forward; skips the prompt). A 'reverse:' prefix on a port makes the container reach that port on this machine instead |
+| `--ports` |  | string | - | Ports to forward, e.g. '3000,8080:80,100.64.0.1:8080:80' (implies --forward; skips the prompt). Supports bind:local:container, local:host:container, and a 'reverse:' prefix to make the container reach a port on this machine |
 | `--setup` |  | bool | `false` | Re-run the SSH access setup (key + Host block) before connecting, even if an alias already exists |
 | `--user` |  | string | `devuser` | SSH user inside the container |
 | `--verbose` |  | bool | `false` | Enable debug logging (shortcut for --log-level debug) |
@@ -362,7 +362,7 @@ Forward a port between this machine and the running container over SSH
 |---|---|---|---|---|
 | `--alias` |  | string | - | SSH host alias to use (bypasses auto-discovery) |
 | `--container` | -c | string | - | Explicit target container name (managed by devcontainer-cli) |
-| `--ephemeral` |  | bool | `false` | Forward directly via SSH without modifying ~/.ssh/config or relying on existing Host blocks |
+| `--ephemeral` |  | bool | `true` | Forward directly via SSH without modifying ~/.ssh/config or relying on existing Host blocks (--ephemeral=false opts into ~/.ssh/devcontainer-cli.config) |
 | `--key` |  | string | - | Private key path (default: the shared managed key under the CLI config dir) |
 | `--log-level` |  | string | `warn` | Log level: debug\|info\|warn\|error |
 | `--no-interactive` |  | bool | `false` | Fail if any value is missing instead of prompting |
@@ -415,7 +415,7 @@ Open an SSH session into the project's devcontainer
 | Bandera | Atajo | Tipo | Por defecto | Descripción |
 |---|---|---|---|---|
 | `--container` | -c | string | - | Explicit target container name (managed by devcontainer-cli) |
-| `--ephemeral` |  | bool | `false` | Connect directly via SSH without modifying ~/.ssh/config or relying on existing Host blocks (default true for agent) |
+| `--ephemeral` |  | bool | `true` | Connect directly via SSH without modifying ~/.ssh/config or relying on existing Host blocks (--ephemeral=false opts into ~/.ssh/devcontainer-cli.config) |
 | `--key` |  | string | - | Private key path (default: the shared managed key under the CLI config dir) |
 | `--log-level` |  | string | `warn` | Log level: debug\|info\|warn\|error |
 | `--no-interactive` |  | bool | `false` | Non-interactive mode (fail instead of prompting) |
