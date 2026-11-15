@@ -1,29 +1,29 @@
 package commands
 
 import (
-	"encoding/json"
 	"fmt"
+	"strings"
 
-	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/sshdefaults"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/service"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/service/sshdefaults"
 	"github.com/spf13/cobra"
 )
 
-func init() { register(newAgentCommand()) }
-
+// newAgentCommand groups the non-interactive, schema-discoverable surface for
+// autonomous agents (Claude Code, Codex, Cursor, Aider). Every command under
+// 'agent' sets --no-interactive by default, refuses to hang on a prompt, and
+// delegates to the same service layer the human commands use so behavior cannot
+// drift between the two surfaces.
 func newAgentCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "agent",
-		Short: "Drive the CLI from an AI agent with a small, non-interactive command set",
-		Long: `devcontainer-cli agent — the agent-facing face of this CLI: a handful of
-high-level commands that never open a wizard and never wait for an answer.
+		Short: "Non-interactive commands for AI agents (discoverable catalogue + one-shot creation)",
+		Long: `devcontainer-cli agent — the programmatic interface designed for AI agents
+(Claude Code, Codex, Cursor, Aider) and automation scripts.
 
-Every subcommand here is a thinner, safer spelling of a command you can also
-run by hand. The difference is the defaults: prompts are off, so a missing
-value is an error instead of a question, and no invocation can leave an
-unattended session hanging on a TUI. Destructive work still needs --yes.
-
-Start with 'agent cli-info', which prints the live catalogue — modules,
+Every command under 'agent' defaults --no-interactive to true so nothing can
+ever block on a terminal prompt. Start with 'agent cli-info --json' to read the
+full machine-readable catalogue of base images, supported versions, compose
 services, profiles, skills, how to add your own scripts — so a create command
 can be composed without guessing at ids.
 
@@ -32,66 +32,38 @@ compose verb, 'access ssh via' for another Docker host, 'run' for a throwaway
 container, 'config' for global settings.`,
 		Example: `  # Read the catalogue, then create an environment from it
   devcontainer-cli agent cli-info --json
-  devcontainer-cli agent create --modules nodejs,pnpm --services postgres
+  devcontainer-cli agent create --name my-api --image node:22 --services postgres,redis --json
 
-  # Work inside it
-  devcontainer-cli agent exec -- go test ./...
-  devcontainer-cli agent list /home/devuser --json
-
-  # Tear it down
-  devcontainer-cli agent destroy --yes`,
-		SilenceUsage: true,
+  # Run a command inside the workspace and open a port tunnel
+  devcontainer-cli agent exec -w -- go test ./...
+  devcontainer-cli agent forward 3000 &`,
 	}
 
-	cmd.AddCommand(
-		newAgentCLIInfoCommand(),
-		newAgentCreateCommand(),
-		newAgentRunCommand(),
-		newAgentSshCommand(),
-		newAgentExecCommand(),
-		newAgentForwardCommand(),
-		newAgentListCommand(),
-		newAgentDestroyCommand(),
-	)
+	cmd.AddCommand(newAgentCreateCommand())
+	cmd.AddCommand(newAgentCliInfoCommand())
+	cmd.AddCommand(newAgentExecCommand())
+	cmd.AddCommand(newAgentForwardCommand())
+	cmd.AddCommand(newAgentSshCommand())
 	return cmd
-}
-
-// agentDefaults flips the flags the agent facade defaults differently from the
-// human command, leaving anything the caller passed explicitly alone — so
-// '--no-interactive=false' still opts back into prompting.
-func agentDefaults(cmd *cobra.Command, values map[string]string) error {
-	_ = cmd.InheritedFlags()
-	for name, value := range values {
-		if cmd.Flags().Changed(name) {
-			continue
-		}
-		if err := cmd.Flags().Set(name, value); err != nil {
-			return fmt.Errorf("could not apply the agent default for --%s: %w", name, err)
-		}
-	}
-	return nil
-}
-
-// agentNonInteractive is the PreRunE shared by the subcommands whose only
-// agent-facing change is that they never prompt.
-func agentNonInteractive(cmd *cobra.Command, _ []string) error {
-	return agentDefaults(cmd, map[string]string{flagNoInteractive: "true"})
 }
 
 func newAgentSshCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "ssh [flags] [-- command args...]",
 		Short: "Open an SSH session into the project's devcontainer",
-		Long: `devcontainer-cli agent ssh — connect to the project's devcontainer over
-SSH.
+		Long: `devcontainer-cli agent ssh — connect over SSH to the project's devcontainer
+with prompting off and ephemeral mode on by default.
 
-Same as 'access ssh', with prompting off and ephemeral mode on by default (bypassing
-~/.ssh/config Host block modifications). Give it a command after '--': without
-one it opens an interactive session that never returns, which is of no use to
-an agent — 'agent exec' is the better tool for running a command anyway, and
-this one is for when the task genuinely needs the SSH path (agent forwarding,
-a real tty, a tool that shells out to ssh).`,
-		Example: `  # Run a command over SSH
+Ephemeral mode skips ~/.ssh/config and ~/.ssh/devcontainer-cli.config
+entirely: it ensures the shared public key is in devuser's authorized_keys,
+reads the container's current IP on the compose network, and runs ssh with
+StrictHostKeyChecking=no and UserKnownHostsFile=/dev/null. Pass
+--ephemeral=false to opt into the managed Host block instead.
+
+Prefer 'agent exec' for normal command execution; use 'agent ssh' when you
+specifically need an SSH transport (remote jump via 'agent ssh via', port
+forwarding, a real tty, a tool that shells out to ssh).`,
+		Example: `  # Run a command over SSH without touching ~/.ssh/
   devcontainer-cli agent ssh -- go version
 
   # Reach the container on another Docker host
@@ -126,7 +98,7 @@ over SSH with prompting off and ephemeral mode on by default.`,
 }
 
 func agentSshDefaults(cmd *cobra.Command, _ []string) error {
-	return agentDefaults(cmd, map[string]string{
+	return applyAgentFlagDefaults(cmd, map[string]string{
 		flagNoInteractive: "true",
 		"ephemeral":       "true",
 	})
@@ -149,40 +121,30 @@ func newAgentExecCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "exec [flags] -- command args...",
 		Short: "Run a command inside the devcontainer",
-		Long: `devcontainer-cli agent exec — run a one-off command in the running
-devcontainer and propagate its exit code. This is the normal way to do work
-inside a container.
+		Long: `devcontainer-cli agent exec — run a one-off command inside the devcontainer
+over 'docker exec' with prompting turned off.
 
-Same as 'access shell --', with two differences. A command is required: 'access shell' with no
-command opens a login shell, which for an unattended agent is a hang rather than
-a session. And it runs as devuser, who owns the workspace files — 'access shell' with a
-command runs as root, which silently leaves root-owned files behind in the bind
-mount, on the real project directory.
+This is the preferred way for an agent to run builds, tests, linters,
+migrations, or generators in the container: it needs no sshd, does not
+touch ~/.ssh, and preserves exit codes and stdout/stderr verbatim.
 
-That default is for the project's own devcontainer. Another container in the
-stack (a database) has no devuser, so those need an explicit --user.
-
-A command lands in '/' by default — nothing in the image declares a WORKDIR — so
-pass -w to run it in the project's workspace mount, which is what a build or a
-test almost always means.
-
-The command is exec'd directly, NOT through a shell. Wrap it in a login bash —
-'agent exec -- bash -lc "pnpm install | tee log"' — whenever it needs pipes,
-'&&', globs, or the container's pip/npm indirections. Finding a binary is not one
-of those reasons: the image declares its toolchain PATH, so
-'agent exec -- uv pip install x' works as it stands. Neither is changing
-directory, once -w is doing it.`,
-		Example: `  # A plain command, as devuser, in the project
+Pass -w (--workdir) to run inside the mounted workspace directory; without
+-w the command runs in the container's default working directory (usually
+/home/devuser, or / for database containers). Make a habit of passing -w for
+every build, test, install, or git command — nothing looks broken when you
+forget it except that the files you edited are in a different directory, and
+an agent can burn several turns debugging why 'go test' says there are no Go
+files before noticing it is in /home/devuser. 'devcontainer-cli workdir'
+prints the mounted path if you ever want to check it, though you never have
+to 'cd' into it once -w is doing it.`,
+		Example: `  # Run tests inside the project's workspace directory
   devcontainer-cli agent exec -w -- go test ./...
 
-  # Shell syntax still needs a login bash; -w already did the cd
-  devcontainer-cli agent exec -w -- bash -lc 'pnpm install && pnpm build'
+  # Run a build as root when installing system packages
+  devcontainer-cli agent exec --user root -- apt-get update
 
-  # Something that genuinely needs root
-  devcontainer-cli agent exec --user root -- apt-get install -y tree
-
-  # A database container has no devuser (and no workspace): name the user it has
-  devcontainer-cli agent exec -c myapp-postgres --user postgres -T -- pg_dump devdb > dump.sql`,
+  # Query a sibling database container (no -w: postgres has no workspace mount)
+  devcontainer-cli agent exec -c myproject-postgres -- psql -U devuser -d devdb -c '\dt'`,
 		Args:         agentExecArgs,
 		SilenceUsage: true,
 		PreRunE:      agentExecDefaults,
@@ -213,11 +175,8 @@ remote Docker host reached through an existing SSH connection to <host>.`,
 	return cmd
 }
 
-// agentExecDefaults runs the command as devuser unless the caller named another
-// user, and enforces non-interactive mode.
 func agentExecDefaults(cmd *cobra.Command, _ []string) error {
-	return agentDefaults(cmd, map[string]string{
-		"user":            sshdefaults.User,
+	return applyAgentFlagDefaults(cmd, map[string]string{
 		flagNoInteractive: "true",
 	})
 }
@@ -263,246 +222,122 @@ func agentExecViaArgs(_ *cobra.Command, args []string) error {
 // agentExecArgs requires the command 'shell' treats as optional.
 func agentExecArgs(_ *cobra.Command, args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("agent exec requires a command, e.g. 'agent exec -- go test ./...'; " +
-			"use 'access shell' if you really want an interactive login shell")
+		return fmt.Errorf("agent exec requires a command, e.g. 'agent exec -w -- go test ./...'")
 	}
 	return nil
 }
 
 func newAgentForwardCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "forward [port_mapping]",
+		Use:   "forward <port-mapping>",
 		Short: "Forward a port between this machine and the running container over SSH",
-		Long: `devcontainer-cli agent forward — open an SSH tunnel between 127.0.0.1 here and
-a port inside the running container, in either direction. A mapping that starts
-with an IP of this machine ('0.0.0.0:8000:8000') listens there instead of on
-127.0.0.1, so other machines can reach the tunnel.
+		Long: `devcontainer-cli agent forward — forward a TCP port over SSH between this
+machine and a running container, with prompting turned off and ephemeral
+mode on by default.
 
-Same as 'access forward', with prompting off and ephemeral mode on by default,
-so the port mapping is given as an argument and connects directly via SSH.
+Ephemeral mode skips ~/.ssh/config and ~/.ssh/devcontainer-cli.config
+entirely: it authorizes the shared public key in devuser's authorized_keys,
+reads the container's current IP on the compose network, and runs ssh -N
+directly against it. Pass --ephemeral=false to opt into a managed SSH alias
+instead.
 
-By default the tunnel listens here and reaches into the container. Prefix the
-mapping with 'reverse:' (or pass --reverse) to turn it around, so a service
-running on this machine becomes reachable inside the container. A reverse
-tunnel takes no bind address: it listens inside the container, where its SSH
-server keeps it on the loopback.
-
-It stays in the FOREGROUND until interrupted: run it in the background if you
-need to keep working. A port that should always be reachable belongs in the
-project instead — regenerate with 'agent create --ports <spec>'.`,
-		Example: `  # 127.0.0.1:3000 -> container:3000
+Forward mappings (default) listen on this machine and reach the container;
+reverse mappings ('reverse:11434' or '--reverse 11434') let a process inside
+the container reach a port on this machine. The tunnel runs in the
+foreground until SIGINT/SIGTERM, so background it when driving it from an
+agent loop.`,
+		Example: `  # Forward container port 3000 to 127.0.0.1:3000
   devcontainer-cli agent forward 3000
 
-  # 127.0.0.1:8080 -> container:80
-  devcontainer-cli agent forward 8080:80
+  # Forward Postgres on the project network to 127.0.0.1:5432
+  devcontainer-cli agent forward 5432 --service postgres
 
-  # Reach a sibling compose service through the container
-  devcontainer-cli agent forward 5432:postgres:5432
+  # Forward a port from a container on a remote Docker host
+  devcontainer-cli agent forward via me@docker-host mycontainer 3000
 
-  # 100.102.62.110:8000 (an IP of this machine) -> container:8000
-  devcontainer-cli agent forward 100.102.62.110:8000:8000
-
-  # Every interface of this machine -> container:8000
-  devcontainer-cli agent forward 0.0.0.0:8000:8000
-
-  # container:5432 -> this machine's 5432 (a database running on the host)
-  devcontainer-cli agent forward reverse:5432`,
-		Args:         cobra.MaximumNArgs(1),
+  # Let the container reach Ollama running on this machine
+  devcontainer-cli agent forward reverse:11434`,
+		Args:         agentForwardArgs,
 		SilenceUsage: true,
 		PreRunE:      agentForwardDefaults,
 		RunE:         runPortForward,
 	}
 	addForwardFlags(cmd)
+	cmd.AddCommand(newAgentForwardViaCommand())
+	return cmd
+}
+
+func newAgentForwardViaCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "via <host> <container> <port-mapping>",
+		Short: "Forward a port between this machine and a container on a remote Docker host",
+		Long: `devcontainer-cli agent forward via — forward a TCP port over SSH between this
+machine and a container running on a remote Docker host reached through an
+existing SSH connection to <host>, with prompting off and ephemeral mode on by default.`,
+		Example: `  # Forward remote container port 3000 to 127.0.0.1:3000
+  devcontainer-cli agent forward via me@docker-host mycontainer 3000
+
+  # Forward Postgres on the remote compose network
+  devcontainer-cli agent forward via me@docker-host mycontainer 5432 --service postgres`,
+		Args:              agentForwardViaArgs,
+		ValidArgsFunction: completeViaArgs,
+		SilenceUsage:      true,
+		PreRunE:           agentForwardDefaults,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runPortForwardWithTarget(cmd, args[0], args[1], args[2])
+		},
+	}
+	addForwardSessionFlags(cmd)
 	return cmd
 }
 
 func agentForwardDefaults(cmd *cobra.Command, _ []string) error {
-	return agentDefaults(cmd, map[string]string{
+	return applyAgentFlagDefaults(cmd, map[string]string{
 		flagNoInteractive: "true",
 		"ephemeral":       "true",
 	})
 }
 
-func newAgentListCommand() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "list [container_path]",
-		Short: "List files inside the devcontainer",
-		Long: `devcontainer-cli agent list — list a directory inside the running
-devcontainer.
-
-Same as 'inspect ls'. The path is interpreted inside the container and defaults to the
-working directory there. With --json each entry comes back as an object with a
-name and whether it is a directory, which is easier to consume than parsing
-'ls' output. -a/--all includes hidden entries.
-
-This lists files, not environments. For what a container has installed use
-'inspect context'; for which containers exist use 'inspect status --all'.`,
-		Example: `  # The container's working directory
-  devcontainer-cli agent list
-
-  # Structured output for a specific path
-  devcontainer-cli agent list /home/devuser --json
-
-  # Structured output including hidden files
-  devcontainer-cli agent list /home/devuser --json -a`,
-		Args:              cobra.MaximumNArgs(1),
-		SilenceUsage:      true,
-		PreRunE:           agentNonInteractive,
-		ValidArgsFunction: runLsCompletion,
-		RunE:              runAgentList,
+func agentForwardArgs(_ *cobra.Command, args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("agent forward requires a port mapping, e.g. 'agent forward 3000'")
 	}
-	addAgentListFlags(cmd)
-	return cmd
-}
-
-func addAgentListFlags(cmd *cobra.Command) {
-	cmd.Flags().BoolP("all", "a", false, "Show hidden files (ls -a)")
-	addContainerFlag(cmd)
-	cmd.Flags().Bool("json", false, "Emit one JSON object per entry instead of the raw ls listing")
-	addInteractiveFlag(cmd)
-}
-
-func runAgentList(cmd *cobra.Command, args []string) error {
-	asJSON, _ := cmd.Flags().GetBool("json")
-	if !asJSON {
-		return runLs(cmd, args)
+	if len(args) > 1 {
+		return fmt.Errorf("accepts at most 1 arg(s), received %d", len(args))
 	}
-
-	containerPath := "."
-	if len(args) > 0 {
-		containerPath = args[0]
-	}
-	containerName, err := resolveContainer(cmd)
-	if err != nil {
-		return err
-	}
-
-	all, _ := cmd.Flags().GetBool("all")
-	entries, err := service.InspectService{Report: console}.ListDirEntries(containerName, containerPath, all)
-	if err != nil {
-		return err
-	}
-
-	out, err := json.MarshalIndent(entries, "", "  ")
-	if err != nil {
-		return err
-	}
-	fmt.Println(string(out))
 	return nil
 }
 
-func newAgentRunCommand() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "run",
-		Short: "Spin up an ephemeral container from a prebuilt or named image (no project files)",
-		Long: `devcontainer-cli agent run — start a one-off devcontainer from a prebuilt remote
-image or one of your image definitions, without generating project files.
-Prompting is disabled by default: every value must come from flags (--profile
-or --image is required, --name falls back to dc-<profile> or dc-<image>).
-
---image names an image definition ('image list'): a build definition must be
-built first with 'devcontainer-cli image build <name>', a remote one is pulled
-and verified. --profile and --image are mutually exclusive, and --registry only
-applies to --profile.`,
-		Example: `  # Run a throwaway Python container
-  devcontainer-cli agent run --profile python --name my-task
-
-  # Expose ports on the LAN
-  devcontainer-cli agent run --profile nodejs --ports 8080:80 --expose-all
-
-  # Run one of your image definitions
-  devcontainer-cli agent run --image android --name android-task`,
-		SilenceUsage: true,
-		PreRunE:      agentNonInteractive,
-		RunE:         runQuickRun,
+func agentForwardViaArgs(_ *cobra.Command, args []string) error {
+	if len(args) < 3 {
+		return fmt.Errorf("agent forward via requires <host> <container> <port-mapping>, e.g. 'agent forward via me@host mycontainer 3000'")
 	}
-	cmd.Flags().String("profile", "", "Single [remote]-tagged profile id to run as a prebuilt image, e.g. base, nodejs, python (it or --image is required); see 'profile list'")
-	cmd.Flags().String("name", "", "Container name (default: dc-<profile> or dc-<image>); if it belongs to a quick-run container started from the same source it is reused/restarted, but a name already used by any other container is rejected")
-	cmd.Flags().StringSlice("volumes", nil, "Volume mounts (e.g. myvol:/workspace); repeatable or comma-separated")
-	cmd.Flags().StringSlice("ports", nil, "Port mappings (e.g. 2222:22); bound to 127.0.0.1 unless --expose-all; repeatable or comma-separated")
-	cmd.Flags().Bool("expose-all", false, "Publish ports on all interfaces (0.0.0.0) instead of binding to 127.0.0.1")
-	cmd.Flags().Bool("shared-config", true, "Mount the global shared AI/dev tool config volume (devcontainer-shared-config) so logins/sessions persist across containers; --shared-config=false to opt out")
-	cmd.Flags().String("registry", "", "Registry prefix override for --profile")
-	addInteractiveFlag(cmd)
-	addRunImageFlag(cmd)
-
-	_ = cmd.RegisterFlagCompletionFunc("profile", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		return profileIDs(true), cobra.ShellCompDirectiveNoFileComp
-	})
-
-	return cmd
+	if len(args) > 3 {
+		return fmt.Errorf("accepts at most 3 arg(s), received %d", len(args))
+	}
+	if strings.TrimSpace(args[0]) == "" {
+		return fmt.Errorf("remote host cannot be empty")
+	}
+	if strings.TrimSpace(args[1]) == "" {
+		return fmt.Errorf("target container name cannot be empty")
+	}
+	if strings.TrimSpace(args[2]) == "" {
+		return fmt.Errorf("port mapping cannot be empty")
+	}
+	return nil
 }
 
-func newAgentDestroyCommand() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "destroy",
-		Short: "Destroy the current project and remove what it left behind",
-		Long: `devcontainer-cli agent destroy — tear down the project in the current directory
-and remove the resources it owns. This cannot be undone.
-
-It brings the stack down with its volumes (all data in them is deleted),
-deletes the generated .dc_<workspace>/ directory and devcontainer.config.json,
-prunes the project's managed SSH host block and pinned host keys, and removes
-the image built for it. An image pulled from a registry is left alone: other
-projects on the same profile share it.
-
-Pass -c, --container to instead tear down a standalone or temporal container that
-isn't part of a workspace project.
-
-By default nothing outside this project is touched. --all additionally sweeps
-every managed container, image, network and volume on the machine, including
-other projects' — get the user's agreement before using it.
-
-Because it is irreversible it requires --yes. Preview with --dry-run first.`,
-		Example: `  # See what would go
-  devcontainer-cli agent destroy --dry-run
-
-  # Tear down this project
-  devcontainer-cli agent destroy --yes
-
-  # Tear down a single container
-  devcontainer-cli agent destroy --container dc-python --yes
-
-  # Also sweep every other managed resource on the machine
-  devcontainer-cli agent destroy --all --yes`,
-		Args:         cobra.NoArgs,
-		SilenceUsage: true,
-		PreRunE:      agentNonInteractive,
-		RunE:         runAgentDestroy,
+// applyAgentFlagDefaults flips agent-safe defaults on flags the user did not
+// explicitly set on the command line, so `agent ... --no-interactive=false`
+// still works when a human runs it directly.
+func applyAgentFlagDefaults(cmd *cobra.Command, defaults map[string]string) error {
+	for name, val := range defaults {
+		if cmd.Flags().Lookup(name) == nil || cmd.Flags().Changed(name) {
+			continue
+		}
+		if err := cmd.Flags().Set(name, val); err != nil {
+			return err
+		}
 	}
-	addYesFlag(cmd)
-	addInteractiveFlag(cmd)
-	addContainerFlag(cmd)
-	cmd.Flags().Bool("all", false, "Also remove every OTHER managed container, image, network and volume on this machine")
-	cmd.Flags().Bool("dry-run", false, "Report what would be removed without removing anything")
-	return cmd
-}
-
-func runAgentDestroy(cmd *cobra.Command, _ []string) error {
-	if cmd.Flags().Changed("container") {
-		container, _ := cmd.Flags().GetString("container")
-		return runDestroyContainer(cmd, console, container)
-	}
-
-	cwd, err := currentDir()
-	if err != nil {
-		return err
-	}
-	target, cfg := destroyTargetFor(cwd)
-
-	image := ""
-	if cfg != nil {
-		image = cfg.Image
-	}
-
-	all, _ := cmd.Flags().GetBool("all")
-	dryRun, _ := cmd.Flags().GetBool("dry-run")
-
-	svc := service.AgentService{Report: console, Prompt: console}
-	return svc.Clean(target, image, service.AgentCleanOptions{
-		All:         all,
-		DryRun:      dryRun,
-		Yes:         yesFlag(cmd),
-		Interactive: interactiveFlag(cmd),
-	})
+	return nil
 }
