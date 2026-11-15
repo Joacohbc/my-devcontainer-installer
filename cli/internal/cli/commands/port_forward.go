@@ -407,36 +407,68 @@ func resolveTarget(container pick.Container, aliases []string, containers []pick
 	return *jumpHost, container.Name, nil
 }
 
-func buildTunnelsInteractive(flagAlias string, reverse, interactive bool) ([]service.Tunnel, error) {
+type forwardOptions struct {
+	cmd         *cobra.Command
+	ephemeral   bool
+	alias       string
+	serviceFlag string
+	reverse     bool
+	interactive bool
+	user        string
+	keyPath     string
+}
+
+func resolveForwardEphemeral(cmd *cobra.Command) (ephemeral bool, alias string, err error) {
+	ephemeral, _ = cmd.Flags().GetBool("ephemeral")
+	alias, _ = cmd.Flags().GetString("alias")
+	if alias != "" {
+		if cmd.Flags().Changed("ephemeral") && ephemeral {
+			return false, "", fmt.Errorf("--alias cannot be used with --ephemeral=true: --alias selects a configured SSH host block")
+		}
+		ephemeral = false
+	}
+	return ephemeral, alias, nil
+}
+
+func buildTunnelsInteractive(opts forwardOptions) ([]service.Tunnel, error) {
 	// You can only forward into a running container, so filter the unified list
 	// down to running ones here.
 	containers := runningContainers(pick.ListAll())
 	if len(containers) == 0 {
 		return nil, fmt.Errorf("no running containers found. Start one with 'devcontainer-cli workspace up', or create a project first with 'devcontainer-cli agent create'")
 	}
-	aliases := getSSHAliases()
+	var aliases []string
+	if !opts.ephemeral {
+		aliases = getSSHAliases()
+	}
 	var tunnels []service.Tunnel
-	jumpHost := flagAlias
+	jumpHost := opts.alias
+	pfSvc := service.PortForwardService{Report: console}
 
 	for {
-		container, err := pickContainer(containers, "Select a container to forward from:", pickContainerOptions{Interactive: interactive})
+		container, err := pickContainer(containers, "Select a container to forward from:", pickContainerOptions{Interactive: opts.interactive})
 		if err != nil {
 			return nil, err
 		}
 
-		alias, targetHost, terr := resolveTarget(container, aliases, containers, &jumpHost, interactive)
-		if terr != nil {
-			return nil, terr
+		var alias string
+		targetHost := "localhost"
+		if !opts.ephemeral {
+			var terr error
+			alias, targetHost, terr = resolveTarget(container, aliases, containers, &jumpHost, opts.interactive)
+			if terr != nil {
+				return nil, terr
+			}
 		}
 
 		portsStr, ierr := console.AskDefault(fmt.Sprintf("Ports to forward from '%s' (e.g. 3000, 8080:80, reverse:5432):", container.Name), "", func(v string) error {
-			_, e := parsePortsList(v, reverse)
+			_, e := parsePortsList(v, opts.reverse)
 			return e
 		})
 		if ierr != nil {
 			return nil, ierr
 		}
-		pairs, _ := parsePortsList(portsStr, reverse)
+		pairs, _ := parsePortsList(portsStr, opts.reverse)
 		for _, pair := range pairs {
 			// A reverse tunnel is opened by the SSH server, so it can only ever
 			// listen inside the container the alias connects to. Reaching
@@ -444,7 +476,7 @@ func buildTunnelsInteractive(flagAlias string, reverse, interactive bool) ([]ser
 			if pair.reverse && targetHost != "localhost" {
 				return nil, fmt.Errorf("cannot open a reverse tunnel into '%s': it is reached through the jump host '%s', and a reverse tunnel listens inside the container it connects to. Select a devcontainer with its own SSH alias instead", container.Name, alias)
 			}
-			tunnels = append(tunnels, service.Tunnel{
+			tunnel := service.Tunnel{
 				LocalPort:      pair.localPort,
 				ContainerPort:  pair.containerPort,
 				Reverse:        pair.reverse,
@@ -452,7 +484,15 @@ func buildTunnelsInteractive(flagAlias string, reverse, interactive bool) ([]ser
 				Alias:          alias,
 				ContainerName:  container.Name,
 				IsDevcontainer: container.Managed,
-			})
+			}
+			if opts.ephemeral {
+				built, berr := pfSvc.BuildEphemeralTunnel(tunnel, opts.user, opts.keyPath)
+				if berr != nil {
+					return nil, berr
+				}
+				tunnel = built
+			}
+			tunnels = append(tunnels, tunnel)
 		}
 
 		more, merr := console.ConfirmDefault("Add ports from another container?", false)
@@ -534,115 +574,118 @@ func warnPrivilegedReversePorts(tunnels []service.Tunnel) {
 }
 
 func runPortForward(cmd *cobra.Command, args []string) error {
-	ephemeral, _ := cmd.Flags().GetBool("ephemeral")
-	alias, _ := cmd.Flags().GetString("alias")
+	ephemeral, alias, err := resolveForwardEphemeral(cmd)
+	if err != nil {
+		return err
+	}
 	serviceFlag, _ := cmd.Flags().GetString("service")
 	reverse, _ := cmd.Flags().GetBool("reverse")
-	interactive := interactiveFlag(cmd)
+	keyPath, _ := cmd.Flags().GetString("key")
+	user, _ := cmd.Flags().GetString("user")
+	opts := forwardOptions{
+		cmd:         cmd,
+		ephemeral:   ephemeral,
+		alias:       alias,
+		serviceFlag: serviceFlag,
+		reverse:     reverse,
+		interactive: interactiveFlag(cmd),
+		user:        user,
+		keyPath:     keyPath,
+	}
 
 	var portMapping string
 	if len(args) == 1 {
 		portMapping = args[0]
 	}
 
-	if ephemeral {
-		if portMapping == "" {
-			return fmt.Errorf("port mapping is required in non-interactive/ephemeral mode")
-		}
-		mapping, err := parsePortMapping(portMapping, serviceFlag, reverse)
-		if err != nil {
-			return err
-		}
-
-		containerName, err := resolveContainer(cmd)
-		if err != nil {
-			return err
-		}
-
-		keyPath, _ := cmd.Flags().GetString("key")
-		user, _ := cmd.Flags().GetString("user")
-
-		svc := service.PortForwardService{Report: console}
-		tunnel, err := svc.BuildEphemeralTunnel(service.Tunnel{
-			BindAddress:   mapping.bindAddress,
-			LocalPort:     mapping.localPort,
-			ContainerPort: mapping.containerPort,
-			Reverse:       mapping.reverse,
-			TargetHost:    mapping.targetHost,
-			ContainerName: containerName,
-		}, user, keyPath)
-		if err != nil {
-			return err
-		}
-		printTunnelPlan([]service.Tunnel{tunnel})
-		console.Success("Press Ctrl+C to terminate the port forwarding session.\n")
-		return svc.OpenTunnels([]service.Tunnel{tunnel})
-	}
-
 	// With no argument, a project that configured its tunnels (from a profile or
 	// --forward-ports) gets those instead of the picker: that is what makes them
 	// automatic. Passing a mapping still overrides them.
 	if portMapping == "" {
-		opened, err := forwardConfiguredPorts(alias, serviceFlag, reverse, interactive)
+		opened, err := forwardConfiguredPorts(opts)
 		if err != nil {
 			return err
 		}
 		if opened {
 			return nil
 		}
+		if !opts.interactive {
+			return fmt.Errorf("port mapping is required in non-interactive mode")
+		}
+		return openInteractiveTunnels(opts)
 	}
 
-	if portMapping == "" && interactive {
-		tunnels, err := buildTunnelsInteractive(alias, reverse, interactive)
-		if err != nil {
-			return err
-		}
-		printTunnelPlan(tunnels)
-		ok, cerr := console.ConfirmDefault(fmt.Sprintf("Open %d tunnel(s) now?", len(tunnels)), true)
+	return openSingleTunnel(opts, portMapping)
+}
+
+func openInteractiveTunnels(opts forwardOptions) error {
+	tunnels, err := buildTunnelsInteractive(opts)
+	if err != nil {
+		return err
+	}
+	printTunnelPlan(tunnels)
+	ok, cerr := console.ConfirmDefault(fmt.Sprintf("Open %d tunnel(s) now?", len(tunnels)), true)
+	if cerr != nil {
+		return cerr
+	}
+	if !ok {
+		console.Warn("Aborted. No tunnels were opened.")
+		return nil
+	}
+	console.Success("Press Ctrl+C to terminate the port forwarding session.\n")
+	return service.PortForwardService{Report: console}.OpenTunnels(tunnels)
+}
+
+func openSingleTunnel(opts forwardOptions, portMapping string) error {
+	mapping, err := parsePortMapping(portMapping, opts.serviceFlag, opts.reverse)
+	if err != nil {
+		return err
+	}
+
+	pfSvc := service.PortForwardService{Report: console}
+	var tunnel service.Tunnel
+	if opts.ephemeral {
+		containerName, cerr := resolveContainer(opts.cmd)
 		if cerr != nil {
 			return cerr
 		}
-		if !ok {
-			console.Warn("Aborted. No tunnels were opened.")
-			return nil
+		tunnel, err = pfSvc.BuildEphemeralTunnel(service.Tunnel{
+			BindAddress:   mapping.bindAddress,
+			LocalPort:     mapping.localPort,
+			ContainerPort: mapping.containerPort,
+			Reverse:       mapping.reverse,
+			TargetHost:    mapping.targetHost,
+			ContainerName: containerName,
+		}, opts.user, opts.keyPath)
+		if err != nil {
+			return err
 		}
-		console.Success("Press Ctrl+C to terminate the port forwarding session.\n")
-		return service.PortForwardService{Report: console}.OpenTunnels(tunnels)
+	} else {
+		alias, containerName, terr := resolveTunnelTarget(opts.alias, mapping.targetHost, opts.interactive)
+		if terr != nil {
+			return terr
+		}
+		tunnel = service.Tunnel{
+			BindAddress:    mapping.bindAddress,
+			LocalPort:      mapping.localPort,
+			ContainerPort:  mapping.containerPort,
+			Reverse:        mapping.reverse,
+			TargetHost:     mapping.targetHost,
+			Alias:          alias,
+			ContainerName:  containerName,
+			IsDevcontainer: true,
+		}
 	}
 
-	if portMapping == "" {
-		return fmt.Errorf("port mapping is required in non-interactive mode")
-	}
-
-	mapping, err := parsePortMapping(portMapping, serviceFlag, reverse)
-	if err != nil {
-		return err
-	}
-
-	alias, containerName, err := resolveTunnelTarget(alias, mapping.targetHost, interactive)
-	if err != nil {
-		return err
-	}
-
-	tunnel := service.Tunnel{
-		BindAddress:    mapping.bindAddress,
-		LocalPort:      mapping.localPort,
-		ContainerPort:  mapping.containerPort,
-		Reverse:        mapping.reverse,
-		TargetHost:     mapping.targetHost,
-		Alias:          alias,
-		ContainerName:  containerName,
-		IsDevcontainer: true,
-	}
 	printTunnelPlan([]service.Tunnel{tunnel})
 	console.Success("Press Ctrl+C to terminate the port forwarding session.\n")
-	return service.PortForwardService{Report: console}.OpenTunnels([]service.Tunnel{tunnel})
+	return pfSvc.OpenTunnels([]service.Tunnel{tunnel})
 }
 
 // forwardConfiguredPorts opens the tunnels the current project declared, and
 // reports whether it opened any. A directory that is not a generated project,
 // or one that declared none, falls through to the usual paths.
-func forwardConfiguredPorts(alias, serviceFlag string, reverse, interactive bool) (bool, error) {
+func forwardConfiguredPorts(opts forwardOptions) (bool, error) {
 	cwd, err := currentDir()
 	if err != nil {
 		return false, nil
@@ -654,36 +697,57 @@ func forwardConfiguredPorts(alias, serviceFlag string, reverse, interactive bool
 
 	mappings := make([]parsedMapping, 0, len(config.ForwardPorts))
 	for _, spec := range config.ForwardPorts {
-		mapping, perr := parsePortMapping(spec, serviceFlag, reverse)
+		mapping, perr := parsePortMapping(spec, opts.serviceFlag, opts.reverse)
 		if perr != nil {
 			return false, fmt.Errorf("configured forward port %q: %w", spec, perr)
 		}
 		mappings = append(mappings, mapping)
 	}
 
-	alias, containerName, err := resolveTunnelTarget(alias, mappings[0].targetHost, interactive)
-	if err != nil {
-		return false, err
-	}
-
+	pfSvc := service.PortForwardService{Report: console}
 	tunnels := make([]service.Tunnel, 0, len(mappings))
-	for _, mapping := range mappings {
-		tunnels = append(tunnels, service.Tunnel{
-			BindAddress:    mapping.bindAddress,
-			LocalPort:      mapping.localPort,
-			ContainerPort:  mapping.containerPort,
-			Reverse:        mapping.reverse,
-			TargetHost:     mapping.targetHost,
-			Alias:          alias,
-			ContainerName:  containerName,
-			IsDevcontainer: true,
-		})
+	if opts.ephemeral {
+		containerName, cerr := resolveContainer(opts.cmd)
+		if cerr != nil {
+			return false, cerr
+		}
+		for _, mapping := range mappings {
+			built, berr := pfSvc.BuildEphemeralTunnel(service.Tunnel{
+				BindAddress:   mapping.bindAddress,
+				LocalPort:     mapping.localPort,
+				ContainerPort: mapping.containerPort,
+				Reverse:       mapping.reverse,
+				TargetHost:    mapping.targetHost,
+				ContainerName: containerName,
+			}, opts.user, opts.keyPath)
+			if berr != nil {
+				return false, berr
+			}
+			tunnels = append(tunnels, built)
+		}
+	} else {
+		alias, containerName, terr := resolveTunnelTarget(opts.alias, mappings[0].targetHost, opts.interactive)
+		if terr != nil {
+			return false, terr
+		}
+		for _, mapping := range mappings {
+			tunnels = append(tunnels, service.Tunnel{
+				BindAddress:    mapping.bindAddress,
+				LocalPort:      mapping.localPort,
+				ContainerPort:  mapping.containerPort,
+				Reverse:        mapping.reverse,
+				TargetHost:     mapping.targetHost,
+				Alias:          alias,
+				ContainerName:  containerName,
+				IsDevcontainer: true,
+			})
+		}
 	}
 
 	console.Info("Forwarding this project's configured ports: %s", strings.Join(config.ForwardPorts, ", "))
 	printTunnelPlan(tunnels)
 	console.Success("Press Ctrl+C to terminate the port forwarding session.\n")
-	return true, service.PortForwardService{Report: console}.OpenTunnels(tunnels)
+	return true, pfSvc.OpenTunnels(tunnels)
 }
 
 // resolveTunnelTarget settles which container to tunnel into and which SSH alias

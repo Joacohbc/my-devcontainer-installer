@@ -114,7 +114,7 @@ func agentSshDefaults(cmd *cobra.Command, _ []string) error {
 func addAgentSshFlags(cmd *cobra.Command) {
 	addInteractiveFlag(cmd)
 	addContainerFlag(cmd)
-	cmd.Flags().Bool("ephemeral", false, "Connect directly via SSH without modifying ~/.ssh/config or relying on existing Host blocks (default true for agent)")
+	cmd.Flags().Bool("ephemeral", true, "Connect directly via SSH without modifying ~/.ssh/config or relying on existing Host blocks (--ephemeral=false opts into ~/.ssh/devcontainer-cli.config)")
 	cmd.Flags().String("via", "", "Reach the container through an existing SSH connection to its Docker host (requires --container): USER@HOST or an ssh-config alias")
 	cmd.Flags().String("key", "", "Private key path (default: the shared managed key under the CLI config dir)")
 	cmd.Flags().String("user", sshdefaults.User, "SSH user inside the container")
