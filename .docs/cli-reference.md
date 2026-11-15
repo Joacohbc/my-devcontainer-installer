@@ -260,7 +260,7 @@ Open a real SSH session into the devcontainer, configuring access first if neede
 | `--key` |  | string | - | Private key path (default: the shared managed key under the CLI config dir) |
 | `--log-level` |  | string | `warn` | Log level: debug\|info\|warn\|error |
 | `--no-interactive` |  | bool | `false` | Non-interactive mode (fail instead of prompting) |
-| `--ports` |  | string | - | Ports to forward, e.g. '3000,8080:80' (implies --forward; skips the prompt). A 'reverse:' prefix on a port makes the container reach that port on this machine instead |
+| `--ports` |  | string | - | Ports to forward, e.g. '3000,8080:80,100.64.0.1:8080:80' (implies --forward; skips the prompt). Supports bind:local:container, local:host:container, and a 'reverse:' prefix to make the container reach a port on this machine |
 | `--setup` |  | bool | `false` | Re-run the SSH access setup (key + Host block) before connecting, even if an alias already exists |
 | `--user` |  | string | `devuser` | SSH user inside the container |
 | `--verbose` |  | bool | `false` | Enable debug logging (shortcut for --log-level debug) |

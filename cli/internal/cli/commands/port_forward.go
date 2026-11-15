@@ -108,12 +108,6 @@ type parsedMapping struct {
 	reverse       bool
 }
 
-type portPair struct {
-	localPort     int
-	containerPort int
-	reverse       bool
-}
-
 // reversePrefixes mark a single spec as a host→container tunnel, whatever
 // --reverse says. Having the direction inside the spec is what lets one
 // comma-separated list ('3000,reverse:5432') mix both, and what lets a profile
@@ -245,49 +239,21 @@ func parsePortFields(mapping, defaultService string, reverse bool) (parsedMappin
 	}
 }
 
-func parsePortPair(item string, defaultReverse bool) (portPair, error) {
-	item, reverse := splitDirection(item, defaultReverse)
-	parts := strings.Split(item, ":")
-	for i := range parts {
-		parts[i] = strings.TrimSpace(parts[i])
-	}
-	switch len(parts) {
-	case 1:
-		p, err := parsePort(parts[0], "port")
-		if err != nil {
-			return portPair{}, err
-		}
-		return portPair{localPort: p, containerPort: p, reverse: reverse}, nil
-	case 2:
-		local, err := parsePort(parts[0], "local port")
-		if err != nil {
-			return portPair{}, err
-		}
-		container, err := parsePort(parts[1], "container port")
-		if err != nil {
-			return portPair{}, err
-		}
-		return portPair{localPort: local, containerPort: container, reverse: reverse}, nil
-	default:
-		return portPair{}, fmt.Errorf("invalid port mapping: %s (expected 'port' or 'local:container')", item)
-	}
-}
-
-func parsePortsList(value string, defaultReverse bool) ([]portPair, error) {
-	var pairs []portPair
+func parsePortsList(value string, defaultReverse bool) ([]parsedMapping, error) {
+	var mappings []parsedMapping
 	for _, item := range strings.Split(value, ",") {
 		if t := strings.TrimSpace(item); t != "" {
-			p, err := parsePortPair(t, defaultReverse)
+			m, err := parsePortMapping(t, "", defaultReverse)
 			if err != nil {
 				return nil, err
 			}
-			pairs = append(pairs, p)
+			mappings = append(mappings, m)
 		}
 	}
-	if len(pairs) == 0 {
+	if len(mappings) == 0 {
 		return nil, fmt.Errorf("no ports specified")
 	}
-	return pairs, nil
+	return mappings, nil
 }
 
 var hostLineRe = regexp.MustCompile(`(?i)^[ \t]*host[ \t]+([^#]+)`)
@@ -429,26 +395,33 @@ func buildTunnelsInteractive(flagAlias string, reverse, interactive bool) ([]ser
 			return nil, terr
 		}
 
-		portsStr, ierr := console.AskDefault(fmt.Sprintf("Ports to forward from '%s' (e.g. 3000, 8080:80, reverse:5432):", container.Name), "", func(v string) error {
+		portsStr, ierr := console.AskDefault(fmt.Sprintf("Ports to forward from '%s' (e.g. 3000, 8080:80, 100.64.0.1:8080:80, reverse:5432):", container.Name), "", func(v string) error {
 			_, e := parsePortsList(v, reverse)
 			return e
 		})
 		if ierr != nil {
 			return nil, ierr
 		}
-		pairs, _ := parsePortsList(portsStr, reverse)
-		for _, pair := range pairs {
+		mappings, _ := parsePortsList(portsStr, reverse)
+		for _, mapping := range mappings {
 			// A reverse tunnel is opened by the SSH server, so it can only ever
 			// listen inside the container the alias connects to. Reaching
 			// another container through it as a jump host works one way only.
-			if pair.reverse && targetHost != "localhost" {
+			if mapping.reverse && targetHost != "localhost" {
 				return nil, fmt.Errorf("cannot open a reverse tunnel into '%s': it is reached through the jump host '%s', and a reverse tunnel listens inside the container it connects to. Select a devcontainer with its own SSH alias instead", container.Name, alias)
 			}
+			tunnelTargetHost := targetHost
+			if targetHost == "localhost" {
+				tunnelTargetHost = mapping.targetHost
+			} else if mapping.targetHost != "localhost" && mapping.targetHost != targetHost {
+				return nil, fmt.Errorf("conflicting target hosts: mapping specifies '%s' but selected container target is '%s'", mapping.targetHost, targetHost)
+			}
 			tunnels = append(tunnels, service.Tunnel{
-				LocalPort:      pair.localPort,
-				ContainerPort:  pair.containerPort,
-				Reverse:        pair.reverse,
-				TargetHost:     targetHost,
+				BindAddress:    mapping.bindAddress,
+				LocalPort:      mapping.localPort,
+				ContainerPort:  mapping.containerPort,
+				Reverse:        mapping.reverse,
+				TargetHost:     tunnelTargetHost,
 				Alias:          alias,
 				ContainerName:  container.Name,
 				IsDevcontainer: container.Managed,

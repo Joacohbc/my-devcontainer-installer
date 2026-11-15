@@ -1095,6 +1095,33 @@ func TestBuildSshTunnels_ReversePrefix(t *testing.T) {
 	}
 }
 
+func TestBuildSshTunnels_BindAddressAndTargetHost(t *testing.T) {
+	tunnels, err := buildSshTunnels("100.75.207.87:9222:9222, 0.0.0.0:8080:80, [::1]:8080:80, 5432:postgres:5432", "myws", "myws-devcontainer-ssh")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(tunnels) != 4 {
+		t.Fatalf("expected 4 tunnels, got %d", len(tunnels))
+	}
+	cases := []struct {
+		bind      string
+		local     int
+		host      string
+		container int
+	}{
+		{"100.75.207.87", 9222, "localhost", 9222},
+		{"0.0.0.0", 8080, "localhost", 80},
+		{"[::1]", 8080, "localhost", 80},
+		{"", 5432, "postgres", 5432},
+	}
+	for i, c := range cases {
+		got := tunnels[i]
+		if got.BindAddress != c.bind || got.LocalPort != c.local || got.TargetHost != c.host || got.ContainerPort != c.container {
+			t.Errorf("tunnel %d = %+v, want bind=%q local=%d host=%q container=%d", i, got, c.bind, c.local, c.host, c.container)
+		}
+	}
+}
+
 func TestSshCommandRegistered(t *testing.T) {
 	root := NewRootCommand("test")
 	accessCmd := findSubcommand(root, "access")
@@ -1235,6 +1262,48 @@ func TestParsePortsList(t *testing.T) {
 	}
 }
 
+func TestParsePortsList_BindAddressAndTargetHost(t *testing.T) {
+	cases := []struct {
+		name           string
+		in             string
+		defaultReverse bool
+		bind           string
+		local          int
+		host           string
+		container      int
+		reverse        bool
+		wantErr        bool
+	}{
+		{name: "tailscale IP bind", in: "100.75.207.87:9222:9222", bind: "100.75.207.87", local: 9222, host: "localhost", container: 9222},
+		{name: "wildcard IPv4 bind", in: "0.0.0.0:8080:80", bind: "0.0.0.0", local: 8080, host: "localhost", container: 80},
+		{name: "IPv6 bracketed bind", in: "[::1]:8080:80", bind: "[::1]", local: 8080, host: "localhost", container: 80},
+		{name: "target host", in: "5432:postgres:5432", local: 5432, host: "postgres", container: 5432},
+		{name: "bind and target host", in: "0.0.0.0:5432:postgres:5432", bind: "0.0.0.0", local: 5432, host: "postgres", container: 5432},
+		{name: "reverse with bind address errors", in: "reverse:100.75.207.87:9222:9222", wantErr: true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got, err := parsePortsList(c.in, c.defaultReverse)
+			if c.wantErr {
+				if err == nil {
+					t.Errorf("parsePortsList(%q, %v): expected error", c.in, c.defaultReverse)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("parsePortsList(%q, %v): unexpected error: %v", c.in, c.defaultReverse, err)
+			}
+			if len(got) != 1 {
+				t.Fatalf("parsePortsList(%q, %v): expected 1 mapping, got %d", c.in, c.defaultReverse, len(got))
+			}
+			m := got[0]
+			if m.bindAddress != c.bind || m.localPort != c.local || m.targetHost != c.host || m.containerPort != c.container || m.reverse != c.reverse {
+				t.Errorf("got %+v, want bind=%q local=%d host=%q container=%d reverse=%v", m, c.bind, c.local, c.host, c.container, c.reverse)
+			}
+		})
+	}
+}
+
 // Only the container side of a reverse tunnel is bound by the SSH session, so
 // that is the only port a privileged-bind warning applies to.
 func TestNeedsPrivilegedBind(t *testing.T) {
@@ -1255,21 +1324,21 @@ func TestNeedsPrivilegedBind(t *testing.T) {
 }
 
 func TestParsePortsList_MixedDirections(t *testing.T) {
-	pairs, err := parsePortsList("3000, reverse:5432, r:8080:80", false)
+	mappings, err := parsePortsList("3000, reverse:5432, r:8080:80", false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	want := []portPair{
-		{localPort: 3000, containerPort: 3000},
-		{localPort: 5432, containerPort: 5432, reverse: true},
-		{localPort: 8080, containerPort: 80, reverse: true},
+	want := []parsedMapping{
+		{localPort: 3000, targetHost: "localhost", containerPort: 3000},
+		{localPort: 5432, targetHost: "localhost", containerPort: 5432, reverse: true},
+		{localPort: 8080, targetHost: "localhost", containerPort: 80, reverse: true},
 	}
-	if len(pairs) != len(want) {
-		t.Fatalf("expected %d pairs, got %d", len(want), len(pairs))
+	if len(mappings) != len(want) {
+		t.Fatalf("expected %d mappings, got %d", len(want), len(mappings))
 	}
 	for i, w := range want {
-		if pairs[i] != w {
-			t.Errorf("pair %d = %+v, want %+v", i, pairs[i], w)
+		if mappings[i] != w {
+			t.Errorf("mapping %d = %+v, want %+v", i, mappings[i], w)
 		}
 	}
 
@@ -1278,9 +1347,9 @@ func TestParsePortsList_MixedDirections(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	for i, p := range all {
-		if !p.reverse {
-			t.Errorf("pair %d = %+v, want reverse under a reverse default", i, p)
+	for i, m := range all {
+		if !m.reverse {
+			t.Errorf("mapping %d = %+v, want reverse under a reverse default", i, m)
 		}
 	}
 }

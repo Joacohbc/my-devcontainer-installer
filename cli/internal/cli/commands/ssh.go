@@ -88,7 +88,7 @@ func addSshFlags(cmd *cobra.Command) {
 	cmd.Flags().String("key", "", "Private key path (default: the shared managed key under the CLI config dir)")
 	cmd.Flags().String("user", sshdefaults.User, "SSH user inside the container")
 	cmd.Flags().Bool("forward", false, "Also open SSH port-forwarding tunnels for the session (prompted when interactive and omitted)")
-	cmd.Flags().String("ports", "", "Ports to forward, e.g. '3000,8080:80' (implies --forward; skips the prompt). A 'reverse:' prefix on a port makes the container reach that port on this machine instead")
+	cmd.Flags().String("ports", "", "Ports to forward, e.g. '3000,8080:80,100.64.0.1:8080:80' (implies --forward; skips the prompt). Supports bind:local:container, local:host:container, and a 'reverse:' prefix to make the container reach a port on this machine")
 	cmd.Flags().Bool("ephemeral", false, "Connect directly via SSH without modifying ~/.ssh/config or relying on existing Host blocks")
 
 	_ = cmd.RegisterFlagCompletionFunc("via", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
@@ -323,7 +323,7 @@ func resolveSshTunnels(cmd *cobra.Command, alias, containerName string, interact
 			return nil, fmt.Errorf("--ports is required with --forward in non-interactive mode")
 		}
 		var err error
-		portsFlag, err = console.AskDefault("Ports to forward (e.g. 3000, 8080:80, reverse:5432):", "", func(v string) error {
+		portsFlag, err = console.AskDefault("Ports to forward (e.g. 3000, 8080:80, 100.64.0.1:8080:80, reverse:5432):", "", func(v string) error {
 			_, e := parsePortsList(v, false)
 			return e
 		})
@@ -340,17 +340,22 @@ func resolveSshTunnels(cmd *cobra.Command, alias, containerName string, interact
 // goes the other way — the container reaches this machine's port — which is
 // why the direction lives in the spec rather than in a flag of its own here.
 func buildSshTunnels(portsFlag, alias, containerName string) ([]service.Tunnel, error) {
-	pairs, err := parsePortsList(portsFlag, false)
+	mappings, err := parsePortsList(portsFlag, false)
 	if err != nil {
 		return nil, err
 	}
-	tunnels := make([]service.Tunnel, len(pairs))
-	for i, p := range pairs {
+	tunnels := make([]service.Tunnel, len(mappings))
+	for i, m := range mappings {
+		targetHost := m.targetHost
+		if targetHost == "" {
+			targetHost = "localhost"
+		}
 		tunnels[i] = service.Tunnel{
-			LocalPort:      p.localPort,
-			ContainerPort:  p.containerPort,
-			Reverse:        p.reverse,
-			TargetHost:     "localhost",
+			BindAddress:    m.bindAddress,
+			LocalPort:      m.localPort,
+			ContainerPort:  m.containerPort,
+			Reverse:        m.reverse,
+			TargetHost:     targetHost,
 			Alias:          alias,
 			ContainerName:  containerName,
 			IsDevcontainer: true,
