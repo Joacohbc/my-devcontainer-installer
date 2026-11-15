@@ -329,8 +329,8 @@ func TestExpandSkillGroups(t *testing.T) {
 }
 
 func TestSkillsManifestIntegrity(t *testing.T) {
-	if len(skills.All) != 13 {
-		t.Fatalf("expected exactly 13 skills, got %d", len(skills.All))
+	if len(skills.All) != 14 {
+		t.Fatalf("expected exactly 14 skills, got %d", len(skills.All))
 	}
 	if len(skills.Categories) != 3 {
 		t.Fatalf("expected exactly 3 functional categories, got %d", len(skills.Categories))
@@ -338,6 +338,7 @@ func TestSkillsManifestIntegrity(t *testing.T) {
 	expectedSkills := map[types.SkillID]bool{
 		"find-skills":           true,
 		"agent-browser":         true,
+		"herdr":                 true,
 		"frontend-design":       true,
 		"ui-ux-pro-max":         true,
 		"impeccable":            true,
