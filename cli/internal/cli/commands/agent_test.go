@@ -355,8 +355,8 @@ func TestExtractedFlagHelpers_KeepTheOriginalFlags(t *testing.T) {
 		command string
 		flags   []string
 	}{
-		{"access", "ssh", []string{"yes", flagNoInteractive, "container", "setup", "via", "key", "user", "forward", "ports", "ephemeral"}},
-		{"access", "shell", []string{"user", "type", "no-tty", "workdir", "via", "container"}},
+		{"access", "ssh", []string{"yes", flagNoInteractive, "container", "setup", "key", "user", "forward", "ports", "ephemeral"}},
+		{"access", "shell", []string{"user", "type", "no-tty", "workdir", "container"}},
 		{"access", "forward", []string{"alias", "service", "reverse", flagNoInteractive, "ephemeral", "container", "key", "user"}},
 		{"access", "copy", []string{"container", "asset"}},
 		{"inspect", "ls", []string{"all", "long", "container"}},
@@ -418,7 +418,6 @@ func TestAgentWrappers_KeepFlagCompletion(t *testing.T) {
 		command string
 		flag    string
 	}{
-		{"ssh", "via"},
 		{"exec", "user"},
 		{"forward", "alias"},
 	}

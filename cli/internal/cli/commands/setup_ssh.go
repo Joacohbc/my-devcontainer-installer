@@ -43,7 +43,6 @@ func collectSetupSshFlags(cmd *cobra.Command) (*setupSshFlags, error) {
 	if f.Lookup("setup-external") != nil {
 		g.remote, _ = f.GetString("setup-external")
 	}
-	g.via, _ = f.GetString("via")
 	g.alias = sshdefaults.Alias
 	g.key, _ = f.GetString("key")
 	g.key = domain.ResolveSSHKeyPath(g.key)
@@ -551,15 +550,24 @@ func applyWorkspaceDefaults(f *setupSshFlags, workspace string) {
 // is not connectable from here (it targets another machine); the caller must not
 // dial it.
 func runSshSetup(cmd *cobra.Command) (alias string, err error) {
+	return runSshSetupWithTarget(cmd, "", "")
+}
+
+func runSshSetupWithTarget(cmd *cobra.Command, via, container string) (alias string, err error) {
 	f, err := collectSetupSshFlags(cmd)
 	if err != nil {
 		return "", err
 	}
+	if via != "" {
+		f.via = via
+		f.container = container
+		f.containerExplicit = strings.TrimSpace(container) != ""
+	}
 	if f.remote != "" && f.via != "" {
-		return "", fmt.Errorf("--setup-external and --via are mutually exclusive: use one or the other")
+		return "", fmt.Errorf("--setup-external and 'devcontainer-cli access ssh via' are mutually exclusive: use one or the other")
 	}
 	if f.via != "" && !f.containerExplicit {
-		return "", fmt.Errorf("--via requires --container <name>: there is no local compose project describing a container on a remote host")
+		return "", fmt.Errorf("a remote host jump requires a target container name")
 	}
 
 	ssh := service.SshService{Report: console}

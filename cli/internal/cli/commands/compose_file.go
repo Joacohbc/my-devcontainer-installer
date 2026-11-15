@@ -162,3 +162,22 @@ func completeRunningContainers(_ *cobra.Command, _ []string, toComplete string) 
 func completeStoppedContainers(_ *cobra.Command, _ []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 	return managedContainerNames(toComplete, func(c pick.Container) bool { return !containerRunning(c) })
 }
+
+// completeViaArgs completes positional arguments for 'via <host> <container>':
+// arg 0 suggests configured SSH hosts; arg 1 queries running containers on
+// that remote Docker host instead of local containers.
+func completeViaArgs(_ *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	switch len(args) {
+	case 0:
+		return listSshHosts(), cobra.ShellCompDirectiveNoFileComp
+	case 1:
+		var containers []pick.Container
+		_ = service.WithHostOverride(args[0], func() error {
+			containers = pick.ListAll()
+			return nil
+		})
+		return filterContainerNames(containers, toComplete, containerRunning), cobra.ShellCompDirectiveNoFileComp
+	default:
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+}

@@ -410,10 +410,10 @@ A throwaway container with no project to configure:
 language), since it always pulls.
 
 A container on a **different Docker host**, through an existing SSH connection
-to it — **prefer `agent ssh --via`** (ephemeral, runs as `devuser`, never prompts):
+to it — **prefer `agent ssh via`** (ephemeral, runs as `devuser`, never prompts):
 
-    devcontainer-cli agent ssh --via me@docker-host -c dc-base -- uname -a
-    devcontainer-cli access shell --via me@docker-host -c dc-base --user devuser -- uname -a  # fallback if target has no sshd
+    devcontainer-cli agent ssh via me@docker-host dc-base -- uname -a
+    devcontainer-cli access shell via me@docker-host dc-base --user devuser -- uname -a  # fallback if target has no sshd
     devcontainer-cli config ssh-key --export me@docker-host  # only if the user asks to configure cross-host SSH client access
 
 Global config, profiles and shared logins:

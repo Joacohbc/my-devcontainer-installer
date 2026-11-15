@@ -29,12 +29,12 @@ tailscale ip -4
 
 ---
 
-## 1. Acceso SSH y VS Code Remote - SSH (`--via`)
+## 1. Acceso SSH y VS Code Remote - SSH (`via`)
 
-Desde su equipo cliente (laptop o estación de trabajo conectada a la misma tailnet), registre el túnel SSH hacia el contenedor remoto utilizando `--via` sobre la identidad Tailscale del servidor:
+Desde su equipo cliente (laptop o estación de trabajo conectada a la misma tailnet), registre el túnel SSH hacia el contenedor remoto utilizando `access ssh via` sobre la identidad Tailscale del servidor:
 
 ```bash
-devcontainer-cli access ssh --via <usuario>@<ip-o-magicdns-tailscale> --container <workspace>-devcontainer-ssh
+devcontainer-cli access ssh via <usuario>@<ip-o-magicdns-tailscale> <workspace>-devcontainer-ssh --setup
 ```
 
 Una vez registrado:
@@ -55,7 +55,7 @@ ssh <workspace>-devcontainer-ssh
 
 ### Opción A: Escritorio / Laptop mediante túnel SSH local (recomendado, cero cambios en el proyecto)
 
-Tras configurar `--via`, cree el túnel en `127.0.0.1` desde su propio equipo cliente:
+Tras configurar `access ssh via`, cree el túnel en `127.0.0.1` desde su propio equipo cliente:
 
 ```bash
 devcontainer-cli access forward 3000 --alias <workspace>-devcontainer-ssh

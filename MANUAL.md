@@ -185,14 +185,14 @@ devcontainer-cli access forward reverse:5432
 
 ---
 
-### Caso 1.6: Desarrollo Remoto en Servidores LAN (`--via`)
+### Caso 1.6: Desarrollo Remoto en Servidores LAN (`via`)
 
 **Escenario**: El código y Docker residen en un servidor local (Raspberry Pi, Intel NUC, Home Server) accesible por SSH (`usuario@servidor-lan`), y usted desea programar desde su laptop sin instalar `devcontainer-cli` en el servidor.
 
 **Paso a paso**:
-1. Desde su laptop, conéctese al contenedor remoto a través del salto SSH:
+1. Desde su laptop, registre y conéctese al contenedor remoto a través del salto SSH:
    ```bash
-   devcontainer-cli access ssh --via usuario@servidor-lan --container <workspace>-devcontainer-ssh
+   devcontainer-cli access ssh via usuario@servidor-lan <workspace>-devcontainer-ssh --setup
    ```
 2. La CLI utilizará la conexión SSH existente hacia el servidor como túnel de control (`DOCKER_HOST=ssh://...`), configurará la clave pública en el contenedor remoto y registrará el alias de conexión local.
 3. Su clave privada **nunca abandona su laptop**.
@@ -431,9 +431,9 @@ devcontainer-cli run --image android --no-interactive   # contenedor dc-android
    curl -fsSL https://tailscale.com/install.sh | sh
    sudo tailscale up
    ```
-2. **Conecte por SSH desde su laptop (`--via`)**:
+2. **Conecte por SSH desde su laptop (`via`)**:
    ```bash
-   devcontainer-cli access ssh --via <usuario>@<ip-o-magicdns-tailscale> --container <workspace>-devcontainer-ssh
+   devcontainer-cli access ssh via <usuario>@<ip-o-magicdns-tailscale> <workspace>-devcontainer-ssh --setup
    ssh <workspace>-devcontainer-ssh
    ```
 3. **Publique puertos web según su cliente**:

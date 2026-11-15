@@ -1,7 +1,6 @@
 package commands
 
 import (
-	"fmt"
 	"os"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/ui"
@@ -43,8 +42,8 @@ interactive shell in devuser's home — never in the project. Pass -w to run in
 the project's workspace mount instead, which is what a build or a test command
 almost always wants and what saves wrapping one in a login bash just to 'cd'.
 
-Pass --via USER@HOST (with --container) to reach a container on a different
-Docker host through an existing SSH connection to it — unlike 'access ssh --via' this
+Use 'access shell via <host> <container>' to reach a container on a different
+Docker host through an existing SSH connection to it — unlike 'access ssh via' this
 needs nothing installed or configured in the container itself, since it rides
 entirely on the 'docker exec' channel (no ssh-into-container step).`,
 		Example: `  # Interactive shell as devuser
@@ -66,35 +65,66 @@ entirely on the 'docker exec' channel (no ssh-into-container step).`,
   devcontainer-cli access shell -c <ws>-postgres -T -- pg_dump -U devuser devdb > dump.sql
 
   # Shell into a container on a different Docker host
-  devcontainer-cli access shell --via me@docker-host -c dc-base`,
+  devcontainer-cli access shell via me@docker-host dc-base`,
 		RunE: runShell,
 	}
 	addShellFlags(cmd)
+	cmd.AddCommand(newShellViaCommand())
 	return cmd
 }
 
-// addShellFlags registers the flags runShell reads. It is shared with the
-// 'agent exec' facade, which reuses runShell but requires a command.
-func addShellFlags(cmd *cobra.Command) {
+func newShellViaCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "via <host> <container> [-- command args...]",
+		Short: "Open a shell or run a command inside a container on a remote Docker host",
+		Long: `devcontainer-cli access shell via — run 'docker exec' against a container on
+a remote Docker host reached through an existing SSH connection to <host>.`,
+		Example: `  # Open an interactive shell in dc-base on me@docker-host
+  devcontainer-cli access shell via me@docker-host dc-base
+
+  # Run a one-off command on the remote container
+  devcontainer-cli access shell via me@docker-host dc-base -- uname -a`,
+		Args:              cobra.MinimumNArgs(2),
+		ValidArgsFunction: completeViaArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runShellWithTarget(cmd, args[0], args[1], args[2:])
+		},
+	}
+	addShellSessionFlags(cmd)
+	return cmd
+}
+
+// addShellSessionFlags registers the shell flags shared across 'access shell'
+// and 'access shell via'.
+func addShellSessionFlags(cmd *cobra.Command) {
 	cmd.Flags().String("user", "", "User to run the command as; always honoured, but only an interactive shell defaults it to devuser")
 	cmd.Flags().String("type", "", "Shell to open: bash, zsh or sh (interactive shell defaults to zsh)")
 	cmd.Flags().BoolP("no-tty", "T", false, "Disable pseudo-TTY allocation (use when piping output to a file, e.g. a DB dump); implied when stdin is not a terminal")
 	cmd.Flags().BoolP("workdir", "w", false, "Run in the project's workspace mount instead of the container default; only the devcontainer has that directory, so a database container needs it left off")
-	cmd.Flags().String("via", "", "Reach the container through an existing SSH connection to its Docker host (requires --container): USER@HOST or an ssh-config alias")
-	addContainerFlag(cmd)
 
 	_ = cmd.RegisterFlagCompletionFunc("type", staticCompletion("bash", "zsh", "sh"))
 
-	_ = cmd.RegisterFlagCompletionFunc("user", func(cmd *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
+	_ = cmd.RegisterFlagCompletionFunc("user", func(cmd *cobra.Command, args []string, _ string) ([]string, cobra.ShellCompDirective) {
+		if cmd.Name() == "via" && len(args) >= 2 {
+			var users []string
+			_ = service.WithHostOverride(args[0], func() error {
+				users = service.InspectService{Report: ui.Console{}}.ListUsers(args[1])
+				return nil
+			})
+			return users, cobra.ShellCompDirectiveNoFileComp
+		}
 		containerName, err := resolveContainer(cmd)
 		if err != nil {
 			return nil, cobra.ShellCompDirectiveNoFileComp
 		}
 		return service.InspectService{Report: ui.Console{}}.ListUsers(containerName), cobra.ShellCompDirectiveNoFileComp
 	})
-	_ = cmd.RegisterFlagCompletionFunc("via", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		return listSshHosts(), cobra.ShellCompDirectiveNoFileComp
-	})
+}
+
+// addShellFlags registers the flags runShell reads.
+func addShellFlags(cmd *cobra.Command) {
+	addShellSessionFlags(cmd)
+	addContainerFlag(cmd)
 }
 
 // shellInteractiveDefaults applies the interactive-shell defaults: when no
@@ -132,18 +162,21 @@ func needsNoTTY(noTTYFlag, stdinTerminal bool) bool {
 }
 
 func runShell(cmd *cobra.Command, args []string) error {
+	return runShellWithTarget(cmd, "", "", args)
+}
+
+func runShellWithTarget(cmd *cobra.Command, via, containerName string, args []string) error {
 	userFlag, _ := cmd.Flags().GetString("user")
 	shellType, _ := cmd.Flags().GetString("type")
 	noTTYFlag, _ := cmd.Flags().GetBool("no-tty")
 	noTTY := needsNoTTY(noTTYFlag, stdinIsTerminal())
-	via, _ := cmd.Flags().GetString("via")
-	if via != "" && !cmd.Flags().Changed("container") {
-		return fmt.Errorf("--via requires --container <name>: there is no local compose project describing a container on a remote host")
-	}
 
-	containerName, err := resolveContainer(cmd)
-	if err != nil {
-		return err
+	if containerName == "" {
+		var err error
+		containerName, err = resolveContainer(cmd)
+		if err != nil {
+			return err
+		}
 	}
 
 	userFlag, shellType = shellInteractiveDefaults(
