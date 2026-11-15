@@ -90,11 +90,11 @@ Forward ports to a container on a remote Docker host over SSH
 | `--ephemeral` |  | bool | `true` | Connect directly via SSH (-J) without modifying ~/.ssh/config |
 | `--key` | -k | string | - | Path to SSH private key for ephemeral or setup connections |
 | `--log-level` |  | string | `warn` | Log level: debug\|info\|warn\|error |
-| `--no-interactive` |  | bool | `false` | Disable interactive prompts |
+| `--no-interactive` |  | bool | `false` | Non-interactive mode (fail instead of prompting) |
 | `--reverse` | -r | bool | `false` | Reverse tunnel: container listens and dials this machine |
 | `--user` | -u | string | - | Remote container SSH user |
 | `--verbose` |  | bool | `false` | Enable debug logging (shortcut for --log-level debug) |
-| `--yes` | -y | bool | `false` | Assume yes for SSH setup prompts in persistent mode |
+| `--yes` | -y | bool | `false` | Skip confirmation prompts |
 
 ## `devcontainer-cli access network`
 
@@ -448,11 +448,11 @@ Forward ports to a container on a remote Docker host over SSH
 | `--ephemeral` |  | bool | `true` | Connect directly via SSH (-J) without modifying ~/.ssh/config |
 | `--key` | -k | string | - | Path to SSH private key for ephemeral or setup connections |
 | `--log-level` |  | string | `warn` | Log level: debug\|info\|warn\|error |
-| `--no-interactive` |  | bool | `false` | Fail if any value is missing instead of prompting |
+| `--no-interactive` |  | bool | `false` | Non-interactive mode (fail instead of prompting) |
 | `--reverse` | -r | bool | `false` | Reverse tunnel: container listens and dials this machine |
 | `--user` | -u | string | - | Remote container SSH user |
 | `--verbose` |  | bool | `false` | Enable debug logging (shortcut for --log-level debug) |
-| `--yes` | -y | bool | `false` | Assume yes for SSH setup prompts in persistent mode |
+| `--yes` | -y | bool | `false` | Skip confirmation prompts |
 
 ## `devcontainer-cli agent list`
 

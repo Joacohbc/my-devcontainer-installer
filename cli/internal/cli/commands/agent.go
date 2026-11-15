@@ -247,22 +247,7 @@ func addAgentExecSessionFlags(cmd *cobra.Command) {
 	cmd.Flags().BoolP("no-tty", "T", false, "Disable pseudo-TTY allocation (use when piping output to a file, e.g. a DB dump); implied when stdin is not a terminal")
 	cmd.Flags().BoolP("workdir", "w", false, "Run in the project's workspace mount instead of the container default; only the devcontainer has that directory, so a database container needs it left off")
 	addInteractiveFlag(cmd)
-
-	_ = cmd.RegisterFlagCompletionFunc("user", func(cmd *cobra.Command, args []string, _ string) ([]string, cobra.ShellCompDirective) {
-		if cmd.Name() == "via" && len(args) >= 2 {
-			var users []string
-			_ = service.WithHostOverride(args[0], func() error {
-				users = service.InspectService{Report: console}.ListUsers(args[1])
-				return nil
-			})
-			return users, cobra.ShellCompDirectiveNoFileComp
-		}
-		containerName, err := resolveContainer(cmd)
-		if err != nil {
-			return nil, cobra.ShellCompDirectiveNoFileComp
-		}
-		return service.InspectService{Report: console}.ListUsers(containerName), cobra.ShellCompDirectiveNoFileComp
-	})
+	registerViaUserCompletion(cmd)
 }
 
 func addAgentExecFlags(cmd *cobra.Command) {
@@ -351,25 +336,25 @@ to reuse or configure a persistent ProxyCommand Host block in ~/.ssh/config.`,
 
   # Ephemeral forward with custom local:container port
   devcontainer-cli agent forward via me@docker-host dc-base 8080:80`,
-		Args:         cobra.ExactArgs(3),
-		SilenceUsage: true,
-		PreRunE: func(cmd *cobra.Command, _ []string) error {
-			return agentDefaults(cmd, map[string]string{
-				"ephemeral": "true",
-				"yes":       "true",
-			})
-		},
-		RunE: runPortForwardVia,
+		Args:              cobra.ExactArgs(3),
+		SilenceUsage:      true,
+		ValidArgsFunction: completeViaArgs,
+		PreRunE:           agentForwardDefaults,
+		RunE:              runPortForwardVia,
 	}
-	addForwardViaFlags(cmd, false)
+	addForwardViaFlags(cmd)
 	return cmd
 }
 
 func agentForwardDefaults(cmd *cobra.Command, _ []string) error {
-	return agentDefaults(cmd, map[string]string{
+	defaults := map[string]string{
 		flagNoInteractive: "true",
 		"ephemeral":       "true",
-	})
+	}
+	if cmd.Flags().Lookup("yes") != nil {
+		defaults["yes"] = "true"
+	}
+	return agentDefaults(cmd, defaults)
 }
 
 func newAgentListCommand() *cobra.Command {
