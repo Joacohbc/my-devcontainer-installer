@@ -33,10 +33,10 @@ By default it targets the project's own devcontainer service, the same one
 instead (loose mode); the managed alias is then keyed by that container's name
 rather than the workspace.
 
-Pass --via USER@HOST (with --container) to reach a container on a different
-Docker host through an existing SSH connection to it. Only the shared key's
-PUBLIC half ever leaves this machine. --via only needs to be given once: the
-alias remembers the jump target for future reconnects.
+Reach a container on a different Docker host through an existing SSH connection
+to it using 'access ssh via <host> <container>'. Only the shared key's PUBLIC
+half ever leaves this machine; in persistent mode (--setup / --ephemeral=false),
+the alias remembers the jump target for future reconnects.
 
 Before connecting it re-pins the container's current SSH host keys (read through
 docker) in the CLI-managed known_hosts, so a rebuilt image — new host keys —
@@ -64,7 +64,7 @@ when the session ends.`,
   devcontainer-cli access ssh --container dc-base
 
   # Connect through an existing SSH connection to a remote Docker host
-  devcontainer-cli access ssh --via me@docker-host --container dc-base
+  devcontainer-cli access ssh via me@docker-host dc-base
 
   # Also forward ports 3000 and 8080 for the session
   devcontainer-cli access ssh --forward --ports 3000,8080:80
@@ -74,27 +74,52 @@ when the session ends.`,
 		RunE: runSsh,
 	}
 	addSshFlags(cmd)
+	cmd.AddCommand(newSshViaCommand())
 	return cmd
 }
 
-// addSshFlags registers the flags runSsh reads. It is shared with the
-// 'agent ssh' facade, which reuses runSsh with agent-safe defaults.
-func addSshFlags(cmd *cobra.Command) {
+func newSshViaCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "via <host> <container> [-- command args...]",
+		Short: "Connect over SSH to a container on a remote Docker host",
+		Long: `devcontainer-cli access ssh via — reach a container running on a remote
+Docker host through an existing SSH connection to <host>.`,
+		Example: `  # Connect to dc-base on me@docker-host (ephemeral, default)
+  devcontainer-cli access ssh via me@docker-host dc-base
+
+  # Configure persistent ProxyCommand alias and connect
+  devcontainer-cli access ssh via me@docker-host dc-base --setup
+
+  # Run a one-off command over SSH
+  devcontainer-cli access ssh via me@docker-host dc-base -- uname -a`,
+		Args:              cobra.MinimumNArgs(2),
+		ValidArgsFunction: completeViaArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runSshWithTarget(cmd, args[0], args[1], true, args[2:])
+		},
+	}
+	addSshSessionFlags(cmd)
+	return cmd
+}
+
+// addSshSessionFlags registers the SSH session flags shared across 'access ssh'
+// and 'access ssh via'.
+func addSshSessionFlags(cmd *cobra.Command) {
 	addYesFlag(cmd)
 	addInteractiveFlag(cmd)
-	addContainerFlag(cmd)
 	cmd.Flags().Bool("setup", false, "Re-run the SSH access setup (key + Host block) before connecting, even if an alias already exists")
-	cmd.Flags().String("via", "", "Reach the container through an existing SSH connection to its Docker host (requires --container): USER@HOST or an ssh-config alias")
 	cmd.Flags().String("key", "", "Private key path (default: the shared managed key under the CLI config dir)")
 	cmd.Flags().String("user", sshdefaults.User, "SSH user inside the container")
 	cmd.Flags().Bool("forward", false, "Also open SSH port-forwarding tunnels for the session (prompted when interactive and omitted)")
 	cmd.Flags().String("ports", "", "Ports to forward, e.g. '3000,8080:80,100.64.0.1:8080:80' (implies --forward; skips the prompt). Supports bind:local:container, local:host:container, and a 'reverse:' prefix to make the container reach a port on this machine")
 	cmd.Flags().Bool("ephemeral", true, "Connect directly via SSH without modifying ~/.ssh/config or relying on existing Host blocks (--ephemeral=false opts into ~/.ssh/devcontainer-cli.config)")
-
-	_ = cmd.RegisterFlagCompletionFunc("via", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		return listSshHosts(), cobra.ShellCompDirectiveNoFileComp
-	})
 	_ = cmd.MarkFlagFilename("key")
+}
+
+// addSshFlags registers the flags runSsh reads.
+func addSshFlags(cmd *cobra.Command) {
+	addContainerFlag(cmd)
+	addSshSessionFlags(cmd)
 }
 
 func resolveSshEphemeral(cmd *cobra.Command) (isEphemeral, forceSetup bool, err error) {
@@ -110,13 +135,12 @@ func resolveSshEphemeral(cmd *cobra.Command) (isEphemeral, forceSetup bool, err 
 }
 
 func runSsh(cmd *cobra.Command, args []string) error {
-	via, _ := cmd.Flags().GetString("via")
 	containerFlag, _ := cmd.Flags().GetString("container")
 	hasContainer := cmd.Flags().Changed("container") && strings.TrimSpace(containerFlag) != ""
-	if via != "" && !hasContainer {
-		return fmt.Errorf("--via requires --container <name>: there is no local compose project describing a container on a remote host")
-	}
+	return runSshWithTarget(cmd, "", containerFlag, hasContainer, args)
+}
 
+func runSshWithTarget(cmd *cobra.Command, via, containerFlag string, hasContainer bool, args []string) error {
 	isEphemeral, forceSetup, err := resolveSshEphemeral(cmd)
 	if err != nil {
 		return err
@@ -124,9 +148,12 @@ func runSsh(cmd *cobra.Command, args []string) error {
 
 	interactive := interactiveFlag(cmd)
 	if isEphemeral {
-		containerName, err := resolveContainer(cmd)
-		if err != nil {
-			return err
+		containerName := containerFlag
+		if !hasContainer {
+			containerName, err = resolveContainer(cmd)
+			if err != nil {
+				return err
+			}
 		}
 
 		keyPath, _ := cmd.Flags().GetString("key")
@@ -200,7 +227,7 @@ func runSsh(cmd *cobra.Command, args []string) error {
 		if !ok && !forceSetup {
 			console.Info("No SSH access configured yet for '%s'; setting it up...", ref)
 		}
-		configuredAlias, serr := runSshSetup(cmd)
+		configuredAlias, serr := runSshSetupWithTarget(cmd, via, containerFlag)
 		if serr != nil {
 			return serr
 		}

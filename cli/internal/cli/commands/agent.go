@@ -28,7 +28,7 @@ services, profiles, skills, how to add your own scripts — so a create command
 can be composed without guessing at ids.
 
 The human commands stay available and are the escape hatch: 'compose' for any
-compose verb, 'access ssh --via' for another Docker host, 'run' for a throwaway
+compose verb, 'access ssh via' for another Docker host, 'run' for a throwaway
 container, 'config' for global settings.`,
 		Example: `  # Read the catalogue, then create an environment from it
   devcontainer-cli agent cli-info --json
@@ -95,12 +95,33 @@ a real tty, a tool that shells out to ssh).`,
   devcontainer-cli agent ssh -- go version
 
   # Reach the container on another Docker host
-  devcontainer-cli agent ssh --via me@docker-host -c mycontainer -- uname -a`,
+  devcontainer-cli agent ssh via me@docker-host mycontainer -- uname -a`,
 		SilenceUsage: true,
 		PreRunE:      agentSshDefaults,
 		RunE:         runSsh,
 	}
 	addAgentSshFlags(cmd)
+	cmd.AddCommand(newAgentSshViaCommand())
+	return cmd
+}
+
+func newAgentSshViaCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "via <host> <container> [-- command args...]",
+		Short: "Open an SSH session into a container on a remote Docker host",
+		Long: `devcontainer-cli agent ssh via — connect to a container on a remote Docker host
+over SSH with prompting off and ephemeral mode on by default.`,
+		Example: `  # Run a command over SSH on a remote Docker host
+  devcontainer-cli agent ssh via me@docker-host mycontainer -- uname -a`,
+		Args:              cobra.MinimumNArgs(2),
+		ValidArgsFunction: completeViaArgs,
+		SilenceUsage:      true,
+		PreRunE:           agentSshDefaults,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runSshWithTarget(cmd, args[0], args[1], true, args[2:])
+		},
+	}
+	addAgentSshSessionFlags(cmd)
 	return cmd
 }
 
@@ -111,18 +132,17 @@ func agentSshDefaults(cmd *cobra.Command, _ []string) error {
 	})
 }
 
-func addAgentSshFlags(cmd *cobra.Command) {
+func addAgentSshSessionFlags(cmd *cobra.Command) {
 	addInteractiveFlag(cmd)
-	addContainerFlag(cmd)
 	cmd.Flags().Bool("ephemeral", true, "Connect directly via SSH without modifying ~/.ssh/config or relying on existing Host blocks (--ephemeral=false opts into ~/.ssh/devcontainer-cli.config)")
-	cmd.Flags().String("via", "", "Reach the container through an existing SSH connection to its Docker host (requires --container): USER@HOST or an ssh-config alias")
 	cmd.Flags().String("key", "", "Private key path (default: the shared managed key under the CLI config dir)")
 	cmd.Flags().String("user", sshdefaults.User, "SSH user inside the container")
-
-	_ = cmd.RegisterFlagCompletionFunc("via", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		return listSshHosts(), cobra.ShellCompDirectiveNoFileComp
-	})
 	_ = cmd.MarkFlagFilename("key")
+}
+
+func addAgentSshFlags(cmd *cobra.Command) {
+	addContainerFlag(cmd)
+	addAgentSshSessionFlags(cmd)
 }
 
 func newAgentExecCommand() *cobra.Command {
@@ -169,6 +189,27 @@ directory, once -w is doing it.`,
 		RunE:         runShell,
 	}
 	addAgentExecFlags(cmd)
+	cmd.AddCommand(newAgentExecViaCommand())
+	return cmd
+}
+
+func newAgentExecViaCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "via <host> <container> -- command args...",
+		Short: "Run a command inside a container on a remote Docker host",
+		Long: `devcontainer-cli agent exec via — run a one-off command in a container on a
+remote Docker host reached through an existing SSH connection to <host>.`,
+		Example: `  # Run a command on a remote Docker host
+  devcontainer-cli agent exec via me@docker-host mycontainer -- uname -a`,
+		Args:              agentExecViaArgs,
+		ValidArgsFunction: completeViaArgs,
+		SilenceUsage:      true,
+		PreRunE:           agentExecDefaults,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runShellWithTarget(cmd, args[0], args[1], args[2:])
+		},
+	}
+	addAgentExecSessionFlags(cmd)
 	return cmd
 }
 
@@ -181,24 +222,42 @@ func agentExecDefaults(cmd *cobra.Command, _ []string) error {
 	})
 }
 
-func addAgentExecFlags(cmd *cobra.Command) {
+func addAgentExecSessionFlags(cmd *cobra.Command) {
 	cmd.Flags().String("user", "", "User to run the command as; always honoured, but only an interactive shell defaults it to devuser")
 	cmd.Flags().BoolP("no-tty", "T", false, "Disable pseudo-TTY allocation (use when piping output to a file, e.g. a DB dump); implied when stdin is not a terminal")
 	cmd.Flags().BoolP("workdir", "w", false, "Run in the project's workspace mount instead of the container default; only the devcontainer has that directory, so a database container needs it left off")
-	cmd.Flags().String("via", "", "Reach the container through an existing SSH connection to its Docker host (requires --container): USER@HOST or an ssh-config alias")
-	addContainerFlag(cmd)
 	addInteractiveFlag(cmd)
 
-	_ = cmd.RegisterFlagCompletionFunc("user", func(cmd *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
+	_ = cmd.RegisterFlagCompletionFunc("user", func(cmd *cobra.Command, args []string, _ string) ([]string, cobra.ShellCompDirective) {
+		if cmd.Name() == "via" && len(args) >= 2 {
+			var users []string
+			_ = service.WithHostOverride(args[0], func() error {
+				users = service.InspectService{Report: console}.ListUsers(args[1])
+				return nil
+			})
+			return users, cobra.ShellCompDirectiveNoFileComp
+		}
 		containerName, err := resolveContainer(cmd)
 		if err != nil {
 			return nil, cobra.ShellCompDirectiveNoFileComp
 		}
 		return service.InspectService{Report: console}.ListUsers(containerName), cobra.ShellCompDirectiveNoFileComp
 	})
-	_ = cmd.RegisterFlagCompletionFunc("via", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		return listSshHosts(), cobra.ShellCompDirectiveNoFileComp
-	})
+}
+
+func addAgentExecFlags(cmd *cobra.Command) {
+	addAgentExecSessionFlags(cmd)
+	addContainerFlag(cmd)
+}
+
+func agentExecViaArgs(_ *cobra.Command, args []string) error {
+	if len(args) < 2 {
+		return fmt.Errorf("agent exec via requires <host> <container> -- command args...")
+	}
+	if len(args) < 3 {
+		return fmt.Errorf("agent exec via requires a command, e.g. 'agent exec via me@host mycontainer -- go test ./...'")
+	}
+	return nil
 }
 
 // agentExecArgs requires the command 'shell' treats as optional.

@@ -1132,97 +1132,63 @@ func TestSshCommandRegistered(t *testing.T) {
 	if sshCmd == nil {
 		t.Fatal("expected 'access ssh' command to be registered")
 	}
-	for _, name := range []string{"yes", "no-interactive", "forward", "ports", "container", "via", "setup", "key", "user"} {
+	for _, name := range []string{"yes", "no-interactive", "forward", "ports", "container", "setup", "key", "user", "ephemeral"} {
 		if sshCmd.Flags().Lookup(name) == nil {
 			t.Errorf("expected 'ssh' to register --%s", name)
 		}
+	}
+	if sshCmd.Flags().Lookup("via") != nil {
+		t.Errorf("expected 'ssh' NOT to register --via (replaced by 'via' subcommand)")
 	}
 	if sshCmd.Flags().Lookup("setup-external") != nil {
 		t.Errorf("expected 'ssh' NOT to register --setup-external (moved to 'config ssh-key --export')")
 	}
 }
 
-// 'ssh --via' has no local compose project to target a remote-only container
-// with, so it must be paired with --container.
-func TestRunSsh_ViaRequiresContainer(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	cmd := newSshCommand()
-	if err := cmd.Flags().Parse([]string{"--via", "me@docker-host"}); err != nil {
-		t.Fatalf("parse flags: %v", err)
-	}
-	err := runSsh(cmd, nil)
-	if err == nil || !strings.Contains(err.Error(), "--container") {
-		t.Errorf("runSsh error = %v, want an error requiring --container", err)
-	}
-}
+func TestViaSubcommands_ArgsCompletionAndFlags(t *testing.T) {
+	root := NewRootCommand("test")
+	accessCmd := findSubcommand(root, "access")
+	agentCmd := findSubcommand(root, "agent")
 
-func TestRunSsh_ViaRequiresContainer_Ephemeral(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	cmd := newSshCommand()
-	if err := cmd.Flags().Parse([]string{"--ephemeral", "--via", "me@docker-host"}); err != nil {
-		t.Fatalf("parse flags: %v", err)
+	cases := []struct {
+		name    string
+		cmd     *cobra.Command
+		minArgs int
+	}{
+		{"access ssh via", findSubcommand(findSubcommand(accessCmd, "ssh"), "via"), 2},
+		{"access shell via", findSubcommand(findSubcommand(accessCmd, "shell"), "via"), 2},
+		{"agent ssh via", findSubcommand(findSubcommand(agentCmd, "ssh"), "via"), 2},
+		{"agent exec via", findSubcommand(findSubcommand(agentCmd, "exec"), "via"), 3},
 	}
-	err := runSsh(cmd, nil)
-	if err == nil || !strings.Contains(err.Error(), "--container") {
-		t.Errorf("runSsh error = %v, want an error requiring --container", err)
-	}
-}
 
-func TestRunAgentSsh_ViaRequiresContainer(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	cmd := newAgentSshCommand()
-	if err := cmd.Flags().Parse([]string{"--via", "me@docker-host"}); err != nil {
-		t.Fatalf("parse flags: %v", err)
-	}
-	if cmd.PreRunE != nil {
-		if err := cmd.PreRunE(cmd, nil); err != nil {
-			t.Fatalf("PreRunE: %v", err)
-		}
-	}
-	err := cmd.RunE(cmd, nil)
-	if err == nil || !strings.Contains(err.Error(), "--container") {
-		t.Errorf("agent ssh error = %v, want an error requiring --container", err)
-	}
-}
-
-func TestRunSsh_ViaRequiresContainer_EmptyContainer(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	cmd := newSshCommand()
-	if err := cmd.Flags().Parse([]string{"--via", "me@docker-host", "--container", "   "}); err != nil {
-		t.Fatalf("parse flags: %v", err)
-	}
-	err := runSsh(cmd, nil)
-	if err == nil || !strings.Contains(err.Error(), "--container") {
-		t.Errorf("runSsh error = %v, want an error requiring --container", err)
-	}
-}
-
-func TestRunSsh_ViaRequiresContainer_Ephemeral_EmptyContainer(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	cmd := newSshCommand()
-	if err := cmd.Flags().Parse([]string{"--ephemeral", "--via", "me@docker-host", "--container", ""}); err != nil {
-		t.Fatalf("parse flags: %v", err)
-	}
-	err := runSsh(cmd, nil)
-	if err == nil || !strings.Contains(err.Error(), "--container") {
-		t.Errorf("runSsh error = %v, want an error requiring --container", err)
-	}
-}
-
-func TestRunAgentSsh_ViaRequiresContainer_EmptyContainer(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	cmd := newAgentSshCommand()
-	if err := cmd.Flags().Parse([]string{"--via", "me@docker-host", "--container", ""}); err != nil {
-		t.Fatalf("parse flags: %v", err)
-	}
-	if cmd.PreRunE != nil {
-		if err := cmd.PreRunE(cmd, nil); err != nil {
-			t.Fatalf("PreRunE: %v", err)
-		}
-	}
-	err := cmd.RunE(cmd, nil)
-	if err == nil || !strings.Contains(err.Error(), "--container") {
-		t.Errorf("agent ssh error = %v, want an error requiring --container", err)
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if c.cmd == nil {
+				t.Fatalf("%s subcommand not registered", c.name)
+			}
+			if c.cmd.Flags().Lookup("container") != nil {
+				t.Errorf("%s must not register --container", c.name)
+			}
+			if c.cmd.Flags().Lookup("via") != nil {
+				t.Errorf("%s must not register --via", c.name)
+			}
+			if c.cmd.ValidArgsFunction == nil {
+				t.Errorf("%s must register ValidArgsFunction", c.name)
+			}
+			if err := c.cmd.Args(c.cmd, []string{"me@host"}); err == nil {
+				t.Errorf("%s must reject fewer than %d args", c.name, c.minArgs)
+			}
+			if c.minArgs == 3 {
+				if err := c.cmd.Args(c.cmd, []string{"me@host", "ctr"}); err == nil {
+					t.Errorf("%s must require a command after <host> <container>", c.name)
+				}
+				if err := c.cmd.Args(c.cmd, []string{"me@host", "ctr", "uname"}); err != nil {
+					t.Errorf("%s rejected valid args: %v", c.name, err)
+				}
+			} else if err := c.cmd.Args(c.cmd, []string{"me@host", "ctr"}); err != nil {
+				t.Errorf("%s rejected valid args: %v", c.name, err)
+			}
+		})
 	}
 }
 
@@ -1589,17 +1555,16 @@ func TestConfigSSHKey_Export(t *testing.T) {
 	}
 }
 
-// --via has no local compose project to fall back on (the container lives on
-// a different host), so it must be paired with an explicit --container.
-func TestRunSshSetup_ViaRequiresContainer(t *testing.T) {
+// 'via' must be paired with a non-empty target container name.
+func TestRunSshSetupWithTarget_ViaRequiresContainer(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	cmd := newSshCommand()
-	if err := cmd.Flags().Parse([]string{"--via", "me@docker-host"}); err != nil {
+	cmd := newSshViaCommand()
+	if err := cmd.Flags().Parse(nil); err != nil {
 		t.Fatalf("parse flags: %v", err)
 	}
-	_, err := runSshSetup(cmd)
-	if err == nil || !strings.Contains(err.Error(), "--container") {
-		t.Errorf("runSshSetup error = %v, want an error requiring --container", err)
+	_, err := runSshSetupWithTarget(cmd, "me@docker-host", "")
+	if err == nil || !strings.Contains(err.Error(), "container") {
+		t.Errorf("runSshSetupWithTarget error = %v, want an error requiring a container", err)
 	}
 }
 
@@ -1676,7 +1641,7 @@ func TestShellCommand_HasFlags(t *testing.T) {
 	if shell == nil {
 		t.Fatal("shell command not found under access")
 	}
-	for _, name := range []string{"user", "no-tty", "via"} {
+	for _, name := range []string{"user", "no-tty"} {
 		if shell.Flags().Lookup(name) == nil {
 			t.Errorf("expected shell flag --%s", name)
 		}
@@ -1686,17 +1651,10 @@ func TestShellCommand_HasFlags(t *testing.T) {
 	}
 }
 
-// shell rides entirely on 'docker exec', so --via has no local compose project
-// to target a remote-only container with and must be paired with --container,
-// same rule as ssh/setup-ssh.
-func TestRunShell_ViaRequiresContainer(t *testing.T) {
+func TestShellCommand_NoViaFlag(t *testing.T) {
 	cmd := newShellCommand()
-	if err := cmd.Flags().Parse([]string{"--via", "me@docker-host"}); err != nil {
-		t.Fatalf("parse flags: %v", err)
-	}
-	err := runShell(cmd, nil)
-	if err == nil || !strings.Contains(err.Error(), "--container") {
-		t.Errorf("runShell error = %v, want an error requiring --container", err)
+	if cmd.Flags().Lookup("via") != nil {
+		t.Errorf("access shell must not register --via (replaced by 'via' subcommand)")
 	}
 }
 
