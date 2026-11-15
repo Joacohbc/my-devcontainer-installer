@@ -171,12 +171,22 @@ The command is exec'd directly, NOT through a shell. Wrap it in a login bash —
 '&&', globs, or the container's pip/npm indirections. Finding a binary is not one
 of those reasons: the image declares its toolchain PATH, so
 'agent exec -- uv pip install x' works as it stands. Neither is changing
-directory, once -w is doing it.`,
+directory, once -w is doing it.
+
+Shell operators after '--' are parsed by the host shell first. Unquoted >, >>,
+|, && and ; are intercepted before the command reaches the container. Wrap
+shell syntax meant for the container in sh -c "..." or bash -lc "...".`,
 		Example: `  # A plain command, as devuser, in the project
   devcontainer-cli agent exec -w -- go test ./...
 
   # Shell syntax still needs a login bash; -w already did the cd
   devcontainer-cli agent exec -w -- bash -lc 'pnpm install && pnpm build'
+
+  # In-container redirection/chaining must be wrapped in a shell
+  devcontainer-cli agent exec -- sh -c 'echo "hello" >> /home/devuser/file.txt'
+
+  # Host-side redirection writes to a local file
+  devcontainer-cli agent exec -T -- cat /etc/os-release > local.txt
 
   # Something that genuinely needs root
   devcontainer-cli agent exec --user root -- apt-get install -y tree
@@ -198,9 +208,19 @@ func newAgentExecViaCommand() *cobra.Command {
 		Use:   "via <host> <container> -- command args...",
 		Short: "Run a command inside a container on a remote Docker host",
 		Long: `devcontainer-cli agent exec via — run a one-off command in a container on a
-remote Docker host reached through an existing SSH connection to <host>.`,
+remote Docker host reached through an existing SSH connection to <host>.
+
+As with 'agent exec', unquoted shell operators after '--' (>, >>, |, &&, ;) are
+consumed by the host shell first. Wrap shell syntax intended for the container
+in sh -c "..." or bash -lc "...".`,
 		Example: `  # Run a command on a remote Docker host
-  devcontainer-cli agent exec via me@docker-host mycontainer -- uname -a`,
+  devcontainer-cli agent exec via me@docker-host mycontainer -- uname -a
+
+  # In-container redirection/chaining on the remote container
+  devcontainer-cli agent exec via me@docker-host mycontainer -- sh -c 'echo "hello" >> /home/devuser/file.txt'
+
+  # Host-side redirection writes to a local file
+  devcontainer-cli agent exec via me@docker-host mycontainer -T -- cat /etc/os-release > local.txt`,
 		Args:              agentExecViaArgs,
 		ValidArgsFunction: completeViaArgs,
 		SilenceUsage:      true,

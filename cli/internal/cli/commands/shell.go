@@ -33,6 +33,11 @@ command in a login bash — 'access shell -- bash -lc "cd /srv && ./build.sh | t
 when it needs pipes, '&&', globs or 'cd', or the container's pip/npm shell
 indirections. Use bash, not zsh: a non-interactive 'zsh -lc' skips ~/.zshrc.
 
+Shell operators after '--' are still parsed by the host shell first. Unquoted
+>, >>, |, && and ; may be intercepted before the command reaches the
+container. Wrap shell syntax meant for the container in sh -c "..." or
+bash -lc "...".
+
 The exception is an image built before that declaration existed, which carries
 the PATH only in devuser's rc files; there a login bash is also how a toolchain
 is found, and 'image update --rebuild' fixes it for good.
@@ -61,7 +66,13 @@ entirely on the 'docker exec' channel (no ssh-into-container step).`,
   # Shell syntax still needs one — but -w already did the cd
   devcontainer-cli access shell -w --user devuser -- bash -lc 'pnpm install && pnpm build'
 
-  # Pipe a DB dump out without a TTY
+  # In-container redirection/chaining must be wrapped in a shell
+  devcontainer-cli access shell --user devuser -- sh -c 'echo "hello" >> /home/devuser/file.txt'
+
+  # Host-side redirection writes to a local file
+  devcontainer-cli access shell -T -- cat /etc/os-release > local.txt
+
+  # Pipe a DB dump out to the host without a TTY
   devcontainer-cli access shell -c <ws>-postgres -T -- pg_dump -U devuser devdb > dump.sql
 
   # Shell into a container on a different Docker host
@@ -78,12 +89,22 @@ func newShellViaCommand() *cobra.Command {
 		Use:   "via <host> <container> [-- command args...]",
 		Short: "Open a shell or run a command inside a container on a remote Docker host",
 		Long: `devcontainer-cli access shell via — run 'docker exec' against a container on
-a remote Docker host reached through an existing SSH connection to <host>.`,
+a remote Docker host reached through an existing SSH connection to <host>.
+
+As with 'access shell', unquoted shell operators after '--' (>, >>, |, &&, ;)
+are consumed by the host shell first. Wrap shell syntax intended for the
+container in sh -c "..." or bash -lc "...".`,
 		Example: `  # Open an interactive shell in dc-base on me@docker-host
   devcontainer-cli access shell via me@docker-host dc-base
 
   # Run a one-off command on the remote container
-  devcontainer-cli access shell via me@docker-host dc-base -- uname -a`,
+  devcontainer-cli access shell via me@docker-host dc-base -- uname -a
+
+  # In-container redirection/chaining on the remote container
+  devcontainer-cli access shell via me@docker-host dc-base -- sh -c 'echo "hello" >> /home/devuser/file.txt'
+
+  # Host-side redirection writes to a local file
+  devcontainer-cli access shell via me@docker-host dc-base -T -- cat /etc/os-release > local.txt`,
 		Args:              cobra.MinimumNArgs(2),
 		ValidArgsFunction: completeViaArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
