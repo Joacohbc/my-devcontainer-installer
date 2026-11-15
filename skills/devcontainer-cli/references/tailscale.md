@@ -17,12 +17,12 @@ Connect to devcontainers across a tailnet using either **Option A: Tailscale on 
 
 ## Option A: Tailscale on the Docker host (recommended default)
 
-### 1. Remote SSH (`--via`)
+### 1. Remote SSH (`via`)
 
 From a client machine on the same tailnet, configure the managed SSH alias through the Docker host's Tailscale address or MagicDNS name:
 
 ```bash
-devcontainer-cli access ssh --via <user>@<tailscale-host> --container <workspace>-devcontainer-ssh
+devcontainer-cli access ssh via <user>@<tailscale-host> <workspace>-devcontainer-ssh --setup
 ssh <workspace>-devcontainer-ssh
 ```
 

@@ -35,7 +35,7 @@ Proporciona acceso mediante OpenSSH, idóneo para **VS Code Remote - SSH** o ses
 - **Modo Efímero (predeterminado)**:
   ```bash
   devcontainer-cli access ssh                         # Conecta directamente a la IP sin tocar archivos ~/.ssh/
-  devcontainer-cli access ssh --via user@server -c <contenedor> # Conecta por SSH a un devcontainer en un servidor remoto
+  devcontainer-cli access ssh via user@server <contenedor> # Conecta por SSH a un devcontainer en un servidor remoto
   ```
   No modifica configuraciones locales en el host; ideal para sesiones rápidas, scripts de automatización, agentes de IA y CI/CD.
 

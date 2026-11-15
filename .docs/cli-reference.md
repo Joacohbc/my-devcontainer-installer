@@ -243,7 +243,22 @@ Open a shell (or run a command) in the devcontainer
 | `--type` |  | string | - | Shell to open: bash, zsh or sh (interactive shell defaults to zsh) |
 | `--user` |  | string | - | User to run the command as; always honoured, but only an interactive shell defaults it to devuser |
 | `--verbose` |  | bool | `false` | Enable debug logging (shortcut for --log-level debug) |
-| `--via` |  | string | - | Reach the container through an existing SSH connection to its Docker host (requires --container): USER@HOST or an ssh-config alias |
+| `--workdir` | -w | bool | `false` | Run in the project's workspace mount instead of the container default; only the devcontainer has that directory, so a database container needs it left off |
+
+## `devcontainer-cli access shell via`
+
+Open a shell or run a command inside a container on a remote Docker host
+
+### Banderas
+
+| Bandera | Atajo | Tipo | Por defecto | Descripción |
+|---|---|---|---|---|
+| `--log-level` |  | string | `warn` | Log level: debug\|info\|warn\|error |
+| `--no-interactive` |  | bool | `false` | Fail if any value is missing instead of prompting |
+| `--no-tty` | -T | bool | `false` | Disable pseudo-TTY allocation (use when piping output to a file, e.g. a DB dump); implied when stdin is not a terminal |
+| `--type` |  | string | - | Shell to open: bash, zsh or sh (interactive shell defaults to zsh) |
+| `--user` |  | string | - | User to run the command as; always honoured, but only an interactive shell defaults it to devuser |
+| `--verbose` |  | bool | `false` | Enable debug logging (shortcut for --log-level debug) |
 | `--workdir` | -w | bool | `false` | Run in the project's workspace mount instead of the container default; only the devcontainer has that directory, so a database container needs it left off |
 
 ## `devcontainer-cli access ssh`
@@ -264,7 +279,25 @@ Open a real SSH session into the devcontainer, configuring access first if neede
 | `--setup` |  | bool | `false` | Re-run the SSH access setup (key + Host block) before connecting, even if an alias already exists |
 | `--user` |  | string | `devuser` | SSH user inside the container |
 | `--verbose` |  | bool | `false` | Enable debug logging (shortcut for --log-level debug) |
-| `--via` |  | string | - | Reach the container through an existing SSH connection to its Docker host (requires --container): USER@HOST or an ssh-config alias |
+| `--yes` | -y | bool | `false` | Skip confirmation prompts |
+
+## `devcontainer-cli access ssh via`
+
+Connect over SSH to a container on a remote Docker host
+
+### Banderas
+
+| Bandera | Atajo | Tipo | Por defecto | Descripción |
+|---|---|---|---|---|
+| `--ephemeral` |  | bool | `true` | Connect directly via SSH without modifying ~/.ssh/config or relying on existing Host blocks (--ephemeral=false opts into ~/.ssh/devcontainer-cli.config) |
+| `--forward` |  | bool | `false` | Also open SSH port-forwarding tunnels for the session (prompted when interactive and omitted) |
+| `--key` |  | string | - | Private key path (default: the shared managed key under the CLI config dir) |
+| `--log-level` |  | string | `warn` | Log level: debug\|info\|warn\|error |
+| `--no-interactive` |  | bool | `false` | Non-interactive mode (fail instead of prompting) |
+| `--ports` |  | string | - | Ports to forward, e.g. '3000,8080:80,100.64.0.1:8080:80' (implies --forward; skips the prompt). Supports bind:local:container, local:host:container, and a 'reverse:' prefix to make the container reach a port on this machine |
+| `--setup` |  | bool | `false` | Re-run the SSH access setup (key + Host block) before connecting, even if an alias already exists |
+| `--user` |  | string | `devuser` | SSH user inside the container |
+| `--verbose` |  | bool | `false` | Enable debug logging (shortcut for --log-level debug) |
 | `--yes` | -y | bool | `false` | Skip confirmation prompts |
 
 ## `devcontainer-cli agent`
@@ -349,7 +382,21 @@ Run a command inside the devcontainer
 | `--no-tty` | -T | bool | `false` | Disable pseudo-TTY allocation (use when piping output to a file, e.g. a DB dump); implied when stdin is not a terminal |
 | `--user` |  | string | - | User to run the command as; always honoured, but only an interactive shell defaults it to devuser |
 | `--verbose` |  | bool | `false` | Enable debug logging (shortcut for --log-level debug) |
-| `--via` |  | string | - | Reach the container through an existing SSH connection to its Docker host (requires --container): USER@HOST or an ssh-config alias |
+| `--workdir` | -w | bool | `false` | Run in the project's workspace mount instead of the container default; only the devcontainer has that directory, so a database container needs it left off |
+
+## `devcontainer-cli agent exec via`
+
+Run a command inside a container on a remote Docker host
+
+### Banderas
+
+| Bandera | Atajo | Tipo | Por defecto | Descripción |
+|---|---|---|---|---|
+| `--log-level` |  | string | `warn` | Log level: debug\|info\|warn\|error |
+| `--no-interactive` |  | bool | `false` | Non-interactive mode (fail instead of prompting) |
+| `--no-tty` | -T | bool | `false` | Disable pseudo-TTY allocation (use when piping output to a file, e.g. a DB dump); implied when stdin is not a terminal |
+| `--user` |  | string | - | User to run the command as; always honoured, but only an interactive shell defaults it to devuser |
+| `--verbose` |  | bool | `false` | Enable debug logging (shortcut for --log-level debug) |
 | `--workdir` | -w | bool | `false` | Run in the project's workspace mount instead of the container default; only the devcontainer has that directory, so a database container needs it left off |
 
 ## `devcontainer-cli agent forward`
@@ -421,7 +468,21 @@ Open an SSH session into the project's devcontainer
 | `--no-interactive` |  | bool | `false` | Non-interactive mode (fail instead of prompting) |
 | `--user` |  | string | `devuser` | SSH user inside the container |
 | `--verbose` |  | bool | `false` | Enable debug logging (shortcut for --log-level debug) |
-| `--via` |  | string | - | Reach the container through an existing SSH connection to its Docker host (requires --container): USER@HOST or an ssh-config alias |
+
+## `devcontainer-cli agent ssh via`
+
+Open an SSH session into a container on a remote Docker host
+
+### Banderas
+
+| Bandera | Atajo | Tipo | Por defecto | Descripción |
+|---|---|---|---|---|
+| `--ephemeral` |  | bool | `true` | Connect directly via SSH without modifying ~/.ssh/config or relying on existing Host blocks (--ephemeral=false opts into ~/.ssh/devcontainer-cli.config) |
+| `--key` |  | string | - | Private key path (default: the shared managed key under the CLI config dir) |
+| `--log-level` |  | string | `warn` | Log level: debug\|info\|warn\|error |
+| `--no-interactive` |  | bool | `false` | Non-interactive mode (fail instead of prompting) |
+| `--user` |  | string | `devuser` | SSH user inside the container |
+| `--verbose` |  | bool | `false` | Enable debug logging (shortcut for --log-level debug) |
 
 ## `devcontainer-cli config`
 

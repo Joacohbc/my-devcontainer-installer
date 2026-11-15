@@ -146,12 +146,12 @@ graph LR
 </details>
 
 <details>
-<summary><b>2. Desde tu laptop hacia un servidor en tu red/LAN — <code>devcontainer-cli access ssh --via usuario@servidor</code></b></summary>
+<summary><b>2. Desde tu laptop hacia un servidor en tu red/LAN — <code>devcontainer-cli access ssh via usuario@servidor &lt;contenedor&gt;</code></b></summary>
 
-Úsalo cuando los contenedores corren en otro equipo (Mini PC, Home Server, Raspberry Pi). Tu laptop usa el servidor como puente SSH (`ProxyCommand` con `nc`) hasta `<IP-privada>:22` del contenedor, sin abrir puertos en el servidor. (Si el cliente no tiene acceso al daemon Docker o prefieres copiar un bloque manual, ejecuta `devcontainer-cli config ssh-key --export usuario@servidor` en el servidor).
+Úsalo cuando los contenedores corren en otro equipo (Mini PC, Home Server, Raspberry Pi). Tu laptop usa el servidor como puente SSH (`ProxyCommand` con `nc` o `-J`) hasta `<IP-privada>:22` del contenedor, sin abrir puertos en el servidor. (Si el cliente no tiene acceso al daemon Docker o prefieres copiar un bloque manual, ejecuta `devcontainer-cli config ssh-key --export usuario@servidor` en el servidor).
 
 ```bash
-devcontainer-cli access ssh --via usuario@servidor --container <workspace>-devcontainer-ssh
+devcontainer-cli access ssh via usuario@servidor <workspace>-devcontainer-ssh
 ```
 
 ```mermaid

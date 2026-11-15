@@ -24,7 +24,7 @@ flowchart LR
     Host -->|"http://*.devcli.localhost"| Caddy["devcli-router (Caddy 127.0.0.1:80/443)"]
     Caddy -->|"red privada &lt;workspace&gt;-network"| Dev
     Dev <-->|"DNS interno"| Svc["postgres, redis, otros (--alias)"]
-    LAN["Otro equipo (--via)"] -->|"ProxyCommand / -J + nc :22"| Dev
+    LAN["Otro equipo (via)"] -->|"ProxyCommand / -J + nc :22"| Dev
 ```
 
 ---
@@ -49,4 +49,4 @@ flowchart LR
 - **Una sola clave compartida**: la CLI genera `~/.config/devcontainer-cli/ssh/id_devcontainer` (`ed25519`) al primer uso (o `config ssh-key --generate`; puedes apuntar a la tuya con `config ssh-key <ruta>`). Al conectar, inyecta la clave pública en `~/.ssh/authorized_keys` del contenedor; **la clave privada nunca se copia al contenedor**.
 - **Modo guardado (`access ssh --setup` / `--ephemeral=false`)**: nunca reescribe tu `~/.ssh/config` —solo agrega `Include devcontainer-cli.config`— y aísla sus bloques `Host` en `~/.ssh/devcontainer-cli.config` junto con un `known_hosts` propio en `~/.config/devcontainer-cli/ssh/`. Al anclar cada bloque por nombre de contenedor, actualizar la imagen o cambiar de IP privada no provoca errores `REMOTE HOST IDENTIFICATION HAS CHANGED`. (`workspace destroy` y `config clean ssh` limpian entradas viejas).
 - **Modo efímero (`--ephemeral`, predeterminado)**: garantiza igualmente que tu clave pública esté autorizada dentro del contenedor y marca directo al puerto `22` con opciones efímeras, **sin leer ni escribir nada en `~/.ssh/`** (es el valor por defecto de `access ssh`, `access forward`, `agent ssh` y `agent forward`).
-- **Contenedores en otro equipo de tu LAN (`--via`)**: ejecuta `devcontainer-cli config ssh-key --export usuario@servidor` en el servidor (como contiene la clave privada, trátalo como un secreto) y conéctate desde tu portátil con `devcontainer-cli access ssh --via usuario@servidor -c <workspace>-devcontainer-ssh`.
+- **Contenedores en otro equipo de tu LAN (`via`)**: ejecuta `devcontainer-cli config ssh-key --export usuario@servidor` en el servidor (como contiene la clave privada, trátalo como un secreto) y conéctate desde tu portátil con `devcontainer-cli access ssh via usuario@servidor <workspace>-devcontainer-ssh`.
