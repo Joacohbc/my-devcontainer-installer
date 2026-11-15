@@ -43,6 +43,66 @@ func TestAccessForward_DefaultsToEphemeral(t *testing.T) {
 	}
 }
 
+func TestAccessForwardVia_RegisteredAndArgsValidated(t *testing.T) {
+	root := NewRootCommand("test")
+	accessCmd := findCommand(t, root, "access")
+	agentCmd := findCommand(t, root, "agent")
+
+	t.Run("access forward via", func(t *testing.T) {
+		fwdVia := findCommand(t, findCommand(t, accessCmd, "forward"), "via")
+		if fwdVia.Flags().Lookup("container") != nil {
+			t.Error("access forward via must not register --container")
+		}
+		if fwdVia.Flags().Lookup("alias") != nil {
+			t.Error("access forward via must not register --alias")
+		}
+		if fwdVia.ValidArgsFunction == nil {
+			t.Error("access forward via must register ValidArgsFunction")
+		}
+		eph, err := fwdVia.Flags().GetBool("ephemeral")
+		if err != nil || !eph {
+			t.Errorf("access forward via --ephemeral = %v (err=%v), want true", eph, err)
+		}
+		if err := fwdVia.Args(fwdVia, []string{"me@host"}); err == nil {
+			t.Error("access forward via must reject < 2 args")
+		}
+		if err := fwdVia.Args(fwdVia, []string{"me@host", "   "}); err == nil {
+			t.Error("access forward via must reject blank container")
+		}
+		if err := fwdVia.Args(fwdVia, []string{"me@host", "ctr"}); err != nil {
+			t.Errorf("access forward via rejected 2 valid args: %v", err)
+		}
+		if err := fwdVia.Args(fwdVia, []string{"me@host", "ctr", "3000"}); err != nil {
+			t.Errorf("access forward via rejected 3 valid args: %v", err)
+		}
+		if err := fwdVia.Args(fwdVia, []string{"me@host", "ctr", "3000", "extra"}); err == nil {
+			t.Error("access forward via must reject > 3 args")
+		}
+	})
+
+	t.Run("agent forward via", func(t *testing.T) {
+		agentFwdVia := findCommand(t, findCommand(t, agentCmd, "forward"), "via")
+		if agentFwdVia.Flags().Lookup("container") != nil {
+			t.Error("agent forward via must not register --container")
+		}
+		if agentFwdVia.Flags().Lookup("alias") != nil {
+			t.Error("agent forward via must not register --alias")
+		}
+		if agentFwdVia.ValidArgsFunction == nil {
+			t.Error("agent forward via must register ValidArgsFunction")
+		}
+		if err := agentFwdVia.Args(agentFwdVia, []string{"me@host", "ctr"}); err == nil {
+			t.Error("agent forward via must require <port-mapping> as 3rd arg")
+		}
+		if err := agentFwdVia.Args(agentFwdVia, []string{"me@host", "ctr", "   "}); err == nil {
+			t.Error("agent forward via must reject blank port mapping")
+		}
+		if err := agentFwdVia.Args(agentFwdVia, []string{"me@host", "ctr", "3000"}); err != nil {
+			t.Errorf("agent forward via rejected valid args: %v", err)
+		}
+	})
+}
+
 func TestAccessSsh_SetupSwitchesToPersistentAndRejectsConflict(t *testing.T) {
 	t.Run("setup without explicit ephemeral switches to persistent", func(t *testing.T) {
 		cmd := newSshCommand()
