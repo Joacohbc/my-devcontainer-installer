@@ -51,20 +51,20 @@ end-to-end reachability.
 With --forward (or by answering yes to the interactive prompt) it also opens
 SSH tunnels for the given ports alongside the session, torn down automatically
 when the session ends.`,
-		Example: `  # Connect (configures access automatically the first time)
+		Example: `  # Connect directly without modifying ~/.ssh/config (ephemeral mode, default)
   devcontainer-cli access ssh
 
-  # Re-run the access setup, then connect
+  # Configure persistent access in ~/.ssh/devcontainer-cli.config and connect
   devcontainer-cli access ssh --setup
+
+  # Connect using persistent mode (auto-configures on first run)
+  devcontainer-cli access ssh --ephemeral=false
 
   # Connect to a specific container instead of the project's own devcontainer
   devcontainer-cli access ssh --container dc-base
 
   # Connect through an existing SSH connection to a remote Docker host
   devcontainer-cli access ssh --via me@docker-host --container dc-base
-
-  # Connect directly without modifying ~/.ssh/config (ephemeral mode)
-  devcontainer-cli access ssh --ephemeral --via me@docker-host -c dc-base
 
   # Also forward ports 3000 and 8080 for the session
   devcontainer-cli access ssh --forward --ports 3000,8080:80
@@ -89,12 +89,24 @@ func addSshFlags(cmd *cobra.Command) {
 	cmd.Flags().String("user", sshdefaults.User, "SSH user inside the container")
 	cmd.Flags().Bool("forward", false, "Also open SSH port-forwarding tunnels for the session (prompted when interactive and omitted)")
 	cmd.Flags().String("ports", "", "Ports to forward, e.g. '3000,8080:80,100.64.0.1:8080:80' (implies --forward; skips the prompt). Supports bind:local:container, local:host:container, and a 'reverse:' prefix to make the container reach a port on this machine")
-	cmd.Flags().Bool("ephemeral", false, "Connect directly via SSH without modifying ~/.ssh/config or relying on existing Host blocks")
+	cmd.Flags().Bool("ephemeral", true, "Connect directly via SSH without modifying ~/.ssh/config or relying on existing Host blocks (--ephemeral=false opts into ~/.ssh/devcontainer-cli.config)")
 
 	_ = cmd.RegisterFlagCompletionFunc("via", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return listSshHosts(), cobra.ShellCompDirectiveNoFileComp
 	})
 	_ = cmd.MarkFlagFilename("key")
+}
+
+func resolveSshEphemeral(cmd *cobra.Command) (isEphemeral, forceSetup bool, err error) {
+	forceSetup, _ = cmd.Flags().GetBool("setup")
+	isEphemeral, _ = cmd.Flags().GetBool("ephemeral")
+	if forceSetup {
+		if cmd.Flags().Changed("ephemeral") && isEphemeral {
+			return false, false, fmt.Errorf("--setup cannot be used with --ephemeral=true: --setup writes a managed Host block to ~/.ssh/devcontainer-cli.config")
+		}
+		isEphemeral = false
+	}
+	return isEphemeral, forceSetup, nil
 }
 
 func runSsh(cmd *cobra.Command, args []string) error {
@@ -105,7 +117,12 @@ func runSsh(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("--via requires --container <name>: there is no local compose project describing a container on a remote host")
 	}
 
-	isEphemeral, _ := cmd.Flags().GetBool("ephemeral")
+	isEphemeral, forceSetup, err := resolveSshEphemeral(cmd)
+	if err != nil {
+		return err
+	}
+
+	interactive := interactiveFlag(cmd)
 	if isEphemeral {
 		containerName, err := resolveContainer(cmd)
 		if err != nil {
@@ -115,12 +132,33 @@ func runSsh(cmd *cobra.Command, args []string) error {
 		keyPath, _ := cmd.Flags().GetString("key")
 		user, _ := cmd.Flags().GetString("user")
 
+		tunnels, err := resolveSshTunnels(cmd, "", containerName, interactive)
+		if err != nil {
+			return err
+		}
+
 		sshSvc := service.SshService{Report: console}
+		if len(tunnels) > 0 {
+			target, err := sshSvc.EnsureEphemeralAccess(containerName, user, keyPath, via)
+			if err != nil {
+				return err
+			}
+			for i := range tunnels {
+				tunnels[i].IsDevcontainer = true
+				tunnels[i].Ephemeral = true
+				tunnels[i].Target = target
+			}
+			printTunnelPlan(tunnels)
+			stop, err := (service.PortForwardService{Report: console}).OpenTunnelsDetached(tunnels)
+			if err != nil {
+				return err
+			}
+			defer stop()
+			console.Success("Port forwarding active in the background; connecting...\n")
+		}
+
 		return sshSvc.ConnectEphemeral(containerName, user, keyPath, via, args)
 	}
-
-	interactive := interactiveFlag(cmd)
-	forceSetup, _ := cmd.Flags().GetBool("setup")
 
 	cwd, err := currentDir()
 	if err != nil {

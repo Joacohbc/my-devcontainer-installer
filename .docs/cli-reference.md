@@ -69,7 +69,7 @@ Forward host ports into a running container over SSH
 |---|---|---|---|---|
 | `--alias` |  | string | - | SSH host alias to use (bypasses auto-discovery) |
 | `--container` | -c | string | - | Explicit target container name (managed by devcontainer-cli) |
-| `--ephemeral` |  | bool | `false` | Forward directly via SSH without modifying ~/.ssh/config or relying on existing Host blocks |
+| `--ephemeral` |  | bool | `true` | Forward directly via SSH without modifying ~/.ssh/config or relying on existing Host blocks (--ephemeral=false opts into ~/.ssh/devcontainer-cli.config) |
 | `--key` |  | string | - | Private key path (default: the shared managed key under the CLI config dir) |
 | `--log-level` |  | string | `warn` | Log level: debug\|info\|warn\|error |
 | `--no-interactive` |  | bool | `false` | Fail if any value is missing instead of prompting |
@@ -255,7 +255,7 @@ Open a real SSH session into the devcontainer, configuring access first if neede
 | Bandera | Atajo | Tipo | Por defecto | Descripción |
 |---|---|---|---|---|
 | `--container` | -c | string | - | Explicit target container name (managed by devcontainer-cli) |
-| `--ephemeral` |  | bool | `false` | Connect directly via SSH without modifying ~/.ssh/config or relying on existing Host blocks |
+| `--ephemeral` |  | bool | `true` | Connect directly via SSH without modifying ~/.ssh/config or relying on existing Host blocks (--ephemeral=false opts into ~/.ssh/devcontainer-cli.config) |
 | `--forward` |  | bool | `false` | Also open SSH port-forwarding tunnels for the session (prompted when interactive and omitted) |
 | `--key` |  | string | - | Private key path (default: the shared managed key under the CLI config dir) |
 | `--log-level` |  | string | `warn` | Log level: debug\|info\|warn\|error |
@@ -362,7 +362,7 @@ Forward a port between this machine and the running container over SSH
 |---|---|---|---|---|
 | `--alias` |  | string | - | SSH host alias to use (bypasses auto-discovery) |
 | `--container` | -c | string | - | Explicit target container name (managed by devcontainer-cli) |
-| `--ephemeral` |  | bool | `false` | Forward directly via SSH without modifying ~/.ssh/config or relying on existing Host blocks |
+| `--ephemeral` |  | bool | `true` | Forward directly via SSH without modifying ~/.ssh/config or relying on existing Host blocks (--ephemeral=false opts into ~/.ssh/devcontainer-cli.config) |
 | `--key` |  | string | - | Private key path (default: the shared managed key under the CLI config dir) |
 | `--log-level` |  | string | `warn` | Log level: debug\|info\|warn\|error |
 | `--no-interactive` |  | bool | `false` | Fail if any value is missing instead of prompting |
@@ -415,7 +415,7 @@ Open an SSH session into the project's devcontainer
 | Bandera | Atajo | Tipo | Por defecto | Descripción |
 |---|---|---|---|---|
 | `--container` | -c | string | - | Explicit target container name (managed by devcontainer-cli) |
-| `--ephemeral` |  | bool | `false` | Connect directly via SSH without modifying ~/.ssh/config or relying on existing Host blocks (default true for agent) |
+| `--ephemeral` |  | bool | `true` | Connect directly via SSH without modifying ~/.ssh/config or relying on existing Host blocks (--ephemeral=false opts into ~/.ssh/devcontainer-cli.config) |
 | `--key` |  | string | - | Private key path (default: the shared managed key under the CLI config dir) |
 | `--log-level` |  | string | `warn` | Log level: debug\|info\|warn\|error |
 | `--no-interactive` |  | bool | `false` | Non-interactive mode (fail instead of prompting) |

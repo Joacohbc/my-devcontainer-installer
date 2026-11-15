@@ -34,8 +34,8 @@ flowchart LR
 | Necesidad | Comando | Nota clave |
 | :--- | :--- | :--- |
 | Abrir terminal o comando rápido local | `devcontainer-cli access shell` | Usa `docker exec`; para scripts/agentes usa `agent exec -w -- <cmd>` (corre como `devuser`) |
-| Conectar VS Code, Cursor o `ssh <workspace>` | `devcontainer-cli access ssh` | Registra bloque `Host` aislado en `~/.ssh/devcontainer-cli.config` (`--setup` solo configura) |
-| SSH puntual sin modificar `~/.ssh/` | `devcontainer-cli access ssh --ephemeral` | Predeterminado en `agent ssh`; cero archivos escritos en `~/.ssh/` |
+| Conectar VS Code, Cursor o `ssh <workspace>` | `devcontainer-cli access ssh --setup` | Registra bloque `Host` aislado en `~/.ssh/devcontainer-cli.config` (`--ephemeral=false` también usa modo guardado) |
+| SSH puntual sin modificar `~/.ssh/` | `devcontainer-cli access ssh` | Predeterminado en `access ssh` y `agent ssh`; cero archivos escritos en `~/.ssh/` |
 | Exponer un puerto (app o DB) en `127.0.0.1` | `devcontainer-cli access forward <spec>` | Corre en primer plano hasta `Ctrl+C` (ej. `5432 --service postgres`) |
 | Consumir dentro del contenedor un puerto del host | `devcontainer-cli access forward reverse:<puerto>` | Expone `<host>:<puerto>` en `127.0.0.1:<puerto>` del devcontainer (`>= 1024`) |
 | URL HTTP limpia por proyecto sin recordar puertos | `devcontainer-cli access route add <puerto>` | `http://<workspace>-<puerto>.devcli.localhost` en primer plano (`Ctrl+C` limpia) |
@@ -47,6 +47,6 @@ flowchart LR
 ## 3. Cómo gestiona SSH las claves, el modo guardado y el modo efímero
 
 - **Una sola clave compartida**: la CLI genera `~/.config/devcontainer-cli/ssh/id_devcontainer` (`ed25519`) al primer uso (o `config ssh-key --generate`; puedes apuntar a la tuya con `config ssh-key <ruta>`). Al conectar, inyecta la clave pública en `~/.ssh/authorized_keys` del contenedor; **la clave privada nunca se copia al contenedor**.
-- **Modo guardado (`access ssh`)**: nunca reescribe tu `~/.ssh/config` —solo agrega `Include devcontainer-cli.config`— y aísla sus bloques `Host` en `~/.ssh/devcontainer-cli.config` junto con un `known_hosts` propio en `~/.config/devcontainer-cli/ssh/`. Al anclar cada bloque por nombre de contenedor, actualizar la imagen o cambiar de IP privada no provoca errores `REMOTE HOST IDENTIFICATION HAS CHANGED`. (`workspace destroy` y `config clean ssh` limpian entradas viejas).
-- **Modo efímero (`--ephemeral`)**: garantiza igualmente que tu clave pública esté autorizada dentro del contenedor y marca directo al puerto `22` con opciones efímeras, **sin leer ni escribir nada en `~/.ssh/`** (es el valor por defecto de `agent ssh` y `agent forward`).
+- **Modo guardado (`access ssh --setup` / `--ephemeral=false`)**: nunca reescribe tu `~/.ssh/config` —solo agrega `Include devcontainer-cli.config`— y aísla sus bloques `Host` en `~/.ssh/devcontainer-cli.config` junto con un `known_hosts` propio en `~/.config/devcontainer-cli/ssh/`. Al anclar cada bloque por nombre de contenedor, actualizar la imagen o cambiar de IP privada no provoca errores `REMOTE HOST IDENTIFICATION HAS CHANGED`. (`workspace destroy` y `config clean ssh` limpian entradas viejas).
+- **Modo efímero (`--ephemeral`, predeterminado)**: garantiza igualmente que tu clave pública esté autorizada dentro del contenedor y marca directo al puerto `22` con opciones efímeras, **sin leer ni escribir nada en `~/.ssh/`** (es el valor por defecto de `access ssh`, `access forward`, `agent ssh` y `agent forward`).
 - **Contenedores en otro equipo de tu LAN (`--via`)**: ejecuta `devcontainer-cli config ssh-key --export usuario@servidor` en el servidor (como contiene la clave privada, trátalo como un secreto) y conéctate desde tu portátil con `devcontainer-cli access ssh --via usuario@servidor -c <workspace>-devcontainer-ssh`.
