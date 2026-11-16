@@ -195,31 +195,33 @@ func TestFormatHostSkillInstallHint(t *testing.T) {
 		name          string
 		hasNPX        bool
 		outdatedPaths []string
-		defaultDest   string
+		defaultDests  []string
 		wantSubstr    []string
 	}{
 		{
-			name:        "with npx",
-			hasNPX:      true,
-			defaultDest: "~/.agents/skills/devcontainer-cli",
-			wantSubstr:  []string{"npx skills add Joacohbc/my-devcontainer-installer@devcontainer-cli -g"},
+			name:         "with npx",
+			hasNPX:       true,
+			defaultDests: []string{"~/.agents/skills/devcontainer-cli"},
+			wantSubstr:   []string{"npx skills add Joacohbc/my-devcontainer-installer@devcontainer-cli -g"},
 		},
 		{
-			name:          "without npx uses outdated path",
+			name:          "without npx uses outdated paths",
 			hasNPX:        false,
-			outdatedPaths: []string{"~/.claude/skills/devcontainer-cli"},
-			defaultDest:   "~/.agents/skills/devcontainer-cli",
+			outdatedPaths: []string{"~/.claude/skills/devcontainer-cli", "~/.agents/skills/devcontainer-cli"},
+			defaultDests:  []string{"~/.agents/skills/devcontainer-cli"},
 			wantSubstr: []string{
 				"DEST=~/.claude/skills/devcontainer-cli",
+				"DEST=~/.agents/skills/devcontainer-cli",
 				"curl -fsSL https://codeload.github.com/Joacohbc/my-devcontainer-installer/tar.gz/main",
 				"tar -xz -C \"$DEST\" --strip-components=3 my-devcontainer-installer-main/skills/devcontainer-cli",
 			},
 		},
 		{
-			name:        "without npx uses default dest when not installed",
-			hasNPX:      false,
-			defaultDest: "~/.agents/skills/devcontainer-cli",
+			name:         "without npx uses default dests when not installed",
+			hasNPX:       false,
+			defaultDests: []string{"~/.claude/skills/devcontainer-cli", "~/.agents/skills/devcontainer-cli"},
 			wantSubstr: []string{
+				"DEST=~/.claude/skills/devcontainer-cli",
 				"DEST=~/.agents/skills/devcontainer-cli",
 				"codeload.github.com/Joacohbc/my-devcontainer-installer/tar.gz/main",
 			},
@@ -228,7 +230,7 @@ func TestFormatHostSkillInstallHint(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := FormatHostSkillInstallHint(tc.hasNPX, tc.outdatedPaths, tc.defaultDest)
+			got := FormatHostSkillInstallHint(tc.hasNPX, tc.outdatedPaths, tc.defaultDests)
 			for _, sub := range tc.wantSubstr {
 				if !strings.Contains(got, sub) {
 					t.Errorf("got %q, expected substring %q", got, sub)
