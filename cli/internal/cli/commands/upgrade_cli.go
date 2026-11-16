@@ -73,16 +73,7 @@ func runSelfUpdate(cmd *cobra.Command, _ []string) error {
 		if preReleaseAvailable && !wantPreRelease {
 			console.Warn("Pre-release version available: %s (install with --pre-release)", top.Tag)
 		}
-		checkSvc := service.UpdateCheckService{
-			Report: console,
-			FetchLatestCLI: func() (string, error) {
-				if target == nil {
-					return "", nil
-				}
-				return target.Tag, nil
-			},
-		}
-		reportHostSkillStatus(checkSvc.Check(current, true))
+		reportHostSkill(current, target)
 		return nil
 	}
 
@@ -114,6 +105,7 @@ func runSelfUpdate(cmd *cobra.Command, _ []string) error {
 	}
 	if cmp >= 0 && !force {
 		console.Success("Already up to date.")
+		reportHostSkill(current, target)
 		return nil
 	}
 
@@ -123,7 +115,21 @@ func runSelfUpdate(cmd *cobra.Command, _ []string) error {
 	service.UpdateCheckService{Report: console}.RecordCLITag(target.Tag)
 
 	console.Success("Updated to %s. Restart any running session to use the new binary.", target.Tag)
+	reportHostSkill(current, target)
 	return nil
+}
+
+func reportHostSkill(current string, target *service.Release) {
+	checkSvc := service.UpdateCheckService{
+		Report: console,
+		FetchLatestCLI: func() (string, error) {
+			if target == nil {
+				return "", nil
+			}
+			return target.Tag, nil
+		},
+	}
+	reportHostSkillStatus(checkSvc.Check(current, true))
 }
 
 func printUpgradeCheck(svc service.UpgradeService, current string, target *service.Release) {

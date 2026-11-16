@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -113,10 +114,60 @@ func FormatUpdateWarnings(status UpdateStatus) []string {
 	if len(status.OutdatedPaths) > 0 {
 		warnings = append(warnings, fmt.Sprintf(
 			"Host skill devcontainer-cli is outdated at %s (run '%s')",
-			strings.Join(status.OutdatedPaths, ", "), HostSkillInstallHint,
+			strings.Join(status.OutdatedPaths, ", "), ResolveHostSkillInstallHint(status.OutdatedPaths),
 		))
 	}
 	return warnings
+}
+
+// ResolveHostSkillInstallHint returns the npx install command if npx is available,
+// or a curl+tar fallback targeting the detected host skills directories.
+func ResolveHostSkillInstallHint(outdatedPaths []string) string {
+	_, err := exec.LookPath("npx")
+	return FormatHostSkillInstallHint(err == nil, outdatedPaths, defaultHostSkillDests())
+}
+
+// FormatHostSkillInstallHint formats the host skill install/update command.
+func FormatHostSkillInstallHint(hasNPX bool, outdatedPaths []string, defaultDests []string) string {
+	if hasNPX {
+		return HostSkillInstallHint
+	}
+	dests := defaultDests
+	if len(outdatedPaths) > 0 {
+		dests = outdatedPaths
+	}
+	if len(dests) == 0 {
+		dests = []string{"~/.agents/skills/devcontainer-cli"}
+	}
+	cmds := make([]string, 0, len(dests))
+	for _, dest := range dests {
+		if dest == "" {
+			continue
+		}
+		cmds = append(cmds, fmt.Sprintf(
+			"DEST=%s && mkdir -p \"$DEST\" && curl -fsSL https://codeload.github.com/%s/tar.gz/main | tar -xz -C \"$DEST\" --strip-components=3 my-devcontainer-installer-main/skills/devcontainer-cli",
+			dest, selfUpdateRepo,
+		))
+	}
+	return strings.Join(cmds, " && ")
+}
+
+func defaultHostSkillDests() []string {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return []string{"~/.agents/skills/devcontainer-cli"}
+	}
+	var dests []string
+	if info, statErr := os.Stat(filepath.Join(home, ".claude")); statErr == nil && info.IsDir() {
+		dests = append(dests, "~/.claude/skills/devcontainer-cli")
+	}
+	if info, statErr := os.Stat(filepath.Join(home, ".agents")); statErr == nil && info.IsDir() {
+		dests = append(dests, "~/.agents/skills/devcontainer-cli")
+	}
+	if len(dests) == 0 {
+		return []string{"~/.agents/skills/devcontainer-cli"}
+	}
+	return dests
 }
 
 func (s UpdateCheckService) withDefaults() UpdateCheckService {
