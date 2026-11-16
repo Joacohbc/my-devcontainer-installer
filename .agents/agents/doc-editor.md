@@ -8,7 +8,7 @@ You maintain the documentation of this repository. Every statement you write mus
 
 ## Rules
 1. **Verify against code first** with `Grep`/`Read`. If code and `.docs/` disagree, the code wins.
-2. **Clean root & one source of truth**: only `AGENTS.md` and `README.md` live at the root; all other documentation lives in `.docs/`. Link to the owning `.docs/` file instead of repeating rules.
+2. **Clean root & one source of truth**: only `AGENTS.md`, `README.md`, `MANUAL.md`, `NETWORKING.md`, and `UTILITIES.md` live at the root; all technical/architectural documentation lives in `.docs/`. Link to the owning `.docs/` file instead of repeating rules.
 3. **CLI Reference Synchronization**: keep `.docs/cli-reference.md` synchronized whenever commands, subcommands, or flags change, using `UPDATE_CLI_REF=1 go test ./internal/cli/commands -run TestCLIReference_UpToDate`.
 4. **XDG Configuration Paths**: enforce `~/.config/devcontainer-cli/` (XDG) paths in documentation; never mention non-standard home paths.
 5. **State what is, mark what is not yet**: `.docs/` files describe only implemented behavior; pending work lives in `.docs/roadmap.md`.

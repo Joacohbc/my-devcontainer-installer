@@ -123,7 +123,7 @@ Cada proyecto corre en una subred privada de Docker (ej. `172.25.0.0/28`) **sin 
 <details>
 <summary><b>1. En tu misma máquina — <code>devcontainer-cli access ssh</code> (conexión directa por IP privada)</b></summary>
 
-Úsalo cuando Docker corre en tu propio equipo. La CLI obtiene la IP privada del contenedor, instala tu clave y registra un alias en `~/.ssh/devcontainer-cli.config` apuntando a `<IP-privada>:22` (sin exponer puertos al exterior).
+Úsalo cuando Docker corre en tu propio equipo. La CLI obtiene la IP privada del contenedor, inyecta tu clave gestionada y conecta directo por SSH (`--ephemeral=true` por defecto, sin modificar `~/.ssh/config`). Si quieres registrar un alias permanente en `~/.ssh/devcontainer-cli.config` para VS Code Remote - SSH, usa `devcontainer-cli access ssh --setup` (o `--ephemeral=false`).
 
 ```bash
 devcontainer-cli access ssh
@@ -206,7 +206,7 @@ graph LR
 <details>
 <summary><b>4. Acceso Remoto Privado (Tailscale en Host o Contenedor Gateway)</b></summary>
 
-Conexión privada desde cualquier dispositivo de tu *tailnet* usando Tailscale en el host (`--via` para SSH, `access forward` + `ssh -L` para navegador en *Secure Context*, `tailscale serve` para HTTPS automático o IP `100.x.y.z`), o conectando un contenedor gateway `tailscale/tailscale` bajo demanda con `devcontainer-cli access network connect` para enrutar la red interna Docker (`DEVCONTAINER_IP`). (Ver [`.docs/tailscale.md`](.docs/tailscale.md) y [`UTILITIES.md`](UTILITIES.md)).
+Conexión privada desde cualquier dispositivo de tu *tailnet* usando Tailscale en el host (`access ssh via` para SSH, `access forward via` o `access forward` + `ssh -L` para navegador en *Secure Context*, `tailscale serve` para HTTPS automático o IP `100.x.y.z`), o conectando un contenedor gateway `tailscale/tailscale` bajo demanda con `devcontainer-cli access network connect` para enrutar la red interna Docker (`DEVCONTAINER_IP`). (Ver [`.docs/tailscale.md`](.docs/tailscale.md) y [`UTILITIES.md`](UTILITIES.md)).
 
 ```mermaid
 graph LR
@@ -223,7 +223,7 @@ graph LR
         end
     end
 
-    Browser -- "Tailnet (SSH --via / HTTPS / 100.x)" --> TS
+    Browser -- "Tailnet (SSH/Forward via / HTTPS / 100.x)" --> TS
     TS -- "127.0.0.1 / Túnel SSH" --> SSHD
     SSHD --> DevContainer
 ```
@@ -237,7 +237,7 @@ graph LR
 |---|---|
 | `devcontainer-cli` | Abre el asistente para configurar el proyecto actual |
 | `devcontainer-cli workspace up` | Construye (si hace falta) y levanta los contenedores |
-| `devcontainer-cli access ssh` | Configura `~/.ssh/devcontainer-cli.config` y conecta por SSH (ideal para VS Code) |
+| `devcontainer-cli access ssh` | Conecta por SSH (efímero por defecto; usa `--setup` para configurar `~/.ssh/devcontainer-cli.config` para VS Code) |
 | `devcontainer-cli access shell` | Abre una terminal Zsh directa dentro del contenedor |
 | `devcontainer-cli access forward 3000` | Reenvía un puerto del contenedor a `127.0.0.1:3000` en tu máquina (`reverse:5432` en sentido inverso) |
 | `devcontainer-cli access copy <orig> <dest>` | Copia archivos entre el host y el contenedor (`:` marca el lado del contenedor) |
@@ -277,7 +277,7 @@ devcontainer-cli config clean all
 
 - [**`NETWORKING.md`**](NETWORKING.md) — Modelo de red `/28`, por qué todo va a `127.0.0.1`, SSH y cuándo usar `forward`, `route` o `network`.
 - [**`UTILITIES.md`**](UTILITIES.md) — Sesiones persistentes en segundo plano (Zellij / `nohup`) y resumen de acceso remoto privado (Cloudflare Tunnel y Tailscale).
-- [**`MANUAL.md`**](MANUAL.md) — Casos de uso paso a paso (VS Code, servidores LAN con `--via`, Tailscale, bases de datos, agentes).
+- [**`MANUAL.md`**](MANUAL.md) — Casos de uso paso a paso (VS Code, servidores LAN con `via`, Tailscale, bases de datos, agentes).
 - [**`.docs/cli-reference.md`**](.docs/cli-reference.md) — Referencia completa de comandos y flags.
 - [**`.docs/post-install.md`**](.docs/post-install.md) — Operaciones post-instalación y administración de bases de datos.
 - [**`.docs/cloudflare-tunnel.md`**](.docs/cloudflare-tunnel.md) — Acceso remoto privado con Cloudflare Zero Trust y WARP.

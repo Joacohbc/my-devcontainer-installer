@@ -100,7 +100,7 @@ Este manual proporciona una guía directa, exhaustiva y orientada a la práctica
 
 ---
 
-### Caso 1.4: Acceso al Contenedor: SSH Persistente, SSH Efímero y Shell Directa
+### Caso 1.4: Acceso al Contenedor: SSH Efímero, SSH Persistente y Shell Directa
 
 **Escenario**: Desea conectarse al contenedor para desarrollar interactivamente con VS Code Remote, ejecutar comandos rápidos desde la terminal o trabajar con multiplexación de sesiones vía Zellij.
 
@@ -108,16 +108,27 @@ Este manual proporciona una guía directa, exhaustiva y orientada a la práctica
 
 | Método | Comando | Mecanismo | Modifica `~/.ssh/` en Host | Caso de Uso Ideal |
 |---|---|---|---|---|
-| **SSH Persistente** | `devcontainer-cli access ssh` | OpenSSH (puerto 22 interno) | **Sí** (registra bloque `Host` en `devcontainer-cli.config`) | Desarrollo interactivo diario, editores gráficos (VS Code Remote - SSH), alias corto `ssh <workspace>`. |
-| **SSH Efímero** | `devcontainer-cli access ssh --ephemeral` | OpenSSH (puerto 22 interno) | **No** (conecta directo a IP sin dejar rastro) | Tareas puntuales por SSH, scripts, automatizaciones o cuando no desea alterar su configuración SSH local. |
+| **SSH Efímero (por defecto)** | `devcontainer-cli access ssh` | OpenSSH (puerto 22 interno) | **No** (`--ephemeral=true` por defecto; conecta directo a IP sin dejar rastro) | Tareas puntuales por SSH, scripts, automatizaciones o cuando no desea alterar su configuración SSH local. |
+| **SSH Persistente** | `devcontainer-cli access ssh --setup` | OpenSSH (puerto 22 interno) | **Sí** (registra bloque `Host` en `devcontainer-cli.config`) | Desarrollo interactivo diario, editores gráficos (VS Code Remote - SSH), alias corto `ssh <workspace>`. |
 | **Shell Directa** | `devcontainer-cli access shell` | `docker exec` | **No** (interactúa vía socket de Docker) | Entrada rápida a la terminal, pipes y redirecciones limpias (`-T`), acceso a BD auxiliares (`-c`). |
 
 ---
 
-#### 1. Modo SSH Persistente y VS Code Remote - SSH
-1. Ejecute la conexión por primera vez:
+#### 1. Modo SSH Efímero (por defecto)
+Conéctese directamente sin tocar su archivo de configuración SSH ni registrar alias:
+```bash
+devcontainer-cli access ssh
+```
+*La CLI resuelve la IP del contenedor y utiliza la clave privada gestionada (`-i ~/.config/devcontainer-cli/ssh/id_devcontainer`) para abrir la sesión OpenSSH en el puerto 22 interno, garantizando **cero polución** en sus archivos de configuración locales.*
+
+---
+
+#### 2. Modo SSH Persistente y VS Code Remote - SSH (`--setup` / `--ephemeral=false`)
+1. Registre el alias permanente y ejecute la conexión:
    ```bash
-   devcontainer-cli access ssh
+   devcontainer-cli access ssh --setup
+   # o bien:
+   devcontainer-cli access ssh --ephemeral=false
    ```
    *La CLI genera automáticamente las claves SSH en `~/.config/devcontainer-cli/ssh/`, inyecta la clave pública en el contenedor y crea el bloque de conexión permanente en `~/.ssh/devcontainer-cli.config`.*
 2. **Conexión desde VS Code**:
@@ -129,15 +140,7 @@ Este manual proporciona una guía directa, exhaustiva y orientada a la práctica
    ```bash
    ssh mi-proyecto
    ```
-
----
-
-#### 2. Modo SSH Efímero (`--ephemeral`)
-Conéctese directamente sin tocar su archivo de configuración SSH ni registrar alias:
-```bash
-devcontainer-cli access ssh --ephemeral
-```
-*La CLI resuelve la IP del contenedor y utiliza la clave privada gestionada (`-i ~/.config/devcontainer-cli/ssh/id_devcontainer`) para abrir la sesión OpenSSH en el puerto 22 interno, garantizando **cero polución** en sus archivos de configuración locales. (Más detalles sobre red, claves, modo guardado/efímero, `forward` y `route` en [`NETWORKING.md`](NETWORKING.md)).*
+*(Más detalles sobre red, claves, modo guardado/efímero, `forward` y `route` en [`NETWORKING.md`](NETWORKING.md)).*
 
 ---
 
@@ -200,6 +203,10 @@ devcontainer-cli access forward reverse:5432
    ```bash
    ssh <workspace>-devcontainer-ssh
    ```
+5. Para reenviar puertos del contenedor remoto hacia su laptop sin modificar `~/.ssh/config`, utilice:
+   ```bash
+   devcontainer-cli access forward via usuario@servidor-lan <workspace>-devcontainer-ssh 3000
+   ```
 
 ---
 
@@ -241,9 +248,8 @@ devcontainer-cli access forward reverse:5432
    ```bash
    devcontainer-cli config alias set gs "git status -sb"
    devcontainer-cli config alias set dcu "devcontainer-cli workspace up"
-   devcontainer-cli config shared sync alias.sh
    ```
-   *Los alias se aplican inmediatamente en la próxima shell de todos sus contenedores sin necesidad de recompilar imágenes.*
+   *Los alias se guardan en el volumen compartido y se aplican inmediatamente en la próxima shell de todos sus contenedores sin necesidad de recompilar imágenes.*
 
 ---
 
@@ -539,11 +545,11 @@ devcontainer-cli agent exec -w -- bash -lc 'uv pip install -e . && pytest -v'
 
 ### Caso 2.4: Aprovisionamiento de Habilidades con Alcance de Proyecto (`config skill install`)
 
-**Escenario**: El agente requiere herramientas o guías especializadas provistas por el ecosistema de Skills (ej. `playwright`, `security-auditor`), pero no debe contaminar el volumen compartido del usuario.
+**Escenario**: El agente requiere herramientas o guías especializadas provistas por el ecosistema de Skills (ej. `agent-browser`, `impeccable`), pero no debe contaminar el volumen compartido del usuario.
 
 **Comando**:
 ```bash
-devcontainer-cli config skill install webapp-testing
+devcontainer-cli config skill install agent-browser
 ```
 
 **Mecanismo**:

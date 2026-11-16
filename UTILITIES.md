@@ -78,9 +78,9 @@ Para conectarse a devcontainers o publicar puertos de forma segura desde otros d
 
 - **SSH / VS Code remoto (Host)** desde el cliente:
   ```bash
-  devcontainer-cli access ssh --via <usuario>@<ip-o-magicdns-tailscale> --container <workspace>-devcontainer-ssh
+  devcontainer-cli access ssh via <usuario>@<ip-o-magicdns-tailscale> <workspace>-devcontainer-ssh
   ```
-- **Web en escritorio (*Secure Context* en `localhost`)**: ejecute `devcontainer-cli access forward 3000 --alias <workspace>-devcontainer-ssh` en el cliente (o `access forward 3000` en el host + `ssh -L 3000:127.0.0.1:3000 <usuario>@<ip-o-magicdns-tailscale>`).
+- **Web en escritorio (*Secure Context* en `localhost`)**: ejecute `devcontainer-cli access forward via <usuario>@<ip-o-magicdns-tailscale> <workspace>-devcontainer-ssh 3000` en el cliente (o `access forward 3000 --alias <workspace>-devcontainer-ssh` si configuró el alias con `--setup`, o bien `access forward 3000` en el host + `ssh -L 3000:127.0.0.1:3000 <usuario>@<ip-o-magicdns-tailscale>`).
 - **Web móvil / PWA con HTTPS**: `devcontainer-cli access forward 3000` (en `127.0.0.1`) + `sudo tailscale serve --bg 3000` en el host.
 - **API en IP Tailscale** *(nunca `0.0.0.0`)*: `devcontainer-cli access forward <ip_tailscale>:8000:8000`.
 - **Contenedor Gateway en Docker** *(sin instalar Tailscale en el host)*: conecte su contenedor `tailscale-gateway` (*Subnet Router* con `TS_ROUTES`) a cada proyecto mediante `devcontainer-cli access network connect tailscale-gateway` y conéctese a `ssh devuser@<DEVCONTAINER_IP>` (recuerde ejecutar `devcontainer-cli access network disconnect tailscale-gateway` antes de `workspace down` / `agent destroy`).

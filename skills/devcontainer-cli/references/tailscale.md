@@ -33,7 +33,13 @@ The private key stays on the client and container port `22` stays unexposed.
 Browsers disable `crypto.randomUUID()`, WebCrypto, and Service Workers on plain HTTP to non-loopback IPs (`http://100.x.y.z:<port>`). Pick the pattern matching the caller:
 
 1. **Desktop browser (zero app changes, `localhost` Secure Context)**:
-   - On a client already configured with `--via`:
+   - Ephemeral direct tunnel over the Tailscale SSH jump (no `~/.ssh/config` setup needed):
+     ```bash
+     devcontainer-cli access forward via <user>@<tailscale-host> <workspace>-devcontainer-ssh 3000
+     # or non-interactive:
+     devcontainer-cli agent forward via <user>@<tailscale-host> <workspace>-devcontainer-ssh 3000
+     ```
+   - Or on a client already configured with `access ssh via --setup`:
      ```bash
      devcontainer-cli access forward 3000 --alias <workspace>-devcontainer-ssh
      ```
