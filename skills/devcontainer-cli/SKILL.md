@@ -104,7 +104,7 @@ agent skills. Do not blindly spin up an environment with generic defaults.
 ### 1. Explore categories and match prompt requirements to workspace agent skills
 
 Inspect the full catalogue with `devcontainer-cli agent cli-info --json` or
-`config skill list`. The catalogue contains 13 built-in skills organized
+`config skill list`. The catalogue contains 14 built-in skills organized
 into 3 distinct categories (`core-agents`, `frontend-ux-design`, `docs-content`, plus
 user-defined skills).
 
@@ -135,12 +135,12 @@ user-defined skills).
 
 - **When creating a new environment**: Pass `--skills` directly to `agent create`:
   ```bash
-  devcontainer-cli agent create --mode profiles --profile nodejs --services postgres --skills webapp-testing,impeccable,tdd
+  devcontainer-cli agent create --mode profiles --profile nodejs --services postgres --skills agent-browser,impeccable,find-skills
   ```
 - **When the container is ALREADY running**: Do not rebuild or recreate the container
   just to add an agent skill. Install it directly into the workspace with the ephemeral runner:
   ```bash
-  devcontainer-cli config skill install webapp-testing impeccable
+  devcontainer-cli config skill install agent-browser impeccable
   ```
 
 ## Create an environment
@@ -170,10 +170,10 @@ generated files without asking.
 
 Module ids for `--modules`: `github-cli`, `nodejs`, `pnpm`, `yarn`, `bun`,
 `python`, `go`, `rust`, `php`, `c-cpp`, `java-temurin`, `java-openjdk`,
-`sqlite`, `postgres-client`, `redis-client`, `mongo-client`, `claude-code`,
-`codex-cli`, `copilot-cli`, `opencode`, `antigravity-cli`, `chrome`, `ffmpeg`,
-`dod` (Docker-out-of-Docker), `cloudflared`. Pick only one of the two
-`java-*` modules.
+`android-sdk`, `sqlite`, `postgres-client`, `redis-client`, `mongo-client`,
+`claude-code`, `codex-cli`, `copilot-cli`, `opencode`, `antigravity-cli`,
+`herdr`, `chrome`, `ffmpeg`, `dod` (Docker-out-of-Docker), `cloudflared`. Pick
+only one of the two `java-*` modules.
 
 `base`, `aliases`, `zellij` and `cleanup` are always applied, and the `skills`
 module is added for you by `--skills` — none of them go in `--modules`.
@@ -233,7 +233,7 @@ container is local**: it avoids SSH overhead, runs immediately without `sshd`,
 and enforces `devuser`. Only reach for `agent ssh` on a local container when the
 task specifically requires SSH (`ssh-agent` forwarding, a real SSH PTY, or a tool
 that shells out to `ssh`). When the container lives on a **remote Docker host**,
-flip that priority and use `agent ssh --via <user@host> -c <container> -- <cmd>`
+flip that priority and use `agent ssh via <user@host> <container> -- <cmd>`
 first. `agent exec` requires a command — there is no interactive mode to fall into.
 
 It runs as **devuser**, who owns the workspace files. That matters more than it
@@ -355,7 +355,7 @@ foreground. Bind addresses, reverse-tunnel limits, permanent `forward_ports`,
 routes (`rm`/`stop`) and `network disconnect`: `references/networking.md`.
 For remote private access, also load:
 
-- **Tailscale** (host-side `--via` / `ssh -L` / `tailscale serve` / `100.x.y.z` forward, or Docker gateway + `access network connect`): `references/tailscale.md`
+- **Tailscale** (host-side `via` / `ssh -L` / `tailscale serve` / `100.x.y.z` forward, or Docker gateway + `access network connect`): `references/tailscale.md`
 - **Cloudflare Tunnel + WARP** (`cloudflared` module + `DOCKER_SUBNET` routing): `references/cloudflare-tunnel.md`
 
 ## Inspect
@@ -413,7 +413,9 @@ A container on a **different Docker host**, through an existing SSH connection
 to it — **prefer `agent ssh via`** (ephemeral, runs as `devuser`, never prompts):
 
     devcontainer-cli agent ssh via me@docker-host dc-base -- uname -a
-    devcontainer-cli access shell via me@docker-host dc-base --user devuser -- uname -a  # fallback if target has no sshd
+    devcontainer-cli agent exec via me@docker-host dc-base -- uname -a  # docker -H ssh:// alternative when target has no sshd
+    devcontainer-cli agent forward via me@docker-host dc-base 3000       # forward remote container port to 127.0.0.1:3000
+    devcontainer-cli access shell via me@docker-host dc-base --user devuser -- uname -a  # interactive/explicit-user fallback
     devcontainer-cli config ssh-key --export me@docker-host  # only if the user asks to configure cross-host SSH client access
 
 Global config, profiles and shared logins:
@@ -424,8 +426,8 @@ Global config, profiles and shared logins:
     devcontainer-cli config skill list            # agent skills for --skills; built-in + user-defined
     devcontainer-cli config skill install [ids...] # install skills at project level in an ephemeral container
     devcontainer-cli config skill add <id> --ref owner/repo   # define your own
-    devcontainer-cli config alias set ll "ls -la" # aliases for every container
-    devcontainer-cli config shared sync alias.sh  # push them into running containers
+    devcontainer-cli config alias set ll "ls -la" # aliases for every container (persisted in shared volume)
+    devcontainer-cli config shared sync           # sync host tool logins (.claude, .config/gh, ...) into shared volume
 
 `config shared sync` seeds a shared Docker volume from this machine's tool
 configs (`~/.claude`, `~/.config/gh`, …) so logins persist across every
@@ -488,10 +490,10 @@ managed label). Use `--dry-run` first and show the user what would go.
   `apt-get install` inside the container.
 - Run every command from the project directory; the CLI resolves the workspace
   from the current directory unless `--workspace` says otherwise.
-- **Local = `agent exec` first; Remote (`--via`) = `agent ssh --via` first.** Use
+- **Local = `agent exec` first; Remote (`via`) = `agent ssh via` first.** Use
   `agent exec` on local containers unless SSH-specific features are needed. On
-  remote Docker hosts (`--via`), prioritize `agent ssh --via <user@host> -c <ctr> -- <cmd>`
-  (ephemeral and non-interactive), falling back to `access shell --via ... --user devuser`
+  remote Docker hosts (`via`), prioritize `agent ssh via <user@host> <ctr> -- <cmd>`
+  (ephemeral and non-interactive), falling back to `access shell via <user@host> <ctr> --user devuser -- <cmd>`
   only if the container runs no `sshd`.
 - Long-running commands (`inspect logs -f`, `agent forward`, `access route add`,
   `agent ssh` without a command) do not return. Give them a command, a `--tail`,

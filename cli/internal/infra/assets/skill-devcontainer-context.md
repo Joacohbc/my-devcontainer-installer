@@ -53,10 +53,10 @@ this container", the command answers "what is true at this moment".
   start processes directly.
 - **Only the ports the project published are reachable from the host.** Binding
   another port inside the container does not expose it — that needs the project
-  to be regenerated, or `devcontainer-cli port-forward`, from the host.
+  to be regenerated, or `devcontainer-cli access forward`, from the host.
 - **A service running on the host is not reachable from here either**, unless
   the host opened a reverse tunnel for it
-  (`devcontainer-cli port-forward reverse:<port>`), which makes it answer on
+  (`devcontainer-cli access forward reverse:<port>`), which makes it answer on
   this container's own `127.0.0.1:<port>`. Ask for one instead of assuming the
   host's `localhost` is yours.
 - Sibling services (postgres, redis, mongo, …) are reached by their **compose
@@ -77,6 +77,6 @@ this container", the command answers "what is true at this moment".
 The image predates it. Fall back to `get-devcontainer-context`, and if that is
 missing too, the user can copy it in from the host with:
 
-    devcontainer-cli copy --asset get-devcontainer-context
+    devcontainer-cli access copy --asset get-devcontainer-context
 
 Report what you could not determine instead of guessing at the environment.

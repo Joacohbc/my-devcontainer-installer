@@ -5,7 +5,7 @@ Every project runs on a private `/28` bridge network (`<workspace>-network`) wit
 ## Command execution priority: `agent exec` vs `agent ssh`
 
 - **Container is local -> prioritize `agent exec -w -- <cmd>`**: uses `docker exec`, needs no `sshd`, runs directly as `devuser`, and has zero SSH overhead. Use `agent ssh -- <cmd>` locally only when you genuinely need SSH features (`ssh-agent` forwarding, SSH PTY semantics, `scp`, or a tool calling `ssh`).
-- **Container is on a remote Docker host (`--via`) -> prioritize `agent ssh --via <user@host> -c <container> -- <cmd>`**: runs ephemerally as `devuser` without touching `~/.ssh/` (`access shell --via ... --user devuser` is the fallback when the target container has no `sshd`). If the user wants another machine set up with the managed key, point them to `devcontainer-cli config ssh-key --export <user@host>`.
+- **Container is on a remote Docker host (`via`) -> prioritize `agent ssh via <user@host> <container> -- <cmd>`**: runs ephemerally as `devuser` without touching `~/.ssh/` (`access shell via <user@host> <container> --user devuser -- <cmd>` is the fallback when the target container has no `sshd`). If the user wants another machine set up with the managed key, point them to `devcontainer-cli config ssh-key --export <user@host>`.
 
 Note: `agent ssh` and `agent forward` run `--ephemeral` by default — they automatically inject the shared managed public key (`id_devcontainer`) into the container and dial port `22` without reading or mutating `~/.ssh/config` or `known_hosts`.
 
@@ -24,6 +24,7 @@ explicitly wants the port published.
     devcontainer-cli agent forward 5432:postgres:5432      # reach a sibling service
     devcontainer-cli agent forward 5432 --service postgres # same via --service flag
     devcontainer-cli agent forward 100.x.y.z:8000:8000     # bind to a VPN/Tailscale IP here
+    devcontainer-cli agent forward via <user@host> <container> 3000  # forward from a remote Docker host (or access forward via)
 
 By default `agent forward` binds explicitly to **`127.0.0.1`** (both for loopback isolation and browser *Secure Context* compatibility). A leading IP of this machine (for example a Tailscale `100.x.y.z` address or `0.0.0.0`) changes the **bind address** like `ssh -L`: only expose a non-loopback IP (and avoid `0.0.0.0` unless explicitly asked) when the user requests remote access — anything that can reach that address reaches the container port. A `reverse:` tunnel takes no bind address and rejects `--service` (its SSH server keeps it on the container's loopback).
 
