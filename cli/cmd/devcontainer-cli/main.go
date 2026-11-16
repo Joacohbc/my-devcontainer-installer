@@ -23,6 +23,9 @@ func main() {
 
 	// Set the global context for infra/docker execution
 	docker.SetContext(ctx)
+	if docker.RunCompletionRefreshIfRequested(ctx) {
+		return
+	}
 
 	root := commands.NewRootCommand(version)
 	if err := root.ExecuteContext(ctx); err != nil {

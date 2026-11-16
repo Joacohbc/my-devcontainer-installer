@@ -45,6 +45,7 @@ func addForwardFlags(cmd *cobra.Command) {
 		return listComposeServices(defaultComposeFile(cwd)), cobra.ShellCompDirectiveNoFileComp
 	})
 	_ = cmd.MarkFlagFilename("key")
+	registerViaUserCompletion(cmd)
 }
 
 func yesFlag(cmd *cobra.Command) bool {

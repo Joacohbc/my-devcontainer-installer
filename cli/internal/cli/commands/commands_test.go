@@ -3078,3 +3078,35 @@ func TestImageCommand_StructureAndFlags(t *testing.T) {
 		t.Error("image remove must have flag --keep-docker-image")
 	}
 }
+
+func TestSSHAndForwardCommandsRegisterFlagCompletions(t *testing.T) {
+	root := NewRootCommand("test")
+
+	cases := []struct {
+		path  []string
+		flags []string
+	}{
+		{path: []string{"access", "ssh"}, flags: []string{"user", "container"}},
+		{path: []string{"access", "ssh", "via"}, flags: []string{"user"}},
+		{path: []string{"access", "forward"}, flags: []string{"user", "alias", "container"}},
+		{path: []string{"access", "forward", "via"}, flags: []string{"user", "alias"}},
+		{path: []string{"agent", "ssh"}, flags: []string{"user", "container"}},
+		{path: []string{"agent", "ssh", "via"}, flags: []string{"user"}},
+		{path: []string{"agent", "forward"}, flags: []string{"user", "alias", "container"}},
+		{path: []string{"agent", "forward", "via"}, flags: []string{"user", "alias"}},
+	}
+
+	for _, tc := range cases {
+		t.Run(strings.Join(tc.path, "_"), func(t *testing.T) {
+			cmd, _, err := root.Find(tc.path)
+			if err != nil || cmd == nil {
+				t.Fatalf("command %v not found: %v", tc.path, err)
+			}
+			for _, flag := range tc.flags {
+				if _, ok := cmd.GetFlagCompletionFunc(flag); !ok {
+					t.Errorf("%v must register completion for --%s", tc.path, flag)
+				}
+			}
+		})
+	}
+}

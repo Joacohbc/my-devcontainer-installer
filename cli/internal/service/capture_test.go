@@ -59,3 +59,25 @@ func TestWithHostOverride_PropagatesFnError(t *testing.T) {
 		t.Errorf("WithHostOverride error = %v, want %v", err, wantErr)
 	}
 }
+
+func TestWithRemoteCompletion_DelegatesToInfra(t *testing.T) {
+	docker.SetCompletionCacheDir(t.TempDir())
+	t.Cleanup(func() { docker.SetCompletionCacheDir("") })
+
+	fake := &fakeRunner{status: 0, stdout: "ctr-a\n"}
+	defer useFakeDocker(fake)()
+
+	err := WithRemoteCompletion("me@remote-host", func() error {
+		_, _, _, derr := docker.DockerCapture([]string{"ps"})
+		return derr
+	})
+	if err != nil {
+		t.Fatalf("WithRemoteCompletion: %v", err)
+	}
+	if got, want := fake.lastEnv["DOCKER_HOST"], "ssh://me@remote-host"; got != want {
+		t.Errorf("DOCKER_HOST = %q, want %q", got, want)
+	}
+	if got, want := fake.lastEnv["DC_SSH_COMPLETION"], "1"; got != want {
+		t.Errorf("DC_SSH_COMPLETION = %q, want %q", got, want)
+	}
+}

@@ -138,6 +138,7 @@ func addAgentSshSessionFlags(cmd *cobra.Command) {
 	cmd.Flags().String("key", "", "Private key path (default: the shared managed key under the CLI config dir)")
 	cmd.Flags().String("user", sshdefaults.User, "SSH user inside the container")
 	_ = cmd.MarkFlagFilename("key")
+	registerViaUserCompletion(cmd)
 }
 
 func addAgentSshFlags(cmd *cobra.Command) {

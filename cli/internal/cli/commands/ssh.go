@@ -115,6 +115,7 @@ func addSshSessionFlags(cmd *cobra.Command) {
 	cmd.Flags().String("ports", "", "Ports to forward, e.g. '3000,8080:80,100.64.0.1:8080:80' (implies --forward; skips the prompt). Supports bind:local:container, local:host:container, and a 'reverse:' prefix to make the container reach a port on this machine")
 	cmd.Flags().Bool("ephemeral", true, "Connect directly via SSH without modifying ~/.ssh/config or relying on existing Host blocks (--ephemeral=false opts into ~/.ssh/devcontainer-cli.config)")
 	_ = cmd.MarkFlagFilename("key")
+	registerViaUserCompletion(cmd)
 }
 
 // addSshFlags registers the flags runSsh reads.

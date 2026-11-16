@@ -137,6 +137,10 @@ func addForwardViaFlags(cmd *cobra.Command) {
 	f.StringP("user", "u", "", "Remote container SSH user")
 	addYesFlag(cmd)
 	addInteractiveFlag(cmd)
+	_ = cmd.RegisterFlagCompletionFunc("alias", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		return listSshHosts(), cobra.ShellCompDirectiveNoFileComp
+	})
+	registerViaUserCompletion(cmd)
 }
 
 type parsedMapping struct {

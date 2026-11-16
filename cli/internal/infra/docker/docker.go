@@ -80,7 +80,15 @@ func hostOverrideEnv() map[string]string {
 	if host == "" {
 		return nil
 	}
-	return map[string]string{"DOCKER_HOST": "ssh://" + host}
+	env := map[string]string{"DOCKER_HOST": "ssh://" + host}
+	if binDir, err := ensureSSHControlMasterWrapper(); err == nil && binDir != "" {
+		if curPath := os.Getenv("PATH"); curPath != "" {
+			env["PATH"] = binDir + string(os.PathListSeparator) + curPath
+		} else {
+			env["PATH"] = binDir
+		}
+	}
+	return env
 }
 
 func IsDockerAvailable() bool {
@@ -135,6 +143,9 @@ func DockerInherit(args []string) (int, error) {
 // (such as state check or JSON list processing) and does not write to the user's terminal.
 // It returns the process exit status, captured stdout, captured stderr, and any execution error.
 func DockerCapture(args []string) (status int, stdout, stderr string, err error) {
+	if isCompletionActive() {
+		return dockerCaptureCompletion(args)
+	}
 	if err = EnsureDocker(); err != nil {
 		return 1, "", "", err
 	}
