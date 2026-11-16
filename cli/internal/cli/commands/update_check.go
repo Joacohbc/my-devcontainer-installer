@@ -49,12 +49,12 @@ func reportHostSkillStatus(status service.UpdateStatus) {
 		return
 	}
 	if len(status.SkillPaths) == 0 {
-		console.Info("Host skill     : not installed (install with '%s')", service.HostSkillInstallHint)
+		console.Info("Host skill     : not installed (install with '%s')", service.ResolveHostSkillInstallHint(nil))
 		return
 	}
 	if len(status.OutdatedPaths) > 0 {
 		console.Warn("Host skill     : outdated at %s (update with '%s')",
-			strings.Join(status.OutdatedPaths, ", "), service.HostSkillInstallHint)
+			strings.Join(status.OutdatedPaths, ", "), service.ResolveHostSkillInstallHint(status.OutdatedPaths))
 		return
 	}
 	console.Success("Host skill     : up to date (%s)", strings.Join(status.SkillPaths, ", "))

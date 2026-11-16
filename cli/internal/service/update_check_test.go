@@ -185,7 +185,55 @@ func TestFormatUpdateWarnings(t *testing.T) {
 	if !strings.Contains(warnings[0], "devcontainer-cli config upgrade-cli") {
 		t.Errorf("missing upgrade hint in %q", warnings[0])
 	}
-	if !strings.Contains(warnings[1], "npx skills add") {
+	if !strings.Contains(warnings[1], "npx skills add") && !strings.Contains(warnings[1], "codeload.github.com") {
 		t.Errorf("missing skill update hint in %q", warnings[1])
+	}
+}
+
+func TestFormatHostSkillInstallHint(t *testing.T) {
+	cases := []struct {
+		name          string
+		hasNPX        bool
+		outdatedPaths []string
+		defaultDest   string
+		wantSubstr    []string
+	}{
+		{
+			name:        "with npx",
+			hasNPX:      true,
+			defaultDest: "~/.agents/skills/devcontainer-cli",
+			wantSubstr:  []string{"npx skills add Joacohbc/my-devcontainer-installer@devcontainer-cli -g"},
+		},
+		{
+			name:          "without npx uses outdated path",
+			hasNPX:        false,
+			outdatedPaths: []string{"~/.claude/skills/devcontainer-cli"},
+			defaultDest:   "~/.agents/skills/devcontainer-cli",
+			wantSubstr: []string{
+				"DEST=~/.claude/skills/devcontainer-cli",
+				"curl -fsSL https://codeload.github.com/Joacohbc/my-devcontainer-installer/tar.gz/main",
+				"tar -xz -C \"$DEST\" --strip-components=3 my-devcontainer-installer-main/skills/devcontainer-cli",
+			},
+		},
+		{
+			name:        "without npx uses default dest when not installed",
+			hasNPX:      false,
+			defaultDest: "~/.agents/skills/devcontainer-cli",
+			wantSubstr: []string{
+				"DEST=~/.agents/skills/devcontainer-cli",
+				"codeload.github.com/Joacohbc/my-devcontainer-installer/tar.gz/main",
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := FormatHostSkillInstallHint(tc.hasNPX, tc.outdatedPaths, tc.defaultDest)
+			for _, sub := range tc.wantSubstr {
+				if !strings.Contains(got, sub) {
+					t.Errorf("got %q, expected substring %q", got, sub)
+				}
+			}
+		})
 	}
 }

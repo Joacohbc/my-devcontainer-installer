@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -113,10 +114,42 @@ func FormatUpdateWarnings(status UpdateStatus) []string {
 	if len(status.OutdatedPaths) > 0 {
 		warnings = append(warnings, fmt.Sprintf(
 			"Host skill devcontainer-cli is outdated at %s (run '%s')",
-			strings.Join(status.OutdatedPaths, ", "), HostSkillInstallHint,
+			strings.Join(status.OutdatedPaths, ", "), ResolveHostSkillInstallHint(status.OutdatedPaths),
 		))
 	}
 	return warnings
+}
+
+// ResolveHostSkillInstallHint returns the npx install command if npx is available,
+// or a curl+tar fallback targeting the detected host skills directory.
+func ResolveHostSkillInstallHint(outdatedPaths []string) string {
+	_, err := exec.LookPath("npx")
+	return FormatHostSkillInstallHint(err == nil, outdatedPaths, defaultHostSkillDest())
+}
+
+// FormatHostSkillInstallHint formats the host skill install/update command.
+func FormatHostSkillInstallHint(hasNPX bool, outdatedPaths []string, defaultDest string) string {
+	if hasNPX {
+		return HostSkillInstallHint
+	}
+	dest := defaultDest
+	if len(outdatedPaths) > 0 && outdatedPaths[0] != "" {
+		dest = outdatedPaths[0]
+	}
+	return fmt.Sprintf(
+		"DEST=%s && mkdir -p \"$DEST\" && curl -fsSL https://codeload.github.com/%s/tar.gz/main | tar -xz -C \"$DEST\" --strip-components=3 my-devcontainer-installer-main/skills/devcontainer-cli",
+		dest, selfUpdateRepo,
+	)
+}
+
+func defaultHostSkillDest() string {
+	home, err := os.UserHomeDir()
+	if err == nil && home != "" {
+		if info, statErr := os.Stat(filepath.Join(home, ".claude")); statErr == nil && info.IsDir() {
+			return "~/.claude/skills/devcontainer-cli"
+		}
+	}
+	return "~/.agents/skills/devcontainer-cli"
 }
 
 func (s UpdateCheckService) withDefaults() UpdateCheckService {
