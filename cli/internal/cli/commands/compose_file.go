@@ -172,7 +172,7 @@ func completeViaArgs(_ *cobra.Command, args []string, toComplete string) ([]stri
 		return listSshHosts(), cobra.ShellCompDirectiveNoFileComp
 	case 1:
 		var containers []pick.Container
-		_ = service.WithHostOverride(args[0], func() error {
+		_ = service.WithRemoteCompletion(args[0], func() error {
 			containers = pick.ListAll()
 			return nil
 		})

@@ -35,3 +35,10 @@ func WithHostOverride(host string, fn func() error) error {
 	defer docker.ResetHostOverride()
 	return fn()
 }
+
+// WithRemoteCompletion runs fn inside a shell-completion scope against host
+// (or the local daemon when host == ""), enabling short timeouts, disk caching,
+// and SSH ControlMaster multiplexing in infra/docker.
+func WithRemoteCompletion(host string, fn func() error) error {
+	return docker.WithRemoteCompletion(host, fn)
+}

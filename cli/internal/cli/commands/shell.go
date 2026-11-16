@@ -132,7 +132,7 @@ func registerViaUserCompletion(cmd *cobra.Command) {
 	_ = cmd.RegisterFlagCompletionFunc("user", func(cmd *cobra.Command, args []string, _ string) ([]string, cobra.ShellCompDirective) {
 		if cmd.Name() == "via" && len(args) >= 2 {
 			var users []string
-			_ = service.WithHostOverride(args[0], func() error {
+			_ = service.WithRemoteCompletion(args[0], func() error {
 				users = service.InspectService{Report: ui.Console{}}.ListUsers(args[1])
 				return nil
 			})
@@ -142,7 +142,12 @@ func registerViaUserCompletion(cmd *cobra.Command) {
 		if err != nil {
 			return nil, cobra.ShellCompDirectiveNoFileComp
 		}
-		return service.InspectService{Report: ui.Console{}}.ListUsers(containerName), cobra.ShellCompDirectiveNoFileComp
+		var users []string
+		_ = service.WithRemoteCompletion("", func() error {
+			users = service.InspectService{Report: ui.Console{}}.ListUsers(containerName)
+			return nil
+		})
+		return users, cobra.ShellCompDirectiveNoFileComp
 	})
 }
 
