@@ -1,6 +1,9 @@
 package commands
 
 import (
+	"fmt"
+	"strings"
+
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/cli/ui"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/service"
 	"github.com/spf13/cobra"
@@ -8,129 +11,144 @@ import (
 
 func newRestartCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "restart",
-		Short: "Restart the project's already-created containers",
-		Long: `devcontainer-cli workspace restart — restart the existing containers of the current
-project without recreating them.
+		Use:   "restart [container]",
+		Short: "Restart containers for the current project or a named container",
+		Long: `devcontainer-cli container restart — restart existing containers without
+recreating them.
 
-Wraps 'docker compose -f .dc_<workspace>/build/docker-compose.yml restart'. The
-containers must already exist (run 'workspace up' first); this only stops and starts them
-again, keeping the same containers, volumes and network. Configuration changes
-in the compose file are NOT applied — use 'workspace up' for that. Pass --container to
-restart a single container instead of the whole project.`,
-		Example: `  # Restart the whole project
-  devcontainer-cli workspace restart
+Pass a container name (or --container) to restart that single container via
+'docker restart'. With no container target, wraps
+'docker compose -f .dc_<workspace>/build/docker-compose.yml restart' for the
+current project.
 
-  # Restart just one container
-  devcontainer-cli workspace restart --container myproject-postgres`,
-		SilenceUsage: true,
-		RunE:         runRestart,
+The containers must already exist (run 'workspace up' or 'container run'
+first). Configuration changes in the compose file are NOT applied — use
+'workspace up' for that.`,
+		Example: `  # Restart the current project's containers
+  devcontainer-cli container restart
+
+  # Restart a specific container by name or flag
+  devcontainer-cli container restart dc-python
+  devcontainer-cli container restart --container myproject-postgres`,
+		Args:              cobra.MaximumNArgs(1),
+		ValidArgsFunction: completeContainerArg(completeContainers),
+		SilenceUsage:      true,
+		RunE:              runRestart,
 	}
 	// restart applies to running or stopped containers, so complete any managed one.
 	addContainerFlag(cmd)
 	return cmd
 }
 
-func runRestart(cmd *cobra.Command, _ []string) error {
+func runRestart(cmd *cobra.Command, args []string) error {
 	svc := service.LifecycleService{Report: ui.Console{}}
-
-	if cmd.Flags().Changed("container") {
-		containerName, err := resolveContainer(cmd)
-		if err != nil {
-			return err
-		}
-		if err := svc.RestartContainer(containerName); err != nil {
-			return err
-		}
-		ui.Done()
-		return nil
-	}
-
-	return runLifecycle("restart")
+	return runContainerOrProjectLifecycle(cmd, args, "restart", svc.RestartContainer)
 }
 
 func newStartCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "start",
-		Short: "Start the project's stopped containers",
-		Long: `devcontainer-cli workspace start — start the existing, stopped containers of the current
-project (they must already have been created with 'workspace up').
+		Use:   "start [container]",
+		Short: "Start stopped containers for the current project or a named container",
+		Long: `devcontainer-cli container start — start existing, stopped containers.
 
-Wraps 'docker compose -f .dc_<workspace>/build/docker-compose.yml start'. Unlike
-'workspace up' it never creates or recreates containers — it only resumes ones that are
-stopped. Pass --container to start a single container instead of the whole
-project.`,
-		Example: `  # Start the whole project
-  devcontainer-cli workspace start
+Pass a container name (or --container) to start that single container via
+'docker start'. With no container target, wraps
+'docker compose -f .dc_<workspace>/build/docker-compose.yml start' for the
+current project.
 
-  # Start just one container
-  devcontainer-cli workspace start --container myproject-postgres`,
-		SilenceUsage: true,
-		RunE:         runStart,
+Unlike 'workspace up' it never creates or recreates containers — it only resumes
+ones that are stopped.`,
+		Example: `  # Start the current project's stopped containers
+  devcontainer-cli container start
+
+  # Start a specific stopped container by name or flag
+  devcontainer-cli container start dc-python
+  devcontainer-cli container start --container myproject-postgres`,
+		Args:              cobra.MaximumNArgs(1),
+		ValidArgsFunction: completeContainerArg(completeStoppedContainers),
+		SilenceUsage:      true,
+		RunE:              runStart,
 	}
 	// start targets a stopped container, so complete only the stopped ones.
 	addContainerFlagFiltered(cmd, completeStoppedContainers)
 	return cmd
 }
 
-func runStart(cmd *cobra.Command, _ []string) error {
+func runStart(cmd *cobra.Command, args []string) error {
 	svc := service.LifecycleService{Report: ui.Console{}}
-
-	if cmd.Flags().Changed("container") {
-		containerName, err := resolveContainer(cmd)
-		if err != nil {
-			return err
-		}
-		if err := svc.StartContainer(containerName); err != nil {
-			return err
-		}
-		ui.Done()
-		return nil
-	}
-
-	return runLifecycle("start")
+	return runContainerOrProjectLifecycle(cmd, args, "start", svc.StartContainer)
 }
 
 func newStopCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "stop",
-		Short: "Stop the project's running containers (without removing them)",
-		Long: `devcontainer-cli workspace stop — stop the running containers of the current project,
-leaving the containers, volumes and network in place so they can be resumed with
-'workspace start'.
+		Use:   "stop [container]",
+		Short: "Stop running containers (without removing them)",
+		Long: `devcontainer-cli container stop — stop running containers, leaving containers,
+volumes and networks in place so they can be resumed with 'container start'.
 
-Wraps 'docker compose -f .dc_<workspace>/build/docker-compose.yml stop'. Use
-'workspace down' instead when you want to remove the containers, not just stop them. Pass
---container to stop a single container instead of the whole project.`,
-		Example: `  # Stop the whole project
-  devcontainer-cli workspace stop
+Pass a container name (or --container) to stop that single container via
+'docker stop'. With no container target, wraps
+'docker compose -f .dc_<workspace>/build/docker-compose.yml stop' for the
+current project.
 
-  # Stop just one container
-  devcontainer-cli workspace stop --container myproject-postgres`,
-		SilenceUsage: true,
-		RunE:         runStop,
+Use 'workspace down' instead when you want to remove the project's containers,
+or 'container destroy' to remove an individual container.`,
+		Example: `  # Stop the current project's running containers
+  devcontainer-cli container stop
+
+  # Stop a specific running container by name or flag
+  devcontainer-cli container stop dc-python
+  devcontainer-cli container stop --container myproject-postgres`,
+		Args:              cobra.MaximumNArgs(1),
+		ValidArgsFunction: completeContainerArg(completeRunningContainers),
+		SilenceUsage:      true,
+		RunE:              runStop,
 	}
 	// stop targets a running container, so complete only the running ones.
 	addContainerFlagFiltered(cmd, completeRunningContainers)
 	return cmd
 }
 
-func runStop(cmd *cobra.Command, _ []string) error {
+func runStop(cmd *cobra.Command, args []string) error {
 	svc := service.LifecycleService{Report: ui.Console{}}
+	return runContainerOrProjectLifecycle(cmd, args, "stop", svc.StopContainer)
+}
 
-	if cmd.Flags().Changed("container") {
-		containerName, err := resolveContainer(cmd)
-		if err != nil {
-			return err
-		}
-		if err := svc.StopContainer(containerName); err != nil {
+func runContainerOrProjectLifecycle(cmd *cobra.Command, args []string, verb string, containerOp func(string) error) error {
+	containerName, err := resolveLifecycleContainer(cmd, args)
+	if err != nil {
+		return err
+	}
+	if containerName != "" {
+		if err := containerOp(containerName); err != nil {
 			return err
 		}
 		ui.Done()
 		return nil
 	}
+	return runLifecycle(verb)
+}
 
-	return runLifecycle("stop")
+func resolveLifecycleContainer(cmd *cobra.Command, args []string) (string, error) {
+	var pos string
+	if len(args) > 0 {
+		pos = strings.TrimSpace(args[0])
+		if pos == "" {
+			return "", fmt.Errorf("container name cannot be empty")
+		}
+	}
+	if !cmd.Flags().Changed("container") {
+		return pos, nil
+	}
+	rawFlag, _ := cmd.Flags().GetString("container")
+	flagName := strings.TrimSpace(rawFlag)
+	if flagName == "" {
+		return "", fmt.Errorf("container name cannot be empty")
+	}
+	if pos != "" && pos != flagName {
+		return "", fmt.Errorf("cannot specify both a positional container %q and --container %q", pos, flagName)
+	}
+	return flagName, nil
 }
 
 func runLifecycle(verb string) error {

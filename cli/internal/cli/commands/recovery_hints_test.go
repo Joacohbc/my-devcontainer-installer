@@ -12,7 +12,7 @@ import (
 // the exact moment the caller is stuck. Pointing one at the bare
 // 'devcontainer-cli' — the interactive wizard — is therefore the worst possible
 // advice for a non-interactive caller, which hangs on it with no way to answer.
-// Every hint must name a command that does not prompt: 'workspace up', 'workspace start',
+// Every hint must name a command that does not prompt: 'workspace up', 'container start',
 // 'agent create'.
 //
 // This walks the source rather than the built help, because the strings live in
@@ -20,8 +20,8 @@ import (
 func TestErrorMessagesDoNotPointAtTheWizard(t *testing.T) {
 	// The bare binary name inside quotes, not followed by a subcommand.
 	bareInvocation := regexp.MustCompile(`'devcontainer-cli'`)
-	// Obsolete flat root commands that must now use canonical 6 domains.
-	legacyFlatCmds := regexp.MustCompile(`'devcontainer-cli (up|start|down|ssh|config profile list|destroy)'`)
+	// Obsolete flat root commands or displaced workspace lifecycle commands.
+	legacyFlatCmds := regexp.MustCompile(`'devcontainer-cli (up|start|down|ssh|config profile list|destroy|run|workspace (start|stop|restart))(?:'| )`)
 	// Removed or obsolete flags that must never be suggested to callers.
 	removedFlags := []string{"--with", "--service ", "--skill ", "--no-build", "--preset", "--non-interactive", "ssh -f"}
 
@@ -51,7 +51,7 @@ func TestErrorMessagesDoNotPointAtTheWizard(t *testing.T) {
 				}
 				if legacyFlatCmds.MatchString(line) {
 					t.Errorf("%s:%d suggests a legacy flat command.\n"+
-						"Name a canonical 6-domain command ('devcontainer-cli workspace up', 'devcontainer-cli workspace start', 'devcontainer-cli profile list'):\n  %s",
+						"Name a canonical 7-domain command ('devcontainer-cli workspace up', 'devcontainer-cli container start', 'devcontainer-cli profile list'):\n  %s",
 						path, i+1, strings.TrimSpace(line))
 				}
 				for _, rf := range removedFlags {

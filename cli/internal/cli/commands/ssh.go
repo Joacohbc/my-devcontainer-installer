@@ -301,7 +301,7 @@ func refreshExistingTarget(ssh service.SshService, alias, containerName string) 
 	case service.TargetAbsent:
 		return fmt.Errorf("container '%s' no longer exists; alias '%s' is stale — run 'devcontainer-cli access ssh --setup' to reconfigure it, or 'devcontainer-cli config clean ssh' to remove it", containerName, alias)
 	case service.TargetStopped:
-		console.Warn("Container '%s' is not running; start it before connecting (e.g. 'devcontainer-cli workspace start').", containerName)
+		console.Warn("Container '%s' is not running; start it before connecting (e.g. 'devcontainer-cli container start').", containerName)
 		return nil
 	}
 

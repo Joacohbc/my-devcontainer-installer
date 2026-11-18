@@ -156,7 +156,7 @@ func (s RunService) ValidateContainerName(name, source string) error {
 }
 
 func nameConflictErr(name string) error {
-	return fmt.Errorf("container name '%s' is already in use by an existing container that was not created by 'run'; pick a different name (or remove/rename the existing container) and try again", name)
+	return fmt.Errorf("container name '%s' is already in use by an existing container that was not created by 'container run'; pick a different name (or remove/rename the existing container) and try again", name)
 }
 
 // quickRunLookup describes what's known about an existing container name:

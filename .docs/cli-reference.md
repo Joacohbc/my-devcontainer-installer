@@ -933,6 +933,91 @@ Self-update the CLI binary from the latest GitHub release
 | `--pre-release` |  | bool | `false` | Install the latest pre-release (testing) if it is newer |
 | `--verbose` |  | bool | `false` | Enable debug logging (shortcut for --log-level debug) |
 
+## `devcontainer-cli container`
+
+Run, start, stop, restart, and destroy containers
+
+### Banderas
+
+| Bandera | Atajo | Tipo | Por defecto | Descripción |
+|---|---|---|---|---|
+| `--log-level` |  | string | `warn` | Log level: debug\|info\|warn\|error |
+| `--no-interactive` |  | bool | `false` | Fail if any value is missing instead of prompting |
+| `--verbose` |  | bool | `false` | Enable debug logging (shortcut for --log-level debug) |
+
+## `devcontainer-cli container destroy`
+
+Stop and remove a standalone or individual container
+
+### Banderas
+
+| Bandera | Atajo | Tipo | Por defecto | Descripción |
+|---|---|---|---|---|
+| `--container` | -c | string | - | Explicit target container name (managed by devcontainer-cli) |
+| `--log-level` |  | string | `warn` | Log level: debug\|info\|warn\|error |
+| `--no-interactive` |  | bool | `false` | Non-interactive mode (fail instead of prompting) |
+| `--verbose` |  | bool | `false` | Enable debug logging (shortcut for --log-level debug) |
+| `--yes` | -y | bool | `false` | Skip confirmation prompts |
+
+## `devcontainer-cli container restart`
+
+Restart containers for the current project or a named container
+
+### Banderas
+
+| Bandera | Atajo | Tipo | Por defecto | Descripción |
+|---|---|---|---|---|
+| `--container` | -c | string | - | Explicit target container name (managed by devcontainer-cli) |
+| `--log-level` |  | string | `warn` | Log level: debug\|info\|warn\|error |
+| `--no-interactive` |  | bool | `false` | Fail if any value is missing instead of prompting |
+| `--verbose` |  | bool | `false` | Enable debug logging (shortcut for --log-level debug) |
+
+## `devcontainer-cli container run`
+
+Spin up a container from a prebuilt or named image (no project files)
+
+### Banderas
+
+| Bandera | Atajo | Tipo | Por defecto | Descripción |
+|---|---|---|---|---|
+| `--expose-all` |  | bool | `false` | Publish ports on all interfaces (0.0.0.0) instead of binding to 127.0.0.1 |
+| `--image` |  | string | - | Image definition to run instead of a profile (see 'image list'); a build definition must be built first, a remote one is pulled and verified |
+| `--log-level` |  | string | `warn` | Log level: debug\|info\|warn\|error |
+| `--name` |  | string | - | Container name (default: dc-<profile> or dc-<image>); if it belongs to a quick-run container started from the same source it is reused/restarted, but a name already used by any other container is rejected |
+| `--no-interactive` |  | bool | `false` | Non-interactive mode (fail instead of prompting) |
+| `--ports` |  | stringSlice | `[]` | Port mappings (e.g. 2222:22); bound to 127.0.0.1 unless --expose-all; repeatable or comma-separated |
+| `--profile` |  | string | - | Single [remote]-tagged profile id to run as a prebuilt image, e.g. base, nodejs, python (it or --image is required with --no-interactive); see 'profile list' |
+| `--registry` |  | string | - | Registry prefix override for --profile |
+| `--shared-config` |  | bool | `true` | Mount the global shared AI/dev tool config volume (devcontainer-shared-config) so logins/sessions persist across containers; --shared-config=false to opt out |
+| `--verbose` |  | bool | `false` | Enable debug logging (shortcut for --log-level debug) |
+| `--volumes` |  | stringSlice | `[]` | Volume mounts (e.g. myvol:/workspace); repeatable or comma-separated |
+
+## `devcontainer-cli container start`
+
+Start stopped containers for the current project or a named container
+
+### Banderas
+
+| Bandera | Atajo | Tipo | Por defecto | Descripción |
+|---|---|---|---|---|
+| `--container` | -c | string | - | Explicit target container name (managed by devcontainer-cli) |
+| `--log-level` |  | string | `warn` | Log level: debug\|info\|warn\|error |
+| `--no-interactive` |  | bool | `false` | Fail if any value is missing instead of prompting |
+| `--verbose` |  | bool | `false` | Enable debug logging (shortcut for --log-level debug) |
+
+## `devcontainer-cli container stop`
+
+Stop running containers (without removing them)
+
+### Banderas
+
+| Bandera | Atajo | Tipo | Por defecto | Descripción |
+|---|---|---|---|---|
+| `--container` | -c | string | - | Explicit target container name (managed by devcontainer-cli) |
+| `--log-level` |  | string | `warn` | Log level: debug\|info\|warn\|error |
+| `--no-interactive` |  | bool | `false` | Fail if any value is missing instead of prompting |
+| `--verbose` |  | bool | `false` | Enable debug logging (shortcut for --log-level debug) |
+
 ## `devcontainer-cli image`
 
 Manage reusable, named devcontainer images
@@ -1208,26 +1293,6 @@ Delete user profiles (built-ins cannot be removed)
 | `--verbose` |  | bool | `false` | Enable debug logging (shortcut for --log-level debug) |
 | `--yes` | -y | bool | `false` | Skip confirmation prompts |
 
-## `devcontainer-cli run`
-
-Spin up a container from a prebuilt or named image (no project files)
-
-### Banderas
-
-| Bandera | Atajo | Tipo | Por defecto | Descripción |
-|---|---|---|---|---|
-| `--expose-all` |  | bool | `false` | Publish ports on all interfaces (0.0.0.0) instead of binding to 127.0.0.1 |
-| `--image` |  | string | - | Image definition to run instead of a profile (see 'image list'); a build definition must be built first, a remote one is pulled and verified |
-| `--log-level` |  | string | `warn` | Log level: debug\|info\|warn\|error |
-| `--name` |  | string | - | Container name (default: dc-<profile> or dc-<image>); if it belongs to a quick-run container started from the same source it is reused/restarted, but a name already used by any other container is rejected |
-| `--no-interactive` |  | bool | `false` | Non-interactive mode (fail instead of prompting) |
-| `--ports` |  | stringSlice | `[]` | Port mappings (e.g. 2222:22); bound to 127.0.0.1 unless --expose-all; repeatable or comma-separated |
-| `--profile` |  | string | - | Single [remote]-tagged profile id to run as a prebuilt image, e.g. base, nodejs, python (it or --image is required with --no-interactive); see 'profile list' |
-| `--registry` |  | string | - | Registry prefix override for --profile |
-| `--shared-config` |  | bool | `true` | Mount the global shared AI/dev tool config volume (devcontainer-shared-config) so logins/sessions persist across containers; --shared-config=false to opt out |
-| `--verbose` |  | bool | `false` | Enable debug logging (shortcut for --log-level debug) |
-| `--volumes` |  | stringSlice | `[]` | Volume mounts (e.g. myvol:/workspace); repeatable or comma-separated |
-
 ## `devcontainer-cli workspace`
 
 Manage project workspace lifecycle and containers
@@ -1284,7 +1349,6 @@ Tear down the project completely and delete its generated files
 
 | Bandera | Atajo | Tipo | Por defecto | Descripción |
 |---|---|---|---|---|
-| `--container` | -c | string | - | Explicit target container name (managed by devcontainer-cli) |
 | `--log-level` |  | string | `warn` | Log level: debug\|info\|warn\|error |
 | `--no-interactive` |  | bool | `false` | Non-interactive mode (fail instead of prompting) |
 | `--verbose` |  | bool | `false` | Enable debug logging (shortcut for --log-level debug) |
@@ -1358,45 +1422,6 @@ Create a devcontainer for the current project with the interactive wizard
 | `--verbose` |  | bool | `false` | Enable debug logging (shortcut for --log-level debug) |
 | `--volumes` |  | string | - | Extra volume mounts on the devcontainer (e.g. myvol:/data,./cache:/cache); 'none' clears them |
 | `--workspace` |  | string | - | Workspace name (default: current dir name) |
-
-## `devcontainer-cli workspace restart`
-
-Restart the project's already-created containers
-
-### Banderas
-
-| Bandera | Atajo | Tipo | Por defecto | Descripción |
-|---|---|---|---|---|
-| `--container` | -c | string | - | Explicit target container name (managed by devcontainer-cli) |
-| `--log-level` |  | string | `warn` | Log level: debug\|info\|warn\|error |
-| `--no-interactive` |  | bool | `false` | Fail if any value is missing instead of prompting |
-| `--verbose` |  | bool | `false` | Enable debug logging (shortcut for --log-level debug) |
-
-## `devcontainer-cli workspace start`
-
-Start the project's stopped containers
-
-### Banderas
-
-| Bandera | Atajo | Tipo | Por defecto | Descripción |
-|---|---|---|---|---|
-| `--container` | -c | string | - | Explicit target container name (managed by devcontainer-cli) |
-| `--log-level` |  | string | `warn` | Log level: debug\|info\|warn\|error |
-| `--no-interactive` |  | bool | `false` | Fail if any value is missing instead of prompting |
-| `--verbose` |  | bool | `false` | Enable debug logging (shortcut for --log-level debug) |
-
-## `devcontainer-cli workspace stop`
-
-Stop the project's running containers (without removing them)
-
-### Banderas
-
-| Bandera | Atajo | Tipo | Por defecto | Descripción |
-|---|---|---|---|---|
-| `--container` | -c | string | - | Explicit target container name (managed by devcontainer-cli) |
-| `--log-level` |  | string | `warn` | Log level: debug\|info\|warn\|error |
-| `--no-interactive` |  | bool | `false` | Fail if any value is missing instead of prompting |
-| `--verbose` |  | bool | `false` | Enable debug logging (shortcut for --log-level debug) |
 
 ## `devcontainer-cli workspace up`
 

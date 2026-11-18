@@ -44,12 +44,12 @@ nothing is ever pushed. Pass one or more profiles to 'devcontainer-cli workspace
 init --profile <id1>,<id2>' to compose them: modules, ports, volumes, skills and
 services are unioned, scripts concatenated and env merged (a variable set to two
 different values, or two different images, is an error). Explicit flags win over
-the profile. Under mode=profiles or 'run', exactly one profile is accepted.
+the profile. Under mode=profiles or 'container run', exactly one profile is accepted.
 
 Every profile builds locally this way, regardless of the [remote]/[local] tag
 'profile list' shows: [remote] means it also has a published
 ghcr.io/devcontainer-<id> image, so the same --profile <id> can instead be
-pulled with '--mode profiles --profile <id>' (or 'run --profile <id>', which
+pulled with '--mode profiles --profile <id>' (or 'container run --profile <id>', which
 only ever pulls) instead of built; [local] (e.g. any profile you create yourself)
 has no such image, so only mode=custom applies to it — passing it under
 mode=profiles fails.

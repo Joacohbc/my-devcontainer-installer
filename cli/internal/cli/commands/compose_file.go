@@ -163,6 +163,17 @@ func completeStoppedContainers(_ *cobra.Command, _ []string, toComplete string) 
 	return managedContainerNames(toComplete, func(c pick.Container) bool { return !containerRunning(c) })
 }
 
+// completeContainerArg wraps a container flag completion function for commands
+// accepting an optional single positional [container] argument.
+func completeContainerArg(complete containerCompletionFunc) containerCompletionFunc {
+	return func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		if len(args) > 0 || (cmd != nil && cmd.Flags().Changed("container")) {
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		}
+		return complete(cmd, args, toComplete)
+	}
+}
+
 // completeViaArgs completes positional arguments for 'via <host> <container>':
 // arg 0 suggests configured SSH hosts; arg 1 queries running containers on
 // that remote Docker host instead of local containers.
