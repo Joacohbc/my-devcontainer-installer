@@ -176,6 +176,12 @@ func TestWithRemoteCompletion_EnforcesTimeoutAndSkipsEnsureDocker(t *testing.T) 
 	t.Cleanup(func() {
 		docker.SetCompletionCacheDir("")
 		docker.SetCompletionTimeout(0)
+		docker.SetCompletionRefreshHook(nil)
+	})
+
+	refreshTriggered := false
+	docker.SetCompletionRefreshHook(func(host string, args []string) {
+		refreshTriggered = host == "me@slow-host" && len(args) == 1 && args[0] == "ps"
 	})
 
 	// If EnsureDocker ran "docker version", this mock would record an extra call
@@ -198,6 +204,9 @@ func TestWithRemoteCompletion_EnforcesTimeoutAndSkipsEnsureDocker(t *testing.T) 
 	}
 	if status == 0 {
 		t.Errorf("expected non-zero status on timeout, got 0")
+	}
+	if !refreshTriggered {
+		t.Errorf("expected background refresh to trigger after foreground timeout")
 	}
 }
 

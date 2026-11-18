@@ -104,8 +104,9 @@ func currentHostOverride() string {
 }
 
 // WithRemoteCompletion runs fn in shell-completion mode: DockerCapture skips
-// EnsureDocker, applies a short timeout, uses SSH ControlMaster multiplexing,
-// and caches successful remote responses per (host, args) with stale-while-revalidate.
+// EnsureDocker, applies a short timeout, uses non-interactive SSH flags
+// (BatchMode=yes, ConnectTimeout=4), and caches successful remote responses per
+// (host, args) with stale-while-revalidate.
 func WithRemoteCompletion(host string, fn func() error) error {
 	completionMu.Lock()
 	prev := completionActive
@@ -174,6 +175,8 @@ func dockerCaptureCompletion(args []string) (int, string, string, error) {
 	status, stdout, stderr := defaultRunner.Run(ctx, fullArgs, "pipe", "", completionEnv(host))
 	if host != "" && status == 0 {
 		writeCompletionCache(host, args, stdout)
+	} else if host != "" && ctx.Err() == context.DeadlineExceeded {
+		triggerCompletionRefresh(host, args)
 	}
 	return status, stdout, stderr, nil
 }
@@ -184,9 +187,16 @@ func completionEnv(host string) map[string]string {
 	}
 	env := hostEnvFor(host)
 	if env == nil {
-		env = make(map[string]string, 2)
+		env = make(map[string]string, 3)
 	}
 	env[sshCompletionEnv] = "1"
+	if binDir, err := ensureSSHWrapper(); err == nil && binDir != "" {
+		if curPath := os.Getenv("PATH"); curPath != "" {
+			env["PATH"] = binDir + string(os.PathListSeparator) + curPath
+		} else {
+			env["PATH"] = binDir
+		}
+	}
 	return env
 }
 
@@ -361,12 +371,7 @@ func ensureSSHWrapper() (string, error) {
 		return "", err
 	}
 
-	script := fmt.Sprintf(`#!/bin/sh
-if [ "${%s:-}" = "1" ]; then
-  exec %q -o BatchMode=yes -o ConnectTimeout=4 "$@"
-fi
-exec %q "$@"
-`, sshCompletionEnv, realSSH, realSSH)
+	script := fmt.Sprintf("#!/bin/sh\nexec %q -o BatchMode=yes -o ConnectTimeout=4 \"$@\"\n", realSSH)
 
 	wrapperPath := filepath.Join(binDir, "ssh")
 	if existing, err := os.ReadFile(wrapperPath); err == nil && string(existing) == script {
