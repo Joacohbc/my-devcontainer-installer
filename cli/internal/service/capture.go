@@ -38,7 +38,26 @@ func WithHostOverride(host string, fn func() error) error {
 
 // WithRemoteCompletion runs fn inside a shell-completion scope against host
 // (or the local daemon when host == ""), enabling short timeouts, disk caching,
-// and SSH ControlMaster multiplexing in infra/docker.
+// and non-interactive SSH flags in infra/docker.
 func WithRemoteCompletion(host string, fn func() error) error {
 	return docker.WithRemoteCompletion(host, fn)
+}
+
+const maxPrewarmHosts = 4
+
+// PrewarmRemoteContainers triggers a non-blocking background cache refresh
+// for up to maxPrewarmHosts SSH hosts whose container list cache is missing or stale.
+func PrewarmRemoteContainers(hosts ...string) {
+	args := []string{"ps", "-a", "--format", "{{json .}}"}
+	count := 0
+	for _, h := range hosts {
+		if h == "" {
+			continue
+		}
+		docker.PrewarmRemoteCompletion(h, args)
+		count++
+		if count >= maxPrewarmHosts {
+			return
+		}
+	}
 }
