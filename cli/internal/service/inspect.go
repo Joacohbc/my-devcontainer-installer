@@ -470,14 +470,7 @@ type NetworkIP struct {
 	Aliases []string
 }
 
-// ContainerNetworkIPs returns structured NetworkIP pairs for a running container,
-// or an error if the container cannot be inspected.
-func (s InspectService) ContainerNetworkIPs(name string) ([]NetworkIP, error) {
-	format := `{{range $n, $net := .NetworkSettings.Networks}}{{$n}} {{$net.IPAddress}}{{"\n"}}{{end}}`
-	status, stdout, _, err := docker.DockerCapture([]string{"inspect", "-f", format, name})
-	if err != nil || status != 0 {
-		return nil, fmt.Errorf("container '%s' not found", name)
-	}
+func parseNetworkIPLines(stdout string) []NetworkIP {
 	var result []NetworkIP
 	for _, line := range strings.Split(stdout, "\n") {
 		line = strings.TrimSpace(line)
@@ -493,7 +486,43 @@ func (s InspectService) ContainerNetworkIPs(name string) ([]NetworkIP, error) {
 			result = append(result, NetworkIP{Network: line[:sep], IP: ip})
 		}
 	}
-	return result, nil
+	return result
+}
+
+func isNoSuchContainerStderr(stderr string) bool {
+	lower := strings.ToLower(stderr)
+	return strings.Contains(lower, "no such object") || strings.Contains(lower, "no such container")
+}
+
+// ContainerStateAndIPs inspects a single container in one docker call,
+// returning its state, attached network IPs, and whether the container exists.
+// A non-nil error means the daemon itself could not be queried.
+func (s InspectService) ContainerStateAndIPs(name string) (state ContainerState, ips []NetworkIP, exists bool, err error) {
+	format := `{{.State.Status}}{{"\n"}}{{range $n, $net := .NetworkSettings.Networks}}{{$n}} {{$net.IPAddress}}{{"\n"}}{{end}}`
+	status, stdout, stderr, err := docker.DockerCapture([]string{"inspect", "-f", format, name})
+	if err != nil {
+		return "", nil, false, err
+	}
+	if status != 0 {
+		if isNoSuchContainerStderr(stderr) {
+			return "", nil, false, nil
+		}
+		return "", nil, false, fmt.Errorf("docker inspect %s exited with status %d", name, status)
+	}
+	firstLine, rest, _ := strings.Cut(strings.TrimLeft(stdout, "\r\n"), "\n")
+	state = ContainerState(strings.TrimSpace(firstLine))
+	return state, parseNetworkIPLines(rest), true, nil
+}
+
+// ContainerNetworkIPs returns structured NetworkIP pairs for a running container,
+// or an error if the container cannot be inspected.
+func (s InspectService) ContainerNetworkIPs(name string) ([]NetworkIP, error) {
+	format := `{{range $n, $net := .NetworkSettings.Networks}}{{$n}} {{$net.IPAddress}}{{"\n"}}{{end}}`
+	status, stdout, _, err := docker.DockerCapture([]string{"inspect", "-f", format, name})
+	if err != nil || status != 0 {
+		return nil, fmt.Errorf("container '%s' not found", name)
+	}
+	return parseNetworkIPLines(stdout), nil
 }
 
 // ContainerNames returns every container name known to the daemon (running or
@@ -513,10 +542,14 @@ func (s InspectService) ContainerNames() []string {
 	return names
 }
 
+func listUsersDockerArgs(name string) []string {
+	return []string{"exec", name, "cut", "-d:", "-f1", "/etc/passwd"}
+}
+
 // ListUsers returns usernames from /etc/passwd inside the container.
 // Used for --user flag completion in shell and exec commands.
 func (s InspectService) ListUsers(name string) []string {
-	status, stdout, _, err := docker.DockerCapture([]string{"exec", name, "cut", "-d:", "-f1", "/etc/passwd"})
+	status, stdout, _, err := docker.DockerCapture(listUsersDockerArgs(name))
 	if err != nil || status != 0 {
 		return nil
 	}

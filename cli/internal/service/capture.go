@@ -43,21 +43,39 @@ func WithRemoteCompletion(host string, fn func() error) error {
 	return docker.WithRemoteCompletion(host, fn)
 }
 
-const maxPrewarmHosts = 4
+const maxPrewarmItems = 4
 
-// PrewarmRemoteContainers triggers a non-blocking background cache refresh
-// for up to maxPrewarmHosts SSH hosts whose container list cache is missing or stale.
-func PrewarmRemoteContainers(hosts ...string) {
-	args := []string{"ps", "-a", "--format", "{{json .}}"}
+func prewarmUpTo(items []string, fn func(string)) {
 	count := 0
-	for _, h := range hosts {
-		if h == "" {
+	for _, item := range items {
+		if item == "" {
 			continue
 		}
-		docker.PrewarmRemoteCompletion(h, args)
+		fn(item)
 		count++
-		if count >= maxPrewarmHosts {
+		if count >= maxPrewarmItems {
 			return
 		}
 	}
+}
+
+// PrewarmRemoteContainers triggers a non-blocking background cache refresh
+// for up to maxPrewarmItems SSH hosts whose container list cache is missing or stale.
+func PrewarmRemoteContainers(hosts ...string) {
+	args := []string{"ps", "-a", "--format", "{{json .}}"}
+	prewarmUpTo(hosts, func(h string) {
+		docker.PrewarmRemoteCompletion(h, args)
+	})
+}
+
+// PrewarmRemoteContainerUsers triggers a non-blocking background cache refresh
+// for /etc/passwd user listings on up to maxPrewarmItems containers on host
+// when their cache entry is missing or stale.
+func PrewarmRemoteContainerUsers(host string, containers ...string) {
+	if host == "" {
+		return
+	}
+	prewarmUpTo(containers, func(name string) {
+		docker.PrewarmRemoteCompletion(host, listUsersDockerArgs(name))
+	})
 }

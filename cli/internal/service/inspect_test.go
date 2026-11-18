@@ -622,3 +622,94 @@ func TestInspectListContainersWorkspace(t *testing.T) {
 		}
 	}
 }
+
+type inspectErrRunner struct {
+	status int
+	stdout string
+	stderr string
+}
+
+func (r *inspectErrRunner) Run(_ context.Context, args []string, _ string, _ string, _ map[string]string) (int, string, string) {
+	if len(args) >= 2 && args[1] == "version" {
+		return 0, "27.0.0", ""
+	}
+	return r.status, r.stdout, r.stderr
+}
+
+func TestInspectContainerStateAndIPs(t *testing.T) {
+	cases := []struct {
+		name       string
+		status     int
+		stdout     string
+		stderr     string
+		wantState  ContainerState
+		wantIPs    int
+		wantExists bool
+		wantErr    bool
+	}{
+		{
+			name:       "running with networks",
+			status:     0,
+			stdout:     "running\nbridge 172.17.0.2\nmynet 10.0.0.5\n",
+			wantState:  StateRunning,
+			wantIPs:    2,
+			wantExists: true,
+		},
+		{
+			name:       "stopped without networks",
+			status:     0,
+			stdout:     "exited\n",
+			wantState:  StateExited,
+			wantIPs:    0,
+			wantExists: true,
+		},
+		{
+			name:       "absent no such object",
+			status:     1,
+			stderr:     "Error: No such object: missing\n",
+			wantExists: false,
+		},
+		{
+			name:       "absent no such container",
+			status:     1,
+			stderr:     "Error response from daemon: No such container: missing\n",
+			wantExists: false,
+		},
+		{
+			name:    "daemon unreachable returns error",
+			status:  1,
+			stderr:  "Cannot connect to the Docker daemon at unix:///var/run/docker.sock",
+			wantErr: true,
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			defer useFakeDocker(&inspectErrRunner{
+				status: c.status,
+				stdout: c.stdout,
+				stderr: c.stderr,
+			})()
+			svc := InspectService{Report: nopReporter{}}
+			state, ips, exists, err := svc.ContainerStateAndIPs("c1")
+			if c.wantErr {
+				if err == nil {
+					t.Fatal("expected error, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if exists != c.wantExists {
+				t.Fatalf("exists = %v, want %v", exists, c.wantExists)
+			}
+			if state != c.wantState {
+				t.Errorf("state = %q, want %q", state, c.wantState)
+			}
+			if len(ips) != c.wantIPs {
+				t.Errorf("len(ips) = %d, want %d (%v)", len(ips), c.wantIPs, ips)
+			}
+		})
+	}
+}
