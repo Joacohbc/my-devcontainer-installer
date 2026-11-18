@@ -177,7 +177,7 @@ En `mode=custom`, la bandera `--profile` acepta una lista de identificadores sep
 - **Unión de Habilidades, Puertos, Volúmenes y Servicios**: Las habilidades de agente (`skills`), puertos publicados (`ports`), túneles SSH (`forward_ports`), volúmenes (`volumes`) y servicios (`services`, por id; prevalecen las opciones del primer perfil) se combinan mediante unión deduplicada en orden de primera aparición.
 - **Fusión de Entorno e Imagen**: Las variables `env` se fusionan; si dos perfiles asignan valores distintos a la misma variable, o declaran imágenes de partida distintas, la generación se rechaza con error explícito.
 - **Validación de Modo de Habilidades**: Si dos o más perfiles especifican modos explícitos de instalación (`skills_mode`) que entren en contradicción (por ejemplo, `manual` y `auto`), la generación se rechaza con error explícito.
-- **Invariante de Perfil Único para Descarga Remota**: `mode=profiles` y `devcontainer-cli run --profile` únicamente admiten un único perfil remoto publicado (`[remote]`). Si se pasa una lista separada por comas a estos comandos, se genera un error descriptivo no interactivo. `run` también acepta `--image <definición>` en lugar de `--profile` (son excluyentes, ver D27).
+- **Invariante de Perfil Único para Descarga Remota**: `mode=profiles` y `devcontainer-cli container run --profile` únicamente admiten un único perfil remoto publicado (`[remote]`). Si se pasa una lista separada por comas a estos comandos, se genera un error descriptivo no interactivo. `container run` también acepta `--image <definición>` en lugar de `--profile` (son excluyentes, ver D27).
 
 ---
 

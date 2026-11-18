@@ -32,9 +32,9 @@ you waiting on a prompt you cannot answer.
 | `agent destroy [--yes]` | Tear down the project stack, remove volumes and configuration, and remove built images |
 
 Use these first. Commands like file copying (`access copy`), context inspection
-(`inspect context`), skill installation (`config skill install`), or container lifecycle
-(`workspace up`, `workspace down`, `workspace destroy`, `config clean`) live in their
-canonical 6 domains and are documented below.
+(`inspect context`), skill installation (`config skill install`), or workspace/container lifecycle
+(`workspace up`, `workspace down`, `workspace destroy`, `container start`, `container stop`, `container restart`, `container destroy`, `config clean`) live in their
+canonical 7 domains and are documented below.
 
 ## 🚨 STRICT RULE: NEVER TOUCH DOCKER DIRECTLY
 
@@ -322,14 +322,15 @@ Why, and the exceptions: `references/package-managers.md`.
     devcontainer-cli workspace auto-init         # detect the stack, build and start without prompts
     devcontainer-cli workspace up                # create/recreate and start (detached)
     devcontainer-cli workspace up --build        # rebuild the image first
-    devcontainer-cli workspace start | stop | restart
+    devcontainer-cli container start | stop | restart [container]
+    devcontainer-cli container destroy <container> --yes
     devcontainer-cli workspace down              # remove containers + network, keep volumes
     devcontainer-cli workspace down -v --yes     # also delete the named volumes (data loss)
 
     devcontainer-cli image update                # rebuild (mode=custom) or pull (mode=profiles)
     devcontainer-cli image update --rebuild      # force a rebuild
 
-`start`/`stop`/`restart` accept `-c <container>` to act on one container.
+`container start`/`stop`/`restart` accept `[container]` or `-c <container>` to act on one container (defaulting to the current project stack when omitted); `container destroy` requires `<container>` or `-c <container>`.
 
 What each step runs, and what survives a stop, a recreate, a `down` or a
 `destroy` (your files, volumes, `$HOME`, `start` script sentinels):
@@ -447,10 +448,10 @@ managed label). Use `--dry-run` first and show the user what would go.
 ## Rules
 
 - **Prefer `agent <verb>`.** Those never prompt. If you drop to a plain command
-  that can prompt (generation, `workspace init`, `run`, `workspace down`, `workspace destroy`, `config clean`,
+  that can prompt (generation, `workspace init`, `container run`, `workspace down`, `workspace destroy`, `container destroy`, `config clean`,
   `access forward`), pass `--no-interactive` or it opens a wizard and hangs. Add
   `-y/--yes` for destructive commands — and get the user's agreement first for
-  `agent destroy`, `workspace destroy`, `workspace down -v` and `config clean all`.
+  `agent destroy`, `workspace destroy`, `container destroy`, `workspace down -v` and `config clean all`.
 - **Reach a service with `agent forward` or `access route add`, not `--ports`.**
   Publishing a port is a permanent project change; a tunnel or a route is
   on-demand and leaves nothing behind. Only publish when the user explicitly

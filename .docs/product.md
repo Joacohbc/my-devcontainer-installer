@@ -8,7 +8,7 @@
 
 ### Actor 1: Desarrollador Humano
 - **Objetivo**: Iniciar proyectos rápidamente en múltiples stacks (Node.js, Go, Python, Java, Rust) sin instalar compiladores, runtimes o bases de datos en su sistema operativo.
-- **Canal de Interacción**: Asistente interactivo en terminal (`devcontainer-cli`), comandos de ciclo de vida (`workspace up`, `workspace down`, `workspace start`, `workspace stop`, `workspace restart`), conexión SSH nativa para VS Code Remote o Neovim (`access ssh`), y multiplexación de terminal con Zellij.
+- **Canal de Interacción**: Asistente interactivo en terminal (`devcontainer-cli`), comandos de ciclo de vida (`workspace up`, `workspace down`, `container start`, `container stop`, `container restart`), conexión SSH nativa para VS Code Remote o Neovim (`access ssh`), y multiplexación de terminal con Zellij.
 - **Expectativa**: Cero conflictos de dependencias entre proyectos, conservación de configuraciones personales (alias, claves SSH, tokens de Git/IA) y mínima latencia al iniciar contenedores mediante imágenes precompiladas o caché de capas inteligente.
 
 ### Actor 2: Agente Autónomo de Inteligencia Artificial (Antigravity, Claude Code, Codex, Copilot)

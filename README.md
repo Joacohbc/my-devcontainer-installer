@@ -20,7 +20,7 @@
 Úsalo para:
 - **Aislar proyectos**: cada repositorio tiene sus propias versiones de Node, Python, Go, Java, Rust o PHP y sus bases de datos (`postgres`, `redis`, `mongo`) sin conflictos en tu sistema.
 - **Conectar tu editor o terminal en segundos**: configura acceso SSH automático para **VS Code Remote - SSH** o entra directo con `access shell` y `zellij`.
-- **Probar cosas sin ensuciar tu equipo**: levanta un contenedor desechable con `run --profile <perfil>` y bórralo al terminar.
+- **Probar cosas sin ensuciar tu equipo**: levanta un contenedor desechable con `container run --profile <perfil>` y bórralo al terminar con `container destroy`.
 - **Darle un sandbox seguro a agentes de IA**: Claude Code, Antigravity, Codex, OpenCode y Copilot ejecutan builds, tests y comandos dentro del contenedor sin acceso `root` al host.
 
 ---
@@ -65,7 +65,7 @@ devcontainer-cli --profile nodejs
 ### Opción B: Contenedor temporal sin archivos de proyecto
 
 ```bash
-devcontainer-cli run --profile python
+devcontainer-cli container run --profile python
 ```
 
 ---

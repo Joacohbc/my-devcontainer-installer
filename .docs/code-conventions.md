@@ -79,19 +79,17 @@ Las siguientes banderas y reglas de nomenclatura son obligatorias en todos los c
 | `--workdir` | `-w` | Bandera booleana para indicar el directorio de montaje del workspace. |
 | `--version` | *(sin atajo)* | Imprime la versión de la CLI (`-v` está reservado exclusivamente para `down -v` / `--volumes`). |
 
-### Jerarquía de Comandos en 6 Dominios y Fachada de Agente
+### Jerarquía de Comandos en 7 Dominios y Fachada de Agente
 
-La CLI estructura todas sus operaciones en 6 dominios canónicos orientados a recursos, junto con una fachada `agent` especializada:
+La CLI estructura todas sus operaciones en 7 dominios canónicos orientados a recursos, junto con una fachada `agent` especializada:
 
-1. **`workspace`**: Ciclo de vida completo del devcontainer asociado al proyecto (`init` con wizard, `auto-init` con detección de stack sin prompts, `up`, `down`, `start`, `stop`, `restart`, `destroy`, `compose`, `export`, `import`).
-2. **`access`**: Sesiones interactivas y conectividad de red con el contenedor (`shell`, `ssh`, `forward`, `route`, `network`, `copy`, `password`).
-3. **`inspect`**: Observabilidad, inspección y telemetría de recursos (`status`, `info`, `logs`, `context`, `ls`).
-4. **`profile`**: Gestión, catálogo y autoría de perfiles y plantillas modulares (`list`, `info`, `create`, `copy`, `remove`).
-5. **`image`**: Ciclo de vida y registro de imágenes independientes de proyecto (`list`, `info`, `create`, `build`, `pull`, `export`, `remove`, `update`).
-6. **`config`**: Parámetros globales y mantenimiento (`registry`, `git-init`, `db-user`, `db-password`, `ssh-key`, `ssh-config-file`, `alias`, `shared`, `skill`, `clean`, `upgrade-cli`).
-
-**Utilidad independiente en la raíz**:
-- **`run`**: `devcontainer-cli run` inicia un contenedor desechable directamente a partir de la imagen publicada de un perfil (`--profile`) o de una definición de imagen (`--image`, D27), sin asociarse a ningún workspace de proyecto ni generar archivos en disco.
+1. **`workspace`**: Ciclo de vida completo del proyecto y su stack Compose (`init` con wizard, `auto-init` con detección de stack sin prompts, `up`, `down`, `destroy`, `compose`, `export`, `import`).
+2. **`container`**: Contenedores desechables y ciclo de vida por contenedor (`run`, `start`, `stop`, `restart`, `destroy`). `run` inicia un contenedor desechable directamente a partir de la imagen publicada de un perfil (`--profile`) o de una definición de imagen (`--image`, D27), sin archivos de proyecto ni `devcontainer.json`; `start`, `stop` y `restart` aceptan `[container]` o `-c/--container` (y operan sobre el stack del proyecto actual si se omite), mientras `destroy` exige un contenedor explícito.
+3. **`access`**: Sesiones interactivas y conectividad de red con el contenedor (`shell`, `ssh`, `forward`, `route`, `network`, `copy`, `password`).
+4. **`inspect`**: Observabilidad, inspección y telemetría de recursos (`status`, `info`, `logs`, `context`, `ls`).
+5. **`profile`**: Gestión, catálogo y autoría de perfiles y plantillas modulares (`list`, `info`, `create`, `copy`, `remove`).
+6. **`image`**: Ciclo de vida y registro de imágenes independientes de proyecto (`list`, `info`, `create`, `build`, `pull`, `export`, `remove`, `update`).
+7. **`config`**: Parámetros globales y mantenimiento (`registry`, `git-init`, `db-user`, `db-password`, `ssh-key`, `ssh-config-file`, `alias`, `shared`, `skill`, `clean`, `upgrade-cli`).
 
 **Fachada `agent`**:
 - Contiene exclusivamente comandos que presentan valores predeterminados y semántica inherentemente desatendida para agentes de IA: `exec`, `ssh`, `forward`, `create`, `run`, `destroy`, `list`, `cli-info`.
@@ -110,7 +108,7 @@ La CLI estructura todas sus operaciones en 6 dominios canónicos orientados a re
 
 ### Regla de Oro en Sugerencias de Recuperación (*Recovery Hints*)
 Los mensajes de error que instruyen al usuario o al agente sobre qué comando ejecutar a continuación representan la documentación de mayor valor en tiempo de ejecución.
-- **Regla Inviolable**: Las sugerencias de recuperación deben nombrar comandos que **no abran prompts interactivos** (ej. sugerir `devcontainer-cli workspace up`, `devcontainer-cli workspace start` o `devcontainer-cli agent create`).
+- **Regla Inviolable**: Las sugerencias de recuperación deben nombrar comandos que **no abran prompts interactivos** (ej. sugerir `devcontainer-cli workspace up`, `devcontainer-cli container start` o `devcontainer-cli agent create`).
 - **Prohibido**: Sugerir el comando raíz interactivo `devcontainer-cli`, ya que provocaría que un agente o script desatendido se bloquee indefinidamente sin capacidad de respuesta.
 - La suite de pruebas `TestErrorMessagesDoNotPointAtTheWizard` (`commands/recovery_hints_test.go`) valida automáticamente que ninguna cadena de error sugiera la invocación del wizard interactivo desnudo.
 

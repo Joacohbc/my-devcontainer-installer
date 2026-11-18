@@ -10,7 +10,7 @@ This file holds the constitutional rules an agent must follow. Detailed document
 |---|---|
 | Product purpose, personas, and end-to-end flows | `.docs/product.md` |
 | Practical use cases handbook (human and agentic) | `MANUAL.md` |
-| 4-layer architecture, boundaries, and decisions D1–D29 | `.docs/architecture.md` |
+| 4-layer architecture, boundaries, and decisions D1–D31 | `.docs/architecture.md` |
 | Entities, Dockerfile modules, compose services, profiles | `.docs/domain-model.md` |
 | Domain vocabulary (ubiquitous language) | `.docs/context.md` |
 | Code conventions, `hbc-code-design`, command authoring | `.docs/code-conventions.md` |
@@ -57,7 +57,7 @@ When operating on devcontainer workspaces, agents must strictly use the provided
 - **Go toolchain only**: keep the tree `gofmt`-clean and `vet`-clean. CI blocks any unformatted file or vet finding.
 - **Tests for logic changes**: every new or modified module, domain function, or service method requires a matching `_test.go`.
 - **Documentation review**: every command or flag change requires updating its `Short`/`Long`/`Example`, flags description, and `.docs/code-conventions.md`.
-- **Non-prompting recovery hints**: error hints must name commands that do not prompt (`workspace up`, `workspace start`, `agent create`), NEVER the interactive wizard.
+- **Non-prompting recovery hints**: error hints must name commands that do not prompt (`workspace up`, `container start`, `agent create`), NEVER the interactive wizard.
 - **Python container contract**: `UV_SYSTEM_PYTHON=1`, `UV_BREAK_SYSTEM_PACKAGES=1`, non-recursive `chown` on `sysconfig` paths. Never image-wide `VIRTUAL_ENV`.
 - **Layer caching**: leading Dockerfile layers remain byte-identical across variants for `devcontainer-base` cache reuse; every `apt-get` passes `--no-install-recommends`.
 - **Tests first for bugs**: every bug fix ships with a reproducing test.

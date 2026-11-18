@@ -28,7 +28,7 @@ You audit contracts and synchronized constants that span multiple files across G
    - `skills/devcontainer-cli/SKILL.md` (tool orientation and command syntax) and its on-demand `references/*.md`.
    - `skills/devcontainer-cli/examples/` (validated by `TestSkillExample*`; check the README table lists every example).
    - Every `devcontainer-cli …` written in docs, the skill and Cobra help is checked against the command tree by `TestDocumentedInvocationsExist`; single-quoted names in error hints, console output and flag help are checked by `TestRuntimeHintsNameRealCommands`; quoted names inside `Long` prose are not, so audit those by hand.
-   - Ensure all commands, flags, domain placements, and examples reflect the 6 canonical domains (`workspace`, `access`, `inspect`, `profile`, `image`, `config`) and `agent` facade without drift.
+   - Ensure all commands, flags, domain placements, and examples reflect the 7 canonical domains (`workspace`, `container`, `access`, `inspect`, `profile`, `image`, `config`) and `agent` facade without drift.
 
 ## Output Format
 ```

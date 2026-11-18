@@ -366,28 +366,30 @@ devcontainer-cli config skill add mi-habilidad --ref owner/repo --label "Mi Habi
 
 ---
 
-### Caso 1.12: Contenedor Desechable sin Proyecto (`devcontainer-cli run`)
+### Caso 1.12: Contenedor Desechable sin Proyecto (`devcontainer-cli container run`)
 
 **Escenario**: Desea iniciar un entorno de pruebas o experimentación rápido a partir de una imagen preconstruida o de una de sus definiciones de imagen, sin inicializar un repositorio, sin generar archivos `.dc_<workspace>/` ni depender de un workspace en disco.
 
 **Paso a paso**:
 1. Inicie un contenedor desechable interactivo o no interactivo:
    ```bash
-   devcontainer-cli run --profile nodejs --ports 8080:80
+   devcontainer-cli container run --profile nodejs --ports 8080:80
    ```
 2. Conéctese mediante una shell o configure acceso SSH directo:
    ```bash
    devcontainer-cli access shell -c dc-nodejs
    ```
-3. Una vez finalizadas las pruebas, detenga o elimine el contenedor mediante Docker o el comando de limpieza:
+3. Una vez finalizadas las pruebas, detenga o elimine el contenedor individual o limpie contenedores inactivos:
    ```bash
+   devcontainer-cli container destroy dc-nodejs
+   # o limpiar múltiples contenedores gestionados sin uso:
    devcontainer-cli config clean containers
    ```
 
 *También puede partir de una de sus definiciones de imagen con `--image` (excluyente con `--profile`). Una definición `build` debe construirse antes; una `remote` se descarga y se verifica contra el contrato de imagen al ejecutarla. `--registry` solo aplica a `--profile`. Un contenedor `dc-<name>` existente solo se reutiliza si lo inició el mismo origen, de modo que `--profile nodejs` e `--image nodejs` no comparten contenedor:*
 ```bash
 devcontainer-cli image build android
-devcontainer-cli run --image android --no-interactive   # contenedor dc-android
+devcontainer-cli container run --image android --no-interactive   # contenedor dc-android
 ```
 
 ---
