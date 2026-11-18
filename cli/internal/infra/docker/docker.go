@@ -81,15 +81,7 @@ func hostEnvFor(host string) map[string]string {
 	if host == "" {
 		return nil
 	}
-	env := map[string]string{"DOCKER_HOST": "ssh://" + host}
-	if binDir, err := ensureSSHWrapper(); err == nil && binDir != "" {
-		if curPath := os.Getenv("PATH"); curPath != "" {
-			env["PATH"] = binDir + string(os.PathListSeparator) + curPath
-		} else {
-			env["PATH"] = binDir
-		}
-	}
-	return env
+	return map[string]string{"DOCKER_HOST": "ssh://" + host}
 }
 
 func IsDockerAvailable() bool {
