@@ -78,7 +78,7 @@ func TestWithRemoteCompletion_CacheBehavior(t *testing.T) {
 		},
 		{
 			name:            "stale cache hit returns stale data and triggers refresh",
-			seedAge:         ptrDuration(2 * time.Minute),
+			seedAge:         ptrDuration(5 * time.Minute),
 			seedStdout:      "ctr-stale\n",
 			runnerStatus:    0,
 			runnerStdout:    "ctr-refreshed\n",
@@ -88,7 +88,7 @@ func TestWithRemoteCompletion_CacheBehavior(t *testing.T) {
 		},
 		{
 			name:         "expired cache beyond stale TTL executes runner",
-			seedAge:      ptrDuration(20 * time.Minute),
+			seedAge:      ptrDuration(45 * time.Minute),
 			seedStdout:   "ctr-expired\n",
 			runnerStatus: 0,
 			runnerStdout: "ctr-live\n",
@@ -97,7 +97,7 @@ func TestWithRemoteCompletion_CacheBehavior(t *testing.T) {
 		},
 		{
 			name:         "non-zero runner exit does not overwrite valid cache",
-			seedAge:      ptrDuration(20 * time.Minute),
+			seedAge:      ptrDuration(45 * time.Minute),
 			seedStdout:   "ctr-old\n",
 			runnerStatus: 1,
 			runnerStdout: "",
@@ -201,7 +201,7 @@ func TestWithRemoteCompletion_EnforcesTimeoutAndSkipsEnsureDocker(t *testing.T) 
 	}
 }
 
-func TestWithRemoteCompletion_SetsControlMasterWrapperAndCompletionEnv(t *testing.T) {
+func TestWithRemoteCompletion_SetsWrapperAndCompletionEnv(t *testing.T) {
 	cacheDir := t.TempDir()
 	docker.SetCompletionCacheDir(cacheDir)
 	t.Cleanup(func() {
@@ -237,11 +237,97 @@ func TestWithRemoteCompletion_SetsControlMasterWrapperAndCompletionEnv(t *testin
 			t.Fatalf("expected ssh wrapper to be written: %v", rerr)
 		}
 		wrapper := string(wrapperBytes)
-		for _, want := range []string{"ControlMaster=auto", "ControlPersist=60s", "BatchMode=yes", "ConnectTimeout=2"} {
+		for _, want := range []string{"BatchMode=yes", "ConnectTimeout=4"} {
 			if !strings.Contains(wrapper, want) {
 				t.Errorf("ssh wrapper missing %q:\n%s", want, wrapper)
 			}
 		}
+		if strings.Contains(wrapper, "ControlPersist") {
+			t.Errorf("ssh wrapper must not set ControlPersist (causes pipe hang):\n%s", wrapper)
+		}
+	}
+}
+
+func TestRunCompletionRefreshIfRequested_SetsDockerHostWithoutHostOverride(t *testing.T) {
+	cacheDir := t.TempDir()
+	docker.SetCompletionCacheDir(cacheDir)
+	t.Cleanup(func() { docker.SetCompletionCacheDir("") })
+
+	origArgs := os.Args
+	os.Args = []string{"devcontainer-cli", "ps", "-a"}
+	t.Cleanup(func() { os.Args = origArgs })
+
+	t.Setenv("DC_COMPLETION_REFRESH", "1")
+	t.Setenv("DC_COMPLETION_HOST", "me@remote")
+
+	mock := &completionMockRunner{status: 0, stdout: "ctr-refreshed\n"}
+	useRunner(t, mock)
+
+	if handled := docker.RunCompletionRefreshIfRequested(context.Background()); !handled {
+		t.Fatal("expected RunCompletionRefreshIfRequested to handle request")
+	}
+	if got, want := mock.lastEnv["DOCKER_HOST"], "ssh://me@remote"; got != want {
+		t.Errorf("DOCKER_HOST = %q, want %q", got, want)
+	}
+
+	// Subsequent foreground lookup must hit the freshly written cache without calling runner.
+	checkMock := &completionMockRunner{status: 1, stdout: "wrong"}
+	docker.SetRunner(checkMock)
+	var gotStdout string
+	err := docker.WithRemoteCompletion("me@remote", func() error {
+		_, out, _, derr := docker.DockerCapture([]string{"ps", "-a"})
+		gotStdout = out
+		return derr
+	})
+	if err != nil {
+		t.Fatalf("WithRemoteCompletion error: %v", err)
+	}
+	if gotStdout != "ctr-refreshed\n" {
+		t.Errorf("cached stdout = %q, want %q", gotStdout, "ctr-refreshed\n")
+	}
+	if checkMock.callCount() != 0 {
+		t.Errorf("expected cache hit with 0 runner calls, got %d", checkMock.callCount())
+	}
+}
+
+func TestPrewarmRemoteCompletion_TriggersRefreshWhenMissingOrStale(t *testing.T) {
+	now := time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC)
+	cacheDir := t.TempDir()
+	docker.SetCompletionCacheDir(cacheDir)
+	docker.SetCompletionNow(func() time.Time { return now })
+	t.Cleanup(func() {
+		docker.SetCompletionCacheDir("")
+		docker.SetCompletionNow(nil)
+		docker.SetCompletionRefreshHook(nil)
+	})
+
+	calls := 0
+	docker.SetCompletionRefreshHook(func(host string, args []string) {
+		calls++
+	})
+
+	docker.PrewarmRemoteCompletion("me@remote", []string{"ps", "-a"})
+	if calls != 1 {
+		t.Fatalf("expected 1 prewarm call on cache miss, got %d", calls)
+	}
+
+	// Seed a fresh cache entry: prewarm must skip it.
+	useRunner(t, &completionMockRunner{status: 0, stdout: "fresh\n"})
+	_ = docker.WithRemoteCompletion("me@remote", func() error {
+		_, _, _, derr := docker.DockerCapture([]string{"ps", "-a"})
+		return derr
+	})
+
+	docker.PrewarmRemoteCompletion("me@remote", []string{"ps", "-a"})
+	if calls != 1 {
+		t.Errorf("expected prewarm to skip fresh cache, got %d calls", calls)
+	}
+
+	// Advance clock past fresh TTL (3m): prewarm must refresh again.
+	docker.SetCompletionNow(func() time.Time { return now.Add(5 * time.Minute) })
+	docker.PrewarmRemoteCompletion("me@remote", []string{"ps", "-a"})
+	if calls != 2 {
+		t.Errorf("expected prewarm to refresh stale cache, got %d calls", calls)
 	}
 }
 

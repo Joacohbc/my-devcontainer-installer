@@ -11,19 +11,19 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
 const (
-	defaultCompletionTimeout        = 2 * time.Second
-	defaultCompletionFreshTTL       = 45 * time.Second
-	defaultCompletionStaleTTL       = 10 * time.Minute
-	defaultCompletionRefreshTimeout = 5 * time.Second
+	defaultCompletionTimeout        = 5 * time.Second
+	defaultCompletionFreshTTL       = 3 * time.Minute
+	defaultCompletionStaleTTL       = 30 * time.Minute
+	defaultCompletionRefreshTimeout = 10 * time.Second
 	completionRefreshLockTTL        = 15 * time.Second
 	completionRefreshEnv            = "DC_COMPLETION_REFRESH"
 	completionRefreshHostEnv        = "DC_COMPLETION_HOST"
 	sshCompletionEnv                = "DC_SSH_COMPLETION"
-	maxUnixSocketPathBytes          = 95
 )
 
 var (
@@ -182,12 +182,24 @@ func completionEnv(host string) map[string]string {
 	if host == "" {
 		return nil
 	}
-	env := hostOverrideEnv()
+	env := hostEnvFor(host)
 	if env == nil {
 		env = make(map[string]string, 2)
 	}
 	env[sshCompletionEnv] = "1"
 	return env
+}
+
+// PrewarmRemoteCompletion triggers a non-blocking background refresh for
+// (host, args) when the cache is missing or past the fresh TTL.
+func PrewarmRemoteCompletion(host string, args []string) {
+	if host == "" || len(args) == 0 {
+		return
+	}
+	if _, age, ok := readCompletionCache(host, args); ok && age <= completionFreshTTL {
+		return
+	}
+	triggerCompletionRefresh(host, args)
 }
 
 func resolveCompletionBaseDir() (string, error) {
@@ -290,6 +302,7 @@ func triggerCompletionRefresh(host string, args []string) {
 		return
 	}
 	cmd := exec.Command(exe, args...)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	cmd.Env = mergeEnv(map[string]string{
 		completionRefreshEnv:     "1",
 		completionRefreshHostEnv: host,
@@ -332,10 +345,9 @@ func removeCompletionRefreshLock(host string, args []string) {
 	_ = os.Remove(path + ".lock")
 }
 
-// ensureSSHControlMasterWrapper writes a lightweight ssh wrapper into the
-// CLI's cache dir so Docker's `DOCKER_HOST=ssh://<host>` transport reuses
-// ControlMaster sockets without modifying ~/.ssh/config.
-func ensureSSHControlMasterWrapper() (string, error) {
+// ensureSSHWrapper writes a lightweight ssh wrapper into the CLI's cache dir so
+// remote completion probes fail fast without interactive prompts.
+func ensureSSHWrapper() (string, error) {
 	baseDir, err := resolveCompletionBaseDir()
 	if err != nil {
 		return "", err
@@ -345,21 +357,16 @@ func ensureSSHControlMasterWrapper() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	muxDir := resolveSSHMuxDir(baseDir)
 	if err := os.MkdirAll(binDir, 0o700); err != nil {
 		return "", err
 	}
-	if err := os.MkdirAll(muxDir, 0o700); err != nil {
-		return "", err
-	}
 
-	controlPath := filepath.Join(muxDir, "%C")
 	script := fmt.Sprintf(`#!/bin/sh
 if [ "${%s:-}" = "1" ]; then
-  exec %q -o ControlMaster=auto -o ControlPath=%q -o ControlPersist=60s -o BatchMode=yes -o ConnectTimeout=2 "$@"
+  exec %q -o BatchMode=yes -o ConnectTimeout=4 "$@"
 fi
-exec %q -o ControlMaster=auto -o ControlPath=%q -o ControlPersist=60s "$@"
-`, sshCompletionEnv, realSSH, controlPath, realSSH, controlPath)
+exec %q "$@"
+`, sshCompletionEnv, realSSH, realSSH)
 
 	wrapperPath := filepath.Join(binDir, "ssh")
 	if existing, err := os.ReadFile(wrapperPath); err == nil && string(existing) == script {
@@ -369,15 +376,6 @@ exec %q -o ControlMaster=auto -o ControlPath=%q -o ControlPersist=60s "$@"
 		return "", err
 	}
 	return binDir, nil
-}
-
-func resolveSSHMuxDir(baseDir string) string {
-	muxDir := filepath.Join(baseDir, "ssh-mux")
-	// OpenSSH ControlPath + 40-char %C hash must stay under UNIX_PATH_MAX (~104 bytes).
-	if len(muxDir)+41 <= maxUnixSocketPathBytes {
-		return muxDir
-	}
-	return filepath.Join(os.TempDir(), fmt.Sprintf("dc-ssh-%d", os.Getuid()))
 }
 
 func findRealSSH(excludeDir string) (string, error) {
