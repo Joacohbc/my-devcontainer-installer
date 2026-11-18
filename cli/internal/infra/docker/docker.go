@@ -74,14 +74,15 @@ func ResetHostOverride() {
 // override, or nil when none is set (Run leaves cmd.Env untouched on nil,
 // which is what every call site relied on before this existed).
 func hostOverrideEnv() map[string]string {
-	hostMu.RLock()
-	host := hostOverride
-	hostMu.RUnlock()
+	return hostEnvFor(currentHostOverride())
+}
+
+func hostEnvFor(host string) map[string]string {
 	if host == "" {
 		return nil
 	}
 	env := map[string]string{"DOCKER_HOST": "ssh://" + host}
-	if binDir, err := ensureSSHControlMasterWrapper(); err == nil && binDir != "" {
+	if binDir, err := ensureSSHWrapper(); err == nil && binDir != "" {
 		if curPath := os.Getenv("PATH"); curPath != "" {
 			env["PATH"] = binDir + string(os.PathListSeparator) + curPath
 		} else {

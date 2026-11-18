@@ -81,3 +81,24 @@ func TestWithRemoteCompletion_DelegatesToInfra(t *testing.T) {
 		t.Errorf("DC_SSH_COMPLETION = %q, want %q", got, want)
 	}
 }
+
+func TestPrewarmRemoteContainers_TriggersInfraPrewarm(t *testing.T) {
+	docker.SetCompletionCacheDir(t.TempDir())
+	t.Cleanup(func() {
+		docker.SetCompletionCacheDir("")
+		docker.SetCompletionRefreshHook(nil)
+	})
+
+	var hosts []string
+	docker.SetCompletionRefreshHook(func(host string, args []string) {
+		hosts = append(hosts, host)
+	})
+
+	PrewarmRemoteContainers("", "host-1", "host-2", "host-3", "host-4", "host-5")
+	if len(hosts) != 4 {
+		t.Fatalf("expected prewarm to cap at 4 hosts, got %v", hosts)
+	}
+	if hosts[0] != "host-1" || hosts[3] != "host-4" {
+		t.Errorf("unexpected prewarmed hosts order: %v", hosts)
+	}
+}

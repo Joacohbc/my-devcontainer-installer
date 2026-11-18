@@ -169,7 +169,14 @@ func completeStoppedContainers(_ *cobra.Command, _ []string, toComplete string) 
 func completeViaArgs(_ *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 	switch len(args) {
 	case 0:
-		return listSshHosts(), cobra.ShellCompDirectiveNoFileComp
+		var hosts []string
+		for _, h := range listSshHosts() {
+			if strings.HasPrefix(h, toComplete) {
+				hosts = append(hosts, h)
+			}
+		}
+		service.PrewarmRemoteContainers(hosts...)
+		return hosts, cobra.ShellCompDirectiveNoFileComp
 	case 1:
 		var containers []pick.Container
 		_ = service.WithRemoteCompletion(args[0], func() error {
