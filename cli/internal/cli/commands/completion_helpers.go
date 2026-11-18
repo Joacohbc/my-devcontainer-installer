@@ -31,7 +31,12 @@ func completeContainerPath(containerName, toComplete string) ([]string, cobra.Sh
 		prefix = toComplete
 	}
 
-	entries, err := service.InspectService{Report: ui.Console{}}.ListDir(containerName, dir)
+	var entries []string
+	var err error
+	_ = service.WithRemoteCompletion("", func() error {
+		entries, err = service.InspectService{Report: ui.Console{}}.ListDir(containerName, dir)
+		return nil
+	})
 	if err != nil {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}

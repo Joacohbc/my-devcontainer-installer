@@ -313,10 +313,11 @@ project instead — regenerate with 'agent create --ports <spec>'.`,
 
   # container:5432 -> this machine's 5432 (a database running on the host)
   devcontainer-cli agent forward reverse:5432`,
-		Args:         cobra.MaximumNArgs(1),
-		SilenceUsage: true,
-		PreRunE:      agentForwardDefaults,
-		RunE:         runPortForward,
+		Args:              cobra.MaximumNArgs(1),
+		SilenceUsage:      true,
+		ValidArgsFunction: completeForwardArgs,
+		PreRunE:           agentForwardDefaults,
+		RunE:              runPortForward,
 	}
 	addForwardFlags(cmd)
 	cmd.AddCommand(newAgentForwardViaCommand())
@@ -339,7 +340,7 @@ to reuse or configure a persistent ProxyCommand Host block in ~/.ssh/config.`,
   devcontainer-cli agent forward via me@docker-host dc-base 8080:80`,
 		Args:              cobra.ExactArgs(3),
 		SilenceUsage:      true,
-		ValidArgsFunction: completeViaArgs,
+		ValidArgsFunction: completeForwardViaArgs,
 		PreRunE:           agentForwardDefaults,
 		RunE:              runPortForwardVia,
 	}

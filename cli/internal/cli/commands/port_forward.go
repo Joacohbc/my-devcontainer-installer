@@ -90,9 +90,10 @@ are opened in parallel after you confirm.`,
 
   # Pin the SSH alias to tunnel through
   devcontainer-cli access forward 3000 --alias my-custom-host`,
-		Args:         cobra.MaximumNArgs(1),
-		SilenceUsage: true,
-		RunE:         runPortForward,
+		Args:              cobra.MaximumNArgs(1),
+		SilenceUsage:      true,
+		ValidArgsFunction: completeForwardArgs,
+		RunE:              runPortForward,
 	}
 	addForwardFlags(cmd)
 	cmd.AddCommand(newPortForwardViaCommand())
@@ -121,7 +122,7 @@ If [port_mapping] is omitted in interactive mode, you are prompted for it.`,
   devcontainer-cli access forward via me@docker-host dc-base 3000 --ephemeral=false`,
 		Args:              cobra.RangeArgs(2, 3),
 		SilenceUsage:      true,
-		ValidArgsFunction: completeViaArgs,
+		ValidArgsFunction: completeForwardViaArgs,
 		RunE:              runPortForwardVia,
 	}
 	addForwardViaFlags(cmd)
@@ -141,6 +142,129 @@ func addForwardViaFlags(cmd *cobra.Command) {
 		return listSshHosts(), cobra.ShellCompDirectiveNoFileComp
 	})
 	registerViaUserCompletion(cmd)
+}
+
+// extractContainerPorts parses Docker `ps` `.Ports` entries (such as
+// "22/tcp, 3000/tcp, 127.0.0.1:8080->80/tcp") into unique container-side TCP
+// port strings, excluding sshdefaults.Port and invalid/non-TCP entries.
+func extractContainerPorts(portsField string) []string {
+	var ports []string
+	seen := make(map[string]bool)
+	for _, token := range strings.Split(portsField, ",") {
+		entry := strings.TrimSpace(token)
+		if entry == "" {
+			continue
+		}
+		if _, afterArrow, hasArrow := strings.Cut(entry, "->"); hasArrow {
+			entry = afterArrow
+		}
+		portProto, found := strings.CutSuffix(entry, "/tcp")
+		if !found {
+			continue
+		}
+		n, err := strconv.Atoi(strings.TrimSpace(portProto))
+		if err != nil || n <= 0 || n > 65535 {
+			continue
+		}
+		p := strconv.Itoa(n)
+		if p == sshdefaults.Port || seen[p] {
+			continue
+		}
+		seen[p] = true
+		ports = append(ports, p)
+	}
+	return ports
+}
+
+func hasReversePrefix(spec string) bool {
+	trimmed := strings.TrimSpace(spec)
+	for _, p := range reversePrefixes {
+		if len(trimmed) >= len(p) && strings.EqualFold(trimmed[:len(p)], p) {
+			return true
+		}
+	}
+	return false
+}
+
+// filterPortSuggestions filters port candidates against toComplete, preserving
+// any leading "reverse:" or "r:" direction prefix typed by the user.
+func filterPortSuggestions(ports []string, toComplete string) []string {
+	prefix := ""
+	for _, candidatePrefix := range reversePrefixes {
+		if len(toComplete) >= len(candidatePrefix) && strings.EqualFold(toComplete[:len(candidatePrefix)], candidatePrefix) {
+			prefix = toComplete[:len(candidatePrefix)]
+			break
+		}
+	}
+	var suggestions []string
+	for _, p := range ports {
+		candidate := p
+		if prefix != "" && !hasReversePrefix(p) {
+			candidate = prefix + p
+		}
+		if strings.HasPrefix(candidate, toComplete) {
+			suggestions = append(suggestions, candidate)
+		}
+	}
+	return suggestions
+}
+
+func containerPortsFor(host, containerName string) []string {
+	for _, c := range listAllContainersForCompletion(host) {
+		if c.Name == containerName {
+			return extractContainerPorts(c.Ports)
+		}
+	}
+	return nil
+}
+
+// completeForwardViaArgs completes `<host>`, `<container>`, and `[port_mapping]`
+// for `access forward via` and `agent forward via`.
+func completeForwardViaArgs(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	if len(args) < 2 {
+		return completeViaArgs(cmd, args, toComplete)
+	}
+	if len(args) > 2 {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	return filterPortSuggestions(containerPortsFor(args[0], args[1]), toComplete), cobra.ShellCompDirectiveNoFileComp
+}
+
+// completeForwardArgs completes `[port_mapping]` for `access forward` and
+// `agent forward` from the target container's exposed TCP ports and the current
+// project's configured `forward_ports`.
+func completeForwardArgs(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	if len(args) > 0 {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	containerName, err := resolveContainer(cmd)
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+
+	var ports []string
+	seen := make(map[string]bool)
+	addPort := func(p string) {
+		p = strings.TrimSpace(p)
+		if p != "" && !seen[p] {
+			seen[p] = true
+			ports = append(ports, p)
+		}
+	}
+
+	for _, p := range containerPortsFor("", containerName) {
+		addPort(p)
+	}
+
+	if cwd, cerr := currentDir(); cerr == nil {
+		if cfg, lerr := domain.LoadConfig(cwd); lerr == nil && cfg != nil {
+			for _, p := range cfg.ForwardPorts {
+				addPort(p)
+			}
+		}
+	}
+
+	return filterPortSuggestions(ports, toComplete), cobra.ShellCompDirectiveNoFileComp
 }
 
 type parsedMapping struct {

@@ -2,6 +2,7 @@ package service
 
 import (
 	"errors"
+	"slices"
 	"testing"
 
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
@@ -100,5 +101,41 @@ func TestPrewarmRemoteContainers_TriggersInfraPrewarm(t *testing.T) {
 	}
 	if hosts[0] != "host-1" || hosts[3] != "host-4" {
 		t.Errorf("unexpected prewarmed hosts order: %v", hosts)
+	}
+}
+
+func TestPrewarmRemoteContainerUsers_TriggersInfraPrewarm(t *testing.T) {
+	docker.SetCompletionCacheDir(t.TempDir())
+	t.Cleanup(func() {
+		docker.SetCompletionCacheDir("")
+		docker.SetCompletionRefreshHook(nil)
+	})
+
+	type call struct {
+		host string
+		args []string
+	}
+	var calls []call
+	docker.SetCompletionRefreshHook(func(host string, args []string) {
+		calls = append(calls, call{host: host, args: args})
+	})
+
+	PrewarmRemoteContainerUsers("", "c1", "c2")
+	if len(calls) != 0 {
+		t.Fatalf("expected 0 calls for empty host, got %v", calls)
+	}
+
+	PrewarmRemoteContainerUsers("me@remote", "", "c1", "c2", "", "c3", "c4", "c5")
+	if len(calls) != 4 {
+		t.Fatalf("expected prewarm to cap at 4 containers, got %d (%v)", len(calls), calls)
+	}
+	wantNames := []string{"c1", "c2", "c3", "c4"}
+	for i, wantName := range wantNames {
+		if calls[i].host != "me@remote" {
+			t.Errorf("call[%d].host = %q, want me@remote", i, calls[i].host)
+		}
+		if !slices.Equal(calls[i].args, listUsersDockerArgs(wantName)) {
+			t.Errorf("call[%d].args = %v, want %v", i, calls[i].args, listUsersDockerArgs(wantName))
+		}
 	}
 }

@@ -87,7 +87,7 @@ func TestSshContainerRunning(t *testing.T) {
 }
 
 // cmdRoutingRunner answers "docker ps" and "docker inspect" with distinct
-// canned outputs so ContainerLiveness (which calls both) can be exercised.
+// canned outputs so single- and multi-step inspect callers can be exercised.
 type cmdRoutingRunner struct {
 	psOut      string
 	inspectOut string
@@ -107,6 +107,34 @@ func (r *cmdRoutingRunner) Run(_ context.Context, args []string, _ string, _ str
 		case "ps":
 			return r.psStatus, r.psOut, ""
 		case "inspect":
+			if r.psStatus != 0 {
+				return r.psStatus, "", "Cannot connect to the Docker daemon"
+			}
+			if r.psOut != "" && len(args) > 0 {
+				target := args[len(args)-1]
+				hasStateFmt := false
+				for _, arg := range args {
+					if strings.Contains(arg, ".State.Status") {
+						hasStateFmt = true
+						break
+					}
+				}
+				found := false
+				var state string
+				for _, line := range parsePSLines(r.psOut) {
+					if line.Names == target {
+						found = true
+						state = line.State
+						break
+					}
+				}
+				if !found {
+					return 1, "", "Error: No such object: " + target
+				}
+				if hasStateFmt {
+					return 0, state + "\n" + r.inspectOut, ""
+				}
+			}
 			return 0, r.inspectOut, ""
 		}
 	}
@@ -144,12 +172,24 @@ func TestSshContainerLiveness(t *testing.T) {
 	ps := `{"Names":"alpha","Image":"img1","Status":"Up","State":"running","Labels":"","Ports":""}
 {"Names":"stopped-one","Image":"img3","Status":"Exited (0)","State":"exited","Labels":"","Ports":""}`
 
-	t.Run("running returns its first IP", func(t *testing.T) {
+	t.Run("running returns its first IP in one inspect call", func(t *testing.T) {
 		runner := &cmdRoutingRunner{psOut: ps, inspectOut: "bridge 172.25.0.14\n"}
 		defer useFakeDocker(runner)()
 		state, ip, err := (SshService{Report: nopReporter{}}).ContainerLiveness("alpha")
 		if err != nil || state != TargetRunning || ip != "172.25.0.14" {
 			t.Errorf("ContainerLiveness(alpha) = %v,%q,%v, want running,172.25.0.14,nil", state, ip, err)
+		}
+		inspectCalls := 0
+		for _, call := range runner.calls {
+			if slices.Contains(call, "ps") {
+				t.Errorf("ContainerLiveness must not invoke docker ps, got call: %v", call)
+			}
+			if slices.Contains(call, "inspect") {
+				inspectCalls++
+			}
+		}
+		if inspectCalls != 1 {
+			t.Errorf("expected 1 docker inspect call, got %d (%v)", inspectCalls, runner.calls)
 		}
 	})
 
