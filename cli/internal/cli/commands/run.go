@@ -10,15 +10,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func init() {
-	register(newRunCommand())
-}
-
 func newRunCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "run",
 		Short: "Spin up a container from a prebuilt or named image (no project files)",
-		Long: `devcontainer-cli run — start a one-off devcontainer from a prebuilt remote
+		Long: `devcontainer-cli container run — start a one-off devcontainer from a prebuilt remote
 image or one of your image definitions, without generating a Dockerfile,
 compose file or any project files.
 
@@ -36,7 +32,7 @@ every value must come from a flag (--profile or --image becomes required,
 --name falls back to dc-<profile> or dc-<image>).
 
 The container name (default: dc-<profile> or dc-<image>) is validated as you
-type it: if it already belongs to a container a previous 'run' started from the
+type it: if it already belongs to a container a previous 'container run' started from the
 same profile or image, that container is reused as-is (started if stopped, left
 alone if already running). If it belongs to any other container — one started
 from a different source, a devcontainer project container, or an unrelated
@@ -52,17 +48,17 @@ init --profile <id>' and the default mode=custom, which generates project
 files and builds. --profile and --image are mutually exclusive, and --registry
 only applies to --profile (a definition carries its own reference).`,
 		Example: `  # Interactive: pick a profile and options
-  devcontainer-cli run
+  devcontainer-cli container run
 
   # Non-interactive SSH box with a named volume and a forwarded port
-  devcontainer-cli run --profile base --name dev --volumes work:/workspace --ports 2222:22
+  devcontainer-cli container run --profile base --name dev --volumes work:/workspace --ports 2222:22
 
   # Expose ports on the LAN
-  devcontainer-cli run --profile nodejs --ports 8080:80 --expose-all
+  devcontainer-cli container run --profile nodejs --ports 8080:80 --expose-all
 
   # Run one of your image definitions (build it first if it is a local one)
   devcontainer-cli image build android
-  devcontainer-cli run --image android --no-interactive`,
+  devcontainer-cli container run --image android --no-interactive`,
 		SilenceUsage: true,
 		RunE:         runQuickRun,
 	}
@@ -286,7 +282,7 @@ func resolveRunProfile(cmd *cobra.Command, p service.Prompter) (string, error) {
 		return promptVariant(p)
 	}
 	if len(splitCSV(profile)) > 1 {
-		return "", fmt.Errorf("'run' accepts exactly one profile, got %q (run pulls a prebuilt image; multiple profiles can only be combined with mode=custom)", profile)
+		return "", fmt.Errorf("'container run' accepts exactly one profile, got %q (container run pulls a prebuilt image; multiple profiles can only be combined with mode=custom)", profile)
 	}
 	if !validRemoteVariant(profile) {
 		return "", remoteVariantError(profile)

@@ -67,7 +67,7 @@ func TestRunRejectsNameOfUnmanagedContainer(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected an error when the name collides with a non quick-run container")
 	}
-	if !strings.Contains(err.Error(), "not created by 'run'") {
+	if !strings.Contains(err.Error(), "not created by 'container run'") {
 		t.Errorf("unexpected error message: %v", err)
 	}
 	if runner.callContaining("run") != nil || runner.callContaining("start") != nil {

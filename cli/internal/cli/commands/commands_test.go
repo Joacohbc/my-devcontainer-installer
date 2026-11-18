@@ -29,7 +29,7 @@ import (
 func TestNewRootCommand_RegistersAllSubcommands(t *testing.T) {
 	root := NewRootCommand("test")
 	want := []string{
-		"workspace", "access", "inspect", "profile", "image", "config", "agent", "run",
+		"workspace", "container", "access", "inspect", "profile", "image", "config", "agent",
 	}
 	have := map[string]bool{}
 	for _, c := range root.Commands() {
@@ -45,7 +45,7 @@ func TestNewRootCommand_RegistersAllSubcommands(t *testing.T) {
 		"ssh", "clean", "port-forward", "forward", "down", "destroy",
 		"start", "stop", "restart", "update", "upgrade-cli", "shell", "logs",
 		"copy", "up", "status", "ls", "info", "network", "context", "compose",
-		"route", "init",
+		"route", "init", "run",
 	}
 	for _, name := range legacyFlat {
 		if have[name] {
@@ -58,24 +58,24 @@ func TestCLIParadigmInvariants(t *testing.T) {
 	root := NewRootCommand("test")
 
 	// 1. Top-level boundary:
-	// Root command only registers the 6 canonical resource domains (workspace, access,
-	// inspect, profile, image, config), the agent facade, the standalone run command,
+	// Root command only registers the 7 canonical resource domains (workspace, container,
+	// access, inspect, profile, image, config), the agent facade,
 	// plus Cobra built-ins (help, completion).
 	allowedTopLevel := map[string]bool{
 		"workspace":  true,
+		"container":  true,
 		"access":     true,
 		"inspect":    true,
 		"profile":    true,
 		"image":      true,
 		"config":     true,
 		"agent":      true,
-		"run":        true,
 		"help":       true,
 		"completion": true,
 	}
 	for _, c := range root.Commands() {
 		if !allowedTopLevel[c.Name()] {
-			t.Errorf("top-level command %q violates canonical domain boundary (workspace, access, inspect, profile, image, config, agent, run)", c.Name())
+			t.Errorf("top-level command %q violates canonical domain boundary (workspace, container, access, inspect, profile, image, config, agent)", c.Name())
 		}
 	}
 
@@ -1203,10 +1203,33 @@ func TestDestroyCommandRegistered(t *testing.T) {
 	if destroyCmd == nil {
 		t.Fatal("expected 'destroy' command to be registered under workspace")
 	}
-	for _, name := range []string{"yes", "no-interactive", "container"} {
+	for _, name := range []string{"yes", "no-interactive"} {
 		if destroyCmd.Flags().Lookup(name) == nil {
-			t.Errorf("expected 'destroy' to register --%s", name)
+			t.Errorf("expected 'workspace destroy' to register --%s", name)
 		}
+	}
+	if destroyCmd.Flags().Lookup("container") != nil {
+		t.Error("expected 'workspace destroy' NOT to register --container")
+	}
+
+	containerCmd := findSubcommand(root, "container")
+	if containerCmd == nil {
+		t.Fatal("expected 'container' command to be registered")
+	}
+	ctrDestroyCmd := findSubcommand(containerCmd, "destroy")
+	if ctrDestroyCmd == nil {
+		t.Fatal("expected 'destroy' command to be registered under container")
+	}
+	for _, name := range []string{"yes", "no-interactive", "container"} {
+		if ctrDestroyCmd.Flags().Lookup(name) == nil {
+			t.Errorf("expected 'container destroy' to register --%s", name)
+		}
+	}
+	if ctrDestroyCmd.ValidArgsFunction == nil {
+		t.Error("expected 'container destroy' to register ValidArgsFunction")
+	}
+	if err := ctrDestroyCmd.Args(ctrDestroyCmd, []string{"c1", "c2"}); err == nil {
+		t.Error("expected 'container destroy' to reject more than one positional arg")
 	}
 }
 
@@ -1843,9 +1866,9 @@ func TestLsCommand_HasFlags(t *testing.T) {
 func TestAllCommands_HaveContainerFlag(t *testing.T) {
 	root := NewRootCommand("test")
 	accessCmd := findSubcommand(root, "access")
+	containerCmd := findSubcommand(root, "container")
 	imageCmd := findSubcommand(root, "image")
 	inspectCmd := findSubcommand(root, "inspect")
-	wsCmd := findSubcommand(root, "workspace")
 
 	type lookup struct {
 		parent *cobra.Command
@@ -1858,9 +1881,10 @@ func TestAllCommands_HaveContainerFlag(t *testing.T) {
 		{inspectCmd, "logs"},
 		{inspectCmd, "status"},
 		{accessCmd, "shell"},
-		{wsCmd, "start"},
-		{wsCmd, "stop"},
-		{wsCmd, "restart"},
+		{containerCmd, "start"},
+		{containerCmd, "stop"},
+		{containerCmd, "restart"},
+		{containerCmd, "destroy"},
 		{inspectCmd, "info"},
 	}
 	for _, l := range cmds {
@@ -1880,6 +1904,7 @@ func TestAllCommands_HaveContainerFlag(t *testing.T) {
 func TestOperationalCommands_HaveNoWorkspaceFlag(t *testing.T) {
 	root := NewRootCommand("test")
 	accessCmd := findSubcommand(root, "access")
+	containerCmd := findSubcommand(root, "container")
 	inspectCmd := findSubcommand(root, "inspect")
 	wsCmd := findSubcommand(root, "workspace")
 
@@ -1890,9 +1915,10 @@ func TestOperationalCommands_HaveNoWorkspaceFlag(t *testing.T) {
 	cmds := []lookup{
 		{wsCmd, "up"},
 		{wsCmd, "down"},
-		{wsCmd, "start"},
-		{wsCmd, "stop"},
-		{wsCmd, "restart"},
+		{containerCmd, "start"},
+		{containerCmd, "stop"},
+		{containerCmd, "restart"},
+		{containerCmd, "destroy"},
 		{accessCmd, "shell"},
 		{accessCmd, "ssh"},
 		{accessCmd, "copy"},
@@ -1954,17 +1980,23 @@ func TestFilterContainerNames_ByState(t *testing.T) {
 
 func TestStartStopCompletion_FilterByState(t *testing.T) {
 	root := NewRootCommand("test")
-	wsCmd := findSubcommand(root, "workspace")
-	if wsCmd == nil {
-		t.Fatal("workspace command not found")
+	containerCmd := findSubcommand(root, "container")
+	if containerCmd == nil {
+		t.Fatal("container command not found")
 	}
-	for _, name := range []string{"start", "stop"} {
-		cmd := findSubcommand(wsCmd, name)
+	for _, name := range []string{"start", "stop", "restart", "destroy"} {
+		cmd := findSubcommand(containerCmd, name)
 		if cmd == nil {
-			t.Fatalf("command %q not found under workspace", name)
+			t.Fatalf("command %q not found under container", name)
 		}
 		if _, ok := cmd.GetFlagCompletionFunc("container"); !ok {
 			t.Errorf("expected %q to register --container completion", name)
+		}
+		if cmd.ValidArgsFunction == nil {
+			t.Errorf("expected %q to register positional ValidArgsFunction", name)
+		}
+		if got, _ := cmd.ValidArgsFunction(cmd, []string{"c1"}, ""); len(got) != 0 {
+			t.Errorf("expected %q positional completion to stop after 1 arg, got %v", name, got)
 		}
 	}
 }
@@ -3107,6 +3139,179 @@ func TestSSHAndForwardCommandsRegisterFlagCompletions(t *testing.T) {
 				if _, ok := cmd.GetFlagCompletionFunc(flag); !ok {
 					t.Errorf("%v must register completion for --%s", tc.path, flag)
 				}
+			}
+		})
+	}
+}
+
+func TestContainerCommand_Subcommands(t *testing.T) {
+	root := NewRootCommand("test")
+	containerCmd := findSubcommand(root, "container")
+	if containerCmd == nil {
+		t.Fatal("container command not registered")
+	}
+
+	have := map[string]bool{}
+	for _, c := range containerCmd.Commands() {
+		have[c.Name()] = true
+	}
+	for _, want := range []string{"run", "start", "stop", "restart", "destroy"} {
+		if !have[want] {
+			t.Errorf("expected container subcommand %q to be registered", want)
+		}
+	}
+
+	wsCmd := findSubcommand(root, "workspace")
+	if wsCmd == nil {
+		t.Fatal("workspace command not registered")
+	}
+	for _, moved := range []string{"start", "stop", "restart"} {
+		if findSubcommand(wsCmd, moved) != nil {
+			t.Errorf("workspace must NOT register %q (moved to container)", moved)
+		}
+	}
+	wsDestroy := findSubcommand(wsCmd, "destroy")
+	if wsDestroy == nil || wsDestroy.Flags().Lookup("container") != nil {
+		t.Errorf("workspace destroy must exist and must NOT register --container")
+	}
+	agentCmd := findSubcommand(root, "agent")
+	agentDestroy := findSubcommand(agentCmd, "destroy")
+	if agentDestroy == nil || agentDestroy.Flags().Lookup("container") == nil {
+		t.Errorf("agent destroy must keep --container")
+	}
+}
+
+func TestResolveLifecycleContainer(t *testing.T) {
+	cases := []struct {
+		name    string
+		flag    string
+		setFlag bool
+		args    []string
+		want    string
+		wantErr string
+	}{
+		{name: "neither provided", want: ""},
+		{name: "positional arg", args: []string{"dc-python"}, want: "dc-python"},
+		{name: "trimmed positional arg", args: []string{"  dc-python  "}, want: "dc-python"},
+		{name: "flag only", flag: "dc-node", setFlag: true, want: "dc-node"},
+		{name: "matching positional and flag", flag: "dc-node", setFlag: true, args: []string{"dc-node"}, want: "dc-node"},
+		{name: "conflicting positional and flag", flag: "dc-node", setFlag: true, args: []string{"dc-python"}, wantErr: "cannot specify both"},
+		{name: "empty flag", flag: "   ", setFlag: true, wantErr: "container name cannot be empty"},
+		{name: "empty positional", args: []string{"   "}, wantErr: "container name cannot be empty"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd := &cobra.Command{Use: "test"}
+			addContainerFlag(cmd)
+			if tc.setFlag {
+				if err := cmd.Flags().Set("container", tc.flag); err != nil {
+					t.Fatal(err)
+				}
+			}
+			got, err := resolveLifecycleContainer(cmd, tc.args)
+			if tc.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+					t.Fatalf("resolveLifecycleContainer() err = %v, want substring %q", err, tc.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("resolveLifecycleContainer() unexpected err = %v", err)
+			}
+			if got != tc.want {
+				t.Errorf("resolveLifecycleContainer() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestContainerDestroyRequiresContainerName(t *testing.T) {
+	for _, args := range [][]string{
+		{"destroy"},
+		{"destroy", "--yes"},
+		{"destroy", "--no-interactive"},
+	} {
+		cmd := newContainerCommand()
+		cmd.SetArgs(args)
+		err := cmd.Execute()
+		if err == nil || !strings.Contains(err.Error(), "container name is required") {
+			t.Errorf("args %v: got err=%v, want 'container name is required'", args, err)
+		}
+	}
+}
+
+func TestContainerLifecycle_PositionalFlagAndFallback(t *testing.T) {
+	tempDir := t.TempDir()
+	t.Chdir(tempDir)
+	workspace := resolveWorkspace(tempDir)
+	composeDir := filepath.Join(tempDir, ".dc_"+workspace, "build")
+	if err := os.MkdirAll(composeDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	composeFile := filepath.Join(composeDir, "docker-compose.yml")
+	if err := os.WriteFile(composeFile, []byte("services:\n  devcontainer:\n    image: alpine\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, verb := range []string{"start", "stop", "restart"} {
+		t.Run(verb+"/positional", func(t *testing.T) {
+			runner := &buildStatusRunner{buildStatus: 0}
+			docker.SetRunner(runner)
+			docker.ResetDockerCache()
+			t.Cleanup(func() {
+				docker.ResetRunner()
+				docker.ResetDockerCache()
+			})
+
+			cmd := newContainerCommand()
+			cmd.SetArgs([]string{verb, "dc-python"})
+			if err := cmd.Execute(); err != nil {
+				t.Fatalf("Execute: %v", err)
+			}
+			want := []string{"docker", verb, "dc-python"}
+			if len(runner.calls) != 1 || !slices.Equal(runner.calls[0], want) {
+				t.Errorf("calls = %v, want [%v]", runner.calls, want)
+			}
+		})
+
+		t.Run(verb+"/flag", func(t *testing.T) {
+			runner := &buildStatusRunner{buildStatus: 0}
+			docker.SetRunner(runner)
+			docker.ResetDockerCache()
+			t.Cleanup(func() {
+				docker.ResetRunner()
+				docker.ResetDockerCache()
+			})
+
+			cmd := newContainerCommand()
+			cmd.SetArgs([]string{verb, "-c", "dc-node"})
+			if err := cmd.Execute(); err != nil {
+				t.Fatalf("Execute: %v", err)
+			}
+			want := []string{"docker", verb, "dc-node"}
+			if len(runner.calls) != 1 || !slices.Equal(runner.calls[0], want) {
+				t.Errorf("calls = %v, want [%v]", runner.calls, want)
+			}
+		})
+
+		t.Run(verb+"/workspace_fallback", func(t *testing.T) {
+			runner := &buildStatusRunner{buildStatus: 0}
+			docker.SetRunner(runner)
+			docker.ResetDockerCache()
+			t.Cleanup(func() {
+				docker.ResetRunner()
+				docker.ResetDockerCache()
+			})
+
+			cmd := newContainerCommand()
+			cmd.SetArgs([]string{verb})
+			if err := cmd.Execute(); err != nil {
+				t.Fatalf("Execute: %v", err)
+			}
+			want := []string{"docker", "compose", "-f", composeFile, verb}
+			if len(runner.calls) != 1 || !slices.Equal(runner.calls[0], want) {
+				t.Errorf("calls = %v, want [%v]", runner.calls, want)
 			}
 		})
 	}

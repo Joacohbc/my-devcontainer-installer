@@ -17,13 +17,13 @@ You review changes against `AGENTS.md` and the `.docs/` files governing the touc
    - `cli/commands` must NEVER import `infra/docker` or `os/exec`.
    - `domain` must NEVER import `infra` or `cli`.
    - `service` communicates via `Reporter` and `Prompter` interfaces only.
-3. **CLI Paradigm & Command Architecture (D18)**:
-   - 6-domain placement: Every command must live under `workspace`, `access`, `inspect`, `profile`, `image`, `config`, or `agent` facade; no flat root commands.
+3. **CLI Paradigm & Command Architecture (D18, D31)**:
+   - 7-domain placement: Every command must live under `workspace`, `container`, `access`, `inspect`, `profile`, `image`, `config`, or `agent` facade; no flat root commands.
    - Zero command aliases: `len(cmd.Aliases) == 0` across the entire tree.
    - Canonical flag names & shorthands: Plural CSV flags (`--modules`, `--services`, `--skills`, `--ports`, `--volumes`, `--forward-ports`), reserved shorthands (`-c`, `-y`, `-a`, `-f`, `-w`, `-v`), no `--x`/`--no-x` tri-state pairs.
    - No redundant agent clones: Prohibit 1:1 duplicates in `agent` if options and defaults are identical to the domain command.
 4. **Command & Error Contracts**:
-   - Non-prompting recovery hints: error messages must never name `devcontainer-cli` nakedly or flat legacy commands; suggest canonical commands (`workspace up`, `workspace start`, `workspace down`, `access ssh`, `profile list`, `agent create`).
+   - Non-prompting recovery hints: error messages must never name `devcontainer-cli` nakedly or flat legacy commands; suggest canonical commands (`workspace up`, `container start`, `workspace down`, `access ssh`, `profile list`, `agent create`).
    - Non-interactive mode: `--no-interactive` errors immediately on missing args without hanging.
 5. **Code Design (`hbc-code-design`)**:
    - Self-documenting code with zero redundant explanatory comments.

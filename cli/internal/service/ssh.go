@@ -317,7 +317,7 @@ func (s SshService) EnsureEphemeralAccess(containerName, user, keyPath, via stri
 			return fmt.Errorf("container '%s' not found", containerName)
 		}
 		if state == TargetStopped {
-			return fmt.Errorf("container '%s' is not running; start it with 'devcontainer-cli workspace start'", containerName)
+			return fmt.Errorf("container '%s' is not running; start it with 'devcontainer-cli container start'", containerName)
 		}
 		if ip == "" && via != "" {
 			return fmt.Errorf("could not determine network IP for container '%s' on remote host '%s'", containerName, via)

@@ -28,7 +28,7 @@ you whether a change needs `start`, `up`, a rebuild, or nothing.
 
    Steps 6–7 run in the background, so the container is usable before they
    finish. Their output is in `~/.post-script-state/<name>.log`.
-4. **Stop / start / restart** (`workspace stop|start|restart`): the same
+4. **Stop / start / restart** (`container stop|start|restart`): the same
    container. The entrypoint runs again, `service` scripts start again, `start`
    scripts are skipped (their `.done` sentinel is in the container).
 5. **Down** (`workspace down`): removes containers and network. Named volumes

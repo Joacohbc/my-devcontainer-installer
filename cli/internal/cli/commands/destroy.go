@@ -28,27 +28,48 @@ The project image is removed too unless another project shares it: images are
 named by content, so identical projects use one image until the last one goes.
 
 It also prunes the SSH state 'access ssh' wrote for the target: its managed
-managed Host block and the container host keys pinned for the address that
-block dialed, unless another Host block still dials it. Your own
-~/.ssh/known_hosts is never touched.
+Host block and the container host keys pinned for the address that block dialed,
+unless another Host block still dials it. Your own ~/.ssh/known_hosts is never
+touched.
 
-Pass --container to instead tear down a single loose container that isn't part
-of a workspace project (e.g. one set up via 'access ssh --container'): it stops and
-removes just that container and prunes the same
-SSH state — there is no compose stack, project directory, or config file to
-remove in this mode.
+To tear down a single loose container outside a project (e.g. one started with
+'container run'), use 'devcontainer-cli container destroy <container>' instead.
 
 Because it is irreversible, with --no-interactive you must also pass --yes.`,
 		Example: `  # Interactive: asks for confirmation first
   devcontainer-cli workspace destroy
 
   # Unattended teardown in a script
-  devcontainer-cli workspace destroy --yes
-
-  # Tear down a single loose container and its managed SSH config
-  devcontainer-cli workspace destroy --container dc-base`,
+  devcontainer-cli workspace destroy --yes`,
 		SilenceUsage: true,
 		RunE:         runDestroy,
+	}
+	addYesFlag(cmd)
+	addInteractiveFlag(cmd)
+	return cmd
+}
+
+func newContainerDestroyCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "destroy [container]",
+		Short: "Stop and remove a standalone or individual container",
+		Long: `devcontainer-cli container destroy — stop and remove a single container (such as
+one started with 'container run') and prune its managed SSH host block and
+pinned host keys.
+
+To tear down an entire project workspace (compose stack, volumes, .dc_<ws>/,
+and devcontainer.config.json), use 'devcontainer-cli workspace destroy' instead.
+
+Because it is irreversible, with --no-interactive you must also pass --yes.`,
+		Example: `  # Interactive: asks for confirmation first
+  devcontainer-cli container destroy dc-python
+
+  # Target with --container and skip confirmation
+  devcontainer-cli container destroy --container dc-base --yes`,
+		Args:              cobra.MaximumNArgs(1),
+		ValidArgsFunction: completeContainerArg(completeContainers),
+		SilenceUsage:      true,
+		RunE:              runContainerDestroy,
 	}
 	addYesFlag(cmd)
 	addInteractiveFlag(cmd)
@@ -56,13 +77,19 @@ Because it is irreversible, with --no-interactive you must also pass --yes.`,
 	return cmd
 }
 
+func runContainerDestroy(cmd *cobra.Command, args []string) error {
+	container, err := resolveLifecycleContainer(cmd, args)
+	if err != nil {
+		return err
+	}
+	if container == "" {
+		return fmt.Errorf("container name is required: pass <container> or --container <name> (or use 'devcontainer-cli workspace destroy' to tear down a project)")
+	}
+	return runDestroyContainer(cmd, ui.Console{}, container)
+}
+
 func runDestroy(cmd *cobra.Command, _ []string) error {
 	console := ui.Console{}
-
-	if cmd.Flags().Changed("container") {
-		container, _ := cmd.Flags().GetString("container")
-		return runDestroyContainer(cmd, console, container)
-	}
 
 	cwd, err := currentDir()
 	if err != nil {

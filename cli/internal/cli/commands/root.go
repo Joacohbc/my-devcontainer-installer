@@ -28,16 +28,14 @@ postgres/mongo/redis, a tunnel, …), and set published ports and extra volumes.
 Generated files are written under .dc_<workspace>/ next to your project and the
 result is recorded so the other subcommands can find it.
 
-Commands are structured across 6 canonical resource domains:
-  workspace    Manage project workspace lifecycle (init, auto-init, up, down, start, stop, restart, destroy, compose, export, import)
+Commands are structured across 7 canonical resource domains:
+  workspace    Manage project workspace lifecycle (init, auto-init, up, down, destroy, compose, export, import)
+  container    Run, start, stop, restart, and destroy containers (run, start, stop, restart, destroy)
   access       Connect to and interact with running devcontainers (shell, ssh, forward, route, network, copy, password)
   inspect      Inspect container status, logs, files, and context (status, info, logs, context, ls)
   profile      Manage reusable devcontainer profiles (list, info, create, copy, remove)
   image        Manage reusable, named devcontainer images (list, info, create, build, pull, export, remove, update)
   config       Manage global CLI settings, skills, shared volume, and maintenance (registry, git-init, db-user, db-password, ssh-key, ssh-config-file, alias, shared, skill, clean, upgrade-cli)
-
-Standalone utility:
-  run          Spin up a container from a prebuilt remote image (no project files)
 
 For AI assistants: the 'agent' facade provides an unattended, never-interactive command set
 covering the whole loop (agent cli-info, create, run, ssh, exec, forward, list, destroy).
@@ -63,7 +61,7 @@ Run 'devcontainer-cli --help' for the full flag list, or
   devcontainer-cli --mode profiles --profile nodejs
 
   # Run a throwaway container from a prebuilt remote image (no project files)
-  devcontainer-cli run --profile nodejs
+  devcontainer-cli container run --profile nodejs
 
   # Manage workspace lifecycle
   devcontainer-cli workspace up

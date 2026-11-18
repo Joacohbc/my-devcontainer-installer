@@ -28,7 +28,7 @@ services, profiles, skills, how to add your own scripts — so a create command
 can be composed without guessing at ids.
 
 The human commands stay available and are the escape hatch: 'compose' for any
-compose verb, 'access ssh via' for another Docker host, 'run' for a throwaway
+compose verb, 'access ssh via' for another Docker host, 'container run' for a throwaway
 container, 'config' for global settings.`,
 		Example: `  # Read the catalogue, then create an environment from it
   devcontainer-cli agent cli-info --json
