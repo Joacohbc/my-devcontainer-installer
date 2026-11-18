@@ -111,10 +111,26 @@ func filterContainerNames(containers []pick.Container, toComplete string, keep f
 	return suggestions
 }
 
+// listAllContainersForCompletion queries all containers on host (or locally when
+// host == "") inside completion mode (no EnsureDocker, short timeout, cached on remote).
+func listAllContainersForCompletion(host string) []pick.Container {
+	var containers []pick.Container
+	_ = service.WithRemoteCompletion(host, func() error {
+		containers = pick.ListAll()
+		return nil
+	})
+	return containers
+}
+
 // managedContainerNames suggests managed container names matching toComplete,
 // keeping only those for which keep returns true. A nil keep accepts all.
 func managedContainerNames(toComplete string, keep func(pick.Container) bool) ([]string, cobra.ShellCompDirective) {
-	return filterContainerNames(pick.ListManaged(), toComplete, keep), cobra.ShellCompDirectiveNoFileComp
+	var containers []pick.Container
+	_ = service.WithRemoteCompletion("", func() error {
+		containers = pick.ListManaged()
+		return nil
+	})
+	return filterContainerNames(containers, toComplete, keep), cobra.ShellCompDirectiveNoFileComp
 }
 
 // containerRunning reports whether a container is in the running state, used as
@@ -124,19 +140,24 @@ func containerRunning(c pick.Container) bool { return c.State == "running" }
 // completeManagedContainerArgs completes positional managed container names for
 // remove-container, skipping names already present on the command line.
 func completeManagedContainerArgs(_ *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	names, directive := managedContainerNames(toComplete, nil)
 	var out []string
-	for _, name := range filterContainerNames(pick.ListManaged(), toComplete, nil) {
+	for _, name := range names {
 		if !slices.Contains(args, name) {
 			out = append(out, name)
 		}
 	}
-	return out, cobra.ShellCompDirectiveNoFileComp
+	return out, directive
 }
 
 // completeManagedImageArgs completes positional managed image references for
 // remove-image, skipping refs already present on the command line.
 func completeManagedImageArgs(_ *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-	images, _ := service.PruneService{Report: console}.SelectImages(true)
+	var images []service.LocalImage
+	_ = service.WithRemoteCompletion("", func() error {
+		images, _ = service.PruneService{Report: console}.SelectImages(true)
+		return nil
+	})
 	var out []string
 	for _, img := range images {
 		if strings.HasPrefix(img.Ref, toComplete) && !slices.Contains(args, img.Ref) {
@@ -165,7 +186,7 @@ func completeStoppedContainers(_ *cobra.Command, _ []string, toComplete string) 
 
 // completeViaArgs completes positional arguments for 'via <host> <container>':
 // arg 0 suggests configured SSH hosts; arg 1 queries running containers on
-// that remote Docker host instead of local containers.
+// that remote Docker host instead of local containers and pre-warms --user caches.
 func completeViaArgs(_ *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 	switch len(args) {
 	case 0:
@@ -178,12 +199,9 @@ func completeViaArgs(_ *cobra.Command, args []string, toComplete string) ([]stri
 		service.PrewarmRemoteContainers(hosts...)
 		return hosts, cobra.ShellCompDirectiveNoFileComp
 	case 1:
-		var containers []pick.Container
-		_ = service.WithRemoteCompletion(args[0], func() error {
-			containers = pick.ListAll()
-			return nil
-		})
-		return filterContainerNames(containers, toComplete, containerRunning), cobra.ShellCompDirectiveNoFileComp
+		names := filterContainerNames(listAllContainersForCompletion(args[0]), toComplete, containerRunning)
+		service.PrewarmRemoteContainerUsers(args[0], names...)
+		return names, cobra.ShellCompDirectiveNoFileComp
 	default:
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}

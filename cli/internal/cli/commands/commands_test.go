@@ -17,6 +17,7 @@ import (
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/catalog"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/domain/types"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/assets"
+	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/docker"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/infra/sshdefaults"
 	"github.com/joacohbc/my-devcontainer-installer/cli/internal/service"
 	"unicode"
@@ -3108,5 +3109,173 @@ func TestSSHAndForwardCommandsRegisterFlagCompletions(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestLocalCompletionHelpers_SkipEnsureDockerAndSetTimeout(t *testing.T) {
+	docker.SetCompletionCacheDir(t.TempDir())
+	t.Cleanup(func() {
+		docker.SetCompletionCacheDir("")
+		docker.ResetRunner()
+		docker.ResetDockerCache()
+	})
+
+	runner := &completionCmdMockRunner{
+		stdoutByCmd: map[string]string{
+			"ps":     `{"Names":"myws-devcontainer-ssh","Image":"img","Status":"Up","State":"running","Labels":"dev.devcontainer-installer.managed=true","Ports":""}`,
+			"exec":   "src/\nREADME.md\n",
+			"images": "devcontainer-cli/myws:latest\tsha256:abc\n",
+		},
+	}
+
+	t.Run("completeContainerPath", func(t *testing.T) {
+		runner.sawVersion = false
+		runner.hasDeadline = false
+		docker.SetRunner(runner)
+		docker.ResetDockerCache()
+
+		got, directive := completeContainerPath("myws-devcontainer-ssh", "s")
+		if directive != cobra.ShellCompDirectiveNoSpace || !slices.Equal(got, []string{"src/"}) {
+			t.Errorf("completeContainerPath = (%v, %v), want ([src/], NoSpace)", got, directive)
+		}
+		if runner.sawVersion {
+			t.Error("expected completeContainerPath to skip EnsureDocker")
+		}
+		if !runner.hasDeadline {
+			t.Error("expected completeContainerPath to run with timeout deadline")
+		}
+	})
+
+	t.Run("managedContainerNames", func(t *testing.T) {
+		runner.sawVersion = false
+		runner.hasDeadline = false
+		docker.SetRunner(runner)
+		docker.ResetDockerCache()
+
+		got, _ := managedContainerNames("myws", containerRunning)
+		if !slices.Equal(got, []string{"myws-devcontainer-ssh"}) {
+			t.Errorf("managedContainerNames = %v, want [myws-devcontainer-ssh]", got)
+		}
+		if runner.sawVersion {
+			t.Error("expected managedContainerNames to skip EnsureDocker")
+		}
+		if !runner.hasDeadline {
+			t.Error("expected managedContainerNames to run with timeout deadline")
+		}
+	})
+
+	t.Run("completeManagedContainerArgs", func(t *testing.T) {
+		runner.sawVersion = false
+		runner.hasDeadline = false
+		docker.SetRunner(runner)
+		docker.ResetDockerCache()
+
+		got, _ := completeManagedContainerArgs(nil, []string{"other"}, "")
+		if !slices.Equal(got, []string{"myws-devcontainer-ssh"}) {
+			t.Errorf("completeManagedContainerArgs = %v, want [myws-devcontainer-ssh]", got)
+		}
+		if runner.sawVersion {
+			t.Error("expected completeManagedContainerArgs to skip EnsureDocker")
+		}
+		if !runner.hasDeadline {
+			t.Error("expected completeManagedContainerArgs to run with timeout deadline")
+		}
+	})
+
+	t.Run("completeManagedImageArgs", func(t *testing.T) {
+		imgRunner := &completionCmdMockRunner{
+			handleFn: func(args []string) (int, string, string) {
+				if slices.Contains(args, "images") && !slices.Contains(args, "label="+types.LabelKind+"="+types.ImageKindNamed) {
+					return 0, "devcontainer-cli/myws:latest\tsha256:abc\n", ""
+				}
+				return 0, "", ""
+			},
+		}
+		docker.SetRunner(imgRunner)
+		docker.ResetDockerCache()
+
+		got, _ := completeManagedImageArgs(nil, nil, "devcontainer-cli/")
+		if !slices.Equal(got, []string{"devcontainer-cli/myws:latest"}) {
+			t.Errorf("completeManagedImageArgs = %v, want [devcontainer-cli/myws:latest]", got)
+		}
+		if imgRunner.sawVersion {
+			t.Error("expected completeManagedImageArgs to skip EnsureDocker")
+		}
+		if !imgRunner.hasDeadline {
+			t.Error("expected completeManagedImageArgs to run with timeout deadline")
+		}
+	})
+
+	t.Run("completeAnyContainerArgs", func(t *testing.T) {
+		netRunner := &completionCmdMockRunner{
+			stdoutByCmd: map[string]string{
+				"ps": "c1\nc2\n",
+			},
+		}
+		docker.SetRunner(netRunner)
+		docker.ResetDockerCache()
+
+		got, _ := completeAnyContainerArgs(nil, []string{"c1"}, "")
+		if !slices.Equal(got, []string{"c2"}) {
+			t.Errorf("completeAnyContainerArgs = %v, want [c2]", got)
+		}
+		if netRunner.sawVersion {
+			t.Error("expected completeAnyContainerArgs to skip EnsureDocker")
+		}
+		if !netRunner.hasDeadline {
+			t.Error("expected completeAnyContainerArgs to run with timeout deadline")
+		}
+	})
+}
+
+func TestCompleteViaArgs_PrewarmsUsersOnContainerStep(t *testing.T) {
+	docker.SetCompletionCacheDir(t.TempDir())
+	t.Cleanup(func() {
+		docker.SetCompletionCacheDir("")
+		docker.SetCompletionRefreshHook(nil)
+		docker.ResetRunner()
+		docker.ResetDockerCache()
+	})
+
+	runner := &completionCmdMockRunner{
+		stdoutByCmd: map[string]string{
+			"ps": strings.Join([]string{
+				`{"Names":"c1","Image":"img","Status":"Up","State":"running","Labels":"","Ports":""}`,
+				`{"Names":"c-stopped","Image":"img","Status":"Exited (0)","State":"exited","Labels":"","Ports":""}`,
+				`{"Names":"c2","Image":"img","Status":"Up","State":"running","Labels":"","Ports":""}`,
+			}, "\n"),
+		},
+	}
+	docker.SetRunner(runner)
+	docker.ResetDockerCache()
+
+	type refreshCall struct {
+		host string
+		args []string
+	}
+	var refreshed []refreshCall
+	docker.SetCompletionRefreshHook(func(host string, args []string) {
+		refreshed = append(refreshed, refreshCall{host: host, args: args})
+	})
+
+	got, directive := completeViaArgs(nil, []string{"me@remote"}, "")
+	if directive != cobra.ShellCompDirectiveNoFileComp {
+		t.Errorf("directive = %v, want NoFileComp", directive)
+	}
+	wantNames := []string{"c1", "c2"}
+	if !slices.Equal(got, wantNames) {
+		t.Fatalf("completeViaArgs = %v, want %v", got, wantNames)
+	}
+	if len(refreshed) != 2 {
+		t.Fatalf("expected 2 user prewarm refreshes, got %d: %v", len(refreshed), refreshed)
+	}
+	for i, wantContainer := range wantNames {
+		if refreshed[i].host != "me@remote" {
+			t.Errorf("refreshed[%d].host = %q, want me@remote", i, refreshed[i].host)
+		}
+		wantArgs := []string{"exec", wantContainer, "cut", "-d:", "-f1", "/etc/passwd"}
+		if !slices.Equal(refreshed[i].args, wantArgs) {
+			t.Errorf("refreshed[%d].args = %v, want %v", i, refreshed[i].args, wantArgs)
+		}
 	}
 }
