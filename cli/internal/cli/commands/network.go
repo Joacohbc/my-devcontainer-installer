@@ -128,8 +128,13 @@ func runNetworkOp(cmd *cobra.Command, args []string, verb string) error {
 // completeAnyContainerArgs completes positional container names from every
 // container on the daemon (managed or not), skipping names already on the line.
 func completeAnyContainerArgs(_ *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	var names []string
+	_ = service.WithRemoteCompletion("", func() error {
+		names = (service.NetworkService{Report: console}).ContainerNames()
+		return nil
+	})
 	var out []string
-	for _, name := range (service.NetworkService{Report: console}).ContainerNames() {
+	for _, name := range names {
 		if strings.HasPrefix(name, toComplete) && !slices.Contains(args, name) {
 			out = append(out, name)
 		}

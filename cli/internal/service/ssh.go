@@ -65,24 +65,20 @@ const (
 // container (TargetAbsent, nil): the first must not be treated as stale.
 func (s SshService) ContainerLiveness(name string) (state TargetState, ip string, err error) {
 	inspectSvc := InspectService{Report: s.Report}
-	containers, err := inspectSvc.ListContainers(false)
+	cState, ips, exists, err := inspectSvc.ContainerStateAndIPs(name)
 	if err != nil {
 		return TargetAbsent, "", err
 	}
-	for _, c := range containers {
-		if c.Name != name {
-			continue
-		}
-		if c.State != string(StateRunning) {
-			return TargetStopped, "", nil
-		}
-		ips, ipErr := inspectSvc.ContainerNetworkIPs(name)
-		if ipErr != nil || len(ips) == 0 {
-			return TargetRunning, "", nil
-		}
-		return TargetRunning, ips[0].IP, nil
+	if !exists {
+		return TargetAbsent, "", nil
 	}
-	return TargetAbsent, "", nil
+	if cState != StateRunning {
+		return TargetStopped, "", nil
+	}
+	if len(ips) == 0 {
+		return TargetRunning, "", nil
+	}
+	return TargetRunning, ips[0].IP, nil
 }
 
 // ComposeUp brings the stack up detached.
